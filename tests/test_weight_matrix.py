@@ -589,6 +589,7 @@ class TestBorrowReporting:
         result = build(recipe, tmp_path / "out.ttc")
 
         weights = _load_report(result.report_path)["weights"]
+        # Report v2 (issue #12): every borrow also names the donor family.
         assert weights == [
             {
                 "index": 0,
@@ -601,6 +602,7 @@ class TestBorrowReporting:
                         "face": 1,
                         "weight": 400,
                         "style": "upright",
+                        "family": "SynthCJK",
                         "via": "nearest",
                         "style_fallback": False,
                     }
@@ -617,6 +619,7 @@ class TestBorrowReporting:
                         "face": 2,
                         "weight": 600,
                         "style": "upright",
+                        "family": "SynthCJK",
                         "via": "nearest",
                         "style_fallback": False,
                     }
@@ -633,6 +636,7 @@ class TestBorrowReporting:
                         "face": 1,
                         "weight": 400,
                         "style": "upright",
+                        "family": "SynthCJK",
                         "via": "nearest",
                         "style_fallback": True,
                     }

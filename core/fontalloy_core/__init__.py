@@ -5,6 +5,10 @@ The only capability layer (ADR-0002). Public surface:
 - ``build(recipe_path, output_path, ...)``: recipe + font files in, a built
   font plus a verification report out. This is the one entry point the whole
   pipeline is tested through (seam 1 of the testing decisions).
+- ``render_text(report)`` / ``render_html(report)`` (issue #12): the
+  human-readable verification report — the terminal form the CLI prints
+  and the self-contained HTML the GUI/WebApp display. Pure functions of
+  the report, so they are byte-reproducible with it.
 - ``load_recipe(path)``: parse a recipe YAML strictly into a ``Recipe``.
 - ``OutputNaming`` / ``apply_output_identity(font, naming)`` /
   ``apply_os2_corrections(font)`` (stage 6): the output identity —
@@ -88,6 +92,7 @@ from fontalloy_core.recipe import (
     load_recipe,
     parse_recipe,
 )
+from fontalloy_core.render import render_html, render_text
 from fontalloy_core.report import VerificationReport
 from fontalloy_core.release import ReleasePackage, package_catalog_release
 from fontalloy_core.rewrite import (
@@ -149,6 +154,8 @@ __all__ = [
     "parse_recipe",
     "plan_matrix",
     "presets",
+    "render_html",
+    "render_text",
     "resolve_precedence",
     "run_serve",
     "scan_families",
