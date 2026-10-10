@@ -14,14 +14,26 @@ The only capability layer (ADR-0002). Public surface:
   range sets) to codepoint level, producing the effective table. The
   build pipeline consumes it, and later consumers (grafting, serve, the
   GUI's effective-preview consistency check) call it directly.
-- ``RecipeError`` / ``BuildError``: the error types callers catch.
+- ``load_manifest(path)``: parse the font catalog manifest strictly into a
+  ``Catalog``; ``fetch_catalog(...)`` downloads and sha256-verifies it.
+- ``RecipeError`` / ``BuildError`` / ``CatalogError`` / ``AssetsError``:
+  the error types callers catch.
 """
 
 from __future__ import annotations
 
+from fontalloy_core.assets import FetchSummary, fetch_catalog
 from fontalloy_core.build import BuildOutput, build
-from fontalloy_core.errors import BuildError, FontAlloyError, RecipeError
+from fontalloy_core.catalog import Catalog, CatalogEntry, load_manifest
+from fontalloy_core.errors import (
+    AssetsError,
+    BuildError,
+    CatalogError,
+    FontAlloyError,
+    RecipeError,
+)
 from fontalloy_core.load import FaceInfo, Family, aggregate_families, scan_families
+from fontalloy_core.notices import generate_notices, write_notices
 from fontalloy_core.precedence import (
     BUILTIN_NAMED_SETS,
     EffectiveEntry,
@@ -36,12 +48,17 @@ from fontalloy_core.report import VerificationReport
 __version__ = "0.1.0"
 
 __all__ = [
+    "AssetsError",
     "BUILTIN_NAMED_SETS",
     "BuildError",
     "BuildOutput",
+    "Catalog",
+    "CatalogEntry",
+    "CatalogError",
     "EffectiveEntry",
     "FaceInfo",
     "Family",
+    "FetchSummary",
     "FontAlloyError",
     "PrecedenceRule",
     "Recipe",
@@ -51,7 +68,11 @@ __all__ = [
     "VerificationReport",
     "aggregate_families",
     "build",
+    "fetch_catalog",
+    "generate_notices",
+    "load_manifest",
     "load_recipe",
     "resolve_precedence",
     "scan_families",
+    "write_notices",
 ]
