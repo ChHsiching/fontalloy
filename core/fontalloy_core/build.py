@@ -54,10 +54,10 @@ def build(
     recipe = load_recipe(recipe_path)
     output = Path(output_path)
 
-    base = _load_font(recipe.base, "base font")
+    base = _load_font(recipe.base.path, "base font")
     donors = [
-        _load_font(path, f"donor font {index}")
-        for index, path in enumerate(recipe.donors)
+        _load_font(ref.path, f"donor font {index}")
+        for index, ref in enumerate(recipe.donors)
     ]
 
     try:
@@ -65,10 +65,10 @@ def build(
         # donors in join order, absence never overrides — into the effective
         # per-codepoint provenance table.
         stack: list[tuple[str, str, Path, set[int]]] = [
-            ("base", "base", recipe.base, _coverage(base))
+            ("base", "base", recipe.base.path, _coverage(base))
         ]
-        for index, path in enumerate(recipe.donors):
-            stack.append((f"donor-{index}", "donor", path, _coverage(donors[index])))
+        for index, ref in enumerate(recipe.donors):
+            stack.append((f"donor-{index}", "donor", ref.path, _coverage(donors[index])))
         base_coverage = stack[0][3]
         provenance = tuple(
             ProvenanceEntry(
