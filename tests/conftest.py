@@ -1,4 +1,5 @@
-"""Shared fixtures: the synthetic fixture-font harness.
+"""Shared fixtures: the synthetic fixture-font harness and the seam-2 CLI
+harness.
 
 Every font the test suite uses is a small synthetic TTF generated in-test
 with fontTools — the repo never contains font binaries, and no test
@@ -8,6 +9,9 @@ build outputs and reports are byte-reproducible.
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -96,3 +100,31 @@ def recipe_file(tmp_path: Path, base_font: Path, donor_font: Path) -> Path:
         encoding="utf-8",
     )
     return recipe
+
+
+# --- seam-2 harness: the real fontalloy executable as a subprocess ---------
+
+
+@pytest.fixture
+def fontalloy_exe() -> Path:
+    """The installed console script next to this interpreter."""
+    name = "fontalloy.exe" if os.name == "nt" else "fontalloy"
+    exe = Path(sys.executable).parent / name
+    assert exe.is_file(), (
+        f"the fontalloy executable is not installed next to python: {exe} "
+        "(run the suite through `uv run pytest`)"
+    )
+    return exe
+
+
+def run_cli(exe: Path, *args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
+    """Run the fontalloy executable as a real subprocess, UTF-8 safe."""
+    return subprocess.run(
+        [str(exe), *args],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=120,
+    )
