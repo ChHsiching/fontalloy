@@ -8,10 +8,12 @@ coverages, which font wins it (``winner``), through which precedence
 there (``kind``: base keep, fill, or override).
 
 This is still the structure later tickets extend, not the final content:
-when grafting lands, donor-won codepoints flip ``in_output`` to true and
-the summary converges; the weight-borrow table and metric comparison
-join as new sections. The JSON carries no timestamps or nondeterministic
-ordering, so identical inputs yield byte-identical reports.
+grafting has landed (issue #5), so ``in_output`` records presence in the
+built font's own cmap — read back from the output, never assumed — and
+the summary's ``output_codepoints`` counts the true merged coverage. The
+weight-borrow table and metric comparison join as new sections. The JSON
+carries no timestamps or nondeterministic ordering, so identical inputs
+yield byte-identical reports.
 """
 
 from __future__ import annotations
@@ -42,7 +44,7 @@ class ProvenanceEntry:
 
     codepoint: int
     winner: str  # a SourceRecord id
-    in_output: bool  # present in the built font (v0: base coverage only)
+    in_output: bool  # present in the built font (read back from its cmap)
     via: str  # "default" or a rule id ("rule-<declaration index>")
     kind: str  # "base" | "fill" | "override"
 

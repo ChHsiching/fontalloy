@@ -5,14 +5,15 @@ of the core: recipe + font files in, built font + verification report out.
 The CLI calls it in-process; later consumers (serve, the GUI sidecar) do
 the same.
 
-Pipeline stages in this ticket (issues #2, #3 and #4): load and detect the
-base and donor fonts (TTC face selection, variable instantiation, woff2
-decode), resolve the precedence rules — layered rules at every
-granularity, absence never overrides — into the effective table, write the
-base font through as the output TTF (grafting, normalization, and table
-rewriting arrive in later tickets), and emit the verification report
-carrying the effective table and the conflict/fill accounting. Identical
-inputs produce byte-identical outputs and reports.
+Pipeline stages in this ticket (issues #2 through #5): load and detect
+the base and donor fonts (TTC face selection, variable instantiation,
+woff2 decode), resolve the precedence rules — layered rules at every
+granularity, absence never overrides — into the effective table, graft
+the donor glyphs into the base font per the effective table with a
+rebuilt cmap (the base is the container, ADR-0001; normalization and
+table rewriting arrive in later tickets), and emit the verification
+report carrying the effective table and the conflict/fill accounting.
+Identical inputs produce byte-identical outputs and reports.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from pathlib import Path
 from fontTools.ttLib import TTFont
 
 from fontalloy_core.errors import BuildError
+from fontalloy_core.graft import graft_effective_glyphs
 from fontalloy_core.load import load_face
 from fontalloy_core.precedence import (
     BUILTIN_NAMED_SETS,
@@ -85,9 +87,15 @@ def build(
             named_sets={**BUILTIN_NAMED_SETS, **recipe.named_sets},
         )
 
-        # Stage: output the built font. The base is the container (ADR-0001);
-        # at this stage it passes through unchanged.
+        # Stage: graft the donor glyphs into the base container and
+        # rebuild the cmap (ADR-0001). Normalization (upem scaling,
+        # advance re-gridding) and table rewriting are later stages.
         try:
+            graft_effective_glyphs(
+                base.font,
+                {f"donor-{index}": face.font for index, face in enumerate(donors)},
+                resolution.effective_table,
+            )
             base.font.save(output)
         except OSError as exc:
             raise BuildError(
@@ -98,14 +106,14 @@ def build(
         for donor in donors:
             donor.font.close()
 
-    base_coverage = coverages["base"]
+    # Read the built font back: the report's in_output flags record what
+    # the output cmap actually covers, not what the pipeline intended.
+    output_cmap = set(TTFont(output).getBestCmap())
     provenance = tuple(
         ProvenanceEntry(
             codepoint=entry.codepoint,
             winner=entry.winner,
-            # v0 writes the base font through: only codepoints the base
-            # covers are present in the output. Grafting flips the rest.
-            in_output=entry.codepoint in base_coverage,
+            in_output=entry.codepoint in output_cmap,
             via=entry.via,
             kind=entry.kind,
         )
