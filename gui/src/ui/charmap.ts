@@ -43,14 +43,14 @@ import { cssFamily } from "./picker";
  * details strip — one action applies a font list to the whole selection.
  */
 
+/** Whether `rule` targets exactly this codepoint. */
+function targetsCodepoint(rule: EditorRule, cp: number): boolean {
+  return rule.target.kind === "codepoint" && rule.target.cp === cp;
+}
+
 /** The rule whose target is exactly this codepoint, when one exists. */
 function codepointRule(cp: number): EditorRule | undefined {
-  return store
-    .get()
-    .rules.find(
-      (rule) =>
-        rule.target.kind === "codepoint" && rule.target.cp === cp,
-    );
+  return store.get().rules.find((rule) => targetsCodepoint(rule, cp));
 }
 
 /* ---------- the single-codepoint precedence editor (issue #18) ------- */
@@ -69,9 +69,7 @@ function openEditor(cp: number, picks: PickRefs): void {
 /** Patch the rule state: upsert the editor's list as a codepoint rule. */
 function applyCodepointRule(cp: number): void {
   const rules = [...store.get().rules];
-  const index = rules.findIndex(
-    (rule) => rule.target.kind === "codepoint" && rule.target.cp === cp,
-  );
+  const index = rules.findIndex((rule) => targetsCodepoint(rule, cp));
   if (index >= 0) {
     rules[index] = { ...rules[index]!, fonts: [...editorFonts] };
   } else {
@@ -83,11 +81,7 @@ function applyCodepointRule(cp: number): void {
 /** Patch the rule state: drop the codepoint rule targeting `cp`. */
 function removeCodepointRule(cp: number): void {
   mutateRules(
-    store
-      .get()
-      .rules.filter(
-        (rule) => !(rule.target.kind === "codepoint" && rule.target.cp === cp),
-      ),
+    store.get().rules.filter((rule) => !targetsCodepoint(rule, cp)),
   );
 }
 
@@ -559,9 +553,7 @@ function existingCpRule(
   codepoint: number,
   rules: readonly EditorRule[],
 ): EditorRule | undefined {
-  return rules.find(
-    (rule) => rule.target.kind === "codepoint" && rule.target.cp === codepoint,
-  );
+  return rules.find((rule) => targetsCodepoint(rule, codepoint));
 }
 
 /**
