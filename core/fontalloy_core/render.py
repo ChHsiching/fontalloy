@@ -52,6 +52,7 @@ def render_text(report: VerificationReport) -> str:
     lines.extend(_weights_lines(report))
     for face in report.metrics:
         lines.extend(_metrics_lines(face))
+    lines.append("")
     lines.append(
         f"summary: {summary['codepoints_total']} codepoints total "
         f"({summary['from_base']} from base, {summary['from_donors']} from donors), "

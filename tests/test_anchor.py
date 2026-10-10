@@ -197,3 +197,101 @@ class TestMeasuredAnchor:
         for cp in _SAMPLE:
             program = getattr(out["glyf"][cmap[cp]], "program", None)
             assert not program or not program.getBytecode()
+
+    def test_the_anchor_report_verifies_the_build_end_to_end(
+        self, tmp_path: Path, anchor_pair: tuple[Path, Path]
+    ):
+        """The verification report of the measured anchor pair (issue
+        #12): coverage, borrow table, and the metric comparison —
+        including the untouched-line-height proof — asserted on the
+        JSON a consumer reads back from disk."""
+        import json
+
+        from fontalloy_core import build, render_text
+
+        base_path, donor_path = anchor_pair
+        recipe = tmp_path / "recipe.yaml"
+        recipe.write_text(
+            f"base: {base_path.resolve().as_posix()}\n"
+            f"donors:\n  - {donor_path.resolve().as_posix()}\n",
+            encoding="utf-8",
+        )
+
+        result = build(recipe, tmp_path / "out.ttf")
+        report = json.loads(result.report_path.read_text(encoding="utf-8"))
+        base = TTFont(base_path)
+
+        assert report["schema"] == "fontalloy/verification-report@v2"
+
+        # Coverage: the effective table (the base's coverage plus the
+        # anchor sample) landed whole; the recipe declares no rules, so
+        # there are no per-rule scopes to gap-check.
+        expected_coverage = set(base.getBestCmap()) | set(_SAMPLE)
+        assert report["coverage"]["overall"] == {
+            "requested": len(expected_coverage),
+            "covered": len(expected_coverage),
+            "missing": [],
+            "missing_total": 0,
+            "missing_truncated": False,
+        }
+        assert report["coverage"]["rules"] == []
+
+        # The borrow table: one slot (the base's Regular), the donor's
+        # default-instance face, nearest-matched, no style fallback.
+        [slot] = report["weights"]
+        assert (slot["weight"], slot["style"]) == (400, "upright")
+        [borrow] = slot["borrows"]
+        donor_face = load_face(FontRef(path=donor_path), role="donor")
+        assert borrow["donor"] == "donor-0"
+        # The instantiated default instance (wght=100) names its own
+        # typographic family ("Noto Sans SC Thin") — the loaded face's
+        # identity, exactly what landed in the output.
+        assert borrow["family"] == donor_face.info.family
+        assert "Noto Sans SC" in borrow["family"]
+        assert borrow["weight"] == donor_face.info.weight
+        assert borrow["via"] == "nearest"
+        assert borrow["style_fallback"] is False
+
+        # The metric comparison: the anchor's measured values, before
+        # and after, read back from the built font.
+        [face] = report["metrics"]["faces"]
+        assert face["upem"] == {"base": 1000, "output": 1000}
+        assert face["latin_advance"] == {"base": 600, "output": 600}
+        assert face["cjk_advance"] == {"base": None, "output": 1200}
+        assert face["grid_ratio"] == 2.0
+        hhea, os2 = base["hhea"], base["OS/2"]
+        assert face["ascents"]["hhea"]["base"] == hhea.ascent
+        assert face["descents"]["hhea"]["base"] == hhea.descent
+        assert face["line_gap"]["hhea"]["base"] == hhea.lineGap
+        assert face["ascents"]["typo"]["base"] == os2.sTypoAscender
+        assert face["descents"]["typo"]["base"] == os2.sTypoDescender
+        assert face["line_gap"]["typo"]["base"] == os2.sTypoLineGap
+        # The anchor's zero-table-changes: the Han ink [-82, +997] sits
+        # inside the base's win metrics, so usWin did not grow.
+        assert face["ascents"]["us_win"] == {
+            "base": os2.usWinAscent,
+            "output": os2.usWinAscent,
+        }
+        assert face["descents"]["us_win"] == {
+            "base": os2.usWinDescent,
+            "output": os2.usWinDescent,
+        }
+        # The proof the line-height contract held: hhea and typo are
+        # untouched against the base face.
+        assert face["line_height_untouched"] == {"hhea": True, "typo": True}
+
+        # k and s0 actually applied per donor: both fonts run at 1000
+        # upem (s0 = 1), the grid term binds (k = 2A/U = 1.2).
+        [record] = face["normalization"]
+        assert record["donor"] == "donor-0"
+        assert record["upem"] == 1000
+        assert record["s0"] == pytest.approx(1.0)
+        assert record["k"] == pytest.approx(1.2)
+        assert record["scale"] == pytest.approx(1.2)
+
+        # The human form ships with the build and states the same facts.
+        assert result.report_html_path is not None
+        assert result.report_html_path.is_file()
+        text = render_text(result.report)
+        assert "line height untouched: hhea yes, typo yes" in text
+        assert "grid ratio 2" in text
