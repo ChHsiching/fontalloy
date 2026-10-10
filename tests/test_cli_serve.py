@@ -517,7 +517,8 @@ class TestBuildLifecycle:
         report = serve_service.get(f"/builds/{build_id}/report")
         assert report.status == 200
         body = report.json()
-        assert body["schema"] == "fontalloy/verification-report@v1"
+        # Report v2 (issue #12): coverage and metrics joined the shape.
+        assert body["schema"] == "fontalloy/verification-report@v2"
         winners = {
             entry["codepoint"]: entry["winner"]
             for entry in body["provenance"]

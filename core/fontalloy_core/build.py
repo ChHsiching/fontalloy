@@ -21,7 +21,11 @@ container, ADR-0001), each donor glyph normalized onto that base
 face's metrics, rewrite each slot's output identity — the name record
 set plus OS/2 corrections, around the recipe's ``output.family``
 (issue #6) — and emit the verification report carrying the effective
-table, the conflict/fill accounting, and the weight borrow table.
+table, the conflict/fill accounting, the weight borrow table, the
+codepoint coverage (requested versus effective, gaps explicit), and
+the before/after metric comparison with the untouched-line-height
+proof (issue #12; schema ``fontalloy/verification-report@v2``) in a
+machine-readable JSON plus a rendered human-readable HTML beside it.
 
 Output formats (issue #10), reconciled with the matrix (issue #9): the
 recipe's ``output.format`` (or the ``output_format`` argument) selects
@@ -43,14 +47,21 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import NamedTuple
 
 from fontTools.ttLib import TTFont
 
 from fontalloy_core.errors import BuildError
 from fontalloy_core.graft import graft_effective_glyphs
 from fontalloy_core.load import LoadedFace, aggregate_families, load_faces
-from fontalloy_core.matrix import DonorPool, plan_matrix
-from fontalloy_core.normalize import plan_normalization
+from fontalloy_core.matrix import DonorPool, MatrixSlot, plan_matrix
+from fontalloy_core.normalize import (
+    HAN_COMMON_FIRST,
+    HAN_COMMON_LAST,
+    NormalizationPlan,
+    latin_advance,
+    plan_normalization,
+)
 from fontalloy_core.output import (
     OUTPUT_FORMATS,
     output_timestamp,
@@ -59,15 +70,20 @@ from fontalloy_core.output import (
 from fontalloy_core.precedence import (
     BUILTIN_NAMED_SETS,
     Resolution,
+    codepoint_label,
     interval_label,
     resolve_precedence,
     rule_id,
 )
 from fontalloy_core.recipe import FontRef, Recipe, load_recipe
+from fontalloy_core.render import render_html
 from fontalloy_core.report import (
     BorrowRecord,
     ConflictRecord,
+    CoverageRecord,
+    DonorNormalizationRecord,
     FaceRecord,
+    MetricFaceRecord,
     ProvenanceEntry,
     RuleRecord,
     SourceRecord,
@@ -75,6 +91,7 @@ from fontalloy_core.report import (
     WeightSlotRecord,
     file_sha256,
 )
+from fontalloy_core.report import MISSING_CAP
 from fontalloy_core.rewrite import (
     OutputNaming,
     apply_os2_corrections,
@@ -84,12 +101,18 @@ from fontalloy_core.rewrite import (
 
 @dataclass(frozen=True)
 class BuildOutput:
-    """What one build produced, plus the report describing it."""
+    """What one build produced, plus the report describing it.
+
+    ``report_path`` is the machine-readable JSON; ``report_html_path``
+    the rendered human form written beside it (issue #12). Both are
+    byte-reproducible with the font.
+    """
 
     font_path: Path
     report_path: Path
     report: VerificationReport
     format: str = "ttf"
+    report_html_path: Path | None = None
 
 
 def build(
@@ -234,7 +257,15 @@ def build_recipe(
         # only to prevent clipping). A donor face may serve several
         # slots; grafting takes private glyph copies, so each slot's
         # graft and normalization plan are independent.
+        #
+        # The metric comparison (issue #12) snapshots each base face as
+        # loaded — pre-graft, so "before" is what the pipeline actually
+        # started from (a variable base's instance, not the file's
+        # default) — and the plans' k/s0 per donor are kept for the
+        # report's normalization records.
         _stage("grafting")
+        base_snapshots = [_face_snapshot(slot.base.font) for slot in slots]
+        slot_normalization: list[tuple[DonorNormalizationRecord, ...]] = []
         for slot, resolution in zip(slots, resolutions):
             donor_fonts = {
                 match.donor_id: match.face.font for match in slot.donors
@@ -242,6 +273,7 @@ def build_recipe(
             plan = plan_normalization(
                 slot.base.font, donor_fonts, recipe.normalization
             )
+            slot_normalization.append(_normalization_records(plan, donor_fonts))
             graft_effective_glyphs(
                 slot.base.font, donor_fonts, resolution.effective_table, plan
             )
@@ -271,9 +303,17 @@ def build_recipe(
             donor.font.close()
 
     # Read the built font back: the report's in_output flags record what
-    # the output cmap actually covers, not what the pipeline intended.
+    # the output cmap actually covers, not what the pipeline intended —
+    # and the metric comparison measures the saved file, never the
+    # in-memory container.
     _stage("reporting")
-    output_cmaps = _read_back_cmaps(output, fmt, len(slots))
+    readback = _read_back(output, fmt, len(slots))
+    try:
+        output_cmaps = [set(font.getBestCmap()) for font in readback]
+        output_snapshots = [_face_snapshot(font) for font in readback]
+    finally:
+        for font in readback:
+            font.close()
     per_slot_provenance = [
         _provenance(resolution, output_cmap)
         for resolution, output_cmap in zip(resolutions, output_cmaps)
@@ -353,6 +393,7 @@ def build_recipe(
                         face=match.face.info.face_index,
                         weight=match.face.info.weight,
                         italic=match.face.info.italic,
+                        family=match.face.info.family,
                         via=match.via,
                         style_fallback=match.style_fallback,
                     )
@@ -360,6 +401,17 @@ def build_recipe(
                 ),
             )
             for index, slot in enumerate(slots)
+        ),
+        coverage_rules=_coverage_records(
+            recipe.rules, named_sets, output_cmaps[0]
+        ),
+        metrics=tuple(
+            _metric_face_record(
+                index, slot, before, after, normalization
+            )
+            for index, (slot, before, after, normalization) in enumerate(
+                zip(slots, base_snapshots, output_snapshots, slot_normalization)
+            )
         ),
     )
 
@@ -373,8 +425,23 @@ def build_recipe(
             f"cannot write the verification report: {report_path} ({exc})"
         ) from None
 
+    # The human-readable form, rendered beside the machine form (issue
+    # #12): the same deterministic content as the JSON.
+    report_html_path = report_path.with_suffix(".html")
+    try:
+        report_html_path.write_text(render_html(report), encoding="utf-8")
+    except OSError as exc:
+        raise BuildError(
+            f"cannot write the rendered verification report: "
+            f"{report_html_path} ({exc})"
+        ) from None
+
     return BuildOutput(
-        font_path=output, report_path=report_path, report=report, format=fmt
+        font_path=output,
+        report_path=report_path,
+        report=report,
+        format=fmt,
+        report_html_path=report_html_path,
     )
 
 
@@ -416,14 +483,168 @@ def _pool_codepoints(pool: DonorPool) -> int:
     return len(union)
 
 
-def _read_back_cmaps(output: Path, fmt: str, face_count: int) -> list[set[int]]:
-    """The built font's own cmaps, one per output face."""
+def _read_back(output: Path, fmt: str, face_count: int) -> list[TTFont]:
+    """The built font's own faces, opened for the honest readback.
+
+    A woff2 output decodes on load like any other flavor; the report
+    always measures what is on disk.
+    """
     if fmt == "ttc":
-        return [
-            set(TTFont(output, fontNumber=index).getBestCmap())
-            for index in range(face_count)
+        return [TTFont(output, fontNumber=index) for index in range(face_count)]
+    return [TTFont(output)]
+
+
+class _FaceSnapshot(NamedTuple):
+    """One face's verification metrics (the before/after comparison's
+    two sides share this shape)."""
+
+    upem: int
+    latin_advance: int
+    cjk_advance: int | None
+    hhea_ascent: int
+    hhea_descent: int
+    hhea_line_gap: int
+    typo_ascender: int | None
+    typo_descender: int | None
+    typo_line_gap: int | None
+    win_ascent: int | None
+    win_descent: int | None
+
+
+def _face_snapshot(font: TTFont) -> _FaceSnapshot:
+    """Measure one face: upem, the representative advances, and the
+    vertical metrics the report compares (issue #12)."""
+    hhea = font["hhea"]
+    os2 = font.get("OS/2")
+    return _FaceSnapshot(
+        upem=font["head"].unitsPerEm,
+        latin_advance=latin_advance(font),
+        cjk_advance=_cjk_advance(font),
+        hhea_ascent=hhea.ascent,
+        hhea_descent=hhea.descent,
+        hhea_line_gap=hhea.lineGap,
+        typo_ascender=getattr(os2, "sTypoAscender", None),
+        typo_descender=getattr(os2, "sTypoDescender", None),
+        typo_line_gap=getattr(os2, "sTypoLineGap", None),
+        win_ascent=getattr(os2, "usWinAscent", None),
+        win_descent=getattr(os2, "usWinDescent", None),
+    )
+
+
+def _cjk_advance(font: TTFont) -> int | None:
+    """The representative CJK advance: the modal advance over the
+    font's coverage of the common Han block (None without Han there —
+    a Latin base has no CJK advance to compare)."""
+    cmap = font.getBestCmap()
+    counts: dict[int, int] = {}
+    for codepoint in range(HAN_COMMON_FIRST, HAN_COMMON_LAST + 1):
+        name = cmap.get(codepoint)
+        if name is not None:
+            advance = font["hmtx"][name][0]
+            counts[advance] = counts.get(advance, 0) + 1
+    if not counts:
+        return None
+    return max(counts.items(), key=lambda item: (item[1], -item[0]))[0]
+
+
+def _normalization_records(
+    plan: NormalizationPlan, donor_fonts: dict[str, TTFont]
+) -> tuple[DonorNormalizationRecord, ...]:
+    """The k and s0 actually applied per donor, in join order."""
+    return tuple(
+        DonorNormalizationRecord(
+            donor=donor_id,
+            upem=donor_fonts[donor_id]["head"].unitsPerEm,
+            s0=scale.upem_scale,
+            han_ink_height=scale.han_ink_height,
+            k=scale.k,
+            scale=scale.scale,
+        )
+        for donor_id, scale in plan.donor_scales.items()
+    )
+
+
+def _metric_face_record(
+    index: int,
+    slot: MatrixSlot,
+    before: _FaceSnapshot,
+    after: _FaceSnapshot,
+    normalization: tuple[DonorNormalizationRecord, ...],
+) -> MetricFaceRecord:
+    """One output face's before/after record, with the untouched proof.
+
+    The proof is field-level equality of hhea (ascent, descent,
+    lineGap) and OS/2 typo (ascender, descender, lineGap) against the
+    base face — usWin is excluded by design: it may grow to prevent
+    clipping (ADR-0003), and its growth shows in the paired values.
+    """
+    return MetricFaceRecord(
+        slot=index,
+        base_face=slot.base.info.face_index,
+        weight=slot.base.info.weight,
+        italic=slot.base.info.italic,
+        upem=(before.upem, after.upem),
+        latin_advance=(before.latin_advance, after.latin_advance),
+        cjk_advance=(before.cjk_advance, after.cjk_advance),
+        hhea_ascent=(before.hhea_ascent, after.hhea_ascent),
+        hhea_descent=(before.hhea_descent, after.hhea_descent),
+        hhea_line_gap=(before.hhea_line_gap, after.hhea_line_gap),
+        typo_ascender=(before.typo_ascender, after.typo_ascender),
+        typo_descender=(before.typo_descender, after.typo_descender),
+        typo_line_gap=(before.typo_line_gap, after.typo_line_gap),
+        win_ascent=(before.win_ascent, after.win_ascent),
+        win_descent=(before.win_descent, after.win_descent),
+        normalization=normalization,
+        hhea_untouched=(
+            before.hhea_ascent,
+            before.hhea_descent,
+            before.hhea_line_gap,
+        )
+        == (after.hhea_ascent, after.hhea_descent, after.hhea_line_gap),
+        typo_untouched=(
+            before.typo_ascender,
+            before.typo_descender,
+            before.typo_line_gap,
+        )
+        == (after.typo_ascender, after.typo_descender, after.typo_line_gap),
+    )
+
+
+def _coverage_records(
+    rules: tuple, named_sets: dict, output_cmap: set[int]
+) -> tuple[CoverageRecord, ...]:
+    """Every rule's declared target versus the effective result.
+
+    A gap is a requested codepoint the built font's cmap does not cover
+    (no font in the build holds it — absence never overrides, so
+    nothing could fill it). Gap lists are bounded to ``MISSING_CAP``
+    labels with exact totals; the section describes face 0, like the
+    flat provenance.
+    """
+    records: list[CoverageRecord] = []
+    for index, rule in enumerate(rules):
+        intervals = rule.declared_intervals(named_sets)
+        requested = sum(end - start + 1 for start, end in intervals)
+        missing = [
+            codepoint
+            for start, end in intervals
+            for codepoint in range(start, end + 1)
+            if codepoint not in output_cmap
         ]
-    return [set(TTFont(output).getBestCmap())]
+        listed = missing[:MISSING_CAP]
+        records.append(
+            CoverageRecord(
+                rule=rule_id(index),
+                granularity=rule.granularity,
+                target=rule.target_label(),
+                requested=requested,
+                covered=requested - len(missing),
+                missing=tuple(codepoint_label(value) for value in listed),
+                missing_total=len(missing),
+                missing_truncated=len(missing) > len(listed),
+            )
+        )
+    return tuple(records)
 
 
 def _provenance(

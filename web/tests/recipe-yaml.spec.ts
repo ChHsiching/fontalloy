@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import YAML from "yaml";
-import { assertNoJsErrors, cliCommand, collectJsErrors, waitForFontsReady, yamlPreview } from "./helpers";
+import { allowProbeRefusal, assertNoJsErrors, cliCommand, collectJsErrors, waitForFontsReady, yamlPreview } from "./helpers";
 import { driveFixtureState } from "./flow";
 
 /**
@@ -13,6 +13,9 @@ import { driveFixtureState } from "./flow";
  * `fontalloy_core.load_recipe`. Same builder state, same merge, from
  * three directions: the page, the fixture, and the core loader.
  */
+
+/** A loopback address nothing listens on (deterministic absence). */
+const UNUSED_SERVE = "http://127.0.0.1:59999";
 
 const FIXTURE = fileURLToPath(
   new URL("./fixtures/sample-recipe.yaml", import.meta.url),
@@ -25,8 +28,9 @@ test("the builder's YAML matches the core-parseable fixture semantically", async
   page,
 }) => {
   const errors: string[] = [];
-  collectJsErrors(page, errors);
-  await page.goto("/");
+  const gate = collectJsErrors(page, errors);
+  allowProbeRefusal(gate, UNUSED_SERVE);
+  await page.goto(`/?serve=${encodeURIComponent(UNUSED_SERVE)}`);
   await waitForFontsReady(page);
 
   await driveFixtureState(page);

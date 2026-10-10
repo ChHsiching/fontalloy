@@ -1,8 +1,9 @@
 /**
- * The output panel (issue #21): live YAML preview, the downloadable
- * recipe file, and the copyable `fontalloy build` command that
- * reproduces the same merge — with the no-service notice as the
- * default rendering (the serve probe is ticket #22).
+ * The output panel: live YAML preview, the downloadable recipe file,
+ * and the copyable `fontalloy build` command that reproduces the same
+ * merge — plus, since issue #22, the live merge surface when the local
+ * service answered the detection probe (merge.ts) and the plain
+ * no-service statement with a click-reachable re-probe when it did not.
  *
  * Download/copy are gated on a problem-free draft (the strict-loader
  * mirror in recipe/validate.ts); while problems remain the buttons
@@ -15,29 +16,65 @@ import { validateDraft } from "../recipe/validate";
 import presetsJson from "../data/presets.json";
 import type { Preset } from "../recipe/model";
 import { builderStore } from "./state";
-import { serviceStatus } from "./service";
+import { detectService, serviceStore } from "./service";
+import { mountLiveMerge } from "./merge";
 
 const PRESETS = presetsJson.presets as Preset[];
 
 export function mountResult(root: HTMLElement): void {
   root.className = "wb-result";
 
-  // The no-service notice: default rendering, plain statement.
-  const notice = document.createElement("div");
-  notice.className = "wb-service-notice";
-  notice.dataset.testid = "service-notice";
-  notice.textContent =
-    "实时合成需要本地服务（fontalloy serve，仅监听 127.0.0.1）。" +
-    (serviceStatus.probed
-      ? "未检测到服务。"
-      : "服务检测将在后续版本接入；") +
-    "可使用下方的“复制 CLI 命令”方案，在本地完成同一次合并。";
-  root.appendChild(notice);
+  // The service notice: rendered from the published probe status, so
+  // the page states connected / absent / checking as page text.
+  const noticeBox = document.createElement("div");
+  noticeBox.className = "wb-service-notice";
+  noticeBox.dataset.testid = "service-notice";
+  root.appendChild(noticeBox);
+  const reprobeButton = document.createElement("button");
+  reprobeButton.type = "button";
+  reprobeButton.className = "wb-reprobe-button";
+  reprobeButton.dataset.testid = "reprobe";
+  reprobeButton.textContent = "重新检测本地服务";
+  reprobeButton.addEventListener("click", () => {
+    void detectService();
+  });
+
+  const renderNotice = (): void => {
+    const status = serviceStore.get();
+    reprobeButton.remove();
+    if (status.state === "available") {
+      noticeBox.textContent =
+        `已连接本地服务（fontalloy v${status.version ?? "?"}，${status.address}）。` +
+        "配方可实时合成并直接下载字体与验证报告。";
+    } else if (status.state === "checking") {
+      noticeBox.textContent = `正在检测本地服务（${status.address}）…`;
+    } else {
+      noticeBox.textContent =
+        "实时合成需要本地服务（fontalloy serve，仅监听 127.0.0.1，" +
+        "并以 --allow-origin 允许本站来源）；未检测到本地服务" +
+        `（${status.address} 无响应：连接被拒绝或被 CORS 拦截）。` +
+        "可使用下方的“复制 CLI 命令”方案，在本地完成同一次合并。";
+      // The retry affordance is click-reachable, never hover-only.
+      noticeBox.appendChild(reprobeButton);
+    }
+  };
+  serviceStore.subscribe(renderNotice);
+  renderNotice();
 
   const problems = document.createElement("ul");
   problems.className = "wb-problems";
   problems.dataset.testid = "problems";
   root.appendChild(problems);
+
+  // The live merge surface exists only when the service answered.
+  const liveSlot = document.createElement("div");
+  root.appendChild(liveSlot);
+  mountLiveMerge(liveSlot);
+  const renderLiveVisibility = (): void => {
+    liveSlot.hidden = serviceStore.get().state !== "available";
+  };
+  serviceStore.subscribe(renderLiveVisibility);
+  renderLiveVisibility();
 
   const yamlLabel = document.createElement("div");
   yamlLabel.className = "wb-result-label";

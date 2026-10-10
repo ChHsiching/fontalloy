@@ -1,13 +1,36 @@
 # FontAlloy WebApp
 
 The static build target of the shared frontend: the recipe builder
-(issue #21). Build a `fontalloy` recipe in the browser — base/donor
-selection from the catalog, precedence rules including the fc-lang
-language presets, output naming — and walk away with a downloadable
-recipe YAML plus a copyable `fontalloy build` command that reproduces
-the same merge. Live merging needs the local service (`fontalloy
-serve`, ticket #22 wires the probe); until then the copy-CLI fallback
-is the default rendering.
+(issue #21) with live merging through the local service (issue #22).
+Build a `fontalloy` recipe in the browser — base/donor selection from
+the catalog, precedence rules including the fc-lang language presets,
+output naming — and either run the merge right there when the local
+`fontalloy serve` service answers the detection probe (submit, watch
+progress, download the font and the verification report), or walk away
+with a downloadable recipe YAML plus a copyable `fontalloy build`
+command that reproduces the same merge. When no service answers, the
+copy-CLI fallback is the default rendering and the page states why.
+
+## Detecting the local service
+
+The page probes on load and renders from the published status: the
+topbar chip (已连接 / 未连接) and the result-panel notice follow it.
+The address probed is the `?serve=` query parameter — loopback http
+origins only — and defaults to `http://127.0.0.1:7777`:
+
+```
+fontalloy serve --port 7777 --allow-origin <this site's origin>
+# then open:  <site-url>/?serve=http://127.0.0.1:7777   (or just the
+#             site URL — 7777 is the default probe target)
+```
+
+`--allow-origin` must name the origin the page is served from (the
+CORS allowlist is the whole point: the flow works only from the
+configured origin — see `fontalloy serve --help`). A refused
+connection, a timeout, or a CORS block is a handled state: the notice
+states that no service was detected and offers a click-reachable
+re-probe. Live submissions send the recipe as JSON with absolute font
+paths (they resolve against the serve process's working directory).
 
 ## One codebase, two build targets
 
@@ -82,7 +105,20 @@ the test parses it (`yaml`) and compares against the builder state —
 including preset rules — and against `tests/fixtures/sample-recipe.yaml`,
 which the core suite (`tests/test_webapp_recipe.py` in the repo root)
 proves parses through the strict `fontalloy_core.load_recipe`. Same
-builder state, same merge: page ⇔ fixture ⇔ core loader.
+builder state, same merge: page ⇔ fixture ⇔ core loader. The JSON twin
+(`sample-recipe.json`) pins the serve submission body the same way.
+
+The live-merge tests (`tests/live-merge.spec.ts`) run against a REAL
+`fontalloy serve` instance: `tests/serve.ts` spawns it through the
+project env (`uv run fontalloy serve`, ephemeral port, the ready URL
+read from stdout) with synthetic fixture fonts from
+`scripts/make-serve-fixture-fonts.py`, and the assertions cover
+detection, the submitted JSON body verbatim, progress (the slow donor
+keeps the build observably in flight), artifact + report download,
+inline failures, and both sides of the CORS boundary. The zero-JS-
+errors gate has a benign-error policy: the browser's own console line
+for an intentionally refused/blocked probe is declared per test
+(`allowProbeRefusal`), never silently excused.
 
 ## Deploying
 
