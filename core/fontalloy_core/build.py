@@ -21,6 +21,7 @@ from pathlib import Path
 from fontTools.ttLib import TTFont
 
 from fontalloy_core.errors import BuildError
+from fontalloy_core.load import LoadedFace, load_face
 from fontalloy_core.recipe import load_recipe
 from fontalloy_core.report import (
     ProvenanceEntry,
@@ -54,9 +55,9 @@ def build(
     recipe = load_recipe(recipe_path)
     output = Path(output_path)
 
-    base = _load_font(recipe.base.path, "base font")
+    base = load_face(recipe.base, role="base font")
     donors = [
-        _load_font(ref.path, f"donor font {index}")
+        load_face(ref, role=f"donor font {index}")
         for index, ref in enumerate(recipe.donors)
     ]
 
@@ -65,10 +66,12 @@ def build(
         # donors in join order, absence never overrides — into the effective
         # per-codepoint provenance table.
         stack: list[tuple[str, str, Path, set[int]]] = [
-            ("base", "base", recipe.base.path, _coverage(base))
+            ("base", "base", recipe.base.path, _coverage(base.font))
         ]
         for index, ref in enumerate(recipe.donors):
-            stack.append((f"donor-{index}", "donor", ref.path, _coverage(donors[index])))
+            stack.append(
+                (f"donor-{index}", "donor", ref.path, _coverage(donors[index].font))
+            )
         base_coverage = stack[0][3]
         provenance = tuple(
             ProvenanceEntry(
@@ -90,15 +93,15 @@ def build(
         # Stage: output the built font. The base is the container (ADR-0001);
         # at v0 it passes through unchanged.
         try:
-            base.save(output)
+            base.font.save(output)
         except OSError as exc:
             raise BuildError(
                 f"cannot write the output font: {output} ({exc})"
             ) from None
     finally:
-        base.close()
+        base.font.close()
         for donor in donors:
-            donor.close()
+            donor.font.close()
 
     sources = tuple(
         SourceRecord(
@@ -128,20 +131,6 @@ def build(
         ) from None
 
     return BuildOutput(font_path=output, report_path=report_path, report=report)
-
-
-def _load_font(path: Path, role: str) -> TTFont:
-    """Load a font file and validate it has Unicode coverage."""
-    if not path.is_file():
-        raise BuildError(f"{role} file not found: {path}")
-    try:
-        font = TTFont(path)
-        best_cmap = font.getBestCmap()
-    except Exception as exc:  # fontTools raises TTLibError and friends
-        raise BuildError(f"{role} file is not a valid font: {path} ({exc})") from None
-    if not best_cmap:
-        raise BuildError(f"{role} has no Unicode coverage (no usable cmap): {path}")
-    return font
 
 
 def _coverage(font: TTFont) -> set[int]:
