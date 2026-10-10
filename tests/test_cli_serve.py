@@ -37,6 +37,7 @@ from conftest import (  # noqa: F401
     synth_font,
     synth_ttc,
 )
+from fontalloy_core import serve as fontalloy_core_serve
 from test_cli_assets import FAKE_OFL, entry, write_manifest
 
 #: The one origin the shared service allows — every CORS test plays
@@ -727,3 +728,37 @@ class TestGracefulShutdown:
         # service created its build scratch inside is left empty.
         assert work.is_dir()
         assert list(work.iterdir()) == [], "build scratch survived shutdown"
+
+
+def test_stdin_watch_stops_the_service_when_the_supervisor_pipe_closes(
+    fontalloy_exe: Path, tmp_path: Path
+) -> None:
+    """The sidecar lifecycle (issue #16): with the watchdog armed, the
+    service stops itself gracefully when its stdin pipe closes — the
+    GUI parent died without a chance to kill the process tree, and the
+    orphaned loopback server must not survive it.
+    """
+    env = {**os.environ, fontalloy_core_serve.STDIN_WATCH_ENV: "1"}
+    process = subprocess.Popen(
+        [str(fontalloy_exe), "serve", "--port", "0"],
+        cwd=tmp_path,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=env,
+    )
+    try:
+        ready = process.stdout.readline()
+        assert READY_LINE_RE.match(ready.strip()), f"no ready line: {ready!r}"
+        base = ready.strip()
+        health = urllib.request.urlopen(f"{base}/health", timeout=10)
+        assert health.status == 200
+    finally:
+        # The parent's pipe closes (the GUI is gone): EOF, not a signal.
+        if process.stdin:
+            process.stdin.close()
+    stdout, stderr = process.communicate(timeout=30)
+    assert process.returncode == 0, f"serve stderr: {stderr[-2000:]}"
