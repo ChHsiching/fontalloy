@@ -27,12 +27,62 @@ DATA_DIR = Path(__file__).parent / "data" / "fc-lang"
 #: data directory's README; the measured-count tests guard re-pinning).
 FCLANG_REF = "2.18.3"
 
+#: Name under which the Hong Kong supplementary charset (the verbatim
+#: ``zh_hk.orth`` set) is exposed as its own toggleable sub-block.
+ZH_HK_SUPPLEMENT = "zh_hk_supplement"
+
 #: An inclusive codepoint interval, structurally identical to
 #: ``fontalloy_core.precedence.Interval``.
 Interval = tuple[int, int]
 
 #: Range separators inside one ``.orth`` entry (fc-lang accepts both).
 _RANGE_SEPARATOR = re.compile(r"\.\.|-")
+
+
+@dataclass(frozen=True)
+class SubBlock:
+    """One toggleable block of a language preset (GLOSSARY: sub-block).
+
+    A preset is the union of its sub-blocks; a consumer toggling a block
+    off composes the remaining blocks. Every block is also selectable on
+    its own as a named set.
+    """
+
+    name: str
+    codepoints: frozenset[int]
+
+
+@dataclass(frozen=True)
+class LanguagePreset:
+    """A language preset: the union of its sub-blocks.
+
+    The sub-blocks default to the language's own raw set. The only
+    exceptions are declared in ``_PRESENTATION_SUB_BLOCKS`` below.
+    """
+
+    name: str
+    sub_blocks: tuple[SubBlock, ...]
+
+    @property
+    def codepoints(self) -> frozenset[int]:
+        """The preset's coverage: every sub-block enabled."""
+        return frozenset().union(
+            *(block.codepoints for block in self.sub_blocks)
+        )
+
+
+#: Presentation presets that differ from the raw fc-lang set: the Hong
+#: Kong and Macau files are supplementary charsets that presuppose
+#: Traditional Chinese without including it (``zh_hk.orth``'s header
+#: describes a supplement with zero intersection with zh_tw;
+#: ``zh_mo.orth`` is literally ``include zh_hk.orth``). Their preset
+#: presents zh_tw plus the supplement, with the supplement as its own
+#: toggleable sub-block. Maps a language name to its ``(block name,
+#: source language)`` blocks, in display order.
+_PRESENTATION_SUB_BLOCKS: dict[str, tuple[tuple[str, str], ...]] = {
+    "zh_hk": (("zh_tw", "zh_tw"), (ZH_HK_SUPPLEMENT, "zh_hk")),
+    "zh_mo": (("zh_tw", "zh_tw"), (ZH_HK_SUPPLEMENT, "zh_hk")),
+}
 
 
 def parse_orth(path: Path | str) -> frozenset[int]:
@@ -78,3 +128,45 @@ def _load_language_sets(data_dir: Path) -> dict[str, frozenset[int]]:
 #: keeps its fontconfig truth — the presentation layer below is the only
 #: thing that ever differs from it.
 LANGUAGE_SETS: dict[str, frozenset[int]] = _load_language_sets(DATA_DIR)
+
+#: The presentation layer: what "select this language" means. One preset
+#: per corpus language; a preset is the union of its sub-blocks.
+PRESETS: dict[str, LanguagePreset] = {
+    name: LanguagePreset(
+        name=name,
+        sub_blocks=tuple(
+            SubBlock(name=block, codepoints=LANGUAGE_SETS[source])
+            for block, source in _PRESENTATION_SUB_BLOCKS.get(
+                name, ((name, name),)
+            )
+        ),
+    )
+    for name in sorted(LANGUAGE_SETS)
+}
+
+
+def builtin_named_sets() -> dict[str, tuple[Interval, ...]]:
+    """The registry the resolver plugs into: name → interval tuples.
+
+    Every preset is selectable by name, and so is every sub-block that
+    is not itself a language (the zh_hk supplement). Intervals are
+    sorted and disjoint — the shape the precedence engine assumes.
+    """
+    named: dict[str, tuple[Interval, ...]] = {}
+    for name, preset in PRESETS.items():
+        named[name] = _compress(preset.codepoints)
+    for preset in PRESETS.values():
+        for block in preset.sub_blocks:
+            named.setdefault(block.name, _compress(block.codepoints))
+    return named
+
+
+def _compress(codepoints: frozenset[int]) -> tuple[Interval, ...]:
+    """Sorted, disjoint, non-adjacent intervals covering ``codepoints``."""
+    merged: list[list[int]] = []
+    for value in sorted(codepoints):
+        if merged and value == merged[-1][1] + 1:
+            merged[-1][1] = value
+        else:
+            merged.append([value, value])
+    return tuple((start, end) for start, end in merged)

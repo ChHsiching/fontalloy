@@ -77,3 +77,83 @@ class TestRawLanguageSets:
         # below exercises the merge itself).
         overlap = presets.LANGUAGE_SETS["zh_cn"] & presets.LANGUAGE_SETS["ja"]
         assert len(overlap) == 1391
+
+
+class TestPresentationPresets:
+    """A preset is the union of its named sub-blocks.
+
+    For every language the presentation preset matches the raw fc-lang
+    set, except the Hong Kong and Macau supplements: their files hold
+    only the supplement (zero intersection with zh_tw), so their preset
+    presents Traditional Chinese plus the supplement as its own
+    toggleable sub-block — the raw boundary stays in LANGUAGE_SETS.
+    """
+
+    def test_every_language_is_a_preset_matching_its_raw_set(self):
+        for name, raw_set in presets.LANGUAGE_SETS.items():
+            preset = presets.PRESETS[name]
+            assert preset.name == name
+            if name not in ("zh_hk", "zh_mo"):
+                assert preset.codepoints == raw_set, name
+
+    def test_zh_hk_presents_traditional_chinese_plus_the_supplement(self):
+        preset = presets.PRESETS["zh_hk"]
+        assert [block.name for block in preset.sub_blocks] == [
+            "zh_tw",
+            "zh_hk_supplement",
+        ]
+        zh_tw, supplement = preset.sub_blocks
+        assert zh_tw.codepoints == presets.LANGUAGE_SETS["zh_tw"]
+        assert supplement.codepoints == presets.LANGUAGE_SETS["zh_hk"]
+        assert not zh_tw.codepoints & supplement.codepoints  # disjoint blocks
+        assert len(preset.codepoints) == 13063 + 1083  # 14,146
+
+    def test_zh_mo_shares_the_hong_kong_presentation(self):
+        # zh_mo.orth is literally `include zh_hk.orth`: same raw set,
+        # so the same Traditional-Chinese-plus-supplement presentation.
+        assert (
+            presets.PRESETS["zh_mo"].codepoints
+            == presets.PRESETS["zh_hk"].codepoints
+        )
+
+    def test_a_preset_is_the_union_of_its_enabled_sub_blocks(self):
+        preset = presets.PRESETS["zh_hk"]
+        blocks = {block.name: block for block in preset.sub_blocks}
+
+        # All blocks enabled: the full preset.
+        every = frozenset().union(
+            *(block.codepoints for block in blocks.values())
+        )
+        assert every == preset.codepoints
+
+        # The supplement toggled off: Traditional Chinese remains.
+        without_supplement = blocks["zh_tw"].codepoints
+        assert without_supplement == presets.PRESETS["zh_tw"].codepoints
+
+
+class TestBuiltinNamedSets:
+    """The registry the resolver plugs into: every preset selectable."""
+
+    def test_every_preset_and_sub_block_is_selectable_by_name(self):
+        named = presets.builtin_named_sets()
+        expected = set(presets.PRESETS) | {"zh_hk_supplement"}
+        assert set(named) == expected
+
+    def test_named_sets_are_sorted_disjoint_scalar_intervals(self):
+        for intervals in presets.builtin_named_sets().values():
+            assert intervals == tuple(sorted(intervals))
+            for (_, end), (start, _) in zip(intervals, intervals[1:]):
+                assert start > end + 1  # sorted, disjoint, non-adjacent
+            for start, end in intervals:
+                assert 0 <= start <= end <= 0x10FFFF
+
+    def test_named_sets_expand_back_to_the_preset_codepoints(self):
+        def expand(intervals):
+            return frozenset(
+                cp for start, end in intervals for cp in range(start, end + 1)
+            )
+
+        named = presets.builtin_named_sets()
+        assert expand(named["zh_cn"]) == presets.PRESETS["zh_cn"].codepoints
+        assert len(expand(named["zh_hk_supplement"])) == 1083
+        assert len(expand(named["zh_hk"])) == 14146
