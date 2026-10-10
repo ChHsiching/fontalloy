@@ -1,0 +1,41 @@
+name: GUI seam-3 (Playwright)
+
+on:
+  push:
+    branches: [main, "spec/*"]
+  pull_request:
+    paths:
+      - "gui/**"
+      - ".github/workflows/gui-e2e.yml"
+
+defaults:
+  run:
+    working-directory: gui
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: gui/package-lock.json
+
+      - run: npm ci
+
+      - run: npx playwright install --with-deps chromium
+
+      # Production-compile gate before the suite drives the dev server.
+      - run: npm run build
+
+      - run: npm run test:e2e
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: gui/test-results/
+          retention-days: 7

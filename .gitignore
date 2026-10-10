@@ -9,6 +9,7 @@ build/
 # Node / Tauri
 node_modules/
 target/
+*.tsbuildinfo
 
 # Font binaries — this repo ships the tool, not fonts
 *.ttf
@@ -27,10 +28,12 @@ gui/prototype/_shots/
 gui/test-results/
 gui/playwright-report/
 
+# Tauri generated files (schemas, android/ios projects)
+gui/src-tauri/gen/
+
 # GUI prototype lives on the prototype/gui branch, never on main
 gui/prototype/
 
 # OS
 .DS_Store
 Thumbs.db
-gui/tsconfig.tsbuildinfo
