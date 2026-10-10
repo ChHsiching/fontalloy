@@ -1,9 +1,13 @@
 import { store, type ContentMode } from "../state";
+import { mountCharmap } from "./charmap";
 
 /**
  * Right content area: mode tabs (character map / real-world scenes) and the
  * stage. Scene previews render with the effective merged font once the merge
  * pipeline exists; for now the tab is a visible placeholder.
+ *
+ * The stage is rebuilt only on mode changes — the character map manages its
+ * own re-renders so the grid container survives page/category updates.
  */
 export function mountContent(root: HTMLElement): void {
   root.innerHTML = `
@@ -19,18 +23,20 @@ export function mountContent(root: HTMLElement): void {
 
   for (const tab of tabs) {
     tab.addEventListener("click", () => {
-      store.set({ mode: tab.dataset.mode as ContentMode });
+      if (store.get().mode !== tab.dataset.mode) {
+        store.set({ mode: tab.dataset.mode as ContentMode });
+      }
     });
   }
 
+  let lastMode: ContentMode | null = null;
   const render = (): void => {
     const { mode } = store.get();
     for (const tab of tabs) {
-      tab.setAttribute(
-        "aria-selected",
-        String(tab.dataset.mode === mode),
-      );
+      tab.setAttribute("aria-selected", String(tab.dataset.mode === mode));
     }
+    if (mode === lastMode) return;
+    lastMode = mode;
     if (mode === "charmap") {
       stage.dataset.mode = "charmap";
       stage.innerHTML = `<div class="charmap"></div>`;
@@ -47,9 +53,4 @@ export function mountContent(root: HTMLElement): void {
   };
   store.subscribe(render);
   render();
-}
-
-// Replaced by the character-map slice; kept as a local seam for main.ts.
-function mountCharmap(_root: HTMLElement): void {
-  /* character map arrives with its slice */
 }

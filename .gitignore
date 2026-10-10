@@ -33,3 +33,4 @@ gui/prototype/
 # OS
 .DS_Store
 Thumbs.db
+gui/tsconfig.tsbuildinfo
