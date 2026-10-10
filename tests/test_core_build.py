@@ -398,3 +398,37 @@ class TestBuild:
         assert winners[0x4E2D] == "donor-0"
         # ...and absence never overrides: donor-1 wins only what donor-0 lacks.
         assert winners[0x56FD] == "donor-1"
+
+
+class TestBuildProgress:
+    """The progress callback reports the pipeline's stages in order."""
+
+    def test_build_reports_each_stage_as_it_is_entered(
+        self, recipe_file, tmp_path
+    ):
+        stages: list[str] = []
+
+        result = build(
+            recipe_file,
+            tmp_path / "out.ttf",
+            progress=stages.append,
+        )
+
+        assert stages == [
+            "loading",
+            "resolving",
+            "grafting",
+            "rewriting",
+            "saving",
+            "reporting",
+        ]
+        assert result.font_path.is_file()
+
+    def test_progress_is_optional_and_changes_nothing(self, recipe_file, tmp_path):
+        quiet = build(recipe_file, tmp_path / "quiet.ttf")
+        loud = build(
+            recipe_file, tmp_path / "loud.ttf", progress=lambda stage: None
+        )
+
+        # Byte-reproducible builds hold with or without an observer.
+        assert quiet.font_path.read_bytes() == loud.font_path.read_bytes()

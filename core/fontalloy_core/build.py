@@ -27,6 +27,7 @@ byte-identical outputs and reports, with no wall clock in the file.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -80,18 +81,56 @@ def build(
     *,
     report_path: Path | str | None = None,
     output_format: str | None = None,
+    progress: Callable[[str], None] | None = None,
 ) -> BuildOutput:
-    """Build a merged font from a recipe.
+    """Build a merged font from a recipe file.
 
     ``output_path`` defaults to ``<recipe stem>.<format>`` beside the
     recipe; ``output_format`` (``ttf``, ``ttc``, or ``woff2``) overrides
     the recipe's ``output.format`` — the CLI switch rides this argument.
+    ``progress`` (issue #11), when given, is called with a stage name as
+    the pipeline enters each stage (``loading``, ``resolving``,
+    ``grafting``, ``rewriting``, ``saving``, ``reporting``); serve uses
+    it to report build progress over HTTP.
 
     Raises :class:`~fontalloy_core.errors.RecipeError` for an invalid
     recipe and :class:`~fontalloy_core.errors.BuildError` when the build
     fails on its font inputs or output paths.
     """
     recipe = load_recipe(recipe_path)
+    fmt = output_format if output_format is not None else recipe.output.format
+    if output_path is None:
+        # The file-caller default: <recipe stem>.<format> beside the recipe.
+        output_path = Path(recipe_path).with_suffix(f".{fmt}")
+    return build_recipe(
+        recipe,
+        output_path,
+        report_path=report_path,
+        output_format=output_format,
+        progress=progress,
+    )
+
+
+def build_recipe(
+    recipe: Recipe,
+    output_path: Path | str | None = None,
+    *,
+    report_path: Path | str | None = None,
+    output_format: str | None = None,
+    progress: Callable[[str], None] | None = None,
+) -> BuildOutput:
+    """Build a merged font from an already-parsed recipe.
+
+    The whole pipeline over a :class:`~fontalloy_core.recipe.Recipe`
+    object — what :func:`build` runs after loading the recipe file, and
+    what serve (issue #11) runs on a recipe submitted as JSON.
+    ``output_path`` is required in practice for non-file callers and
+    defaults to ``fontalloy.<format>`` in the working directory.
+    """
+    def _stage(name: str) -> None:
+        if progress is not None:
+            progress(name)
+
     fmt = output_format if output_format is not None else recipe.output.format
     if fmt not in OUTPUT_FORMATS:
         raise BuildError(
@@ -101,13 +140,14 @@ def build(
     output = (
         Path(output_path)
         if output_path is not None
-        else Path(recipe_path).with_suffix(f".{fmt}")
+        else Path(f"fontalloy.{fmt}")
     )
 
     # The base faces to merge: a collection-output build takes every
     # selected face of the base font file (one output face per base
     # face); every other format resolves exactly one face, so a
     # collection base still has to name its face.
+    _stage("loading")
     if fmt == "ttc":
         bases = load_faces(recipe.base, role="base font")
     else:
@@ -133,6 +173,7 @@ def build(
         # output face and coverages may differ between faces. Named sets
         # come from the recipe, overriding any built-ins (the fc-lang
         # presets plug into BUILTIN_NAMED_SETS in a later ticket).
+        _stage("resolving")
         named_sets = {**BUILTIN_NAMED_SETS, **recipe.named_sets}
         resolutions = [
             resolve_precedence(
@@ -148,6 +189,7 @@ def build(
         # faces; grafting takes private glyph copies, so each face's
         # graft is independent. Normalization (upem scaling, advance
         # re-gridding) is a later stage.
+        _stage("grafting")
         donor_fonts = {
             f"donor-{index}": donor.font for index, donor in enumerate(donors)
         }
@@ -158,6 +200,7 @@ def build(
             # 1/2) and the OS/2 corrections (xAvgCharWidth, PANOSE mono)
             # — before the save, so the reproducible boundary writes the
             # rewritten font.
+            _stage("rewriting")
             apply_output_identity(
                 base.font, OutputNaming(recipe.output.family)
             )
@@ -165,6 +208,7 @@ def build(
 
         # Stage: write the output at the single reproducible boundary —
         # pinned head timestamps, no recalculation, TTC dedup on.
+        _stage("saving")
         save_output(
             [base.font for base in bases], output, fmt, timestamp=timestamp
         )
@@ -176,6 +220,7 @@ def build(
 
     # Read the built font back: the report's in_output flags record what
     # the output cmap actually covers, not what the pipeline intended.
+    _stage("reporting")
     output_cmaps = _read_back_cmaps(output, fmt, len(bases))
     per_face_provenance = [
         _provenance(resolution, output_cmap)
