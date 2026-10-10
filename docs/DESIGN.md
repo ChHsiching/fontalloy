@@ -57,6 +57,10 @@ Measured anchor — JetBrains Mono × Noto/Source Han (both 1000 upem): A = 600,
 
 Nearest match by default (by OS/2 usWeightClass), and every borrow is stated explicitly — in the interface and the build report. A recipe may rewrite the mapping per weight. When the base font has no italic, CJK falls back to upright (the terminal convention). Interpolation and synthesis stay out: they violate transform-only.
 
+## Output naming
+
+The default output name is the fixed brand default `ChHsich` — never derived from source font names (RFN compliance, ADR-0005; the tool does not police user-entered names either). Validation before writing the name table: letters (any case), digits, and hyphens only; spaces are replaced with hyphens rather than rejected; ASCII only (the PostScript name requires it — localized names are out of scope for v1); family name ≤ 31 characters, PostScript name ≤ 63. CSS font-family matching is case-insensitive, so two names differing only in case collide — the user's call, not the tool's.
+
 ## Recipe (YAML)
 
 Fields: base font reference (family + version/hash), donor list, precedence rules at every granularity, weight mapping overrides, output naming, normalization switches. Three roles at once: CLI input (`fontalloy build x.yaml`), CI build input, community share unit. **A built font is a recipe run against pinned source fonts** — reproducible by CI, released through the storefront's Releases (reusing the old repo's AUR / install.sh experience). Built fonts are the marketing front and the no-install option.
