@@ -58,6 +58,13 @@ interface ReportDocument {
     output_codepoints?: number;
   };
   sources?: Array<{ id?: string; role?: string; codepoints?: number }>;
+  /** Report v2 (issue #12): the read-back coverage accounting. */
+  coverage?: {
+    requested?: number;
+    covered?: number;
+    missing_total?: number;
+    missing_truncated?: boolean;
+  };
 }
 
 const count = new Intl.NumberFormat("en-US");
@@ -104,6 +111,16 @@ function renderReport(root: HTMLElement, report: ReportDocument): void {
         `${count.format(summary.from_base ?? 0)}、供体 ` +
         `${count.format(summary.from_donors ?? 0)}；输出覆盖 ` +
         `${count.format(summary.output_codepoints ?? 0)} 码位。`,
+    );
+  }
+  if (report.coverage !== undefined) {
+    const missing = report.coverage.missing_total ?? 0;
+    lines.push(
+      `覆盖核对：请求 ${count.format(report.coverage.requested ?? 0)} 码位，` +
+        `实际覆盖 ${count.format(report.coverage.covered ?? 0)}，缺失 ` +
+        `${count.format(missing)}` +
+        (missing > 0 && report.coverage.missing_truncated ? "（列表见报告 JSON）" : "") +
+        "。",
     );
   }
   if (report.sources !== undefined && report.sources.length > 0) {
