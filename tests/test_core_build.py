@@ -93,16 +93,16 @@ def _load_report(path: Path) -> dict:
 class TestBuild:
     """The tracer bullet: recipe + fonts in, valid TTF + report v0 out."""
 
-    def test_output_is_a_valid_ttf_pass_through(self, recipe_file, tmp_path):
+    def test_output_is_a_valid_ttf_with_grafted_glyphs(self, recipe_file, tmp_path):
         output = tmp_path / "out.ttf"
 
         result = build(recipe_file, output)
 
         font = TTFont(result.font_path)  # reloads cleanly in fontTools
         assert font["head"].unitsPerEm == 1000  # the base is the container
-        # v0 is base pass-through: donor glyphs are not grafted yet, so the
-        # output covers exactly the base coverage.
-        assert set(font.getBestCmap()) == set(BASE_CODEPOINTS)
+        # Grafting has landed: the output covers the union of the
+        # effective table, donor glyphs included.
+        assert set(font.getBestCmap()) == {*BASE_CODEPOINTS, *DONOR_CODEPOINTS}
 
     def test_every_build_emits_a_report_with_provenance(self, recipe_file, tmp_path):
         output = tmp_path / "out.ttf"
@@ -114,15 +114,15 @@ class TestBuild:
         entries = {entry["codepoint"]: entry for entry in report["provenance"]}
         assert entries[0x41]["winner"] == "base"
         assert entries[0x41]["in_output"] is True
-        # The donor's disjoint coverage is attributed to the donor even
-        # though its glyphs are not grafted yet.
+        # The donor's disjoint coverage is attributed to the donor, and
+        # since grafting landed the glyph is genuinely in the output.
         assert entries[0x4E2D]["winner"] == "donor-0"
-        assert entries[0x4E2D]["in_output"] is False
+        assert entries[0x4E2D]["in_output"] is True
         assert report["summary"] == {
             "codepoints_total": 4,
             "from_base": 2,
             "from_donors": 2,
-            "output_codepoints": 2,
+            "output_codepoints": 4,
         }
 
     def test_report_records_source_font_hashes(self, recipe_file, tmp_path,
@@ -164,7 +164,10 @@ class TestBuild:
 
         result = build(shared / "recipe.yaml", tmp_path / "out.ttf")
 
-        assert set(TTFont(result.font_path).getBestCmap()) == set(BASE_CODEPOINTS)
+        assert set(TTFont(result.font_path).getBestCmap()) == {
+            *BASE_CODEPOINTS,
+            *DONOR_CODEPOINTS,
+        }
 
     def test_missing_donor_file_is_a_clear_error(self, tmp_path, base_font):
         recipe = tmp_path / "recipe.yaml"

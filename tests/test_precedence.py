@@ -286,7 +286,7 @@ class TestEffectiveTable:
         assert entries[0x4E2D] == {
             "codepoint": 0x4E2D,
             "winner": "donor-0",
-            "in_output": False,
+            "in_output": True,
             "via": "default",
             "kind": "fill",
         }
