@@ -32,7 +32,7 @@ Everything is a precedence rule: a codepoint range mapped to an ordered font lis
 
 The preview grid is the GUI/WebApp's core interaction: one cell per codepoint rendering the effective result; click a cell or type a codepoint to set precedence. The preview always renders the effective result — however complex the rules, it never lies.
 
-Language preset data: bundle fontconfig's fc-lang `.orth` files (permissive license) — zh_cn 6,765 / zh_tw 13,063 / ja 2,314 / ko 2,442 / zh_hk codepoints, plus the rest of fc-lang (any language with a well-defined codepoint set is selectable). Language charsets are a coverage question, not a partition (zh_cn and ja overlap by ~2,000 codepoints). Region-specific donors (MapleMono-CN, Source Han SC) already carry the correct default variants — no `locl` handling needed.
+Language preset data: bundle fontconfig's fc-lang `.orth` files (permissive license) — zh_cn 6,765 / zh_tw 13,063 / ja 2,314 / ko 2,442 / zh_hk 1,083 codepoints, plus the rest of fc-lang (any language with a well-defined codepoint set is selectable). zh_hk (and zh_mo, whose file includes zh_hk's) is a supplementary set that presupposes Traditional Chinese, so its preset presents zh_tw plus the supplement, with the supplement as its own toggleable sub-block; the raw fc-lang set stays selectable alongside. Language charsets are a coverage question, not a partition (zh_cn and ja overlap by 1,391 codepoints, measured from the bundled fc-lang data). Region-specific donors (MapleMono-CN, Source Han SC) already carry the correct default variants — no `locl` handling needed.
 
 ## Merge pipeline (core, seven stages)
 

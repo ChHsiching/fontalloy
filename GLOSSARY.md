@@ -32,6 +32,10 @@ _Avoid_: empty-slot protection, skip rule
 A pre-researched "language → codepoint set" mapping (e.g. Simplified Chinese, 6,765 codepoints), selected by name, with sub-blocks to toggle.
 _Avoid_: language pack, orth (that is a data source, not the concept)
 
+**Sub-block**:
+One named component of a language preset; the preset is the union of its enabled sub-blocks (e.g. zh_hk = zh_tw + the zh_hk supplement). Every sub-block is selectable on its own.
+_Avoid_: layer, chunk
+
 **Precedence rule**:
 A declaration of the shape "codepoint range → ordered font list". Ranges come from language presets or custom intervals.
 _Avoid_: conflict strategy, override rule
