@@ -11,9 +11,12 @@ the code recomputes. Recipe-driven behavior is observed through ``build``
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
-from fontalloy_core import presets
+from fontalloy_core import build, presets
 
 #: Codepoint counts measured independently against fontconfig's fc-lang
 #: corpus (research note, 2026-10-10; zh_hk is the raw supplementary set).
@@ -157,3 +160,199 @@ class TestBuiltinNamedSets:
         assert expand(named["zh_cn"]) == presets.PRESETS["zh_cn"].codepoints
         assert len(expand(named["zh_hk_supplement"])) == 1083
         assert len(expand(named["zh_hk"])) == 14146
+
+
+class TestPresetRulesAtTheBuildSeam:
+    """Presets act at preset granularity through the build entry point.
+
+    Recipe rules select languages by name; every assertion below reads
+    the merged result back from the build report with synthetic fixture
+    fonts (seam 1 of the testing decisions).
+    """
+
+    def test_a_rule_selecting_a_preset_by_name_fills_from_the_donor(
+        self, tmp_path, synth_font_factory
+    ):
+        ja_first, ja_second = sorted(presets.LANGUAGE_SETS["ja"])[:2]
+        base = synth_font_factory(
+            tmp_path / "base.ttf", family="Base", codepoints=(0x41,)
+        )
+        donor = synth_font_factory(
+            tmp_path / "donor.ttf", family="Donor", codepoints=(ja_first, ja_second)
+        )
+        recipe = tmp_path / "recipe.yaml"
+        recipe.write_text(
+            "base: base.ttf\n"
+            "donors:\n"
+            "  - donor.ttf\n"
+            "rules:\n"
+            "  - set: ja\n"
+            "    fonts: [donor-0]\n",
+            encoding="utf-8",
+        )
+
+        result = build(recipe, tmp_path / "out.ttf")
+
+        report = json.loads(result.report_path.read_text(encoding="utf-8"))
+        entries = {entry["codepoint"]: entry for entry in report["provenance"]}
+        for codepoint in (ja_first, ja_second):
+            assert entries[codepoint]["winner"] == "donor-0"
+            assert entries[codepoint]["via"] == "rule-0"
+            assert entries[codepoint]["kind"] == "fill"
+        assert report["rules"] == [
+            {
+                "id": "rule-0",
+                "granularity": "set",
+                "target": "ja",
+                "fonts": ["donor-0"],
+            }
+        ]
+
+    def test_overlapping_presets_merge_as_coverage_not_partition(
+        self, tmp_path, synth_font_factory
+    ):
+        # Two donors hold glyphs in the zh_cn/ja overlap; the presets
+        # share those codepoints (a coverage question), so the merge
+        # resolves every codepoint once and reports the overlap as a
+        # same-layer fact instead of failing.
+        ja_only = min(presets.LANGUAGE_SETS["ja"] - presets.LANGUAGE_SETS["zh_cn"])
+        zh_cn_only = min(
+            presets.LANGUAGE_SETS["zh_cn"] - presets.LANGUAGE_SETS["ja"]
+        )
+        overlap_first = min(
+            presets.LANGUAGE_SETS["zh_cn"] & presets.LANGUAGE_SETS["ja"]
+        )
+        base = synth_font_factory(
+            tmp_path / "base.ttf", family="Base", codepoints=(0x41,)
+        )
+        # donor-0 carries the ja-only codepoint and the overlap; donor-1
+        # carries the zh_cn-only codepoint and the same overlap codepoint.
+        donor_ja = synth_font_factory(
+            tmp_path / "donor_ja.ttf",
+            family="DonorJa",
+            codepoints=(ja_only, overlap_first),
+        )
+        donor_zh = synth_font_factory(
+            tmp_path / "donor_zh.ttf",
+            family="DonorZh",
+            codepoints=(zh_cn_only, overlap_first),
+        )
+        recipe = tmp_path / "recipe.yaml"
+        recipe.write_text(
+            "base: base.ttf\n"
+            "donors:\n"
+            "  - donor_ja.ttf\n"
+            "  - donor_zh.ttf\n"
+            "rules:\n"
+            "  - set: ja\n"
+            "    fonts: [donor-0]\n"
+            "  - set: zh_cn\n"
+            "    fonts: [donor-1]\n",
+            encoding="utf-8",
+        )
+
+        result = build(recipe, tmp_path / "out.ttf")
+
+        report = json.loads(result.report_path.read_text(encoding="utf-8"))
+        entries = {entry["codepoint"]: entry for entry in report["provenance"]}
+        assert entries[ja_only] == {
+            "codepoint": ja_only,
+            "winner": "donor-0",
+            "in_output": False,
+            "via": "rule-0",
+            "kind": "fill",
+        }
+        assert entries[zh_cn_only]["winner"] == "donor-1"
+        assert entries[zh_cn_only]["via"] == "rule-1"
+        # The shared codepoint belongs to both presets; the last
+        # declared preset wins it (same-layer semantics), with no gap.
+        assert entries[overlap_first]["winner"] == "donor-1"
+        assert entries[overlap_first]["via"] == "rule-1"
+        # The declared overlap is reported as measured from the data.
+        conflicts = report["precedence"]["same_layer_conflicts"]
+        assert len(conflicts) == 1
+        conflict = conflicts[0]
+        assert conflict["granularity"] == "set"
+        assert conflict["shadowed"] == "rule-0"
+        assert conflict["winner"] == "rule-1"
+        assert conflict["codepoints"] == 1391
+
+    def test_preset_granularity_loses_to_custom_range_and_single_codepoint(
+        self, tmp_path, synth_font_factory
+    ):
+        in_range, preset_only = sorted(presets.LANGUAGE_SETS["zh_cn"])[:2]
+        base = synth_font_factory(
+            tmp_path / "base.ttf",
+            family="Base",
+            codepoints=(0x41, in_range),  # holds the codepoint-rule target
+        )
+        donor_for_set = synth_font_factory(
+            tmp_path / "donor_set.ttf",
+            family="DonorSet",
+            codepoints=(preset_only,),
+        )
+        donor_for_range = synth_font_factory(
+            tmp_path / "donor_range.ttf",
+            family="DonorRange",
+            codepoints=(in_range, preset_only),
+        )
+        recipe = tmp_path / "recipe.yaml"
+        recipe.write_text(
+            "base: base.ttf\n"
+            "donors:\n"
+            "  - donor_set.ttf\n"
+            "  - donor_range.ttf\n"
+            "rules:\n"
+            "  - set: zh_cn\n"
+            "    fonts: [donor-0]\n"
+            f"  - range: 0x{in_range:X}-0x{preset_only:X}\n"
+            "    fonts: [donor-1]\n"
+            f"  - codepoint: 0x{in_range:X}\n"
+            "    fonts: [base]\n",
+            encoding="utf-8",
+        )
+
+        result = build(recipe, tmp_path / "out.ttf")
+
+        report = json.loads(result.report_path.read_text(encoding="utf-8"))
+        entries = {entry["codepoint"]: entry for entry in report["provenance"]}
+        # Single codepoint > custom range > preset: the narrowest rule
+        # supplies each codepoint regardless of declaration order.
+        assert entries[in_range]["winner"] == "base"
+        assert entries[in_range]["via"] == "rule-2"
+        assert entries[in_range]["kind"] == "base"
+        assert entries[preset_only]["winner"] == "donor-1"
+        assert entries[preset_only]["via"] == "rule-1"
+
+    def test_a_recipe_defined_set_overrides_the_builtin_preset(
+        self, tmp_path, synth_font_factory
+    ):
+        # A user set named like a language replaces the preset for that
+        # recipe: Latin codepoints handed to a donor only because the
+        # user redefined zh_cn to contain them.
+        base = synth_font_factory(
+            tmp_path / "base.ttf", family="Base", codepoints=(0x41, 0x42)
+        )
+        donor = synth_font_factory(
+            tmp_path / "donor.ttf", family="Donor", codepoints=(0x41,)
+        )
+        recipe = tmp_path / "recipe.yaml"
+        recipe.write_text(
+            "base: base.ttf\n"
+            "donors:\n"
+            "  - donor.ttf\n"
+            "sets:\n"
+            "  zh_cn: [0x41]\n"
+            "rules:\n"
+            "  - set: zh_cn\n"
+            "    fonts: [donor-0]\n",
+            encoding="utf-8",
+        )
+
+        result = build(recipe, tmp_path / "out.ttf")
+
+        report = json.loads(result.report_path.read_text(encoding="utf-8"))
+        entries = {entry["codepoint"]: entry for entry in report["provenance"]}
+        assert entries[0x41]["winner"] == "donor-0"
+        assert entries[0x41]["via"] == "rule-0"
+        assert entries[0x41]["kind"] == "override"

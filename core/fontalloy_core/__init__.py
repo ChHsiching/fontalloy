@@ -11,11 +11,15 @@ The only capability layer (ADR-0002). Public surface:
   range sets) to codepoint level, producing the effective table. The
   build pipeline consumes it, and later consumers (grafting, serve, the
   GUI's effective-preview consistency check) call it directly.
+- ``fontalloy_core.presets``: the language-preset registry — the bundled
+  fc-lang corpus, its raw per-language sets, and the presentation
+  presets (sub-block unions) that fill ``BUILTIN_NAMED_SETS``.
 - ``RecipeError`` / ``BuildError``: the error types callers catch.
 """
 
 from __future__ import annotations
 
+from fontalloy_core import presets
 from fontalloy_core.build import BuildOutput, build
 from fontalloy_core.errors import BuildError, FontAlloyError, RecipeError
 from fontalloy_core.precedence import (
@@ -45,5 +49,6 @@ __all__ = [
     "VerificationReport",
     "build",
     "load_recipe",
+    "presets",
     "resolve_precedence",
 ]

@@ -25,8 +25,10 @@ Semantics (DESIGN.md, ADR-0001):
 
 Named sets decouple the resolver from preset data: a rule references a
 set by name, and the sets themselves arrive as data. ``BUILTIN_NAMED_SETS``
-is the plug-in point for the fc-lang language presets (ticket #7); the
-resolver itself never changes when preset data lands.
+carries the fc-lang language presets (ticket #7): every corpus language
+plus the zh_hk supplement, flattened to intervals by
+:mod:`fontalloy_core.presets`. The resolver itself never changes when
+preset data lands.
 """
 
 from __future__ import annotations
@@ -34,6 +36,8 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Mapping, Sequence, Set as AbstractSet
 from dataclasses import dataclass
+
+from fontalloy_core.presets import builtin_named_sets
 
 #: Highest valid Unicode scalar value.
 MAX_CODEPOINT = 0x10FFFF
@@ -53,10 +57,10 @@ _GRANULARITY_RANK = {CODEPOINT: 3, RANGE: 2, SET: 1}
 #: An inclusive codepoint interval.
 Interval = tuple[int, int]
 
-#: Built-in named range sets, referenced by name from rules. Empty until
-#: the fc-lang language presets land (ticket #7) — they plug in here as
-#: data, with no resolver change. Recipe-defined sets override built-ins.
-BUILTIN_NAMED_SETS: Mapping[str, tuple[Interval, ...]] = {}
+#: Built-in named range sets, referenced by name from rules: every
+#: fc-lang language preset plus the zh_hk supplement, as sorted disjoint
+#: intervals. Recipe-defined sets override built-ins on collision.
+BUILTIN_NAMED_SETS: Mapping[str, tuple[Interval, ...]] = builtin_named_sets()
 
 
 def rule_id(index: int) -> str:
