@@ -22,6 +22,7 @@ Requirements: Python 3.11+ and [uv](https://docs.astral.sh/uv/).
 uv sync                                   # create .venv and install core, cli, and dev tools
 uv run pytest                             # run the full test suite
 uv run fontalloy build <recipe.yaml>      # run the CLI from the worktree
+uv run fontalloy assets fetch             # download the catalog into assets/fonts (sha256-verified)
 ```
 
 The repository is a uv workspace: `core/` (distribution `fontalloy-core`) and `cli/` (distribution `fontalloy`) are built and installed together from one lockfile. Test fixture fonts are small synthetic fonts generated in-test with fontTools — the repo never contains font binaries.
@@ -43,7 +44,7 @@ The validated GUI prototype (split-pane workspace) lives on the `prototype/gui` 
 
 ## Fonts
 
-This repo ships no font binaries — the catalog is data. A committed manifest pins every family (upstream version, URL, sha256, SPDX license, reserved-name flag); `fontalloy assets fetch` downloads and verifies it, and CI republishes the consolidated catalog to GitHub Releases as the app's download origin. Installers bundle no fonts: the app downloads the full catalog on first run and retries missing families on later launches. Merged-output fonts default to a fixed name (`ChHsich`), never derived from source font names. See [docs/adr/0005-font-catalog-manifest-first-run-download.md](docs/adr/0005-font-catalog-manifest-first-run-download.md) and [docs/research/font-assets-strategy.md](docs/research/font-assets-strategy.md).
+This repo ships no font binaries — the catalog is data. A committed manifest ([assets/fonts.manifest.json](assets/fonts.manifest.json)) pins every family (upstream version, URL, sha256, SPDX license, reserved-name flag); `fontalloy assets fetch` downloads and verifies it into the gitignored `assets/fonts/` directory (zip faces are extracted beside the verified archives), and `fontalloy assets notices` regenerates [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) from the manifest. The per-family license audit lives in [docs/catalog/license-audit.md](docs/catalog/license-audit.md). CI republishes the consolidated catalog to GitHub Releases as the app's download origin. Installers bundle no fonts: the app downloads the full catalog on first run and retries missing families on later launches. Merged-output fonts default to a fixed name (`ChHsich`), never derived from source font names. See [docs/adr/0005-font-catalog-manifest-first-run-download.md](docs/adr/0005-font-catalog-manifest-first-run-download.md) and [docs/research/font-assets-strategy.md](docs/research/font-assets-strategy.md).
 
 ## Documentation
 
