@@ -507,35 +507,46 @@ class TestOS2Corrections:
     def test_xavgcharwidth_is_measured_on_the_output_not_the_base(
         self, tmp_path: Path
     ):
-        # An override rule moves the lowercase 'a' to the donor: the
-        # sum must take the donor's advance, proving the measurement
-        # happens after the graft, against the output cmap and hmtx.
+        # An override rule moves the lowercase 'b' to the donor; the
+        # sum must take the output's post-normalization advance,
+        # proving the measurement happens after the graft, against the
+        # output cmap and hmtx.
         base = synth_font(
             tmp_path / "base.ttf",
             family="SynthBase",
             codepoints=(0x61, 0x62),
-            advances={0x61: 300, 0x62: 300},
+            advances={0x61: 500, 0x62: 700},
         )
         donor = synth_font(
             tmp_path / "donor.ttf",
             family="SynthDonor",
-            codepoints=(0x61,),
-            advances={0x61: 900},
+            codepoints=(0x62,),
+            advances={0x62: 900},
         )
         recipe = write_recipe(
             tmp_path,
             "base: base.ttf\n"
             "donors:\n  - donor.ttf\n"
             "rules:\n"
-            "  - codepoint: 0x61\n"
+            "  - codepoint: 0x62\n"
             "    fonts: [donor-0, base]\n",
         )
 
         result = build(recipe, tmp_path / "out.ttf")
 
         out = TTFont(result.font_path)
-        assert out["hmtx"][out.getBestCmap()[0x61]][0] == 900  # donor won
-        assert out["OS/2"].xAvgCharWidth == otRound((900 + 300) / 2)
+        cmap = out.getBestCmap()
+        # The donor's glyph won the override, but its own advance never
+        # lands: normalization (issue #8) re-grids the narrow Latin
+        # glyph onto the base's single-cell advance A (the mode over
+        # the base's covered ASCII; the 500/700 tie resolves to 500).
+        assert cmap[0x62].startswith("d0.")
+        assert out["hmtx"][cmap[0x62]][0] == 500
+        # The sum takes the OUTPUT's advance for 'b' — the re-gridded
+        # A = 500, not the base's original 700 — proving the
+        # measurement happens after the graft, against the output cmap
+        # and hmtx (a base-only mean would be (500 + 700) / 2 = 600).
+        assert out["OS/2"].xAvgCharWidth == otRound((500 + 500) / 2)
 
     def test_a_font_without_lowercase_glyphs_falls_back_to_half_the_upem(
         self, tmp_path: Path
