@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from fontTools.ttLib import TTFont
+from fontTools.varLib.instancer import instantiateVariableFont
 
 from fontalloy_core.errors import BuildError
 from fontalloy_core.recipe import FontRef
@@ -82,6 +83,9 @@ def load_face(ref: FontRef, *, role: str) -> LoadedFace:
     if not best_cmap:
         raise BuildError(f"{role} has no Unicode coverage (no usable cmap): {path}")
 
+    if "fvar" in font:
+        _instantiate(font, ref.instance, role, path)
+
     # A woff2 input is decoded: clearing the flavor makes every later
     # save (and the pass-through output) a plain TTF.
     font.flavor = None
@@ -94,9 +98,47 @@ def load_face(ref: FontRef, *, role: str) -> LoadedFace:
             subfamily=_name(font, 17, 2),
             weight=_weight(font),
             italic=_italic(font),
-            variable="fvar" in font,
+            variable=False,  # instantiated above: the face is static now
         ),
     )
+
+
+def _instantiate(
+    font: TTFont,
+    instance: tuple[tuple[str, int | float], ...] | None,
+    role: str,
+    path: Path,
+) -> None:
+    """Instantiate a variable font to a static instance (issue #4).
+
+    Pinned axes take the recipe's values; every other axis takes its
+    default, so the result is always fully static.
+    """
+    axes = {axis.axisTag: axis for axis in font["fvar"].axes}
+    limits: dict[str, int | float] = {}
+    for tag, pinned in instance or ():
+        axis = axes.get(tag)
+        if axis is None:
+            available = ", ".join(sorted(axes))
+            raise BuildError(
+                f"{role} instance pins axis {tag!r}, but the font has no such "
+                f"axis (available: {available}): {path}"
+            )
+        if not axis.minValue <= pinned <= axis.maxValue:
+            raise BuildError(
+                f"{role} instance pins axis {tag!r} to {pinned}, outside its "
+                f"range {axis.minValue:g} to {axis.maxValue:g}: {path}"
+            )
+        limits[tag] = pinned
+    for tag, axis in axes.items():
+        limits.setdefault(tag, axis.defaultValue)
+
+    try:
+        instantiateVariableFont(font, limits, inplace=True)
+    except Exception as exc:
+        raise BuildError(
+            f"{role} variable font could not be instantiated: {path} ({exc})"
+        ) from None
 
 
 def _select_face(path: Path, face: int | None, role: str) -> int:
