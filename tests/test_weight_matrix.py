@@ -105,6 +105,15 @@ def _glyph_coordinates(font: TTFont, codepoint: int) -> tuple:
     return coords
 
 
+def _name(font: TTFont, name_id: int) -> str | None:
+    """One identity record, preferring the Windows encoding."""
+    records = [r for r in font["name"].names if r.nameID == name_id]
+    for record in records:
+        if (record.platformID, record.platEncID, record.langID) == (3, 1, 0x409):
+            return record.toUnicode()
+    return records[0].toUnicode() if records else None
+
+
 class TestWeightsRecipe:
     """The recipe gains a ``weights`` section, parsed strictly."""
 
@@ -695,33 +704,51 @@ class TestMatrixPackaging:
             TTFont(result.font_path), MERGED_AT_400, weight=400, italic=False
         )
 
-    def test_each_slot_keeps_its_own_naming_identity(
-        self, tmp_path, matrix_base, weighty_donor
+    def test_each_slot_names_as_an_output_family_variant(
+        self, tmp_path, weighty_donor
     ):
-        """Per-weight output naming composes on distinct containers.
+        """Per-weight output naming composes the matrix with stage 6.
 
-        Each slot's container is its own base face, so the output faces
-        carry their slot's subfamily today; when the stage-6 identity
-        rewrite lands (it reads the container's subfamily), the same
-        slots become the output family's weight/style variants.
+        The identity rewrite reads each slot container's own subfamily,
+        so the matrix's slots become the output family's weight/style
+        variants: RIBBI slots keep family + subfamily split, and a
+        non-RIBBI weight (Medium) splits into the legacy
+        "ChHsich Medium" pair plus the typographic 16/17 pair.
         """
+        base = synth_ttc(
+            tmp_path / "base.ttc",
+            faces=[
+                dict(family="SynthBase", codepoints=BASE_CODEPOINTS, weight=400),
+                dict(
+                    family="SynthBase",
+                    codepoints=BASE_CODEPOINTS,
+                    weight=500,
+                    subfamily="Medium",
+                ),
+            ],
+        )
         recipe = _recipe(
             tmp_path,
-            f"base: {matrix_base.name}\ndonors:\n  - {weighty_donor.name}\n"
+            f"base: {base.name}\ndonors:\n  - {weighty_donor.name}\n"
             "output:\n  format: ttc\n",
         )
 
         result = build(recipe, tmp_path / "out.ttc")
 
-        subfamilies = []
-        for face in TTCollection(result.font_path).fonts:
-            names = [
-                record.toUnicode()
-                for record in face["name"].names
-                if record.nameID == 2
-            ]
-            subfamilies.append(names[0])
-        assert subfamilies == ["Regular", "Bold", "Italic"]
+        faces = TTCollection(result.font_path).fonts
+        regular, medium = faces[0], faces[1]
+        # RIBBI slot: family/subfamily split, no typographic pair.
+        assert _name(regular, 1) == "ChHsich"
+        assert _name(regular, 2) == "Regular"
+        assert _name(regular, 4) == "ChHsich Regular"
+        assert _name(regular, 16) is None
+        # Non-RIBBI slot: the weight joins the legacy family, the
+        # typographic pair keeps the split.
+        assert _name(medium, 1) == "ChHsich Medium"
+        assert _name(medium, 2) == "Regular"
+        assert _name(medium, 4) == "ChHsich Medium"
+        assert _name(medium, 6) == "ChHsich-Medium"
+        assert (_name(medium, 16), _name(medium, 17)) == ("ChHsich", "Medium")
 
     def test_selected_slot_ttc_report_keeps_the_face_records(
         self, tmp_path, matrix_base, weighty_donor

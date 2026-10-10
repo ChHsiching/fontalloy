@@ -5,7 +5,7 @@ of the core: recipe + font files in, built font + verification report out.
 The CLI calls it in-process; later consumers (serve, the GUI sidecar) do
 the same.
 
-Pipeline stages in this ticket (issues #2 through #5, #9, #10): load and
+Pipeline stages in this ticket (issues #2 through #6, #9, #10): load and
 detect the base and donor fonts (TTC face selection, variable
 instantiation, woff2 decode), plan the weight/style matrix — one output
 slot per requested weight/style, donors matched at the nearest OS/2
@@ -13,9 +13,12 @@ usWeightClass per slot with recipe overrides beating nearest-match
 (issue #9) — resolve the precedence rules — layered rules at every
 granularity, absence never overrides — into the effective table, graft
 the donor glyphs into each slot's base container per the effective table
-with a rebuilt cmap (the base is the container, ADR-0001), and emit the
-verification report carrying the effective table, the conflict/fill
-accounting, and the weight borrow table.
+with a rebuilt cmap (the base is the container, ADR-0001), rewrite each
+slot's output identity — the name record set plus OS/2 corrections,
+around the recipe's ``output.family`` (issue #6; normalization arrives
+in a later ticket) — and emit the verification report carrying the
+effective table, the conflict/fill accounting, and the weight borrow
+table.
 
 Output formats (issue #10), reconciled with the matrix (issue #9): the
 recipe's ``output.format`` (or the ``output_format`` argument) selects
@@ -66,6 +69,16 @@ from fontalloy_core.report import (
     VerificationReport,
     WeightSlotRecord,
     file_sha256,
+)
+from fontalloy_core.rewrite import (
+    OutputNaming,
+    apply_os2_corrections,
+    apply_output_identity,
+)
+from fontalloy_core.rewrite import (
+    OutputNaming,
+    apply_os2_corrections,
+    apply_output_identity,
 )
 
 
@@ -174,13 +187,24 @@ def build(
         # and rebuild the cmap (ADR-0001). A donor face may serve
         # several slots; grafting takes private glyph copies, so each
         # slot's graft is independent. Normalization (upem scaling,
-        # advance re-gridding) and table rewriting are later stages.
+        # advance re-gridding) is a later stage.
         for slot, resolution in zip(slots, resolutions):
             graft_effective_glyphs(
                 slot.base.font,
                 {match.donor_id: match.face.font for match in slot.donors},
                 resolution.effective_table,
             )
+            # Stage: rewrite the output identity — the full name record
+            # set (both platform encodings, nameID 16/17 consistent with
+            # 1/2) and the OS/2 corrections (xAvgCharWidth, PANOSE mono)
+            # — before the save, so the reproducible boundary writes the
+            # rewritten font. Each slot's container carries its own
+            # subfamily, so the slots become the output family's
+            # weight/style variants.
+            apply_output_identity(
+                slot.base.font, OutputNaming(recipe.output.family)
+            )
+            apply_os2_corrections(slot.base.font)
 
         # Stage: write the output at the single reproducible boundary —
         # pinned head timestamps, no recalculation, TTC dedup on.

@@ -74,12 +74,14 @@ def build(
     """Build a merged font from a recipe.
 
     Donor glyphs graft into the base font per the recipe's precedence
-    rules; the requested weight/style matrix (the base file's faces by
-    default, a recipe `weights` selection otherwise) emits one merged
-    face per slot with donors matched at the nearest weight. Every
-    build emits a verification report with per-codepoint provenance,
-    the weight borrow table, and the source font hashes backing
-    reproducibility.
+    rules, the output identity is rewritten (name table and OS/2, the
+    fixed brand default `ChHsich` unless the recipe overrides
+    `output.family`), and the requested weight/style matrix (the base
+    file's faces by default, a recipe `weights` selection otherwise)
+    emits one merged face per slot with donors matched at the nearest
+    weight. Every build emits a verification report with per-codepoint
+    provenance, the weight borrow table, and the source font hashes
+    backing reproducibility.
     """
     try:
         result = fontalloy_core.build(
