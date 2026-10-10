@@ -10,11 +10,7 @@ import {
   pageCountFor,
 } from "../unicode/blocks";
 import { newRule, parseCodepointInput, type EditorRule } from "../precedence/model";
-import {
-  EffectiveResolver,
-  arrayCoverage,
-  type Coverage,
-} from "../precedence/resolve";
+import { currentResolver } from "../precedence/live";
 import { pickRefs, refFont, refLabel, type PickRefs } from "../precedence/picks";
 import { cssFamily } from "./picker";
 
@@ -33,27 +29,6 @@ import { cssFamily } from "./picker";
  * state so in the details strip. Selecting a cell opens the
  * single-codepoint precedence editor; typing a codepoint locates it.
  */
-
-/** The resolver for the current state, memoized on the state it reads. */
-let resolverMemo: { signature: string; resolver: EffectiveResolver | null } |
-  null = null;
-
-function currentResolver(picks: PickRefs): EffectiveResolver | null {
-  const { rules } = store.get();
-  if (picks.refs.length === 0) return null;
-  const signature = `${rules.length}:${rules
-    .map((r) => `${r.id}:${JSON.stringify(r.target)}:${r.fonts.join(",")}`)
-    .join("|")}:${picks.base?.cssFamily ?? ""}:${picks.donor?.cssFamily ?? ""}`;
-  if (resolverMemo && resolverMemo.signature === signature) {
-    return resolverMemo.resolver;
-  }
-  const coverages = new Map<string, Coverage | null>();
-  if (picks.base) coverages.set("base", arrayCoverage(picks.base.codepoints));
-  if (picks.donor) coverages.set("donor-0", arrayCoverage(picks.donor.codepoints));
-  const resolver = new EffectiveResolver(rules, coverages);
-  resolverMemo = { signature, resolver };
-  return resolver;
-}
 
 /** The rule whose target is exactly this codepoint, when one exists. */
 function codepointRule(cp: number): EditorRule | undefined {

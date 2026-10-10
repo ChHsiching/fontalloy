@@ -1,13 +1,17 @@
 import { store, type ContentMode } from "../state";
 import { mountCharmap } from "./charmap";
+import { mountScenes } from "./scenes";
 
 /**
- * Right content area: mode tabs (character map / real-world scenes) and the
- * stage. Scene previews render with the effective merged font once the merge
- * pipeline exists; for now the tab is a visible placeholder.
+ * Right content area (ADR-0004): mode tabs (character map / real-world
+ * scenes) and the stage. The scene previews (issue #19) render with the
+ * same effective result as the grid; the scene tab itself lives in the
+ * store, so mode round trips preserve it.
  *
- * The stage is rebuilt only on mode changes — the character map manages its
- * own re-renders so the grid container survives page/category updates.
+ * The stage is rebuilt only on mode changes — the character map and the
+ * scenes each manage their own re-renders so their containers survive
+ * state updates. Mode switches never reset the merge state: rules,
+ * picks, and settings live in the store, not in either stage.
  */
 export function mountContent(root: HTMLElement): void {
   root.innerHTML = `
@@ -43,12 +47,8 @@ export function mountContent(root: HTMLElement): void {
       mountCharmap(stage.querySelector<HTMLElement>(".charmap")!);
     } else {
       stage.dataset.mode = "scene";
-      stage.innerHTML = `
-        <div class="scene-placeholder">
-          实景预览（终端 / 代码 / 文档）将以合成后的字体渲染。<br>
-          该功能将在本地合成管线就绪后提供。
-        </div>
-      `;
+      stage.innerHTML = `<div class="scenes"></div>`;
+      mountScenes(stage.querySelector<HTMLElement>(".scenes")!);
     }
   };
   store.subscribe(render);

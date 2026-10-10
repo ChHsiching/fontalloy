@@ -10,6 +10,46 @@ import type { EditorRule } from "./precedence/model";
 
 export type ContentMode = "charmap" | "scene";
 
+/** Which real-world scene the scene mode shows (issue #19). */
+export type SceneId = "terminal" | "code" | "document";
+
+/* ---------- synthesis settings (issue #19) ---------- */
+
+/**
+ * Weight merge mode — the ratified design's three options. Maps onto the
+ * recipe `weights` selection: the output's weight slots can only come
+ * from the base (English) font's faces (ADR-0006); donors contribute
+ * glyphs per slot by nearest match, never new slots.
+ */
+export type WeightMergeMode = "nearest" | "base" | "donor";
+
+/**
+ * CJK–Latin baseline alignment — the vertical/scale school. The shared
+ * baseline and the em box are ADR-0003 invariants; this chooses the
+ * scale school (`normalization.mode`: `auto`/`grid` are the grid
+ * default, `optical` the slightly-smaller optical school).
+ */
+export type BaselineMode = "auto" | "grid" | "optical";
+
+/**
+ * CJK character width — the advance policy. Wide CJK is fixed at two
+ * Latin cells (UAX #11 / ADR-0003); the adjustable width item is the
+ * fullwidth quotes and dashes convention (`quote_dash_width`).
+ */
+export type CjkWidthMode = "halfwidth" | "fullwidth";
+
+export interface SynthesisSettings {
+  weightMode: WeightMergeMode;
+  baseline: BaselineMode;
+  cjkWidth: CjkWidthMode;
+}
+
+export const DEFAULT_SETTINGS: SynthesisSettings = {
+  weightMode: "nearest",
+  baseline: "auto",
+  cjkWidth: "halfwidth",
+};
+
 /** How a font face entered the registry (local file vs catalog download). */
 export type FontOrigin = "local" | "catalog";
 
@@ -76,6 +116,8 @@ export interface AppState {
   /** Selected cssFamily keys for the base (en) and donor (cjk) pickers. */
   selected: { en: string | null; cjk: string | null };
   mode: ContentMode;
+  /** The active real-world scene while in scene mode (issue #19). */
+  sceneId: SceneId;
   /** Active unicode block id ("all" = the aggregate view). */
   categoryId: string;
   /** 1-based page within the active category. */
@@ -88,6 +130,8 @@ export interface AppState {
    * serializes — one source of truth.
    */
   rules: EditorRule[];
+  /** Synthesis settings (issue #19): weight mode, baseline, CJK width. */
+  settings: SynthesisSettings;
   catalog: CatalogState;
 }
 
@@ -121,10 +165,12 @@ export const store = createStore<AppState>({
   fonts: [],
   selected: { en: null, cjk: null },
   mode: "charmap",
+  sceneId: "terminal",
   categoryId: "all",
   page: 1,
   selectedCodepoint: null,
   rules: [],
+  settings: { ...DEFAULT_SETTINGS },
   catalog: { status: "none", families: [], registered: {}, screen: false },
 });
 
