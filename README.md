@@ -6,13 +6,27 @@
 
 ## Status
 
-Design is settled; implementation has not started. The full design consensus lives in [docs/DESIGN.md](docs/DESIGN.md). The three sentences that matter:
+Design is settled ([docs/DESIGN.md](docs/DESIGN.md)); implementation has started at the core. The three sentences that matter:
 
 1. Everything is a "codepoint range → ordered font list"; language presets are just ranges chosen for the user in advance.
 2. Absence never overrides presence — one invariant that replaces all special-case protection logic.
 3. `core` is the only capability layer; CLI / GUI / Web are all consumers of it. Merge logic exists exactly once.
 
-## Planned layout
+What works today: the core skeleton and the build tracer bullet — `fontalloy build <recipe.yaml>` loads and validates the base and donor fonts, writes a valid TTF (base pass-through at this stage), and emits a verification report v0 with per-codepoint provenance. The precedence engine, glyph grafting, and normalization arrive in later tickets.
+
+## Development setup
+
+Requirements: Python 3.11+ and [uv](https://docs.astral.sh/uv/).
+
+```console
+uv sync                                   # create .venv and install core, cli, and dev tools
+uv run pytest                             # run the full test suite
+uv run fontalloy build <recipe.yaml>      # run the CLI from the worktree
+```
+
+The repository is a uv workspace: `core/` (distribution `fontalloy-core`) and `cli/` (distribution `fontalloy`) are built and installed together from one lockfile. Test fixture fonts are small synthetic fonts generated in-test with fontTools — the repo never contains font binaries.
+
+## Layout
 
 ```
 core/          pure-Python library (fontTools pipeline), the only capability layer
