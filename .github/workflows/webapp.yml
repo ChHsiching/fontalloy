@@ -34,6 +34,13 @@ jobs:
 
       - run: npx playwright install --with-deps chromium
 
+      # The live-merge tests spawn `fontalloy serve` from the project
+      # env (`uv run`, web/tests/serve.ts) and generate their synthetic
+      # fixture fonts with fontTools — the Python env must exist first.
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --frozen
+        working-directory: .
+
       # The suite's webServer builds first; an explicit build keeps the
       # production-compile failure message readable on its own.
       - run: npm run build
