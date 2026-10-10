@@ -8,39 +8,19 @@ installed console script, read the output files back.
 from __future__ import annotations
 
 import json
-import os
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 from fontTools.ttLib import TTFont
 
-from conftest import BASE_CODEPOINTS, DONOR_CODEPOINTS
+from conftest import (  # noqa: F401
+    BASE_CODEPOINTS,
+    DONOR_CODEPOINTS,
+    fontalloy_exe,
+    run_cli,
+)
 
-
-@pytest.fixture
-def fontalloy_exe() -> Path:
-    """The installed console script next to this interpreter."""
-    name = "fontalloy.exe" if os.name == "nt" else "fontalloy"
-    exe = Path(sys.executable).parent / name
-    assert exe.is_file(), (
-        f"the fontalloy executable is not installed next to python: {exe} "
-        "(run the suite through `uv run pytest`)"
-    )
-    return exe
-
-
-def run_cli(exe: Path, *args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [str(exe), *args],
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=120,
-    )
+pytest.register_assert_rewrite("conftest")
 
 
 class TestCliBuild:

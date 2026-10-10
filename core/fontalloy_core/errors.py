@@ -13,3 +13,11 @@ class RecipeError(FontAlloyError):
 
 class BuildError(FontAlloyError):
     """A build failed on its inputs or outputs (fonts, paths, I/O)."""
+
+
+class CatalogError(FontAlloyError):
+    """The font catalog manifest is missing, not valid JSON, or invalid."""
+
+
+class AssetsError(FontAlloyError):
+    """A catalog fetch failed (unreachable origin, checksum mismatch)."""

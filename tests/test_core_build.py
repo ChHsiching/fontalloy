@@ -82,6 +82,123 @@ class TestRecipeValidation:
             build(recipe, tmp_path / "out.ttf")
 
 
+class TestFontReferences:
+    """A font reference is a path string or a mapping with face/instance.
+
+    Plain strings keep working (backward compatible); mappings select a
+    TTC face and pin variable-font instance values.
+    """
+
+    def test_base_as_a_mapping_with_a_path_builds(self, tmp_path, base_font, donor_font):
+        recipe = tmp_path / "recipe.yaml"
+        recipe.write_text(
+            f"base:\n  path: {base_font.name}\ndonors:\n  - {donor_font.name}\n",
+            encoding="utf-8",
+        )
+
+        result = build(recipe, tmp_path / "out.ttf")
+
+        # Grafted output: the mapping-form font reference builds the
+        # same merged union as the plain-string form.
+        assert set(TTFont(result.font_path).getBestCmap()) == {
+            *BASE_CODEPOINTS,
+            *DONOR_CODEPOINTS,
+        }
+
+    def test_donor_as_a_mapping_with_a_path_builds(
+        self, tmp_path, base_font, donor_font
+    ):
+        recipe = tmp_path / "recipe.yaml"
+        recipe.write_text(
+            f"base: {base_font.name}\ndonors:\n  - path: {donor_font.name}\n",
+            encoding="utf-8",
+        )
+
+        result = build(recipe, tmp_path / "out.ttf")
+
+        report = _load_report(result.report_path)
+        assert report["summary"]["from_donors"] == len(DONOR_CODEPOINTS)
+
+    def test_mapping_without_a_path_is_a_clear_error(self, tmp_path, base_font):
+        recipe = tmp_path / "recipe.yaml"
+        recipe.write_text(
+            f"base:\n  face: 0\ndonors:\n  - {base_font.name}\n", encoding="utf-8"
+        )
+
+        with pytest.raises(RecipeError, match="path"):
+            build(recipe, tmp_path / "out.ttf")
+
+    def test_unknown_reference_key_is_rejected(self, tmp_path, base_font, donor_font):
+        recipe = tmp_path / "recipe.yaml"
+        recipe.write_text(
+            f"base: {base_font.name}\ndonors:\n  - path: {donor_font.name}\n"
+            "    bogus: true\n",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(RecipeError, match="bogus"):
+            build(recipe, tmp_path / "out.ttf")
+
+    def test_non_integer_face_is_a_clear_error(self, tmp_path, base_font, donor_font):
+        recipe = tmp_path / "recipe.yaml"
+        recipe.write_text(
+            f"base: {base_font.name}\ndonors:\n  - path: {donor_font.name}\n"
+            "    face: zero\n",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(RecipeError, match="face"):
+            build(recipe, tmp_path / "out.ttf")
+
+    def test_negative_face_is_a_clear_error(self, tmp_path, base_font, donor_font):
+        recipe = tmp_path / "recipe.yaml"
+        recipe.write_text(
+            f"base: {base_font.name}\ndonors:\n  - path: {donor_font.name}\n"
+            "    face: -1\n",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(RecipeError, match="face"):
+            build(recipe, tmp_path / "out.ttf")
+
+    def test_non_mapping_instance_is_a_clear_error(self, tmp_path, base_font, donor_font):
+        recipe = tmp_path / "recipe.yaml"
+        recipe.write_text(
+            f"base: {base_font.name}\ndonors:\n  - path: {donor_font.name}\n"
+            "    instance: bold\n",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(RecipeError, match="instance"):
+            build(recipe, tmp_path / "out.ttf")
+
+    def test_non_numeric_instance_value_is_a_clear_error(
+        self, tmp_path, base_font, donor_font
+    ):
+        recipe = tmp_path / "recipe.yaml"
+        recipe.write_text(
+            f"base: {base_font.name}\ndonors:\n  - path: {donor_font.name}\n"
+            "    instance:\n      wght: bold\n",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(RecipeError, match="wght"):
+            build(recipe, tmp_path / "out.ttf")
+
+    def test_non_string_instance_axis_is_a_clear_error(
+        self, tmp_path, base_font, donor_font
+    ):
+        recipe = tmp_path / "recipe.yaml"
+        recipe.write_text(
+            f"base: {base_font.name}\ndonors:\n  - path: {donor_font.name}\n"
+            "    instance:\n      7: 700\n",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(RecipeError, match="instance"):
+            build(recipe, tmp_path / "out.ttf")
+
+
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
