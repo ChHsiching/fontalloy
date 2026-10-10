@@ -145,7 +145,22 @@ export async function startServe(opts: {
   const stop = async (): Promise<void> => {
     stopped = true;
     if (child.exitCode === null) {
-      child.kill();
+      // On Windows the console-script launcher spawns a child process:
+      // a plain kill() orphans it (found while running the suites
+      // locally — CI's Linux runners never see this). Kill the TREE.
+      if (process.platform === "win32" && child.pid !== undefined) {
+        await new Promise<void>((resolve) => {
+          const killer = spawn(
+            "taskkill",
+            ["/pid", String(child.pid), "/T", "/F"],
+            { stdio: "ignore" },
+          );
+          killer.on("error", () => child.kill());
+          killer.on("close", () => resolve());
+        });
+      } else {
+        child.kill();
+      }
       await new Promise<void>((resolve) => {
         child.on("exit", () => resolve());
         setTimeout(() => {
