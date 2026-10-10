@@ -9,6 +9,7 @@ import { CatalogManager, setDefaultManager } from "./catalog/manager";
 import { createStorage } from "./platform/storage";
 import { readConfig } from "./platform/config";
 import { connectService } from "./service/synthesize";
+import { installUndoShortcuts } from "./history";
 import { store } from "./state";
 
 const app = document.getElementById("app");
@@ -27,6 +28,10 @@ mountTopbar(app.querySelector<HTMLElement>(".topbar")!);
 mountRail(app.querySelector<HTMLElement>(".workspace-rail")!);
 mountContent(app.querySelector<HTMLElement>(".workspace-content")!);
 mountStatsbar(app.querySelector<HTMLElement>(".statsbar")!);
+
+// Ctrl+Z / Cmd+Z triggers rule undo (issue #20); the selection undo
+// stack has its own click entry point in the batch editor.
+installUndoShortcuts();
 
 // The build panel (issue #16): synthesis progress + verification
 // report as a non-modal overlay on <body> — the workspace stays usable.

@@ -5,9 +5,11 @@
  * rules — add / edit / reorder fonts / remove) under 自定义规则.
  *
  * Every edit writes the shared rule state in `store` — the same state
- * the grid resolves and the synthesize flow serializes. Bulk operations
- * and undo are ticket #19; the seams are the plain `store.set` patches
- * every handler here already goes through.
+ * the grid resolves and the synthesize flow serializes — through
+ * `mutateRules`, which snapshots the prior state into the rule undo
+ * stack (issue #20). Batch applies live in the charmap's selection
+ * editor; 撤销规则 below is the rule undo stack's click entry point
+ * (Ctrl+Z is the keyboard one).
  *
  * The preset picker follows the ADR-0004 popup pattern: one body-level
  * node created at mount, rows rebuild, positioning clamps to the frame.
@@ -22,19 +24,20 @@ import {
   type EditorRule,
 } from "../precedence/model";
 import { pickRefs, refLabel } from "../precedence/picks";
+import { canUndoRules, mutateRules, undoRules } from "../history";
 import presetsData from "../data/presets.json";
 import { mountPresetPicker } from "./presetpicker";
 
 /* ------------------------- store patches ---------------------------- */
 
 function patchRule(id: number, patch: (rule: EditorRule) => EditorRule): void {
-  store.set({
-    rules: store.get().rules.map((rule) => (rule.id === id ? patch(rule) : rule)),
-  });
+  mutateRules(
+    store.get().rules.map((rule) => (rule.id === id ? patch(rule) : rule)),
+  );
 }
 
 function removeRule(id: number): void {
-  store.set({ rules: store.get().rules.filter((rule) => rule.id !== id) });
+  mutateRules(store.get().rules.filter((rule) => rule.id !== id));
 }
 
 /* --------------------- shared font-list editor ----------------------- */
@@ -272,12 +275,10 @@ export function mountRulesSection(root: HTMLElement): void {
   addRange.textContent = "新增区间规则";
   addRange.addEventListener("click", () => {
     const refs = pickRefs().refs;
-    store.set({
-      rules: [
-        ...store.get().rules,
-        newRule({ kind: "range", start: null, end: null }, refs),
-      ],
-    });
+    mutateRules([
+      ...store.get().rules,
+      newRule({ kind: "range", start: null, end: null }, refs),
+    ]);
   });
   actions.appendChild(addRange);
   const addCp = document.createElement("button");
@@ -287,14 +288,23 @@ export function mountRulesSection(root: HTMLElement): void {
   addCp.textContent = "新增码位规则";
   addCp.addEventListener("click", () => {
     const refs = pickRefs().refs;
-    store.set({
-      rules: [
-        ...store.get().rules,
-        newRule({ kind: "codepoint", cp: null }, refs),
-      ],
-    });
+    mutateRules([
+      ...store.get().rules,
+      newRule({ kind: "codepoint", cp: null }, refs),
+    ]);
   });
   actions.appendChild(addCp);
+  // Rule undo's click entry point (Ctrl+Z is the keyboard one): every
+  // rules write went through mutateRules, so one click steps back one
+  // mutation — rail edits, cell applies, batch applies alike.
+  const undo = document.createElement("button");
+  undo.type = "button";
+  undo.className = "add-rule-button";
+  undo.dataset.role = "rules-undo";
+  undo.textContent = "撤销规则";
+  undo.disabled = !canUndoRules();
+  undo.addEventListener("click", () => undoRules());
+  actions.appendChild(undo);
   root.appendChild(actions);
 
   const list = document.createElement("div");
@@ -302,6 +312,9 @@ export function mountRulesSection(root: HTMLElement): void {
   root.appendChild(list);
 
   const render = (): void => {
+    // The undo affordance follows the stack, even when the list itself
+    // is being kept alive for a focused text input (see below).
+    undo.disabled = !canUndoRules();
     // While a rule's text input is being typed into, keep the node (a
     // rebuild would drop focus); the grid still updates live — regions
     // re-render independently. focusout triggers the catch-up rebuild.

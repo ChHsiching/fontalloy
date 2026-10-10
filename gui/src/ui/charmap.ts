@@ -6,6 +6,7 @@ import {
   CELLS_PER_PAGE,
   categorySize,
   categoryName,
+  codepointIndex,
   nthCodepoint,
   pageCountFor,
 } from "../unicode/blocks";
@@ -16,6 +17,13 @@ import {
   type Coverage,
 } from "../precedence/resolve";
 import { pickRefs, refFont, refLabel, type PickRefs } from "../precedence/picks";
+import {
+  beginSelectionGesture,
+  canUndoSelection,
+  extendSelection,
+  mutateRules,
+  undoSelection,
+} from "../history";
 import { cssFamily } from "./picker";
 
 /**
@@ -32,6 +40,11 @@ import { cssFamily } from "./picker";
  * no font of the build covers fall back to the plain preview stack and
  * state so in the details strip. Selecting a cell opens the
  * single-codepoint precedence editor; typing a codepoint locates it.
+ *
+ * Since issue #20 the grid is also multi-selectable: drag-paint,
+ * Ctrl-drag-paint (additive runs), and shift-range from a click anchor.
+ * A selection of two or more opens the batch precedence editor in the
+ * details strip — one action applies a font list to the whole selection.
  */
 
 /** The resolver for the current state, memoized on the state it reads. */
@@ -89,18 +102,165 @@ function applyCodepointRule(cp: number): void {
   } else {
     rules.push(newRule({ kind: "codepoint", cp }, editorFonts));
   }
-  store.set({ rules });
+  mutateRules(rules);
 }
 
 /** Patch the rule state: drop the codepoint rule targeting `cp`. */
 function removeCodepointRule(cp: number): void {
-  store.set({
-    rules: store
+  mutateRules(
+    store
       .get()
       .rules.filter(
         (rule) => !(rule.target.kind === "codepoint" && rule.target.cp === cp),
       ),
+  );
+}
+
+/* ---------------- the batch precedence editor (issue #20) ----------- */
+
+/** The batch editor's working state; resets when the selection changes. */
+let batchSignature = "";
+let batchFonts: string[] = [];
+
+/** One maximal adjacent run of a sorted selection (gap-aware). */
+interface SelectionRun {
+  start: number;
+  end: number;
+}
+
+/**
+ * Split a sorted selection into maximal adjacent runs. Adjacent means
+ * consecutive codepoint values, or the enumeration step over the
+ * surrogate gap (U+D7FF → U+E000) — a shift-range across the gap in the
+ * aggregate view is one run, not 2,048 fragments.
+ */
+function selectionRuns(sorted: readonly number[]): SelectionRun[] {
+  const runs: SelectionRun[] = [];
+  let start = sorted[0]!;
+  let prev = sorted[0]!;
+  for (let i = 1; i < sorted.length; i++) {
+    const cp = sorted[i]!;
+    const adjacent = cp === prev + 1 || (prev === 0xd7ff && cp === 0xe000);
+    if (!adjacent) {
+      runs.push({ start, end: prev });
+      start = cp;
+    }
+    prev = cp;
+  }
+  runs.push({ start, end: prev });
+  return runs;
+}
+
+/**
+ * Batch apply: one action commits the chosen font list for the WHOLE
+ * selection, aggregated per #18's rule-state shape:
+ *
+ * - a contiguous selection becomes ONE range rule;
+ * - anything else becomes one codepoint rule per selected codepoint,
+ *   declared in ascending order (the plan line in the editor states
+ *   which, before the user commits).
+ *
+ * Existing codepoint rules over the selection drop first — a stale
+ * narrower rule would outrank the batch forever — and an existing range
+ * rule with the exact same bounds is replaced rather than duplicated.
+ * The new rules append last, so within-layer last-declared-wins makes
+ * them effective immediately.
+ */
+function applyBatchRule(): void {
+  const { selection } = store.get();
+  if (selection.length === 0 || batchFonts.length === 0) return;
+  const sorted = [...selection].sort((a, b) => a - b);
+  const runs = selectionRuns(sorted);
+  const selectedSet = new Set(sorted);
+  const fonts = [...batchFonts];
+  const singleRun = runs.length === 1 ? runs[0]! : null;
+  const rules = store.get().rules.filter((rule) => {
+    if (rule.target.kind === "codepoint") {
+      return rule.target.cp === null || !selectedSet.has(rule.target.cp);
+    }
+    if (rule.target.kind === "range" && singleRun !== null) {
+      const lo = Math.min(rule.target.start ?? 0, rule.target.end ?? 0);
+      const hi = Math.max(rule.target.start ?? 0, rule.target.end ?? 0);
+      return !(lo === singleRun.start && hi === singleRun.end);
+    }
+    return true;
   });
+  if (singleRun !== null && sorted.length > 1) {
+    rules.push(
+      newRule({ kind: "range", start: singleRun.start, end: singleRun.end }, fonts),
+    );
+  } else {
+    for (const cp of sorted) {
+      rules.push(newRule({ kind: "codepoint", cp }, fonts));
+    }
+  }
+  mutateRules(rules);
+}
+
+/* ---------------------- shared font list ---------------------------- */
+
+/**
+ * The ordered font list editor shared by the single-codepoint and batch
+ * editors: one line per ref (checkbox + order controls). `working` is
+ * mutated in place (the module-level editor state); `rebuild` re-renders
+ * the owning editor.
+ */
+function buildOrderedFontList(
+  picks: PickRefs,
+  working: string[],
+  rolePrefix: string,
+  rebuild: () => void,
+): HTMLElement {
+  const list = document.createElement("div");
+  list.className = "rule-fonts";
+  const order = [
+    ...working,
+    ...picks.refs.filter((ref) => !working.includes(ref)),
+  ];
+  for (const ref of order) {
+    const checked = working.includes(ref);
+    const line = document.createElement("div");
+    line.className = "rule-font-line";
+    line.dataset.fontRef = ref;
+    const label = document.createElement("label");
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.dataset.role = `${rolePrefix}-font-${ref}`;
+    box.checked = checked;
+    box.addEventListener("change", () => {
+      if (box.checked) {
+        working.push(ref);
+      } else {
+        const at = working.indexOf(ref);
+        if (at >= 0) working.splice(at, 1);
+      }
+      rebuild();
+    });
+    label.appendChild(box);
+    label.appendChild(document.createTextNode(` ${refLabel(ref, picks)}`));
+    line.appendChild(label);
+    for (const [direction, delta] of [
+      ["up", -1],
+      ["down", 1],
+    ] as const) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "rule-font-move";
+      button.dataset.role = `${rolePrefix}-font-${direction}-${ref}`;
+      button.textContent = delta < 0 ? "↑" : "↓";
+      button.disabled = !checked;
+      button.addEventListener("click", () => {
+        const from = working.indexOf(ref);
+        const to = from + delta;
+        if (from < 0 || to < 0 || to >= working.length) return;
+        working.splice(to, 0, working.splice(from, 1)[0]!);
+        rebuild();
+      });
+      line.appendChild(button);
+    }
+    list.appendChild(line);
+  }
+  return list;
 }
 
 /* ------------------------------ mount ------------------------------- */
@@ -146,6 +306,81 @@ export function mountCharmap(root: HTMLElement): void {
 
   buildCategoryTree(categories);
 
+  /* ---------------- multi-select gestures (issue #20) ---------------
+   * All cell interaction happens at pointer-down: a plain click must
+   * patch the store synchronously, and a synchronous patch re-renders
+   * the grid (replacing the cell node) BEFORE the compatibility click
+   * event lands — a click-time handler would never fire. Drag-paint and
+   * Ctrl-drag-paint (additive) start here; shift extends from the
+   * anchor instead of starting a paint. */
+  let painting = false;
+
+  const cellCodepoint = (target: EventTarget | null): number | null => {
+    if (!(target instanceof Element)) return null;
+    const cp = target.closest<HTMLElement>(".cell")?.dataset.cp;
+    if (!cp) return null;
+    return Number.parseInt(cp.slice(2), 16);
+  };
+
+  grid.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    const cp = cellCodepoint(event.target);
+    if (cp === null) return;
+    // NOTE: no preventDefault here — canceling pointerdown makes the
+    // browser drop the held-button state and swallow the drag's pointer
+    // moves (observed in Chromium); user-select: none on the grid
+    // already keeps the drag from selecting text.
+    if (event.shiftKey) {
+      extendFromAnchor(cp);
+      return;
+    }
+    if (event.ctrlKey || event.metaKey) {
+      // Additive paint: one gesture — one undo entry covers the run the
+      // drag is about to paint plus this cell.
+      const { selection, selectionAnchor } = store.get();
+      beginSelectionGesture(
+        [...new Set([...selection, cp])].sort((a, b) => a - b),
+        selectionAnchor,
+      );
+      painting = true;
+      return;
+    }
+    painting = true;
+    beginSelectionGesture([cp], cp, cp);
+  });
+  grid.addEventListener("pointermove", (event) => {
+    if (!painting) return;
+    event.preventDefault();
+    const cp = cellCodepoint(event.target);
+    if (cp !== null) extendSelection([cp]);
+  });
+  const stopPaint = (): void => {
+    painting = false;
+  };
+  window.addEventListener("pointerup", stopPaint);
+  window.addEventListener("pointercancel", stopPaint);
+
+  /** Shift-extend the selection from the anchor to `cp`, in the current
+   *  category's enumeration (the aggregate view skips the surrogate gap).
+   *  Without an anchor in this category the click starts a fresh one. */
+  function extendFromAnchor(cp: number): void {
+    const { selectionAnchor, categoryId } = store.get();
+    const anchorIndex =
+      selectionAnchor !== null
+        ? codepointIndex(categoryId, selectionAnchor)
+        : null;
+    const cpIndex = codepointIndex(categoryId, cp);
+    if (selectionAnchor === null || anchorIndex === null || cpIndex === null) {
+      beginSelectionGesture([cp], cp, cp);
+      return;
+    }
+    const lo = Math.min(anchorIndex, cpIndex);
+    const hi = Math.max(anchorIndex, cpIndex);
+    const range: number[] = [];
+    for (let n = lo; n <= hi; n++) range.push(nthCodepoint(categoryId, n));
+    beginSelectionGesture(range, selectionAnchor, cp);
+  }
+
   prev.addEventListener("click", () => {
     const { page } = store.get();
     if (page > 1) store.set({ page: page - 1 });
@@ -183,7 +418,10 @@ export function mountCharmap(root: HTMLElement): void {
       page = Math.floor(index / CELLS_PER_PAGE) + 1;
     }
     locateInput.value = "";
-    store.set({ categoryId, page, selectedCodepoint: cp });
+    store.set({ categoryId, page });
+    // Locating is a selection gesture too: the codepoint becomes the
+    // selection and the anchor, and the details cursor lands on it.
+    beginSelectionGesture([cp], cp, cp);
   };
   locateBtn.addEventListener("click", () => locate(locateInput.value));
   locateInput.addEventListener("keydown", (e) => {
@@ -191,8 +429,15 @@ export function mountCharmap(root: HTMLElement): void {
   });
 
   const render = (): void => {
-    const { categoryId, page, selected, selectedCodepoint, fonts, rules } =
-      store.get();
+    const {
+      categoryId,
+      page,
+      selected,
+      selectedCodepoint,
+      selection,
+      fonts,
+      rules,
+    } = store.get();
     const last = pageCountFor(categoryId);
     const safePage = Math.min(Math.max(page, 1), last);
 
@@ -201,7 +446,7 @@ export function mountCharmap(root: HTMLElement): void {
     next.disabled = safePage >= last;
 
     const picks = pickRefs();
-    renderDetails(details, selectedCodepoint, fonts, selected, picks, rules);
+    renderDetails(details, selectedCodepoint, selection, fonts, selected, picks, rules);
     renderGrid(
       grid,
       categoryId,
@@ -209,6 +454,7 @@ export function mountCharmap(root: HTMLElement): void {
       selected.en,
       selected.cjk,
       selectedCodepoint,
+      selection,
       picks,
     );
     syncCategorySelection(categories, categoryId);
@@ -221,17 +467,23 @@ export function mountCharmap(root: HTMLElement): void {
  * Click-reachable cell information (ADR-0004: no hover-only info): the
  * codepoint, the character, and — with a full pick pair — the effective
  * result (winning font, via, kind). Below the facts sits the
- * single-codepoint precedence editor.
+ * single-codepoint precedence editor — or, when a multi-selection is
+ * active, the batch precedence editor for the whole selection.
  */
 function renderDetails(
   details: HTMLElement,
   codepoint: number | null,
+  selection: readonly number[],
   fonts: ReturnType<typeof store.get>["fonts"],
   selected: { en: string | null; cjk: string | null },
   picks: PickRefs,
   rules: readonly EditorRule[],
 ): void {
   details.replaceChildren();
+  if (selection.length >= 2) {
+    details.appendChild(buildBatchEditor(selection, picks));
+    return;
+  }
   if (codepoint === null) {
     const hint = document.createElement("div");
     hint.textContent =
@@ -298,70 +550,23 @@ function buildCpRuleEditor(
   title.textContent = "该码位的优先级（列表顺序，首个持有者生效）";
   editor.appendChild(title);
 
-  const list = document.createElement("div");
-  list.className = "rule-fonts";
-  const existing = rules.find(
-    (rule) => rule.target.kind === "codepoint" && rule.target.cp === codepoint,
+  editor.appendChild(
+    buildOrderedFontList(picks, editorFonts, "cp", renderCpLines),
   );
-  const order = [
-    ...editorFonts,
-    ...picks.refs.filter((ref) => !editorFonts.includes(ref)),
-  ];
-  for (const ref of order) {
-    const checked = editorFonts.includes(ref);
-    const line = document.createElement("div");
-    line.className = "rule-font-line";
-    line.dataset.fontRef = ref;
-    const label = document.createElement("label");
-    const box = document.createElement("input");
-    box.type = "checkbox";
-    box.dataset.role = `cp-font-${ref}`;
-    box.checked = checked;
-    box.addEventListener("change", () => {
-      editorFonts = box.checked
-        ? [...editorFonts, ref]
-        : editorFonts.filter((entry) => entry !== ref);
-      renderCpLines();
-    });
-    label.appendChild(box);
-    label.appendChild(document.createTextNode(` ${refLabel(ref, picks)}`));
-    line.appendChild(label);
-    for (const [role, delta] of [
-      [`cp-font-up-${ref}`, -1],
-      [`cp-font-down-${ref}`, 1],
-    ] as const) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "rule-font-move";
-      button.dataset.role = role;
-      button.textContent = delta < 0 ? "↑" : "↓";
-      button.disabled = !checked;
-      button.addEventListener("click", () => {
-        const from = editorFonts.indexOf(ref);
-        const to = from + delta;
-        if (from < 0 || to < 0 || to >= editorFonts.length) return;
-        editorFonts.splice(to, 0, editorFonts.splice(from, 1)[0]!);
-        renderCpLines();
-      });
-      line.appendChild(button);
-    }
-    list.appendChild(line);
-  }
-  editor.appendChild(list);
 
   const actions = document.createElement("div");
   actions.className = "cp-rule-actions";
   const apply = document.createElement("button");
   apply.type = "button";
   apply.dataset.role = "cp-rule-apply";
-  apply.textContent = existing ? "应用修改" : "设为规则";
+  apply.textContent = existingCpRule(codepoint, rules) ? "应用修改" : "设为规则";
   apply.addEventListener("click", () => applyCodepointRule(codepoint));
   actions.appendChild(apply);
   const remove = document.createElement("button");
   remove.type = "button";
   remove.dataset.role = "cp-rule-remove";
   remove.textContent = "移除规则";
-  remove.disabled = existing === undefined;
+  remove.disabled = existingCpRule(codepoint, rules) === undefined;
   remove.addEventListener("click", () => removeCodepointRule(codepoint));
   actions.appendChild(remove);
   editor.appendChild(actions);
@@ -370,6 +575,94 @@ function buildCpRuleEditor(
   function renderCpLines(): void {
     const fresh = buildCpRuleEditor(codepoint, picks, rules);
     editor.replaceWith(fresh);
+  }
+  return editor;
+}
+
+/** The rule whose target is exactly this codepoint, when one exists. */
+function existingCpRule(
+  codepoint: number,
+  rules: readonly EditorRule[],
+): EditorRule | undefined {
+  return rules.find(
+    (rule) => rule.target.kind === "codepoint" && rule.target.cp === codepoint,
+  );
+}
+
+/**
+ * The batch precedence editor of the multi-selection: the selection
+ * summary, the plan (what one 批量应用 will create — stated in plain
+ * text, never hover-only), the ordered font list, and the selection's
+ * own controls (clear, undo).
+ */
+function buildBatchEditor(
+  selection: readonly number[],
+  picks: PickRefs,
+): HTMLElement {
+  const sorted = [...selection].sort((a, b) => a - b);
+  const signature = sorted.join(",");
+  if (signature !== batchSignature) {
+    batchSignature = signature;
+    batchFonts = [...picks.refs];
+  }
+  const runs = selectionRuns(sorted);
+  const contiguous = runs.length === 1;
+  const lo = sorted[0]!;
+  const hi = sorted[sorted.length - 1]!;
+
+  const editor = document.createElement("div");
+  editor.className = "batch-editor";
+  editor.dataset.role = "batch-editor";
+
+  const summary = document.createElement("div");
+  summary.className = "batch-summary";
+  summary.textContent = contiguous
+    ? `已选 ${sorted.length} 码位 · 连续区间 ${formatCp(lo)}–${formatCp(hi)}`
+    : `已选 ${sorted.length} 码位 · 不连续（${runs.length} 段）`;
+  editor.appendChild(summary);
+
+  const plan = document.createElement("div");
+  plan.className = "batch-plan";
+  plan.dataset.role = "batch-plan";
+  plan.textContent =
+    contiguous && sorted.length > 1
+      ? `将创建 1 条区间规则（0x${lo.toString(16).toUpperCase()}-0x${hi.toString(16).toUpperCase()}）`
+      : `将创建 ${sorted.length} 条码位规则`;
+  editor.appendChild(plan);
+
+  const actions = document.createElement("div");
+  actions.className = "cp-rule-actions";
+  if (picks.refs.length > 0) {
+    const apply = document.createElement("button");
+    apply.type = "button";
+    apply.dataset.role = "batch-apply";
+    apply.textContent = "批量应用";
+    apply.addEventListener("click", () => applyBatchRule());
+    actions.appendChild(apply);
+    editor.appendChild(
+      buildOrderedFontList(picks, batchFonts, "batch", renderBatch),
+    );
+  }
+  const clear = document.createElement("button");
+  clear.type = "button";
+  clear.dataset.role = "selection-clear";
+  clear.textContent = "清除选择";
+  clear.addEventListener("click", () =>
+    beginSelectionGesture([], null),
+  );
+  actions.appendChild(clear);
+  const undo = document.createElement("button");
+  undo.type = "button";
+  undo.dataset.role = "selection-undo";
+  undo.textContent = "撤销选择";
+  undo.disabled = !canUndoSelection();
+  undo.addEventListener("click", () => undoSelection());
+  actions.appendChild(undo);
+  editor.appendChild(actions);
+
+  /** Rebuild in place (the working font list changed). */
+  function renderBatch(): void {
+    editor.replaceWith(buildBatchEditor(selection, picks));
   }
   return editor;
 }
@@ -458,6 +751,7 @@ function renderGrid(
   enFamily: string | null,
   cjkFamily: string | null,
   selectedCodepoint: number | null,
+  selection: readonly number[],
   picks: PickRefs,
 ): void {
   const size = categorySize(categoryId);
@@ -465,6 +759,7 @@ function renderGrid(
   const count = Math.min(CELLS_PER_PAGE, size - first);
   const effective = picks.base !== null && picks.donor !== null;
   const resolver = effective ? currentResolver(picks) : null;
+  const selectionSet = new Set(selection);
 
   // Rebuild the cells of the current page; keep the grid container node.
   const fragment = document.createDocumentFragment();
@@ -478,7 +773,12 @@ function renderGrid(
     ch.className = "cell-char";
     ch.textContent = String.fromCodePoint(cp);
     cell.appendChild(ch);
+    // Three cell states, never conflated (ADR-0004 color semantics):
+    // multi-selected and details-selected are accent-family selected
+    // states; hover stays neutral. The details cursor additionally
+    // carries an inner ring so it reads above the selection.
     cell.classList.toggle("is-selected", cp === selectedCodepoint);
+    cell.classList.toggle("is-multi-selected", selectionSet.has(cp));
 
     // The effective merged result: resolve, expose, render in the
     // winner's own face (the grid never lies — issue #18).
@@ -496,9 +796,8 @@ function renderGrid(
       cell.classList.add("is-uncovered");
     }
 
-    cell.addEventListener("click", () =>
-      store.set({ selectedCodepoint: cp }),
-    );
+    // Selection/cursor interaction is delegated to the grid container's
+    // pointer handlers (see mountCharmap) — no per-cell listeners.
     fragment.appendChild(cell);
   }
   grid.replaceChildren(fragment);

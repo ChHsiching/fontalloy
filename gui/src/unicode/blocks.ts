@@ -125,6 +125,26 @@ export function nthCodepoint(id: string, n: number): number {
   return b.start + n;
 }
 
+/**
+ * The 0-based index of `cp` within a category's enumeration (the inverse
+ * of nthCodepoint), or null when the codepoint is outside the category.
+ * Shift-range selection (issue #20) maps its endpoints through this so the
+ * aggregate view's surrogate gap is never selected through.
+ */
+export function codepointIndex(id: string, cp: number): number | null {
+  if (id === ALL_CATEGORY_ID) {
+    if (cp < ALL_RANGE.start || cp > ALL_RANGE.end) return null;
+    if (cp >= 0xd800 && cp <= 0xdfff) return null;
+    const bmpEnd = 0xd7ff;
+    return cp <= bmpEnd
+      ? cp - ALL_RANGE.start
+      : cp - 0xe000 + (bmpEnd - ALL_RANGE.start + 1);
+  }
+  const b = BLOCK_BY_ID.get(id);
+  if (!b || cp < b.start || cp > b.end) return null;
+  return cp - b.start;
+}
+
 export const CELLS_PER_PAGE = 1024;
 
 export function pageCountFor(id: string): number {

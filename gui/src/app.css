@@ -387,6 +387,11 @@ button {
 
 .charmap-details {
   flex: none;
+  /* Fixed geometry (issue #20): drag-paint re-renders this strip while
+     the pointer is held — if its height changed with its content, the
+     grid would shift under the pointer and the drag would paint the
+     wrong cells. The editors fit; reserve their height always. */
+  min-height: 150px;
   padding: 8px 14px;
   border-bottom: 1px solid var(--border);
   font-size: 12.5px;
@@ -466,6 +471,8 @@ button {
   grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
   gap: 6px;
   align-content: start;
+  /* Drag-paint selects cells; never let it select their text. */
+  user-select: none;
 }
 
 .cell {
@@ -485,9 +492,19 @@ button {
   transform: scale(1.06);
 }
 
+/* Three cell states, never conflated (ADR-0004 / issue #20): the
+   multi-selection is an accent-family selected state; the details
+   cursor adds an inner ring so it always reads above the selection;
+   hover stays neutral (darker border + scale) above. */
+.cell.is-multi-selected {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+
 .cell.is-selected {
   border-color: var(--accent);
   background: var(--accent-dim);
+  box-shadow: inset 0 0 0 2px var(--accent);
 }
 
 .cell-char {
@@ -1173,6 +1190,39 @@ button {
 .cp-rule-actions button:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* ---------- multi-select batch editor (issue #20) ----------
+   Lives in the details strip where the single-codepoint editor sits;
+   states the plan in plain text so nothing depends on hover. */
+
+.batch-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 560px;
+  padding: 8px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.batch-summary {
+  color: var(--accent);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.batch-plan {
+  color: var(--text-dim);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.batch-editor .cp-rule-actions button:not(:disabled):hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: scale(1.02);
 }
 
 /* Ordered font lists: shared by the cell editor and the rail rows. */

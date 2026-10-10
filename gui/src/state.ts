@@ -83,6 +83,15 @@ export interface AppState {
   /** Codepoint currently selected in the grid (details strip). */
   selectedCodepoint: number | null;
   /**
+   * The multi-selection on the grid (issue #20), always sorted ascending:
+   * built by drag-paint and shift-range, consumed by batch apply. Kept
+   * separate from `selectedCodepoint` — the details cell is a cursor,
+   * the selection is a set.
+   */
+  selection: number[];
+  /** The anchor cell shift-range extends from (a codepoint, not an index). */
+  selectionAnchor: number | null;
+  /**
    * The precedence rules under edit (issue #18): the single rule state
    * the preview grid resolves client-side AND the synthesize flow
    * serializes — one source of truth.
@@ -124,6 +133,8 @@ export const store = createStore<AppState>({
   categoryId: "all",
   page: 1,
   selectedCodepoint: null,
+  selection: [],
+  selectionAnchor: null,
   rules: [],
   catalog: { status: "none", families: [], registered: {}, screen: false },
 });
