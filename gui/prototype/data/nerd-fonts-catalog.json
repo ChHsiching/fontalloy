@@ -1,0 +1,362 @@
+[
+  {
+    "id": "0xProto",
+    "name": "0xProto",
+    "tag": "源码可读性优先"
+  },
+  {
+    "id": "3270",
+    "name": "3270",
+    "tag": "IBM 终端复刻"
+  },
+  {
+    "id": "AdwaitaMono",
+    "name": "Adwaita Mono",
+    "tag": "GNOME 官方等宽"
+  },
+  {
+    "id": "Agave",
+    "name": "Agave",
+    "tag": "几何简洁等宽"
+  },
+  {
+    "id": "AnnotationMono",
+    "name": "Annotation Mono",
+    "tag": "手写感等宽"
+  },
+  {
+    "id": "AnonymousPro",
+    "name": "Anonymous Pro",
+    "tag": "经典复刻 · 高辨识"
+  },
+  {
+    "id": "Arimo",
+    "name": "Arimo",
+    "tag": "非等宽 · 类 Arial"
+  },
+  {
+    "id": "AtkinsonHyperlegibleMono",
+    "name": "Atkinson Hyperlegible Mono",
+    "tag": "低视力友好设计"
+  },
+  {
+    "id": "AurulentSansMono",
+    "name": "Aurulent Sans Mono",
+    "tag": "无衬线等宽经典"
+  },
+  {
+    "id": "BigBlueTerminal",
+    "name": "BigBlue Terminal",
+    "tag": "IBM 终端怀旧风"
+  },
+  {
+    "id": "BitstreamVeraSansMono",
+    "name": "Bitstream Vera Sans Mono",
+    "tag": "经典 Vera 血统"
+  },
+  {
+    "id": "IBMPlexMono",
+    "name": "IBM Plex Mono",
+    "tag": "IBM Plex 官方"
+  },
+  {
+    "id": "CascadiaCode",
+    "name": "Cascadia Code",
+    "tag": "微软出品 · 连字"
+  },
+  {
+    "id": "CascadiaMono",
+    "name": "Cascadia Mono",
+    "tag": "微软出品 · 无连字"
+  },
+  {
+    "id": "CodeNewRoman",
+    "name": "Code New Roman",
+    "tag": "复古罗马风编程"
+  },
+  {
+    "id": "ComicShannsMono",
+    "name": "Comic Shanns Mono",
+    "tag": "漫画手写风"
+  },
+  {
+    "id": "CommitMono",
+    "name": "Commit Mono",
+    "tag": "中性匿名设计"
+  },
+  {
+    "id": "Cousine",
+    "name": "Cousine",
+    "tag": "类 Courier 兼容"
+  },
+  {
+    "id": "D2Coding",
+    "name": "D2 Coding",
+    "tag": "Naver 出品 · 韩文"
+  },
+  {
+    "id": "DaddyTimeMono",
+    "name": "Daddy Time Mono",
+    "tag": "等宽编程字体"
+  },
+  {
+    "id": "DejaVuSansMono",
+    "name": "DejaVu Sans Mono",
+    "tag": "DejaVu 经典等宽"
+  },
+  {
+    "id": "DepartureMono",
+    "name": "Departure Mono",
+    "tag": "像素 Lo-Fi 风"
+  },
+  {
+    "id": "DroidSansMono",
+    "name": "Droid Sans Mono",
+    "tag": "小屏显示优化"
+  },
+  {
+    "id": "EnvyCodeR",
+    "name": "Envy Code R",
+    "tag": "命令行老牌字体"
+  },
+  {
+    "id": "FantasqueSansMono",
+    "name": "Fantasque Sans Mono",
+    "tag": "圆润手写感"
+  },
+  {
+    "id": "FiraCode",
+    "name": "Fira Code",
+    "tag": "Mozilla 系 · 连字"
+  },
+  {
+    "id": "FiraMono",
+    "name": "Fira Mono",
+    "tag": "Mozilla 官方字体"
+  },
+  {
+    "id": "GeistMono",
+    "name": "Geist Mono",
+    "tag": "Vercel 出品"
+  },
+  {
+    "id": "Go-Mono",
+    "name": "Go Mono",
+    "tag": "Go 语言官方"
+  },
+  {
+    "id": "Gohu",
+    "name": "Gohu",
+    "tag": "点阵位图字体"
+  },
+  {
+    "id": "GoogleSansCode",
+    "name": "Google Sans Code",
+    "tag": "Google 品牌向"
+  },
+  {
+    "id": "Hack",
+    "name": "Hack",
+    "tag": "经典开源等宽"
+  },
+  {
+    "id": "Hasklig",
+    "name": "Hasklig",
+    "tag": "Haskell 连字"
+  },
+  {
+    "id": "HeavyData",
+    "name": "Heavy Data",
+    "tag": "非等宽 · 独特造型"
+  },
+  {
+    "id": "Hermit",
+    "name": "Hermit",
+    "tag": "符号醒目易辨"
+  },
+  {
+    "id": "iA-Writer",
+    "name": "iA Writer",
+    "tag": "iA Writer 出品"
+  },
+  {
+    "id": "Inconsolata",
+    "name": "Inconsolata",
+    "tag": "经典编程字体"
+  },
+  {
+    "id": "InconsolataGo",
+    "name": "Inconsolata Go",
+    "tag": "Inconsolata 变体"
+  },
+  {
+    "id": "InconsolataLGC",
+    "name": "Inconsolata LGC",
+    "tag": "西里尔文扩展"
+  },
+  {
+    "id": "IntelOneMono",
+    "name": "Intel One Mono",
+    "tag": "Intel 出品"
+  },
+  {
+    "id": "Iosevka",
+    "name": "Iosevka",
+    "tag": "窄身 · 高度可定制"
+  },
+  {
+    "id": "IosevkaTerm",
+    "name": "Iosevka Term",
+    "tag": "Iosevka 终端版"
+  },
+  {
+    "id": "IosevkaTermSlab",
+    "name": "Iosevka Term Slab",
+    "tag": "Iosevka 粗衬线"
+  },
+  {
+    "id": "JetBrainsMono",
+    "name": "JetBrains Mono",
+    "tag": "JetBrains 出品 · 连字"
+  },
+  {
+    "id": "Lekton",
+    "name": "Lekton",
+    "tag": "细窄极简风"
+  },
+  {
+    "id": "LiberationMono",
+    "name": "Liberation Mono",
+    "tag": "度量兼容 Courier"
+  },
+  {
+    "id": "Lilex",
+    "name": "Lilex",
+    "tag": "现代连字字体"
+  },
+  {
+    "id": "MartianMono",
+    "name": "Martian Mono",
+    "tag": "Evil Martians 出品"
+  },
+  {
+    "id": "Meslo",
+    "name": "Meslo",
+    "tag": "Apple Menlo 衍生"
+  },
+  {
+    "id": "Monaspace",
+    "name": "Monaspace",
+    "tag": "GitHub 出品 · 五变体"
+  },
+  {
+    "id": "Monofur",
+    "name": "Monofur",
+    "tag": "圆润复古风"
+  },
+  {
+    "id": "Monoid",
+    "name": "Monoid",
+    "tag": "连字 · 紧凑型"
+  },
+  {
+    "id": "Mononoki",
+    "name": "Mononoki",
+    "tag": "字符高区分度"
+  },
+  {
+    "id": "MPlus",
+    "name": "M+",
+    "tag": "多字重 · 日文支持"
+  },
+  {
+    "id": "Noto",
+    "name": "Noto",
+    "tag": "Google 泛语言字族"
+  },
+  {
+    "id": "OpenDyslexic",
+    "name": "OpenDyslexic",
+    "tag": "非等宽 · 阅读障碍友好"
+  },
+  {
+    "id": "Overpass",
+    "name": "Overpass",
+    "tag": "高速公路路牌风"
+  },
+  {
+    "id": "ProFont",
+    "name": "ProFont",
+    "tag": "复古像素编程"
+  },
+  {
+    "id": "ProggyClean",
+    "name": "ProggyClean",
+    "tag": "小字号优化"
+  },
+  {
+    "id": "Recursive",
+    "name": "Recursive",
+    "tag": "手绘多风格变体"
+  },
+  {
+    "id": "RobotoMono",
+    "name": "Roboto Mono",
+    "tag": "Google 出品"
+  },
+  {
+    "id": "ShareTechMono",
+    "name": "Share Tech Mono",
+    "tag": "科技感方正字形"
+  },
+  {
+    "id": "SourceCodePro",
+    "name": "Source Code Pro",
+    "tag": "Adobe 出品 · 经典"
+  },
+  {
+    "id": "SpaceMono",
+    "name": "Space Mono",
+    "tag": "方正个性字形"
+  },
+  {
+    "id": "NerdFontsSymbolsOnly",
+    "name": "Symbols Only",
+    "tag": "纯图标符号字体"
+  },
+  {
+    "id": "Terminus",
+    "name": "Terminus",
+    "tag": "终端经典字形"
+  },
+  {
+    "id": "Tinos",
+    "name": "Tinos",
+    "tag": "非等宽 · 类 Times"
+  },
+  {
+    "id": "Ubuntu",
+    "name": "Ubuntu",
+    "tag": "非等宽 · Ubuntu 官方"
+  },
+  {
+    "id": "UbuntuMono",
+    "name": "Ubuntu Mono",
+    "tag": "Ubuntu 官方等宽"
+  },
+  {
+    "id": "UbuntuSans",
+    "name": "Ubuntu Sans",
+    "tag": "Ubuntu 新版字族"
+  },
+  {
+    "id": "VictorMono",
+    "name": "Victor Mono",
+    "tag": "连笔斜体 · 窄身"
+  },
+  {
+    "id": "ZedMono",
+    "name": "Zed Mono",
+    "tag": "Zed 出品 · 圆润"
+  }
+]

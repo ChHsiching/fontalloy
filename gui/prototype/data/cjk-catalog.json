@@ -1,0 +1,121 @@
+[
+  {
+    "id": "maple-mono-cn",
+    "name": "Maple Mono（CN 版）",
+    "repo": "subframe7536/maple-font",
+    "stars": 29170,
+    "license": "OFL-1.1",
+    "tag": "圆角等宽 · 中英 2:1 · 编程向",
+    "note": "Release 提供 MapleMono-CN zip（内含 TTF），可直接下载"
+  },
+  {
+    "id": "lxgw-wenkai",
+    "name": "霞鹜文楷",
+    "repo": "lxgw/LxgwWenKai",
+    "stars": 26195,
+    "license": "OFL-1.1",
+    "tag": "楷体 · 阅读/正文",
+    "note": "Release 附 Light/Regular/Medium TTF 与 zip，可直接下载"
+  },
+  {
+    "id": "source-han-sans",
+    "name": "思源黑体",
+    "repo": "adobe-fonts/source-han-sans",
+    "stars": 17313,
+    "license": "OFL-1.1",
+    "tag": "黑体 · 界面/正文通用",
+    "note": "License 文件为 SIL OFL 1.1（API 报 NOASSERTION）；Release 提供 ttc/VF zip"
+  },
+  {
+    "id": "smiley-sans",
+    "name": "得意黑",
+    "repo": "atelier-anchor/smiley-sans",
+    "stars": 14897,
+    "license": "OFL-1.1",
+    "tag": "窄斜黑体 · 标题/强调",
+    "note": "Release zip（smiley-sans-v2.0.1.zip）内含 TTF"
+  },
+  {
+    "id": "sarasa-gothic",
+    "name": "更纱黑体",
+    "repo": "be5invis/Sarasa-Gothic",
+    "stars": 12848,
+    "license": "OFL-1.1",
+    "tag": "等宽中英 2:1 · 终端/IDE",
+    "note": "License 文件确认 SIL OFL 1.1；Release 提供 SuperTTC 与分区语言 zip"
+  },
+  {
+    "id": "source-han-serif",
+    "name": "思源宋体",
+    "repo": "adobe-fonts/source-han-serif",
+    "stars": 9749,
+    "license": "OFL-1.1",
+    "tag": "宋体 · 印刷/正文",
+    "note": "License 文件为 SIL OFL 1.1（API 报 NOASSERTION）；Release 提供 ttc/VF zip"
+  },
+  {
+    "id": "ark-pixel",
+    "name": "方舟像素字体",
+    "repo": "TakWolf/ark-pixel-font",
+    "stars": 4780,
+    "license": "MIT",
+    "tag": "像素 · 复古游戏风",
+    "note": "Release 提供多字号多格式 zip（含 TTF），月度更新"
+  },
+  {
+    "id": "noto-cjk",
+    "name": "Noto CJK（思源黑体 Google 版）",
+    "repo": "googlefonts/noto-cjk",
+    "stars": 4090,
+    "license": "OFL-1.1",
+    "tag": "黑体 · 多 CJK 语种覆盖",
+    "note": "License 位于 Sans/、Serif/ 子目录（API 报 null，均为 OFL 1.1）；Release 提供 ttc/VF zip"
+  },
+  {
+    "id": "zhuque-fangsong",
+    "name": "朱雀仿宋",
+    "repo": "TrionesType/zhuque",
+    "stars": 3543,
+    "license": "OFL-1.1",
+    "tag": "仿宋 · 文学排版/正文",
+    "note": "Release 均为预发布（prerelease）zip，含 TTF，仍在活跃开发"
+  },
+  {
+    "id": "fusion-pixel",
+    "name": "缝合像素字体",
+    "repo": "TakWolf/fusion-pixel-font",
+    "stars": 3304,
+    "license": "MIT",
+    "tag": "像素 · 泛中日韩",
+    "note": "Release 提供多字号 zip（含 TTF），月度更新"
+  },
+  {
+    "id": "lxgw-wenkai-screen",
+    "name": "霞鹜文楷 · 屏幕阅读版",
+    "repo": "lxgw/LxgwWenKai-Screen",
+    "stars": 2176,
+    "license": "OFL-1.1",
+    "tag": "楷体 · 屏幕小字号优化",
+    "note": "Release 提供直接 TTF 资产（LXGWWenKaiScreen-Regular.ttf 等）"
+  },
+  {
+    "id": "alibaba-puhuiti",
+    "name": "阿里巴巴普惠体",
+    "repo": "（无官方开源仓库；GitHub 仅有第三方镜像，最高 liruifengv/alibaba-puhuiti 34 星）",
+    "stars": null,
+    "license": "专有（免费商用，非开源）",
+    "tag": "黑体 · 品牌设计",
+    "note": "已排除：许可证不允许自由再分发/再修改，且无官方 repo 可核验",
+    "excluded": true
+  },
+  {
+    "id": "misans-harmonyos",
+    "name": "MiSans / HarmonyOS Sans 等",
+    "repo": "（无官方开源仓库，GitHub 上均为第三方搬运）",
+    "stars": null,
+    "license": "专有（免费商用，非开源）",
+    "tag": "黑体 · 系统预装",
+    "note": "已排除：专有「免费商用」许可，再分发条款不明，不符合开源目录要求",
+    "excluded": true
+  }
+]

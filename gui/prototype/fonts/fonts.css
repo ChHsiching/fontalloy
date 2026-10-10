@@ -1,0 +1,74 @@
+/* 本地 Nerd Fonts 预览字体（原型用） */
+@font-face { font-display: swap; font-family: "NF JetBrains Mono"; src: url("JetBrainsMonoNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Fira Code"; src: url("FiraCodeNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Cascadia Code"; src: url("CaskaydiaCoveNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Iosevka"; src: url("IosevkaNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Hack"; src: url("HackNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Meslo"; src: url("MesloLGLDZNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Source Code Pro"; src: url("SauceCodeProNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF IBM Plex Mono"; src: url("BlexMonoNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Inconsolata"; src: url("InconsolataNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Victor Mono"; src: url("VictorMonoNerdFont-Regular.ttf"); }
+
+/* v6 bundled catalog */
+@font-face { font-display: swap; font-family: "NF 0xProto"; src: url("0xProtoNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF 3270"; src: url("3270NerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Adwaita Mono"; src: url("AdwaitaMonoNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Agave"; src: url("AgaveNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Annotation Mono"; src: url("AnnotationMNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Anonymous Pro"; src: url("AnonymiceProNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Arimo"; src: url("ArimoNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Atkinson Hyperlegible Mono"; src: url("AtkynsonMonoNerdFont-Regular.otf"); }
+@font-face { font-display: swap; font-family: "NF Aurulent Sans Mono"; src: url("AurulentSansMNerdFont-Regular.otf"); }
+@font-face { font-display: swap; font-family: "NF BigBlue Terminal"; src: url("BigBlueTerm437NerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Bitstream Vera Sans Mono"; src: url("BitstromWeraNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Cascadia Mono"; src: url("CaskaydiaMonoNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Code New Roman"; src: url("CodeNewRomanNerdFont-Regular.otf"); }
+@font-face { font-display: swap; font-family: "NF Comic Shanns Mono"; src: url("ComicShannsMonoNerdFont-Regular.otf"); }
+@font-face { font-display: swap; font-family: "NF Commit Mono"; src: url("CommitMonoNerdFont-Regular.otf"); }
+@font-face { font-display: swap; font-family: "NF Cousine"; src: url("CousineNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF D2 Coding"; src: url("D2KodingLigatureNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Daddy Time Mono"; src: url("DaddyTimeMonoNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF DejaVu Sans Mono"; src: url("DejaVuSansMNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Departure Mono"; src: url("DepartureMonoNerdFont-Regular.otf"); }
+@font-face { font-display: swap; font-family: "NF Droid Sans Mono"; src: url("DroidSansMNerdFont-Regular.otf"); }
+@font-face { font-display: swap; font-family: "NF Envy Code R"; src: url("EnvyCodeRNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Fantasque Sans Mono"; src: url("FantasqueSansMNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Fira Mono"; src: url("FiraMonoNerdFont-Regular.otf"); }
+@font-face { font-display: swap; font-family: "NF Geist Mono"; src: url("GeistMonoNerdFont-Regular.otf"); }
+@font-face { font-display: swap; font-family: "NF Go Mono"; src: url("GoMonoNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Gohu"; src: url("GohuFont11NerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Google Sans Code"; src: url("GoogleSansCodeNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Hasklig"; src: url("HasklugNerdFont-Regular.otf"); }
+@font-face { font-display: swap; font-family: "NF Heavy Data"; src: url("HeavyDataNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Hermit"; src: url("HurmitNerdFont-Regular.otf"); }
+@font-face { font-display: swap; font-family: "NF iA Writer"; src: url("iMWritingDuoNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Inconsolata Go"; src: url("InconsolataGoNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Inconsolata LGC"; src: url("InconsolataLGCNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Intel One Mono"; src: url("IntoneMonoNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Iosevka Term"; src: url("IosevkaTermNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Iosevka Term Slab"; src: url("IosevkaTermSlabNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Lekton"; src: url("LektonNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Liberation Mono"; src: url("LiterationMonoNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Lilex"; src: url("LilexNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Martian Mono"; src: url("MartianMonoNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Monaspace"; src: url("MonaspiceArNerdFont-Regular.otf"); }
+@font-face { font-display: swap; font-family: "NF Monofur"; src: url("MonofurNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Monoid"; src: url("MonoidNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Mononoki"; src: url("MononokiNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF M+"; src: url("M+1NerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Noto"; src: url("NotoMonoNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF OpenDyslexic"; src: url("OpenDyslexicNerdFont-Regular.otf"); }
+@font-face { font-display: swap; font-family: "NF Overpass"; src: url("OverpassNerdFont-Regular.otf"); }
+@font-face { font-display: swap; font-family: "NF ProFont"; src: url("ProFontIIxNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF ProggyClean"; src: url("ProggyCleanNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Recursive"; src: url("RecMonoCasualNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Roboto Mono"; src: url("RobotoMonoNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Share Tech Mono"; src: url("ShureTechMonoNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Space Mono"; src: url("SpaceMonoNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Terminus"; src: url("TerminessNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Tinos"; src: url("TinosNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Ubuntu"; src: url("UbuntuNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Ubuntu Mono"; src: url("UbuntuMonoNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Ubuntu Sans"; src: url("UbuntuSansNerdFont-Regular.ttf"); }
+@font-face { font-display: swap; font-family: "NF Zed Mono"; src: url("ZedMonoNerdFont-Regular.ttf"); }

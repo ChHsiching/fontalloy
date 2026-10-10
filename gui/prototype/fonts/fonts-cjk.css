@@ -1,0 +1,87 @@
+/* 开源中文字体（原型预览用） */
+/* 来源：
+   - MapleMonoCN-Regular.ttf  subframe7536/maple-font v7.9 (OFL-1.1)
+   - LXGWWenKaiScreen-Regular.ttf  lxgw/LxgwWenKai-Screen v1.522 (OFL-1.1)
+   - NotoSansSC-VF.ttf  google/fonts ofl/notosanssc (OFL-1.1, 可变字体 wght 100-900) */
+
+@font-face {
+  font-family: "CJK Maple Mono CN";
+  src: url("MapleMonoCN-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "CJK LXGW WenKai Screen";
+  src: url("LXGWWenKaiScreen-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "CJK Noto Sans SC";
+  src: url("NotoSansSC-VF.ttf") format("truetype-variations");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* v6 bundled catalog */
+
+@font-face {
+  font-family: "CJK 霞鹜文楷";
+  src: url("LXGWWenKai-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "CJK 得意黑";
+  src: url("SmileySans-Oblique.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "CJK 更纱黑体";
+  src: url("SarasaMonoSC-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "CJK 思源宋体";
+  src: url("SourceHanSerifSC-Regular.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "CJK 方舟像素";
+  src: url("ark-pixel-12px-monospaced-zh_hans.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "CJK 朱雀仿宋";
+  src: url("ZhuqueFangsong-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "CJK 缝合像素";
+  src: url("fusion-pixel-12px-monospaced-zh_hans.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
