@@ -75,6 +75,13 @@ _Avoid_: compression (it is deduplication, not encoding)
 **Byte-reproducible build**:
 Identical pinned inputs rebuild byte-identical output: no wall clock in the file (head timestamps pinned from the base font), deterministic ordering, brotli pinned in the lockfile for woff2. The verification report records the source font hashes that make "identical inputs" checkable.
 _Avoid_: deterministic build (weaker: that only means same behavior)
+**Catalog release**:
+The consolidated font catalog republished by CI to a dedicated GitHub Releases tag (`font-catalog-v1`): one zip per family, checksums, and release metadata. The app's download origin, distinct from the upstream releases the manifest pins as provenance.
+_Avoid_: font bundle, CDN
+
+**Origin list**:
+The ordered download sources carried in catalog-release metadata; the downloader tries origins in list order, so adding a mirror is a data change, never a code change.
+_Avoid_: mirror config, fallback list
 
 **Reserved Font Name (RFN)**:
 A name an upstream font author reserves under its license; a modified version — every built font is one — must not carry it. The catalog records an `rfn` flag per family, and the default output name is the fixed brand default, never derived from source font names.
