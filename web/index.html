@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <!-- Empty favicon: a 404 here would surface as a console error and
+         trip the seam-3 zero-JS-errors gate on static hosts. -->
+    <link rel="icon" href="data:," />
+    <meta
+      name="description"
+      content="FontAlloy 配方构建器：在浏览器中拼装合并配方，带走可运行的 CLI 命令。"
+    />
+    <title>FontAlloy — 配方构建器</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <!-- The shared frontend source: the same tree the Tauri GUI builds
+         from (gui/src). Only the entry differs per build target. -->
+    <script type="module" src="../gui/src/webapp/main.ts"></script>
+  </body>
+</html>
