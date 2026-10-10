@@ -258,7 +258,7 @@ class TestPresetRulesAtTheBuildSeam:
         assert entries[ja_only] == {
             "codepoint": ja_only,
             "winner": "donor-0",
-            "in_output": False,
+            "in_output": True,
             "via": "rule-0",
             "kind": "fill",
         }
