@@ -1,16 +1,17 @@
 """The verification report.
 
 Every build emits one (issue #2, and the spec's "every build ships a
-verification report"). Report v0 records the build's sources and the
-per-codepoint provenance — for each codepoint in the union of all source
-coverages, which font wins it under the default precedence (base first,
-donors in join order, absence never overrides).
+verification report"). The report records the build's sources and the
+effective table — for each codepoint in the union of all source
+coverages, which font wins it (``winner``), through which precedence
+(``via``: the global default or the winning rule), and how the glyph got
+there (``kind``: base keep, fill, or override).
 
-v0 is the structure later tickets extend, not the final content: when
-grafting lands, donor-won codepoints flip ``in_output`` to true and the
-summary converges; the weight-borrow table and metric comparison join as
-new sections. The JSON carries no timestamps or nondeterministic ordering,
-so identical inputs yield byte-identical reports.
+This is still the structure later tickets extend, not the final content:
+when grafting lands, donor-won codepoints flip ``in_output`` to true and
+the summary converges; the weight-borrow table and metric comparison
+join as new sections. The JSON carries no timestamps or nondeterministic
+ordering, so identical inputs yield byte-identical reports.
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 #: Schema identifier, bumped when the report shape changes meaningfully.
-SCHEMA = "fontalloy/verification-report@v0"
+SCHEMA = "fontalloy/verification-report@v1"
 
 
 @dataclass(frozen=True)
@@ -42,6 +43,8 @@ class ProvenanceEntry:
     codepoint: int
     winner: str  # a SourceRecord id
     in_output: bool  # present in the built font (v0: base coverage only)
+    via: str  # "default" or a rule id ("rule-<declaration index>")
+    kind: str  # "base" | "fill" | "override"
 
 
 @dataclass(frozen=True)
@@ -83,6 +86,8 @@ class VerificationReport:
                     "codepoint": entry.codepoint,
                     "winner": entry.winner,
                     "in_output": entry.in_output,
+                    "via": entry.via,
+                    "kind": entry.kind,
                 }
                 for entry in self.provenance
             ],

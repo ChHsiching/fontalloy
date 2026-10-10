@@ -5,12 +5,13 @@ of the core: recipe + font files in, built font + verification report out.
 The CLI calls it in-process; later consumers (serve, the GUI sidecar) do
 the same.
 
-Pipeline stage in this tracer bullet (issue #2): load and validate the
-base and donor fonts, resolve the default precedence into the per-codepoint
-provenance table, write the base font through as the output TTF (grafting,
-normalization, and table rewriting arrive in later tickets), and emit the
-verification report v0. Identical inputs produce byte-identical outputs
-and reports.
+Pipeline stages in this ticket (issues #2 and #3): load and validate the
+base and donor fonts, resolve the precedence rules — layered rules at
+every granularity, absence never overrides — into the effective table,
+write the base font through as the output TTF (grafting, normalization,
+and table rewriting arrive in later tickets), and emit the verification
+report carrying the effective table and the conflict/fill accounting.
+Identical inputs produce byte-identical outputs and reports.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from pathlib import Path
 from fontTools.ttLib import TTFont
 
 from fontalloy_core.errors import BuildError
+from fontalloy_core.precedence import BUILTIN_NAMED_SETS, resolve_precedence
 from fontalloy_core.recipe import load_recipe
 from fontalloy_core.report import (
     ProvenanceEntry,
@@ -61,34 +63,21 @@ def build(
     ]
 
     try:
-        # Stage: resolve the default precedence — the base font first, then
-        # donors in join order, absence never overrides — into the effective
-        # per-codepoint provenance table.
-        stack: list[tuple[str, str, Path, set[int]]] = [
-            ("base", "base", recipe.base, _coverage(base))
-        ]
-        for index, path in enumerate(recipe.donors):
-            stack.append((f"donor-{index}", "donor", path, _coverage(donors[index])))
-        base_coverage = stack[0][3]
-        provenance = tuple(
-            ProvenanceEntry(
-                codepoint=codepoint,
-                winner=next(
-                    source_id
-                    for source_id, _role, _path, covered in stack
-                    if codepoint in covered
-                ),
-                # v0 writes the base font through: only base-won codepoints
-                # are present in the output. Grafting flips the rest later.
-                in_output=codepoint in base_coverage,
-            )
-            for codepoint in sorted(
-                set().union(*(covered for _, _, _, covered in stack))
-            )
+        coverages = {"base": _coverage(base)}
+        for index, font in enumerate(donors):
+            coverages[f"donor-{index}"] = _coverage(font)
+
+        # Stage: resolve the precedence rules into the effective table.
+        # Named sets come from the recipe, overriding any built-ins (the
+        # fc-lang presets plug into BUILTIN_NAMED_SETS in a later ticket).
+        resolution = resolve_precedence(
+            recipe.rules,
+            coverages=coverages,
+            named_sets={**BUILTIN_NAMED_SETS, **recipe.named_sets},
         )
 
         # Stage: output the built font. The base is the container (ADR-0001);
-        # at v0 it passes through unchanged.
+        # at this stage it passes through unchanged.
         try:
             base.save(output)
         except OSError as exc:
@@ -100,15 +89,39 @@ def build(
         for donor in donors:
             donor.close()
 
+    base_coverage = coverages["base"]
+    provenance = tuple(
+        ProvenanceEntry(
+            codepoint=entry.codepoint,
+            winner=entry.winner,
+            # v0 writes the base font through: only codepoints the base
+            # covers are present in the output. Grafting flips the rest.
+            in_output=entry.codepoint in base_coverage,
+            via=entry.via,
+            kind=entry.kind,
+        )
+        for entry in resolution.effective_table
+    )
+
     sources = tuple(
+        [
+            SourceRecord(
+                id="base",
+                role="base",
+                path=recipe.base,
+                sha256=file_sha256(recipe.base),
+                codepoints=len(coverages["base"]),
+            )
+        ]
+    ) + tuple(
         SourceRecord(
-            id=source_id,
-            role=role,
+            id=f"donor-{index}",
+            role="donor",
             path=path,
             sha256=file_sha256(path),
-            codepoints=len(covered),
+            codepoints=len(coverages[f"donor-{index}"]),
         )
-        for source_id, role, path, covered in stack
+        for index, path in enumerate(recipe.donors)
     )
     report = VerificationReport(
         sources=sources,
