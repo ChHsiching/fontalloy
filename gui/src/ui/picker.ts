@@ -1,5 +1,6 @@
-import { store, type LoadedFont } from "../state";
+import { store, type CatalogFamilyEntry, type CatalogState, type LoadedFont } from "../state";
 import { loadLocalFontFile } from "../fonts/registry";
+import { getDefaultManager } from "../catalog/manager";
 
 export type PickerRole = "en" | "cjk";
 
@@ -19,15 +20,38 @@ export function cssFamily(family: string): string {
   return `"${family.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
+/** Inline status tag for a catalog row that cannot be picked (yet). */
+function catalogTag(family: CatalogFamilyEntry): string | null {
+  if (family.status === "failed") return "未下载 · 下次启动自动重试";
+  if (family.status === "downloading") return "下载中…";
+  if (family.status === "pending") return "等待下载";
+  return null;
+}
+
+/** Catalog status line for the popup footer (visible text, never hover). */
+function catalogNote(catalog: CatalogState): string | null {
+  if (catalog.status === "unavailable") {
+    return "目录不可用（离线）—— 本地字体不受影响。";
+  }
+  if (catalog.status === "settled-partial") {
+    const missing = catalog.families.filter((f) => f.status !== "verified").length;
+    return `目录不完整：${missing} 个家族未下载，下次启动时自动重试。`;
+  }
+  return null;
+}
+
 /**
  * A font picker (ADR-0004): an anchor row plus a popup listbox whose node is
  * created ONCE and survives every re-render — only the rows rebuild.
  *
  * The popup is an outer clipping layer (rounded, shadowed) around an inner
- * scroll area; the "load local font file" footer sits outside the scroll
- * area. Positioning clamps to the app frame: below the anchor first, flip
- * above when it does not fit, cap the height (internal scroll) otherwise.
- * Open/close are discrete `allow-discrete` + `@starting-style` transitions.
+ * scroll area; a search box sits above the scroll area, and the "load local
+ * font file" footer sits below it, outside the scroll. Rows list catalog
+ * families (metadata-driven, self-rendered once their face is registered)
+ * plus locally loaded fonts. Positioning clamps to the app frame: below the
+ * anchor first, flip above when it does not fit, cap the height (internal
+ * scroll) otherwise. Open/close are discrete `allow-discrete` +
+ * `@starting-style` transitions.
  */
 export function mountPicker(
   root: HTMLElement,
@@ -55,10 +79,14 @@ export function mountPicker(
   popup.setAttribute("aria-label", "字体列表");
   popup.innerHTML = `
     <div class="popup-clip">
+      <div class="popup-search">
+        <input class="picker-search" type="search" placeholder="搜索字体…" aria-label="搜索字体" />
+      </div>
       <div class="popup-scroll">
         <div class="popup-rows"></div>
       </div>
       <div class="popup-footer">
+        <div class="picker-catalog-note" hidden></div>
         <div class="picker-error" role="alert" hidden></div>
         <button class="picker-load-local" type="button">加载本地字体文件…</button>
         <input class="picker-file-input" type="file" accept=".ttf,.otf,.woff,.woff2,.ttc" multiple hidden />
@@ -69,11 +97,14 @@ export function mountPicker(
 
   const rowsEl = popup.querySelector<HTMLElement>(".popup-rows")!;
   const errorEl = popup.querySelector<HTMLElement>(".picker-error")!;
+  const noteEl = popup.querySelector<HTMLElement>(".picker-catalog-note")!;
+  const searchInput = popup.querySelector<HTMLInputElement>(".picker-search")!;
   const fileInput = popup.querySelector<HTMLInputElement>(".picker-file-input")!;
   const loadButton = popup.querySelector<HTMLButtonElement>(".picker-load-local")!;
   const current = anchor.querySelector<HTMLElement>(".picker-current")!;
 
   let open = false;
+  let query = "";
 
   const setOpen = (next: boolean): void => {
     if (open === next) return;
@@ -132,6 +163,11 @@ export function mountPicker(
     if (e.key === "Escape" && open) setOpen(false);
   });
 
+  searchInput.addEventListener("input", () => {
+    query = searchInput.value.trim().toLowerCase();
+    renderRows();
+  });
+
   loadButton.addEventListener("click", () => fileInput.click());
   fileInput.addEventListener("change", async () => {
     const files = [...(fileInput.files ?? [])];
@@ -154,13 +190,98 @@ export function mountPicker(
     }
   });
 
+  /**
+   * Select a catalog family for preview: read the primary face from local
+   * storage (it was sha256-verified at download time), register it through
+   * the same FontFace(arrayBuffer) path as local files, and load it so the
+   * anchor renders in it immediately.
+   */
+  const selectCatalogFamily = async (family: CatalogFamilyEntry): Promise<void> => {
+    const manager = getDefaultManager();
+    const release = manager?.getRelease();
+    const meta = release?.families.find((f) => f.family === family.family);
+    if (!manager || !meta) return;
+    const cssKey = await manager.ensureRegistered(meta);
+    if (!cssKey) {
+      errorEl.hidden = false;
+      errorEl.textContent = `无法载入目录字体 ${family.family}：存储的字体文件无法解析。`;
+      return;
+    }
+    // Deterministic load for immediate rendering (lazy faces load on use).
+    await document.fonts.load(`16px ${cssFamily(cssKey)}`);
+    store.set({
+      selected: { ...store.get().selected, [options.role]: cssKey },
+    });
+    setOpen(false);
+  };
+
   /** Rows rebuild only — the popup node and its scroll state persist. */
-  const rebuildRows = (fonts: LoadedFont[], selectedKey: string | null): void => {
-    const seen = new Set<string>();
+  const renderRows = (): void => {
+    const { fonts, selected, catalog } = store.get();
+    const selectedKey = selected[options.role];
     const fragment = document.createDocumentFragment();
+
+    const appendGroupLabel = (text: string): void => {
+      const label = document.createElement("div");
+      label.className = "picker-group-label";
+      label.textContent = text;
+      fragment.appendChild(label);
+    };
+
+    // Catalog families: metadata-driven rows; the name text is the metadata
+    // family and the row renders in its own font once the face registered.
+    const catalogRows = catalog.families.filter((family) =>
+      family.family.toLowerCase().includes(query),
+    );
+    if (catalogRows.length > 0) {
+      appendGroupLabel("目录字体");
+      for (const family of catalogRows) {
+        const row = document.createElement("div");
+        row.className = "picker-row catalog-row";
+        row.setAttribute("role", "option");
+        row.dataset.family = family.family;
+        row.dataset.catalogStatus = family.status;
+        const cssKey = catalog.registered[family.family] ?? null;
+        row.setAttribute("aria-selected", String(cssKey !== null && cssKey === selectedKey));
+        row.classList.toggle("is-selected", cssKey !== null && cssKey === selectedKey);
+        const name = document.createElement("span");
+        name.className = "picker-row-name";
+        name.textContent = family.family;
+        row.appendChild(name);
+        if (cssKey) {
+          // Every row renders its family name in its own font (ADR-0004).
+          row.style.fontFamily = `${cssFamily(cssKey)}, sans-serif`;
+        }
+        const tag = catalogTag(family);
+        if (tag) {
+          row.classList.add("is-unavailable");
+          row.setAttribute("aria-disabled", "true");
+          const tagEl = document.createElement("span");
+          tagEl.className = "picker-row-tag";
+          tagEl.textContent = tag;
+          row.appendChild(tagEl);
+        }
+        row.addEventListener("click", () => {
+          if (family.status !== "verified") return; // not downloadable (yet)
+          void selectCatalogFamily(family);
+        });
+        fragment.appendChild(row);
+      }
+    }
+
+    // Locally loaded fonts.
+    const seen = new Set<string>();
+    const localRows: LoadedFont[] = [];
     for (const font of fonts) {
       if (seen.has(font.cssFamily)) continue;
       seen.add(font.cssFamily);
+      if (
+        !font.family.toLowerCase().includes(query) &&
+        !font.cssFamily.toLowerCase().includes(query)
+      ) {
+        continue;
+      }
+      localRows.push(font);
       const row = document.createElement("div");
       row.className = "picker-row";
       row.setAttribute("role", "option");
@@ -181,23 +302,32 @@ export function mountPicker(
       });
       fragment.appendChild(row);
     }
+    if (localRows.length > 0) appendGroupLabel("本地字体");
+
     if (fragment.childNodes.length === 0) {
       const empty = document.createElement("div");
       empty.className = "picker-empty";
-      empty.textContent = "尚未加载字体 —— 请从下方加载本地字体文件。";
+      empty.textContent = query
+        ? `没有匹配“${searchInput.value.trim()}”的字体。`
+        : "尚未加载字体 —— 请从下方加载本地字体文件。";
       fragment.appendChild(empty);
     }
     rowsEl.replaceChildren(fragment);
   };
 
   const render = (): void => {
-    const { fonts, selected } = store.get();
-    const font = fonts.find((f) => f.cssFamily === selected[options.role]);
-    current.textContent = font ? font.family : options.emptyText;
-    current.style.fontFamily = font
-      ? `${cssFamily(font.cssFamily)}, sans-serif`
-      : "";
-    rebuildRows(fonts, selected[options.role]);
+    const { fonts, selected, catalog } = store.get();
+    const key = selected[options.role];
+    // The anchor shows the DISPLAY family: the metadata family for catalog
+    // selections (registered fonts carry it), the parsed family for local
+    // files. One lookup suffices — both kinds live in store.fonts.
+    const selectedFont = fonts.find((f) => f.cssFamily === key);
+    current.textContent = selectedFont ? selectedFont.family : options.emptyText;
+    current.style.fontFamily = key ? `${cssFamily(key)}, sans-serif` : "";
+    const note = catalogNote(catalog);
+    noteEl.hidden = note === null;
+    noteEl.textContent = note;
+    renderRows();
   };
   store.subscribe(render);
   render();
