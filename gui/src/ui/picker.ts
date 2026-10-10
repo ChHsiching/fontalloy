@@ -1,6 +1,7 @@
 import { store, type CatalogFamilyEntry, type CatalogState, type LoadedFont } from "../state";
-import { loadLocalFontFile } from "../fonts/registry";
+import { registerFontBytes } from "../fonts/registry";
 import { getDefaultManager } from "../catalog/manager";
+import { canPickWithDialog, pickLocalFonts } from "../platform/localfonts";
 
 export type PickerRole = "en" | "cjk";
 
@@ -168,14 +169,18 @@ export function mountPicker(
     renderRows();
   });
 
-  loadButton.addEventListener("click", () => fileInput.click());
-  fileInput.addEventListener("change", async () => {
-    const files = [...(fileInput.files ?? [])];
-    fileInput.value = "";
+  /** Register picked local fonts, selecting the first new family. */
+  const registerPicked = async (
+    entries: Array<{ buffer: ArrayBuffer; fileName: string; path?: string }>,
+  ): Promise<void> => {
     errorEl.hidden = true;
-    for (const file of files) {
+    for (const entry of entries) {
       try {
-        const { font, isNewFamily } = await loadLocalFontFile(file);
+        const { font, isNewFamily } = await registerFontBytes(entry.buffer, {
+          fileName: entry.fileName,
+          origin: "local",
+          path: entry.path,
+        });
         if (isNewFamily && store.get().selected[options.role] === null) {
           store.set({
             selected: { ...store.get().selected, [options.role]: font.cssFamily },
@@ -183,11 +188,35 @@ export function mountPicker(
         }
       } catch (err) {
         errorEl.hidden = false;
-        errorEl.textContent = `无法加载 ${file.name}：${
+        errorEl.textContent = `无法加载 ${entry.fileName}：${
           err instanceof Error ? err.message : "不是有效的字体文件"
         }`;
       }
     }
+  };
+
+  loadButton.addEventListener("click", async () => {
+    // Under Tauri the native dialog: real absolute paths for recipes.
+    if (canPickWithDialog()) {
+      const picked = await pickLocalFonts();
+      if (picked !== null && picked.length > 0) {
+        await registerPicked(picked);
+      }
+      return;
+    }
+    fileInput.click();
+  });
+  fileInput.addEventListener("change", async () => {
+    const files = [...(fileInput.files ?? [])];
+    fileInput.value = "";
+    await registerPicked(
+      await Promise.all(
+        files.map(async (file) => ({
+          buffer: await file.arrayBuffer(),
+          fileName: file.name,
+        })),
+      ),
+    );
   });
 
   /**

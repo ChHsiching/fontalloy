@@ -22,6 +22,12 @@ export interface LoadedFont {
   family: string;
   fileName: string;
   origin: FontOrigin;
+  /**
+   * The on-disk path when the platform knows one (catalog storage, the
+   * Tauri file dialog). Undefined in the plain browser — the synthesize
+   * flow then resolves the path against the service's font listing.
+   */
+  path?: string;
   /** Sorted covered codepoints from the cmap table. */
   codepoints: number[];
 }

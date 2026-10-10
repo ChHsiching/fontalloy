@@ -9,17 +9,69 @@ import { expect, type Locator, type Page } from "@playwright/test";
  * - font readiness awaited before asserting rendered text.
  */
 
+/**
+ * The zero-JS-errors gate with a benign-error policy: expected
+ * network-refusal console lines (the WebApp probes a possibly-absent
+ * local service BY DESIGN, and the browser logs the refused/blocked
+ * fetch itself) are declared per test instead of leaking into the gate.
+ * A declaration only ever matches `console.error` lines — page errors
+ * (uncaught exceptions) are never excusable.
+ */
+export interface ErrorGate {
+  /**
+   * Declare an expected console-error line. The pattern is tested
+   * against both the message text and the `text [source-url]` composite,
+   * so a declaration can key on the refused resource's address.
+   */
+  allow(pattern: RegExp, reason: string): void;
+}
+
 /** Collect every JS error the page reports into `sink`; assert later. */
-export function collectJsErrors(page: Page, sink: string[]): void {
+export function collectJsErrors(page: Page, sink: string[]): ErrorGate {
+  const allowed: Array<{ pattern: RegExp; reason: string }> = [];
   page.on("pageerror", (err) => sink.push(`pageerror: ${err.message}`));
   page.on("console", (msg) => {
-    if (msg.type() === "error") sink.push(`console.error: ${msg.text()}`);
+    if (msg.type() !== "error") return;
+    const text = `console.error: ${msg.text()}`;
+    const source = msg.location()?.url ?? "";
+    const composite = `${text} [${source}]`;
+    if (allowed.some((entry) => entry.pattern.test(text) || entry.pattern.test(composite))) {
+      return; // declared benign (kept out of the sink, still justified above)
+    }
+    sink.push(text);
   });
+  return {
+    allow(pattern, reason) {
+      allowed.push({ pattern, reason: reason });
+    },
+  };
 }
 
 /** The zero-JS-errors gate. */
 export function assertNoJsErrors(sink: string[]): void {
   expect(sink, `page reported JS errors:\n${sink.join("\n")}`).toHaveLength(0);
+}
+
+/**
+ * The suite-wide benign declaration: the page's load-time probe of the
+ * local serve address, refused at network level. The browser logs the
+ * failed fetch itself ("Failed to load resource: net::ERR_…"); the page
+ * handles the rejection, so only the browser's own line needs excusing.
+ */
+export function allowProbeRefusal(gate: ErrorGate, address: string): void {
+  const host = new RegExp(address.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  gate.allow(
+    /Failed to load resource.*net::ERR_(CONNECTION_REFUSED|FAILED|ABORTED|TIMED_OUT)/,
+    `the absent-service probe at ${address} was refused at network level`,
+  );
+  gate.allow(
+    host,
+    `a network error on the intentional probe target ${address}`,
+  );
+  gate.allow(
+    /has been blocked by CORS policy/,
+    "the probe target answered without allowing this origin",
+  );
 }
 
 /** Await the browser font subsystem before asserting rendered text. */

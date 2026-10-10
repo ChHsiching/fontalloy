@@ -56,10 +56,12 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import queue
 import re
 import shutil
 import signal
+import sys
 import tempfile
 import threading
 import urllib.parse
@@ -84,6 +86,14 @@ from fontalloy_core.report import file_sha256
 
 #: The interface the service binds — and the only one it ever binds.
 BIND_ADDRESS = "127.0.0.1"
+
+#: Set by the GUI shell (issue #16) to arm the stdin watchdog: the
+#: sidecar parent owns the service's stdin pipe, and when that pipe
+#: closes — the app exited, with or without a chance to kill the child
+#: process tree — the service stops itself gracefully instead of being
+#: orphaned on a loopback port. Off by default: an interactive
+#: ``fontalloy serve`` keeps the terminal's stdin untouched.
+STDIN_WATCH_ENV = "FONTALLOY_SERVE_STDIN_WATCH"
 
 #: Recipe submissions are small (paths and rules, never font bytes).
 MAX_BODY_BYTES = 10 * 1024 * 1024
@@ -735,6 +745,21 @@ def make_serve_server(options: ServeOptions) -> _ServeHTTPServer:
     return _ServeHTTPServer(options, state)
 
 
+def _watch_stdin(stop: threading.Event) -> None:
+    """Set ``stop`` once stdin reaches EOF (the supervising parent died).
+
+    Read errors are NOT a shutdown signal — a console detached under a
+    supervised run must not take the service down; only a clean pipe
+    close is.
+    """
+    try:
+        while sys.stdin.buffer.read(1):
+            pass
+    except Exception:
+        return
+    stop.set()
+
+
 def run_serve(options: ServeOptions) -> None:
     """Run the serve HTTP service until SIGINT/SIGTERM (SIGBREAK).
 
@@ -768,6 +793,14 @@ def run_serve(options: ServeOptions) -> None:
             signal.signal(sig, _stop)
         except (ValueError, OSError):
             pass  # not the main thread; the embedder owns lifecycle
+
+    if os.environ.get(STDIN_WATCH_ENV, "") not in ("", "0"):
+        threading.Thread(
+            target=_watch_stdin,
+            args=(state.stop,),
+            name="fontalloy-stdin-watch",
+            daemon=True,
+        ).start()
 
     worker.start()
     serve_thread.start()

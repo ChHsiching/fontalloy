@@ -359,6 +359,95 @@ body {
   line-height: 1.6;
 }
 
+/* The re-probe affordance rides inside the absent-state notice text. */
+.wb-reprobe-button {
+  margin-left: 8px;
+  padding: 2px 10px;
+  font-size: 12px;
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.wb-reprobe-button:hover {
+  border-color: var(--accent);
+}
+
+/* ---------- live merge (issue #22) ---------- */
+
+.wb-live {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wb-live[hidden] {
+  display: none;
+}
+
+.wb-live-status {
+  font-size: 13px;
+  color: var(--text);
+  min-height: 18px;
+}
+
+.wb-journal {
+  max-height: 150px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  padding: 8px 12px;
+}
+
+.wb-journal:empty {
+  display: none;
+}
+
+.wb-journal-line {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.7;
+}
+
+.wb-live-error {
+  font-size: 12.5px;
+  color: var(--danger);
+  line-height: 1.6;
+}
+
+.wb-live-error:empty {
+  display: none;
+}
+
+.wb-live-result {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.wb-live-result:empty {
+  display: none;
+}
+
+.wb-live-report {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  line-height: 1.7;
+}
+
+.wb-live-report:empty {
+  display: none;
+}
+
 .wb-problems {
   margin: 0;
   padding-left: 18px;

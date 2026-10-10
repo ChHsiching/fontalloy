@@ -17,6 +17,11 @@ export interface RegisterOptions {
   fileName: string;
   origin: "local" | "catalog";
   /**
+   * The on-disk path, when the platform knows one (the catalog storage
+   * layout; the Tauri file dialog). Recipes reference it verbatim.
+   */
+  path?: string;
+  /**
    * When true the FontFace is added WITHOUT awaiting load(): the browser
    * lazily loads the face the first time something renders in it (the
    * picker self-rendering path for dozens of catalog families). The
@@ -58,6 +63,7 @@ export async function registerFontBytes(
     family: options.family ?? meta.family,
     fileName: options.fileName,
     origin: options.origin,
+    path: options.path,
     codepoints: meta.codepoints,
   };
   store.set({ fonts: [...store.get().fonts, font] });

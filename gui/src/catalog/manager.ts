@@ -247,6 +247,10 @@ export class CatalogManager {
         fileName: primary.file,
         origin: "catalog",
         lazy: true,
+        // The on-disk path (Tauri layout): recipes reference the exact
+        // file the sidecar's --font-dir already scans. Null in browser
+        // storage — the synthesize flow falls back to the listing match.
+        path: this.deps.storage.absPath?.(`${dir}/${primary.file}`) ?? undefined,
       });
       this.patchCatalog({
         registered: {
