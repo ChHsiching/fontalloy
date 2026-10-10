@@ -3,10 +3,12 @@ import { mountTopbar } from "./ui/topbar";
 import { mountRail } from "./ui/rail";
 import { mountContent } from "./ui/content";
 import { mountStatsbar } from "./ui/statsbar";
+import { mountBuildPanel } from "./ui/buildpanel";
 import { mountCatalogScreen } from "./catalog/screen";
 import { CatalogManager, setDefaultManager } from "./catalog/manager";
 import { createStorage } from "./platform/storage";
 import { readConfig } from "./platform/config";
+import { connectService } from "./service/synthesize";
 import { store } from "./state";
 
 const app = document.getElementById("app");
@@ -25,6 +27,16 @@ mountTopbar(app.querySelector<HTMLElement>(".topbar")!);
 mountRail(app.querySelector<HTMLElement>(".workspace-rail")!);
 mountContent(app.querySelector<HTMLElement>(".workspace-content")!);
 mountStatsbar(app.querySelector<HTMLElement>(".statsbar")!);
+
+// The build panel (issue #16): synthesis progress + verification
+// report as a non-modal overlay on <body> — the workspace stays usable.
+mountBuildPanel();
+
+// The merge service connection (issue #16): under Tauri the shell's
+// sidecar; in tests the injected config. Fire-and-forget on purpose —
+// nothing here may delay or block the workspace, and a failed probe
+// leaves a fully usable app with the reason as page text.
+void connectService();
 
 // The first-run catalog screen mounts last: the workspace must be fully
 // usable underneath it before any download starts (failures never block).

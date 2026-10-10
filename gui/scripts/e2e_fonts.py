@@ -1,0 +1,116 @@
+"""Tiny synthetic fonts for the GUI synthesize e2e suite.
+
+The seam-3 synthesize spec drives a REAL `fontalloy serve` subprocess
+against these fixtures: a Latin base (26 glyphs, one per ASCII letter)
+and a CJK donor whose glyph count is deliberately large enough that a
+build takes observable seconds — the test needs to catch a build
+mid-flight to prove progress visibility and that the app stays usable
+while the pipeline runs.
+
+Same recipe as the core suite's conftest synth harness (deterministic
+fonts, pinned head timestamps); kept standalone so the Playwright
+bootstrap only needs a plain `python` with fontTools, never pytest.
+
+Usage: python e2e-fonts.py <output-dir> [--donor-glyphs N]
+Writes base.ttf and donor.ttf into <output-dir>.
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+from fontTools.fontBuilder import FontBuilder
+from fontTools.pens.ttGlyphPen import TTGlyphPen
+
+#: Fixed head timestamps (2026-01-01 UTC): deterministic, no wall clock.
+FIXED_TIMESTAMP = 1767225600
+
+#: Base coverage: ASCII uppercase letters.
+BASE_CODEPOINTS = tuple(range(0x41, 0x5B))
+
+#: Donor coverage: a contiguous run of CJK ideographs starting at 一.
+DONOR_FIRST = 0x4E00
+
+
+def _box_glyph(x_min: int, y_min: int, x_max: int, y_max: int):
+    pen = TTGlyphPen(None)
+    pen.moveTo((x_min, y_min))
+    pen.lineTo((x_max, y_min))
+    pen.lineTo((x_max, y_max))
+    pen.lineTo((x_min, y_max))
+    pen.closePath()
+    return pen.glyph()
+
+
+def synth_font(
+    path: Path,
+    *,
+    family: str,
+    codepoints: tuple[int, ...],
+    advance: int = 600,
+) -> None:
+    """Write a small synthetic TTF covering exactly ``codepoints``."""
+    glyph_names = [".notdef"] + [f"uni{cp:04X}" for cp in codepoints]
+    glyphs = {".notdef": _box_glyph(0, 0, 500, 700)}
+    metrics = {".notdef": (advance, 40)}
+    for index, cp in enumerate(codepoints):
+        # Distinct ink height per codepoint so a glyph is traceable to
+        # its font of origin (same trick as the core fixtures).
+        glyphs[f"uni{cp:04X}"] = _box_glyph(
+            40, 0, advance - 40, 300 + (100 * (index % 5))
+        )
+        metrics[f"uni{cp:04X}"] = (advance, 40)
+
+    builder = FontBuilder(unitsPerEm=1000, isTTF=True)
+    builder.setupGlyphOrder(glyph_names)
+    builder.setupCharacterMap({cp: f"uni{cp:04X}" for cp in codepoints})
+    builder.setupGlyf(glyphs)
+    builder.setupHorizontalMetrics(metrics)
+    builder.setupHorizontalHeader(ascent=800, descent=-200)
+    builder.setupOS2(
+        sTypoAscender=800,
+        sTypoDescender=-200,
+        usWinAscent=900,
+        usWinDescent=300,
+        usWeightClass=400,
+    )
+    builder.setupNameTable({"familyName": family, "styleName": "Regular"})
+    builder.setupPost()
+    builder.setupHead(
+        unitsPerEm=1000, created=FIXED_TIMESTAMP, modified=FIXED_TIMESTAMP
+    )
+    builder.save(path)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("outdir", type=Path)
+    parser.add_argument(
+        "--donor-glyphs",
+        type=int,
+        default=2000,
+        help="glyph count of the CJK donor (build duration knob)",
+    )
+    args = parser.parse_args()
+
+    args.outdir.mkdir(parents=True, exist_ok=True)
+    synth_font(
+        args.outdir / "base.ttf",
+        family="AlloyBase",
+        codepoints=BASE_CODEPOINTS,
+    )
+    synth_font(
+        args.outdir / "donor.ttf",
+        family="AlloyDonor",
+        codepoints=tuple(
+            range(DONOR_FIRST, DONOR_FIRST + args.donor_glyphs)
+        ),
+    )
+    print(f"wrote {args.outdir / 'base.ttf'} and {args.outdir / 'donor.ttf'}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -31,6 +31,13 @@ export interface BlobStorage {
   write(path: string, data: ArrayBuffer): Promise<void>;
   /** All stored keys that start with `prefix` (full keys, sorted). */
   list(prefix: string): Promise<string[]>;
+  /**
+   * The on-disk absolute path of a key, when this backend is backed by
+   * a real filesystem (the Tauri app-data layout — the sidecar reads
+   * the same files through its --font-dir). Null when there is no
+   * filesystem behind the keys (the IndexedDB backend).
+   */
+  absPath?(path: string): string | null;
 }
 
 const KEY_RE = /^[^/]+(?:\/[^/]+)*$/;
@@ -119,6 +126,10 @@ export function tauriStorage(fs: FsBackend, baseDir: string): BlobStorage {
   const join = (key: string): string =>
     `${baseDir.replace(/[/\\]+$/, "")}/${key}`;
   return {
+    absPath(path) {
+      assertSafeKey(path);
+      return join(path);
+    },
     async read(path) {
       assertSafeKey(path);
       const target = join(path);
