@@ -30,6 +30,7 @@ where no donor wins any codepoint leaves the base font untouched
 
 from __future__ import annotations
 
+import copy
 import struct
 from collections.abc import Mapping, Sequence
 
@@ -122,9 +123,16 @@ def _collect_with_components(
 def _copy_glyph(
     base: TTFont, donor: TTFont, donor_id: str, name: str, out_name: str
 ) -> None:
-    """Copy one donor glyph (outlines, components, metrics) into ``base``."""
+    """Copy one donor glyph (outlines, components, metrics) into ``base``.
+
+    The donor's glyph object is deep-copied before its components are
+    re-pointed: a TTC-output build grafts the same donor face into every
+    base face, and re-pointing a shared object twice would double the
+    prefix (``d0.d0.…``) and break the component lookup. The copy also
+    keeps the donor's in-memory tables pristine for the next face.
+    """
     if "glyf" in donor:
-        glyph = donor["glyf"][name]
+        glyph = copy.deepcopy(donor["glyf"][name])
         # Re-point composite components at the prefixed private copies;
         # the reference is by name in-session and by index once compiled.
         for component in getattr(glyph, "components", None) or ():

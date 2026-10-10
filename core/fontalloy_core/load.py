@@ -76,6 +76,39 @@ def load_face(ref: FontRef, *, role: str) -> LoadedFace:
         raise BuildError(f"{role} file not found: {path}")
 
     face_index = _select_face(path, ref.face, role)
+    return _load_face_at(path, face_index, ref.instance, role)
+
+
+def load_faces(ref: FontRef, *, role: str) -> list[LoadedFace]:
+    """Load every face the reference selects, without the one-face rule.
+
+    This is the TTC-output selection (issue #10): a build that packages
+    a collection merges each face of the base font file into its own
+    output face, so a reference without a face pin selects ALL faces
+    here, while a pinned face still selects just that one (a plain font
+    file contributes its single face). Every per-face behavior of
+    :func:`load_face` — variable instantiation, woff2 decode, identity
+    detection — applies unchanged.
+    """
+    path = ref.path
+    if not path.is_file():
+        raise BuildError(f"{role} file not found: {path}")
+    face_count = _face_count(path)
+    indices = range(face_count) if ref.face is None else [ref.face]
+    return [
+        _load_face_at(path, index, ref.instance, role)
+        for index in indices
+    ]
+
+
+def _load_face_at(
+    path: Path,
+    face_index: int,
+    instance: tuple[tuple[str, int | float], ...] | None,
+    role: str,
+) -> LoadedFace:
+    """Load one face of ``path`` at ``face_index`` (shared load path)."""
+    _select_face(path, face_index, role)
     try:
         font = TTFont(path, fontNumber=face_index)
         best_cmap = font.getBestCmap()
@@ -85,7 +118,7 @@ def load_face(ref: FontRef, *, role: str) -> LoadedFace:
         raise BuildError(f"{role} has no Unicode coverage (no usable cmap): {path}")
 
     if "fvar" in font:
-        _instantiate(font, ref.instance, role, path)
+        _instantiate(font, instance, role, path)
 
     # A woff2 input is decoded: clearing the flavor makes every later
     # save (and the pass-through output) a plain TTF.

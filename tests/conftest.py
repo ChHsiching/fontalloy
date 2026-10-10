@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 import pytest
@@ -40,21 +40,33 @@ def synth_font(
     codepoints: tuple[int, ...],
     upem: int = 1000,
     advance: int = 600,
+    advances: Mapping[int, int] | None = None,
     weight: int = 400,
     subfamily: str = "Regular",
     italic: bool = False,
+    fixed_pitch: bool = False,
     typographic_family: str | None = None,
+    extra_names: Mapping[int, str] | None = None,
 ) -> Path:
-    """Write a small synthetic TTF covering exactly ``codepoints``."""
+    """Write a small synthetic TTF covering exactly ``codepoints``.
+
+    ``advances`` overrides the uniform ``advance`` per codepoint (for
+    xAvgCharWidth tests); ``fixed_pitch`` declares a monospaced post
+    table; ``extra_names`` seeds extra name records (for attribution
+    pass-through tests).
+    """
     font = _build_font_object(
         family,
         codepoints,
         upem=upem,
         advance=advance,
+        advances=advances,
         weight=weight,
         subfamily=subfamily,
         italic=italic,
+        fixed_pitch=fixed_pitch,
         typographic_family=typographic_family,
+        extra_names=extra_names,
     )
     font.save(path)
     return Path(path)
@@ -104,7 +116,7 @@ def synth_variable_font(
     builder.setupOS2(sTypoAscender=800, sTypoDescender=-200, usWeightClass=400)
     builder.setupNameTable({"familyName": family, "styleName": "Regular"})
     builder.setupPost()
-    builder.setupHead(created=FIXED_TIMESTAMP, modified=FIXED_TIMESTAMP)
+    builder.setupHead(unitsPerEm=1000, created=FIXED_TIMESTAMP, modified=FIXED_TIMESTAMP)
     builder.setupFvar(
         [(tag, lo, default, hi, tag.upper()) for tag, lo, default, hi in axes],
         [],
@@ -145,23 +157,31 @@ def _build_font_object(
     *,
     upem: int = 1000,
     advance: int = 600,
+    advances: Mapping[int, int] | None = None,
     weight: int = 400,
     subfamily: str = "Regular",
     italic: bool = False,
+    fixed_pitch: bool = False,
     typographic_family: str | None = None,
+    extra_names: Mapping[int, str] | None = None,
 ) -> TTFont:
     """Build (but do not save) a synthetic single-face font."""
     glyph_names = [".notdef"] + [f"uni{cp:04X}" for cp in codepoints]
     glyphs: dict[str, object] = {".notdef": _box_glyph(0, 0, 500, 700)}
+    metrics: dict[str, tuple[int, int]] = {".notdef": (advance, 40)}
     for index, cp in enumerate(codepoints):
         # Distinct ink height per codepoint so a glyph is traceable to its font.
-        glyphs[f"uni{cp:04X}"] = _box_glyph(40, 0, advance - 40, 300 + 100 * (index + 1))
+        per_glyph = advance if advances is None else advances.get(cp, advance)
+        glyphs[f"uni{cp:04X}"] = _box_glyph(
+            40, 0, max(per_glyph - 40, 40), 300 + 100 * (index + 1)
+        )
+        metrics[f"uni{cp:04X}"] = (per_glyph, 40)
 
     builder = FontBuilder(unitsPerEm=upem, isTTF=True)
     builder.setupGlyphOrder(glyph_names)
     builder.setupCharacterMap({cp: f"uni{cp:04X}" for cp in codepoints})
     builder.setupGlyf(glyphs)  # type: ignore[arg-type]
-    builder.setupHorizontalMetrics({name: (advance, 40) for name in glyph_names})
+    builder.setupHorizontalMetrics(metrics)
     builder.setupHorizontalHeader(ascent=800, descent=-200)
     builder.setupOS2(sTypoAscender=800, sTypoDescender=-200, usWeightClass=weight)
     if italic:
@@ -171,8 +191,14 @@ def _build_font_object(
         name_table = builder.font["name"]
         name_table.setName(typographic_family, 16, 3, 1, 0x409)
         name_table.setName(subfamily, 17, 3, 1, 0x409)
+    if extra_names:
+        name_table = builder.font["name"]
+        for name_id, text in extra_names.items():
+            name_table.setName(text, name_id, 3, 1, 0x409)
+            name_table.setName(text, name_id, 1, 0, 0)
     builder.setupPost()
-    builder.setupHead(created=FIXED_TIMESTAMP, modified=FIXED_TIMESTAMP)
+    builder.font["post"].isFixedPitch = 1 if fixed_pitch else 0
+    builder.setupHead(unitsPerEm=upem, created=FIXED_TIMESTAMP, modified=FIXED_TIMESTAMP)
     return builder.font
 
 
@@ -224,7 +250,7 @@ def synth_composite_font(
     builder.setupOS2(sTypoAscender=800, sTypoDescender=-200, usWeightClass=400)
     builder.setupNameTable({"familyName": family, "styleName": "Regular"})
     builder.setupPost()
-    builder.setupHead(created=FIXED_TIMESTAMP, modified=FIXED_TIMESTAMP)
+    builder.setupHead(unitsPerEm=upem, created=FIXED_TIMESTAMP, modified=FIXED_TIMESTAMP)
     builder.save(path)
     return Path(path)
 
@@ -268,7 +294,7 @@ def synth_cff_font(
     builder.setupOS2(sTypoAscender=800, sTypoDescender=-200, usWeightClass=400)
     builder.setupNameTable({"familyName": family, "styleName": "Regular"})
     builder.setupPost()
-    builder.setupHead(created=FIXED_TIMESTAMP, modified=FIXED_TIMESTAMP)
+    builder.setupHead(unitsPerEm=upem, created=FIXED_TIMESTAMP, modified=FIXED_TIMESTAMP)
     builder.save(path)
     return Path(path)
 

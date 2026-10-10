@@ -263,6 +263,44 @@ class TestBuild:
         assert output.read_bytes() == font_bytes
         assert report_path.read_bytes() == report_bytes
 
+    def test_rebuild_in_a_separate_process_is_byte_identical(
+        self, recipe_file, tmp_path
+    ):
+        """The merged-pipeline output survives process and hash-seed changes.
+
+        The second build runs as a real subprocess with a different
+        ``PYTHONHASHSEED`` after the clock has ticked past the one-second
+        timestamp granularity — so a restamped ``head.modified`` or any
+        hash-order leakage in our own code would show up as a diff.
+        """
+        import os
+        import subprocess
+        import sys
+        import time
+
+        first = tmp_path / "first.ttf"
+        build(recipe_file, first)
+        font_bytes = first.read_bytes()
+
+        time.sleep(1.1)  # cross the timestamp granularity; pinning must hold
+        second = tmp_path / "second.ttf"
+        env = dict(os.environ, PYTHONHASHSEED="1")
+        subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import sys; from fontalloy_core import build;"
+                " build(sys.argv[1], sys.argv[2])",
+                str(recipe_file),
+                str(second),
+            ],
+            env=env,
+            check=True,
+            timeout=120,
+        )
+
+        assert second.read_bytes() == font_bytes
+
     def test_recipe_paths_resolve_against_the_recipe_file(
         self, tmp_path, synth_font_factory, monkeypatch
     ):

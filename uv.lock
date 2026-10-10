@@ -222,12 +222,14 @@ name = "fontalloy-core"
 version = "0.1.0"
 source = { editable = "core" }
 dependencies = [
+    { name = "brotli" },
     { name = "fonttools", extra = ["woff"] },
     { name = "pyyaml" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "brotli", specifier = ">=1.1,<2" },
     { name = "fonttools", extras = ["woff"], specifier = ">=4.47" },
     { name = "pyyaml", specifier = ">=6.0" },
 ]

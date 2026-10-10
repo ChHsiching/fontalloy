@@ -10,10 +10,14 @@ there (``kind``: base keep, fill, or override).
 This is still the structure later tickets extend, not the final content:
 grafting has landed (issue #5), so ``in_output`` records presence in the
 built font's own cmap — read back from the output, never assumed — and
-the summary's ``output_codepoints`` counts the true merged coverage. The
-weight-borrow table and metric comparison join as new sections. The JSON
-carries no timestamps or nondeterministic ordering, so identical inputs
-yield byte-identical reports.
+the summary's ``output_codepoints`` counts the true merged coverage.
+Output formats landed next (issue #10): ``format`` records the tier a
+build wrote, and a collection build carries one face record per packaged
+face with its identity and its own summary counts. The weight-borrow
+table and metric comparison join as new sections. The JSON carries no
+timestamps or nondeterministic ordering, so identical inputs yield
+byte-identical reports — and the source hashes below are what make
+"identical inputs" checkable in the first place.
 """
 
 from __future__ import annotations
@@ -71,13 +75,43 @@ class ConflictRecord:
 
 
 @dataclass(frozen=True)
+class FaceRecord:
+    """One output face of a collection build (issue #10).
+
+    Identity comes from the base face the output face was merged in
+    (``index`` is its face index in the base font file); ``summary`` is
+    that face's own provenance accounting, read back from the built
+    collection.
+    """
+
+    index: int
+    family: str
+    subfamily: str
+    weight: int
+    summary: dict[str, int]
+
+
+@dataclass(frozen=True)
 class VerificationReport:
+    """The verification report of one build.
+
+    ``format`` records the output format tier the build wrote (issue
+    #10); for a ``ttc`` build, ``faces`` carries one :class:`FaceRecord`
+    per packaged face, while the flat ``provenance`` and ``summary``
+    describe face 0 (faces of one collection may resolve differently —
+    each face's own counts are in its record). The JSON carries no
+    timestamps or nondeterministic ordering, so identical inputs yield
+    byte-identical reports.
+    """
+
     sources: tuple[SourceRecord, ...]
     provenance: tuple[ProvenanceEntry, ...]
     output_path: Path
     output_sha256: str
     rules: tuple[RuleRecord, ...] = ()
     conflicts: tuple[ConflictRecord, ...] = ()
+    format: str = "ttf"
+    faces: tuple[FaceRecord, ...] = ()
 
     @property
     def summary(self) -> dict[str, int]:
@@ -100,12 +134,25 @@ class VerificationReport:
         }
 
     def to_json_dict(self) -> dict:
+        output: dict = {
+            "path": str(self.output_path),
+            "sha256": self.output_sha256,
+            "format": self.format,
+        }
+        if self.faces:
+            output["faces"] = [
+                {
+                    "index": face.index,
+                    "family": face.family,
+                    "subfamily": face.subfamily,
+                    "weight": face.weight,
+                    "summary": face.summary,
+                }
+                for face in self.faces
+            ]
         return {
             "schema": SCHEMA,
-            "output": {
-                "path": str(self.output_path),
-                "sha256": self.output_sha256,
-            },
+            "output": output,
             "sources": [
                 {
                     "id": source.id,
