@@ -6,6 +6,16 @@
   "permissions": [
     "core:default",
     {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "binaries/fontalloy",
+          "sidecar": true,
+          "args": ["serve"]
+        }
+      ]
+    },
+    {
       "identifier": "fs:allow-exists",
       "allow": [{ "path": "$APPDATA/catalog" }, { "path": "$APPDATA/catalog/**" }]
     },

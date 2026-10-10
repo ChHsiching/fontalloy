@@ -24,6 +24,17 @@ jobs:
           cache: npm
           cache-dependency-path: gui/package-lock.json
 
+      # The synthesize suite (issue #16) drives a REAL `fontalloy serve`
+      # subprocess — the dev/e2e stand-in for the Tauri sidecar. It needs
+      # the workspace uv environment (core + cli + fontTools) for the
+      # service binary and the fixture-font generator.
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+
+      - run: uv sync
+        working-directory: .
+
       - run: npm ci
 
       - run: npx playwright install --with-deps chromium
@@ -32,6 +43,9 @@ jobs:
       - run: npm run build
 
       - run: npm run test:e2e
+        env:
+          FONTALLOY_SERVE_BIN: ${{ github.workspace }}/.venv/bin/fontalloy
+          FONTALLOY_PYTHON: ${{ github.workspace }}/.venv/bin/python
 
       - uses: actions/upload-artifact@v4
         if: failure()
