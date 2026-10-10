@@ -28,7 +28,8 @@ route (see the fontTools research note) is direct ``glyf`` surgery:
   (Windows UCS-4) whenever an astral codepoint is present — mirroring
   what fontTools' own fontBuilder emits.
 - After the graft, ``usWinAscent``/``usWinDescent`` grow — only ever
-  grow — to cover the merged ink and prevent clipping. hhea and the
+  grow, and only over the grafted ink — to prevent clipping (the base's
+  own glyphs keep their shipped clipping behavior). hhea and the
   OS/2 typo metrics are never touched here: line height fully inherits
   the base font.
 - Glyph names only survive save/load through a ``post`` format 2.0
@@ -121,7 +122,12 @@ def graft_effective_glyphs(
         for entry in effective_table
     }
     _rebuild_cmap(base, mapping)
-    _grow_win_metrics(base)
+    grafted_names = [
+        _prefixed(donor_id, name)
+        for donor_id in donors  # join order
+        for name in closure.get(donor_id, ())
+    ]
+    _grow_win_metrics(base, grafted_names)
     _persist_glyph_names(base)
 
 
@@ -230,19 +236,23 @@ def _convert_cff_glyph(donor: TTFont, name: str, scale: float):
     return pen.glyph()
 
 
-def _grow_win_metrics(base: TTFont) -> None:
-    """Grow usWinAscent/usWinDescent to cover the merged ink (only ever
+def _grow_win_metrics(base: TTFont, grafted_names: Sequence[str]) -> None:
+    """Grow usWinAscent/usWinDescent to cover the grafted ink (only ever
     grow — ADR-0003: prevent clipping, change nothing else).
 
-    hhea and the OS/2 typo metrics are deliberately untouched: line
-    height fully inherits the base font.
+    Only what normalization added is considered: the base font's own
+    glyphs keep whatever clipping behavior they shipped with — that is
+    part of the inherited line-height contract (a Nerd-Font base's tall
+    PUA icons routinely exceed its own win metrics by design, and the
+    anchor build must be zero table changes). hhea and the OS/2 typo
+    metrics are never touched here.
     """
     os2 = base.get("OS/2")
     if os2 is None:
         return
     glyf = base["glyf"]
     y_max, y_min = 0, 0
-    for name in base.getGlyphOrder():
+    for name in grafted_names:
         glyph = glyf[name]  # glyph access expands lazy glyph data
         if glyph.numberOfContours == 0:
             continue  # empty outlines carry no ink
