@@ -24,7 +24,7 @@ target/
 gui/prototype/_shots/
 
 # GUI prototype lives on the prototype/gui branch, never on main
-gui/
+gui/prototype/
 
 # OS
 .DS_Store
