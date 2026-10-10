@@ -74,8 +74,11 @@ def build(
     """Build a merged font from a recipe.
 
     Donor glyphs graft into the base font per the recipe's precedence
-    rules; every build emits a verification report with per-codepoint
-    provenance and the source font hashes backing reproducibility.
+    rules, the output identity is rewritten (name table and OS/2, the
+    fixed brand default `ChHsich` unless the recipe overrides
+    `output.family`), and every build emits a verification report with
+    per-codepoint provenance and the source font hashes backing
+    reproducibility.
     """
     try:
         result = fontalloy_core.build(

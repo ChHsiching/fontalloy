@@ -5,13 +5,14 @@ of the core: recipe + font files in, built font + verification report out.
 The CLI calls it in-process; later consumers (serve, the GUI sidecar) do
 the same.
 
-Pipeline stages in this ticket (issues #2 through #5, #10): load and
+Pipeline stages in this ticket (issues #2 through #6, #10): load and
 detect the base and donor fonts (TTC face selection, variable
 instantiation, woff2 decode), resolve the precedence rules — layered
 rules at every granularity, absence never overrides — into the effective
 table, graft the donor glyphs into the base font per the effective table
-with a rebuilt cmap (the base is the container, ADR-0001; normalization
-and table rewriting arrive in later tickets), and emit the verification
+with a rebuilt cmap (the base is the container, ADR-0001), rewrite the
+output identity — the name record set plus OS/2 corrections
+(normalization arrives in a later ticket) — and emit the verification
 report carrying the effective table and the conflict/fill accounting.
 
 Output formats (issue #10): the recipe's ``output.format`` (or the
@@ -55,6 +56,11 @@ from fontalloy_core.report import (
     SourceRecord,
     VerificationReport,
     file_sha256,
+)
+from fontalloy_core.rewrite import (
+    OutputNaming,
+    apply_os2_corrections,
+    apply_output_identity,
 )
 
 
@@ -141,12 +147,21 @@ def build(
         # rebuild the cmap (ADR-0001). The donors are shared across the
         # faces; grafting takes private glyph copies, so each face's
         # graft is independent. Normalization (upem scaling, advance
-        # re-gridding) and table rewriting are later stages.
+        # re-gridding) is a later stage.
         donor_fonts = {
             f"donor-{index}": donor.font for index, donor in enumerate(donors)
         }
         for base, resolution in zip(bases, resolutions):
             graft_effective_glyphs(base.font, donor_fonts, resolution.effective_table)
+            # Stage: rewrite the output identity — the full name record
+            # set (both platform encodings, nameID 16/17 consistent with
+            # 1/2) and the OS/2 corrections (xAvgCharWidth, PANOSE mono)
+            # — before the save, so the reproducible boundary writes the
+            # rewritten font.
+            apply_output_identity(
+                base.font, OutputNaming(recipe.output.family)
+            )
+            apply_os2_corrections(base.font)
 
         # Stage: write the output at the single reproducible boundary —
         # pinned head timestamps, no recalculation, TTC dedup on.

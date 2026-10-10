@@ -1,6 +1,7 @@
 """Recipe loading: parse a recipe YAML file strictly.
 
-Recipe fields (base + donors since issue #2; rules + sets since issue #3):
+Recipe fields (base + donors since issue #2; rules + sets since issue
+#3; output naming since issue #6):
 
 - ``base``: the base font reference
 - ``donors``: the donor list of font references
@@ -13,7 +14,10 @@ Recipe fields (base + donors since issue #2; rules + sets since issue #3):
   codepoint, an interval string, or a non-empty list of either
 - ``output``: the build's output settings — ``format`` selects the
   output format tier (``ttf`` the default, ``ttc``, or ``woff2``;
-  issue #10)
+  issue #10) and ``family`` the output family name (default: the fixed
+  brand default ``ChHsich``, never a name derived from the source
+  fonts; validated ASCII letters/digits/hyphens, spaces converted to
+  hyphens, at most 31 characters; issue #6)
 
 A font reference (issue #4) is either a plain path string or a mapping:
 
@@ -56,18 +60,19 @@ from fontalloy_core.precedence import (
     compress_intervals,
     is_unicode_scalar,
 )
+from fontalloy_core.rewrite import BRAND_DEFAULT_FAMILY, validate_family_name
 
 #: The fields the recipe accepts.
 RECIPE_FIELDS = ("base", "donors", "rules", "sets", "output")
-
-#: The keys the output section accepts.
-OUTPUT_FIELDS = ("format",)
 
 #: The target fields a rule may declare; exactly one per rule.
 _TARGET_FIELDS = (CODEPOINT, RANGE, SET)
 
 #: The keys a font-reference mapping accepts.
 REF_FIELDS = ("path", "face", "instance")
+
+#: The keys the output section accepts.
+OUTPUT_FIELDS = ("format", "family")
 
 
 @dataclass(frozen=True)
@@ -87,16 +92,18 @@ class FontRef:
 
 @dataclass(frozen=True)
 class OutputSpec:
-    """The build's output settings (issue #10).
+    """The build's output settings (issues #6 and #10).
 
-    ``format`` selects the output format tier: ``ttf`` (the default,
-    required), ``ttc`` (a collection packaging one merged face per
-    selected face of the base font file), or ``woff2`` (optional, behind
-    this explicit choice). Output naming joins this section in a later
-    ticket (stage 6).
+    ``format`` selects the output format tier: ``ttf`` (the default),
+    ``ttc`` (a collection packaging one merged face per selected face
+    of the base font file), or ``woff2`` (optional, behind this
+    explicit choice). ``family`` is the validated output family name
+    (default: the fixed brand default ``ChHsich``, never a name derived
+    from the source fonts).
     """
 
     format: str = "ttf"
+    family: str = BRAND_DEFAULT_FAMILY
 
 
 @dataclass(frozen=True)
@@ -166,18 +173,18 @@ def _parse_output(raw: object) -> OutputSpec:
             f"unknown output field {unknown[0]!r} in recipe field 'output' "
             f"(accepts: {', '.join(OUTPUT_FIELDS)})"
         )
-    if "format" not in raw:
-        raise RecipeError(
-            "recipe field 'output' is missing the required 'format' key "
-            f"(one of: {', '.join(OUTPUT_FORMATS)})"
-        )
-    fmt = raw["format"]
+    fmt = raw.get("format", "ttf")
     if fmt not in OUTPUT_FORMATS:
         raise RecipeError(
             f"recipe field 'output.format' must be one of: "
             f"{', '.join(OUTPUT_FORMATS)} (got {fmt!r})"
         )
-    return OutputSpec(format=fmt)
+    if "family" not in raw:
+        return OutputSpec(format=fmt)
+    return OutputSpec(
+        format=fmt,
+        family=validate_family_name(raw["family"], "output.family"),
+    )
 
 
 def _parse_base(data: dict, root: Path) -> FontRef:
