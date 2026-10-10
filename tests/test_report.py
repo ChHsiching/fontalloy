@@ -243,7 +243,10 @@ class TestMetricComparison:
         [record] = face["normalization"]
         assert record["upem"] == 2048
         assert record["s0"] == pytest.approx(1000 / 2048)
-        assert record["scale"] == pytest.approx(record["s0"] * record["k"])
+        # scale = s0 * k up to the JSON's fixed 6-decimal rounding.
+        assert record["scale"] == pytest.approx(
+            record["s0"] * record["k"], abs=1e-5
+        )
 
     def test_usWin_grows_only_to_prevent_clipping(
         self, tmp_path, base_font, synth_font_factory
@@ -350,15 +353,22 @@ class TestRenderedForms:
         assert "<style>" in html  # the styling is embedded, not external
         assert 'src="http' not in html and 'href="http' not in html
         assert SCHEMA_V2 in html
-        for section in ("coverage", "weights", "metrics", "normalization"):
+        for section in ("coverage", "weights", "metrics", "Normalization"):
             assert section in html
 
     def test_both_renderings_are_deterministic(self, recipe_file, tmp_path):
-        first = build(recipe_file, tmp_path / "a.ttf")
-        second = build(recipe_file, tmp_path / "b.ttf")
+        # Same pinned inputs rebuilt to the same paths: the renderings
+        # are byte-identical with the report they render (the report
+        # records the output path, so "identical inputs" means the same
+        # destination — the reproducibility gate's own semantics).
+        first = build(recipe_file, tmp_path / "out.ttf")
+        text, page = render_text(first.report), render_html(first.report)
+        assert render_text(first.report) == text  # pure: rerenders agree
 
-        assert render_text(first.report) == render_text(second.report)
-        assert render_html(first.report) == render_html(second.report)
+        second = build(recipe_file, tmp_path / "out.ttf")
+
+        assert render_text(second.report) == text
+        assert render_html(second.report) == page
 
     def test_build_writes_the_human_form_beside_the_report(
         self, recipe_file, tmp_path

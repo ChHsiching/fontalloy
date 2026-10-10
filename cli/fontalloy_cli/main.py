@@ -79,9 +79,10 @@ def build(
     `output.family`), and the requested weight/style matrix (the base
     file's faces by default, a recipe `weights` selection otherwise)
     emits one merged face per slot with donors matched at the nearest
-    weight. Every build emits a verification report with per-codepoint
-    provenance, the weight borrow table, and the source font hashes
-    backing reproducibility.
+    weight. Every build emits a verification report with codepoint
+    coverage, the weight borrow table, and the metric comparison —
+    printed here in the terminal form, written beside the font as the
+    machine-readable JSON plus the rendered HTML.
     """
     try:
         result = fontalloy_core.build(
@@ -96,20 +97,14 @@ def build(
         f"built {result.font_path} (format {result.format}, "
         f"{summary['output_codepoints']} codepoints in output)"
     )
-    typer.echo(
-        f"report {result.report_path} "
-        f"({summary['from_base']} from base, {summary['from_donors']} from donors)"
-    )
-    # The weight borrow table, stated in the interface too (issue #9):
-    # one line per output slot, every borrow named.
-    for slot in result.report.weights:
-        style = "italic" if slot.italic else "upright"
-        borrows = ", ".join(
-            f"{borrow.donor} from {borrow.weight} ({borrow.via})"
-            + (" upright" if borrow.style_fallback else "")
-            for borrow in slot.borrows
-        )
-        typer.echo(f"weight {slot.weight} {style}: {borrows or 'no donors'}")
+    typer.echo(f"report {result.report_path} (machine-readable JSON)")
+    if result.report_html_path is not None:
+        typer.echo(f"report {result.report_html_path} (rendered, human-readable)")
+    # The terminal form of the whole report (issue #12): coverage with
+    # explicit gaps, the borrow table, and the before/after metrics —
+    # including the borrow lines the interface has always stated.
+    typer.echo()
+    typer.echo(fontalloy_core.render_text(result.report), nl=False)
 
 
 @assets_app.command("fetch")

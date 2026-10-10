@@ -145,7 +145,7 @@ def plan_normalization(
     font is only read, never modified.
     """
     upem = base["head"].unitsPerEm
-    latin_advance = _latin_advance(base)
+    advance = latin_advance(base)
     cap_height = _cap_height(base)
     typo_span = _typo_span(base)
 
@@ -153,14 +153,14 @@ def plan_normalization(
         donor_id: _donor_scale(
             donor_id, donor, base, options,
             upem=upem,
-            latin_advance=latin_advance,
+            latin_advance=advance,
             cap_height=cap_height,
             typo_span=typo_span,
         )
         for donor_id, donor in donors.items()
     }
     return NormalizationPlan(
-        latin_advance=latin_advance,
+        latin_advance=advance,
         cap_height=cap_height,
         typo_span=typo_span,
         options=options,
@@ -216,13 +216,16 @@ def _donor_scale(
     )
 
 
-def _latin_advance(base: TTFont) -> int:
+def latin_advance(base: TTFont) -> int:
     """A: the base font's single-cell advance.
 
     The most frequent advance over the base's covered printable ASCII
     (0x21-0x7E); ties resolve to the smaller advance. A monospaced base
     has exactly one such advance (JetBrains Mono: 600 at 1000 upem). A
     base covering no ASCII at all falls back to half an em.
+
+    Public because the verification report measures the same
+    representative advance on the built font (issue #12).
     """
     cmap = base.getBestCmap()
     counts: dict[int, int] = {}
