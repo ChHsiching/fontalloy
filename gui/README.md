@@ -73,12 +73,19 @@ Verified in this environment (Windows, Git Bash):
 
 - `npm run test:e2e` — full seam-3 suite against the Vite dev server.
 - `npm run build` — TypeScript strict compile + production bundle.
-- `cargo check` in `src-tauri/` — Rust shell compiles (Tauri 2 crates).
+- `cargo check` and `cargo build` in `src-tauri/` — the Tauri 2 shell
+  compiles and links a debug binary (tauri 2.12, WebView2 backend).
+- Launch smoke test: with the Vite dev server running, the debug
+  `fontalloy-gui.exe` starts, spawns its WebView2 children, and stays
+  alive (process-level evidence; the window contents were not captured
+  natively — visual verification went through the Playwright suite).
 
-NOT verified here (needs a longer native toolchain run / real display):
+NOT verified here:
 
-- `npm run tauri dev` / `tauri build` producing a launched desktop window.
-- macOS and Linux packaging.
+- `npm run tauri build` installers, and macOS / Linux builds (no
+  toolchains for those targets in this environment).
+- The GitHub Actions workflow (`.github/workflows/gui-e2e.yml`) — the
+  branch is local-only; the workflow has not had a CI run yet.
 
 ## Scope notes
 
