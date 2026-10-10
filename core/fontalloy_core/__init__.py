@@ -40,6 +40,15 @@ The only capability layer (ADR-0002). Public surface:
 - ``package_catalog_release(...)``: repackage a fetched catalog into
   per-family zips plus SHA256SUMS and catalog-release metadata (the CI
   catalog release job).
+- ``run_serve(options)`` / ``ServeOptions`` / ``parse_recipe(data, root)``
+  (issue #11): the core as a localhost HTTP service — bound to 127.0.0.1
+  only, CORS limited to the configured origins, merges submitted as
+  recipe-shaped JSON (parsed by the same schema code the file loader
+  uses) and run asynchronously on a queue with stage progress, output
+  font and verification report downloadable, artifacts retained for the
+  newest builds only and cleaned up on shutdown. The implementation is
+  stdlib-only (``http.server`` with a threading server), keeping the
+  GUI's sidecar bundle lean.
 - ``RecipeError`` / ``BuildError`` / ``CatalogError`` / ``AssetsError`` /
   ``ReleaseError``: the error types callers catch.
 """
@@ -48,7 +57,7 @@ from __future__ import annotations
 
 from fontalloy_core import presets
 from fontalloy_core.assets import FetchSummary, fetch_catalog
-from fontalloy_core.build import BuildOutput, build
+from fontalloy_core.build import BuildOutput, build, build_recipe
 from fontalloy_core.catalog import Catalog, CatalogEntry, load_manifest
 from fontalloy_core.catalog_release import (
     CatalogRelease,
@@ -77,7 +86,12 @@ from fontalloy_core.precedence import (
     SameLayerConflict,
     resolve_precedence,
 )
-from fontalloy_core.recipe import Recipe, WeightRequest, load_recipe
+from fontalloy_core.recipe import (
+    Recipe,
+    WeightRequest,
+    load_recipe,
+    parse_recipe,
+)
 from fontalloy_core.render import render_html, render_text
 from fontalloy_core.report import VerificationReport
 from fontalloy_core.release import ReleasePackage, package_catalog_release
@@ -88,6 +102,7 @@ from fontalloy_core.rewrite import (
     apply_output_identity,
     validate_family_name,
 )
+from fontalloy_core.serve import ServeOptions, run_serve
 
 __version__ = "0.1.0"
 
@@ -121,12 +136,14 @@ __all__ = [
     "ReleasePackage",
     "Resolution",
     "SameLayerConflict",
+    "ServeOptions",
     "VerificationReport",
     "WeightRequest",
     "aggregate_families",
     "apply_os2_corrections",
     "apply_output_identity",
     "build",
+    "build_recipe",
     "fetch_catalog",
     "fetch_from_origins",
     "generate_notices",
@@ -134,11 +151,13 @@ __all__ = [
     "load_manifest",
     "load_recipe",
     "package_catalog_release",
+    "parse_recipe",
     "plan_matrix",
     "presets",
     "render_html",
     "render_text",
     "resolve_precedence",
+    "run_serve",
     "scan_families",
     "validate_family_name",
     "write_notices",

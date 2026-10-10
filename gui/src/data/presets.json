@@ -1,0 +1,3433 @@
+{
+  "featured": [
+    "zh_cn",
+    "zh_tw",
+    "zh_hk",
+    "ja",
+    "ko"
+  ],
+  "presets": [
+    {
+      "codepoints": 62,
+      "name": "aa",
+      "sub_blocks": [
+        {
+          "codepoints": 62,
+          "name": "aa"
+        }
+      ]
+    },
+    {
+      "codepoints": 90,
+      "name": "ab",
+      "sub_blocks": [
+        {
+          "codepoints": 90,
+          "name": "ab"
+        }
+      ]
+    },
+    {
+      "codepoints": 61,
+      "name": "ae",
+      "sub_blocks": [
+        {
+          "codepoints": 61,
+          "name": "ae"
+        }
+      ]
+    },
+    {
+      "codepoints": 69,
+      "name": "af",
+      "sub_blocks": [
+        {
+          "codepoints": 69,
+          "name": "af"
+        }
+      ]
+    },
+    {
+      "codepoints": 53,
+      "name": "agr",
+      "sub_blocks": [
+        {
+          "codepoints": 53,
+          "name": "agr"
+        }
+      ]
+    },
+    {
+      "codepoints": 65,
+      "name": "aho",
+      "sub_blocks": [
+        {
+          "codepoints": 65,
+          "name": "aho"
+        }
+      ]
+    },
+    {
+      "codepoints": 73,
+      "name": "ak",
+      "sub_blocks": [
+        {
+          "codepoints": 73,
+          "name": "ak"
+        }
+      ]
+    },
+    {
+      "codepoints": 1234,
+      "name": "akk",
+      "sub_blocks": [
+        {
+          "codepoints": 1234,
+          "name": "akk"
+        }
+      ]
+    },
+    {
+      "codepoints": 264,
+      "name": "am",
+      "sub_blocks": [
+        {
+          "codepoints": 264,
+          "name": "am"
+        }
+      ]
+    },
+    {
+      "codepoints": 66,
+      "name": "an",
+      "sub_blocks": [
+        {
+          "codepoints": 66,
+          "name": "an"
+        }
+      ]
+    },
+    {
+      "codepoints": 68,
+      "name": "anp",
+      "sub_blocks": [
+        {
+          "codepoints": 68,
+          "name": "anp"
+        }
+      ]
+    },
+    {
+      "codepoints": 36,
+      "name": "ar",
+      "sub_blocks": [
+        {
+          "codepoints": 36,
+          "name": "ar"
+        }
+      ]
+    },
+    {
+      "codepoints": 31,
+      "name": "arc",
+      "sub_blocks": [
+        {
+          "codepoints": 31,
+          "name": "arc"
+        }
+      ]
+    },
+    {
+      "codepoints": 64,
+      "name": "as",
+      "sub_blocks": [
+        {
+          "codepoints": 64,
+          "name": "as"
+        }
+      ]
+    },
+    {
+      "codepoints": 70,
+      "name": "ast",
+      "sub_blocks": [
+        {
+          "codepoints": 70,
+          "name": "ast"
+        }
+      ]
+    },
+    {
+      "codepoints": 67,
+      "name": "av",
+      "sub_blocks": [
+        {
+          "codepoints": 67,
+          "name": "av"
+        }
+      ]
+    },
+    {
+      "codepoints": 60,
+      "name": "ay",
+      "sub_blocks": [
+        {
+          "codepoints": 60,
+          "name": "ay"
+        }
+      ]
+    },
+    {
+      "codepoints": 56,
+      "name": "ayc",
+      "sub_blocks": [
+        {
+          "codepoints": 56,
+          "name": "ayc"
+        }
+      ]
+    },
+    {
+      "codepoints": 66,
+      "name": "az_az",
+      "sub_blocks": [
+        {
+          "codepoints": 66,
+          "name": "az_az"
+        }
+      ]
+    },
+    {
+      "codepoints": 40,
+      "name": "az_ir",
+      "sub_blocks": [
+        {
+          "codepoints": 40,
+          "name": "az_ir"
+        }
+      ]
+    },
+    {
+      "codepoints": 82,
+      "name": "ba",
+      "sub_blocks": [
+        {
+          "codepoints": 82,
+          "name": "ba"
+        }
+      ]
+    },
+    {
+      "codepoints": 121,
+      "name": "ban",
+      "sub_blocks": [
+        {
+          "codepoints": 121,
+          "name": "ban"
+        }
+      ]
+    },
+    {
+      "codepoints": 88,
+      "name": "bax",
+      "sub_blocks": [
+        {
+          "codepoints": 88,
+          "name": "bax"
+        }
+      ]
+    },
+    {
+      "codepoints": 68,
+      "name": "be",
+      "sub_blocks": [
+        {
+          "codepoints": 68,
+          "name": "be"
+        }
+      ]
+    },
+    {
+      "codepoints": 52,
+      "name": "bem",
+      "sub_blocks": [
+        {
+          "codepoints": 52,
+          "name": "bem"
+        }
+      ]
+    },
+    {
+      "codepoints": 70,
+      "name": "ber_dz",
+      "sub_blocks": [
+        {
+          "codepoints": 70,
+          "name": "ber_dz"
+        }
+      ]
+    },
+    {
+      "codepoints": 32,
+      "name": "ber_ma",
+      "sub_blocks": [
+        {
+          "codepoints": 32,
+          "name": "ber_ma"
+        }
+      ]
+    },
+    {
+      "codepoints": 60,
+      "name": "bg",
+      "sub_blocks": [
+        {
+          "codepoints": 60,
+          "name": "bg"
+        }
+      ]
+    },
+    {
+      "codepoints": 68,
+      "name": "bh",
+      "sub_blocks": [
+        {
+          "codepoints": 68,
+          "name": "bh"
+        }
+      ]
+    },
+    {
+      "codepoints": 68,
+      "name": "bhb",
+      "sub_blocks": [
+        {
+          "codepoints": 68,
+          "name": "bhb"
+        }
+      ]
+    },
+    {
+      "codepoints": 68,
+      "name": "bho",
+      "sub_blocks": [
+        {
+          "codepoints": 68,
+          "name": "bho"
+        }
+      ]
+    },
+    {
+      "codepoints": 58,
+      "name": "bi",
+      "sub_blocks": [
+        {
+          "codepoints": 58,
+          "name": "bi"
+        }
+      ]
+    },
+    {
+      "codepoints": 78,
+      "name": "bin",
+      "sub_blocks": [
+        {
+          "codepoints": 78,
+          "name": "bin"
+        }
+      ]
+    },
+    {
+      "codepoints": 20,
+      "name": "bku",
+      "sub_blocks": [
+        {
+          "codepoints": 20,
+          "name": "bku"
+        }
+      ]
+    },
+    {
+      "codepoints": 72,
+      "name": "blt",
+      "sub_blocks": [
+        {
+          "codepoints": 72,
+          "name": "blt"
+        }
+      ]
+    },
+    {
+      "codepoints": 60,
+      "name": "bm",
+      "sub_blocks": [
+        {
+          "codepoints": 60,
+          "name": "bm"
+        }
+      ]
+    },
+    {
+      "codepoints": 63,
+      "name": "bn",
+      "sub_blocks": [
+        {
+          "codepoints": 63,
+          "name": "bn"
+        }
+      ]
+    },
+    {
+      "codepoints": 95,
+      "name": "bo",
+      "sub_blocks": [
+        {
+          "codepoints": 95,
+          "name": "bo"
+        }
+      ]
+    },
+    {
+      "codepoints": 64,
+      "name": "br",
+      "sub_blocks": [
+        {
+          "codepoints": 64,
+          "name": "br"
+        }
+      ]
+    },
+    {
+      "codepoints": 82,
+      "name": "brx",
+      "sub_blocks": [
+        {
+          "codepoints": 82,
+          "name": "brx"
+        }
+      ]
+    },
+    {
+      "codepoints": 62,
+      "name": "bs",
+      "sub_blocks": [
+        {
+          "codepoints": 62,
+          "name": "bs"
+        }
+      ]
+    },
+    {
+      "codepoints": 70,
+      "name": "bua",
+      "sub_blocks": [
+        {
+          "codepoints": 70,
+          "name": "bua"
+        }
+      ]
+    },
+    {
+      "codepoints": 255,
+      "name": "byn",
+      "sub_blocks": [
+        {
+          "codepoints": 255,
+          "name": "byn"
+        }
+      ]
+    },
+    {
+      "codepoints": 74,
+      "name": "ca",
+      "sub_blocks": [
+        {
+          "codepoints": 74,
+          "name": "ca"
+        }
+      ]
+    },
+    {
+      "codepoints": 71,
+      "name": "ccp",
+      "sub_blocks": [
+        {
+          "codepoints": 71,
+          "name": "ccp"
+        }
+      ]
+    },
+    {
+      "codepoints": 67,
+      "name": "ce",
+      "sub_blocks": [
+        {
+          "codepoints": 67,
+          "name": "ce"
+        }
+      ]
+    },
+    {
+      "codepoints": 58,
+      "name": "ch",
+      "sub_blocks": [
+        {
+          "codepoints": 58,
+          "name": "ch"
+        }
+      ]
+    },
+    {
+      "codepoints": 76,
+      "name": "chm",
+      "sub_blocks": [
+        {
+          "codepoints": 76,
+          "name": "chm"
+        }
+      ]
+    },
+    {
+      "codepoints": 85,
+      "name": "chr",
+      "sub_blocks": [
+        {
+          "codepoints": 85,
+          "name": "chr"
+        }
+      ]
+    },
+    {
+      "codepoints": 83,
+      "name": "cjm",
+      "sub_blocks": [
+        {
+          "codepoints": 83,
+          "name": "cjm"
+        }
+      ]
+    },
+    {
+      "codepoints": 32,
+      "name": "ckb",
+      "sub_blocks": [
+        {
+          "codepoints": 32,
+          "name": "ckb"
+        }
+      ]
+    },
+    {
+      "codepoints": 13063,
+      "name": "cmn",
+      "sub_blocks": [
+        {
+          "codepoints": 13063,
+          "name": "cmn"
+        }
+      ]
+    },
+    {
+      "codepoints": 84,
+      "name": "co",
+      "sub_blocks": [
+        {
+          "codepoints": 84,
+          "name": "co"
+        }
+      ]
+    },
+    {
+      "codepoints": 137,
+      "name": "cop",
+      "sub_blocks": [
+        {
+          "codepoints": 137,
+          "name": "cop"
+        }
+      ]
+    },
+    {
+      "codepoints": 68,
+      "name": "crh",
+      "sub_blocks": [
+        {
+          "codepoints": 68,
+          "name": "crh"
+        }
+      ]
+    },
+    {
+      "codepoints": 82,
+      "name": "cs",
+      "sub_blocks": [
+        {
+          "codepoints": 82,
+          "name": "cs"
+        }
+      ]
+    },
+    {
+      "codepoints": 74,
+      "name": "csb",
+      "sub_blocks": [
+        {
+          "codepoints": 74,
+          "name": "csb"
+        }
+      ]
+    },
+    {
+      "codepoints": 103,
+      "name": "cu",
+      "sub_blocks": [
+        {
+          "codepoints": 103,
+          "name": "cu"
+        }
+      ]
+    },
+    {
+      "codepoints": 74,
+      "name": "cv",
+      "sub_blocks": [
+        {
+          "codepoints": 74,
+          "name": "cv"
+        }
+      ]
+    },
+    {
+      "codepoints": 78,
+      "name": "cy",
+      "sub_blocks": [
+        {
+          "codepoints": 78,
+          "name": "cy"
+        }
+      ]
+    },
+    {
+      "codepoints": 70,
+      "name": "da",
+      "sub_blocks": [
+        {
+          "codepoints": 70,
+          "name": "da"
+        }
+      ]
+    },
+    {
+      "codepoints": 59,
+      "name": "de",
+      "sub_blocks": [
+        {
+          "codepoints": 59,
+          "name": "de"
+        }
+      ]
+    },
+    {
+      "codepoints": 91,
+      "name": "dmf",
+      "sub_blocks": [
+        {
+          "codepoints": 91,
+          "name": "dmf"
+        }
+      ]
+    },
+    {
+      "codepoints": 85,
+      "name": "doi",
+      "sub_blocks": [
+        {
+          "codepoints": 85,
+          "name": "doi"
+        }
+      ]
+    },
+    {
+      "codepoints": 82,
+      "name": "dsb",
+      "sub_blocks": [
+        {
+          "codepoints": 82,
+          "name": "dsb"
+        }
+      ]
+    },
+    {
+      "codepoints": 49,
+      "name": "dv",
+      "sub_blocks": [
+        {
+          "codepoints": 49,
+          "name": "dv"
+        }
+      ]
+    },
+    {
+      "codepoints": 95,
+      "name": "dz",
+      "sub_blocks": [
+        {
+          "codepoints": 95,
+          "name": "dz"
+        }
+      ]
+    },
+    {
+      "codepoints": 55,
+      "name": "ecy",
+      "sub_blocks": [
+        {
+          "codepoints": 55,
+          "name": "ecy"
+        }
+      ]
+    },
+    {
+      "codepoints": 99,
+      "name": "ee",
+      "sub_blocks": [
+        {
+          "codepoints": 99,
+          "name": "ee"
+        }
+      ]
+    },
+    {
+      "codepoints": 1072,
+      "name": "egy",
+      "sub_blocks": [
+        {
+          "codepoints": 1072,
+          "name": "egy"
+        }
+      ]
+    },
+    {
+      "codepoints": 48,
+      "name": "eky",
+      "sub_blocks": [
+        {
+          "codepoints": 48,
+          "name": "eky"
+        }
+      ]
+    },
+    {
+      "codepoints": 69,
+      "name": "el",
+      "sub_blocks": [
+        {
+          "codepoints": 69,
+          "name": "el"
+        }
+      ]
+    },
+    {
+      "codepoints": 72,
+      "name": "en",
+      "sub_blocks": [
+        {
+          "codepoints": 72,
+          "name": "en"
+        }
+      ]
+    },
+    {
+      "codepoints": 64,
+      "name": "eo",
+      "sub_blocks": [
+        {
+          "codepoints": 64,
+          "name": "eo"
+        }
+      ]
+    },
+    {
+      "codepoints": 66,
+      "name": "es",
+      "sub_blocks": [
+        {
+          "codepoints": 66,
+          "name": "es"
+        }
+      ]
+    },
+    {
+      "codepoints": 64,
+      "name": "et",
+      "sub_blocks": [
+        {
+          "codepoints": 64,
+          "name": "et"
+        }
+      ]
+    },
+    {
+      "codepoints": 39,
+      "name": "ett",
+      "sub_blocks": [
+        {
+          "codepoints": 39,
+          "name": "ett"
+        }
+      ]
+    },
+    {
+      "codepoints": 56,
+      "name": "eu",
+      "sub_blocks": [
+        {
+          "codepoints": 56,
+          "name": "eu"
+        }
+      ]
+    },
+    {
+      "codepoints": 40,
+      "name": "fa",
+      "sub_blocks": [
+        {
+          "codepoints": 40,
+          "name": "fa"
+        }
+      ]
+    },
+    {
+      "codepoints": 73,
+      "name": "fat",
+      "sub_blocks": [
+        {
+          "codepoints": 73,
+          "name": "fat"
+        }
+      ]
+    },
+    {
+      "codepoints": 62,
+      "name": "ff",
+      "sub_blocks": [
+        {
+          "codepoints": 62,
+          "name": "ff"
+        }
+      ]
+    },
+    {
+      "codepoints": 62,
+      "name": "fi",
+      "sub_blocks": [
+        {
+          "codepoints": 62,
+          "name": "fi"
+        }
+      ]
+    },
+    {
+      "codepoints": 84,
+      "name": "fil",
+      "sub_blocks": [
+        {
+          "codepoints": 84,
+          "name": "fil"
+        }
+      ]
+    },
+    {
+      "codepoints": 52,
+      "name": "fj",
+      "sub_blocks": [
+        {
+          "codepoints": 52,
+          "name": "fj"
+        }
+      ]
+    },
+    {
+      "codepoints": 68,
+      "name": "fo",
+      "sub_blocks": [
+        {
+          "codepoints": 68,
+          "name": "fo"
+        }
+      ]
+    },
+    {
+      "codepoints": 84,
+      "name": "fr",
+      "sub_blocks": [
+        {
+          "codepoints": 84,
+          "name": "fr"
+        }
+      ]
+    },
+    {
+      "codepoints": 66,
+      "name": "fur",
+      "sub_blocks": [
+        {
+          "codepoints": 66,
+          "name": "fur"
+        }
+      ]
+    },
+    {
+      "codepoints": 75,
+      "name": "fy",
+      "sub_blocks": [
+        {
+          "codepoints": 75,
+          "name": "fy"
+        }
+      ]
+    },
+    {
+      "codepoints": 80,
+      "name": "ga",
+      "sub_blocks": [
+        {
+          "codepoints": 80,
+          "name": "ga"
+        }
+      ]
+    },
+    {
+      "codepoints": 70,
+      "name": "gd",
+      "sub_blocks": [
+        {
+          "codepoints": 70,
+          "name": "gd"
+        }
+      ]
+    },
+    {
+      "codepoints": 218,
+      "name": "gez",
+      "sub_blocks": [
+        {
+          "codepoints": 218,
+          "name": "gez"
+        }
+      ]
+    },
+    {
+      "codepoints": 66,
+      "name": "gl",
+      "sub_blocks": [
+        {
+          "codepoints": 66,
+          "name": "gl"
+        }
+      ]
+    },
+    {
+      "codepoints": 211,
+      "name": "gmy",
+      "sub_blocks": [
+        {
+          "codepoints": 211,
+          "name": "gmy"
+        }
+      ]
+    },
+    {
+      "codepoints": 70,
+      "name": "gn",
+      "sub_blocks": [
+        {
+          "codepoints": 70,
+          "name": "gn"
+        }
+      ]
+    },
+    {
+      "codepoints": 27,
+      "name": "got",
+      "sub_blocks": [
+        {
+          "codepoints": 27,
+          "name": "got"
+        }
+      ]
+    },
+    {
+      "codepoints": 68,
+      "name": "gu",
+      "sub_blocks": [
+        {
+          "codepoints": 68,
+          "name": "gu"
+        }
+      ]
+    },
+    {
+      "codepoints": 54,
+      "name": "gv",
+      "sub_blocks": [
+        {
+          "codepoints": 54,
+          "name": "gv"
+        }
+      ]
+    },
+    {
+      "codepoints": 60,
+      "name": "ha",
+      "sub_blocks": [
+        {
+          "codepoints": 60,
+          "name": "ha"
+        }
+      ]
+    },
+    {
+      "codepoints": 13063,
+      "name": "hak",
+      "sub_blocks": [
+        {
+          "codepoints": 13063,
+          "name": "hak"
+        }
+      ]
+    },
+    {
+      "codepoints": 63,
+      "name": "haw",
+      "sub_blocks": [
+        {
+          "codepoints": 63,
+          "name": "haw"
+        }
+      ]
+    },
+    {
+      "codepoints": 27,
+      "name": "he",
+      "sub_blocks": [
+        {
+          "codepoints": 27,
+          "name": "he"
+        }
+      ]
+    },
+    {
+      "codepoints": 68,
+      "name": "hi",
+      "sub_blocks": [
+        {
+          "codepoints": 68,
+          "name": "hi"
+        }
+      ]
+    },
+    {
+      "codepoints": 68,
+      "name": "hif",
+      "sub_blocks": [
+        {
+          "codepoints": 68,
+          "name": "hif"
+        }
+      ]
+    },
+    {
+      "codepoints": 1234,
+      "name": "hit",
+      "sub_blocks": [
+        {
+          "codepoints": 1234,
+          "name": "hit"
+        }
+      ]
+    },
+    {
+      "codepoints": 583,
+      "name": "hlu",
+      "sub_blocks": [
+        {
+          "codepoints": 583,
+          "name": "hlu"
+        }
+      ]
+    },
+    {
+      "codepoints": 149,
+      "name": "hmd",
+      "sub_blocks": [
+        {
+          "codepoints": 149,
+          "name": "hmd"
+        }
+      ]
+    },
+    {
+      "codepoints": 68,
+      "name": "hne",
+      "sub_blocks": [
+        {
+          "codepoints": 68,
+          "name": "hne"
+        }
+      ]
+    },
+    {
+      "codepoints": 23,
+      "name": "hnn",
+      "sub_blocks": [
+        {
+          "codepoints": 23,
+          "name": "hnn"
+        }
+      ]
+    },
+    {
+      "codepoints": 52,
+      "name": "ho",
+      "sub_blocks": [
+        {
+          "codepoints": 52,
+          "name": "ho"
+        }
+      ]
+    },
+    {
+      "codepoints": 84,
+      "name": "hoc",
+      "sub_blocks": [
+        {
+          "codepoints": 84,
+          "name": "hoc"
+        }
+      ]
+    },
+    {
+      "codepoints": 62,
+      "name": "hr",
+      "sub_blocks": [
+        {
+          "codepoints": 62,
+          "name": "hr"
+        }
+      ]
+    },
+    {
+      "codepoints": 72,
+      "name": "hsb",
+      "sub_blocks": [
+        {
+          "codepoints": 72,
+          "name": "hsb"
+        }
+      ]
+    },
+    {
+      "codepoints": 56,
+      "name": "ht",
+      "sub_blocks": [
+        {
+          "codepoints": 56,
+          "name": "ht"
+        }
+      ]
+    },
+    {
+      "codepoints": 70,
+      "name": "hu",
+      "sub_blocks": [
+        {
+          "codepoints": 70,
+          "name": "hu"
+        }
+      ]
+    },
+    {
+      "codepoints": 77,
+      "name": "hy",
+      "sub_blocks": [
+        {
+          "codepoints": 77,
+          "name": "hy"
+        }
+      ]
+    },
+    {
+      "codepoints": 57,
+      "name": "hz",
+      "sub_blocks": [
+        {
+          "codepoints": 57,
+          "name": "hz"
+        }
+      ]
+    },
+    {
+      "codepoints": 52,
+      "name": "ia",
+      "sub_blocks": [
+        {
+          "codepoints": 52,
+          "name": "ia"
+        }
+      ]
+    },
+    {
+      "codepoints": 54,
+      "name": "id",
+      "sub_blocks": [
+        {
+          "codepoints": 54,
+          "name": "id"
+        }
+      ]
+    },
+    {
+      "codepoints": 64,
+      "name": "ie",
+      "sub_blocks": [
+        {
+          "codepoints": 64,
+          "name": "ie"
+        }
+      ]
+    },
+    {
+      "codepoints": 58,
+      "name": "ig",
+      "sub_blocks": [
+        {
+          "codepoints": 58,
+          "name": "ig"
+        }
+      ]
+    },
+    {
+      "codepoints": 1165,
+      "name": "ii",
+      "sub_blocks": [
+        {
+          "codepoints": 1165,
+          "name": "ii"
+        }
+      ]
+    },
+    {
+      "codepoints": 68,
+      "name": "ik",
+      "sub_blocks": [
+        {
+          "codepoints": 68,
+          "name": "ik"
+        }
+      ]
+    },
+    {
+      "codepoints": 52,
+      "name": "io",
+      "sub_blocks": [
+        {
+          "codepoints": 52,
+          "name": "io"
+        }
+      ]
+    },
+    {
+      "codepoints": 70,
+      "name": "is",
+      "sub_blocks": [
+        {
+          "codepoints": 70,
+          "name": "is"
+        }
+      ]
+    },
+    {
+      "codepoints": 72,
+      "name": "it",
+      "sub_blocks": [
+        {
+          "codepoints": 72,
+          "name": "it"
+        }
+      ]
+    },
+    {
+      "codepoints": 161,
+      "name": "iu",
+      "sub_blocks": [
+        {
+          "codepoints": 161,
+          "name": "iu"
+        }
+      ]
+    },
+    {
+      "codepoints": 2314,
+      "name": "ja",
+      "sub_blocks": [
+        {
+          "codepoints": 2314,
+          "name": "ja"
+        }
+      ]
+    },
+    {
+      "codepoints": 90,
+      "name": "jv",
+      "sub_blocks": [
+        {
+          "codepoints": 90,
+          "name": "jv"
+        }
+      ]
+    },
+    {
+      "codepoints": 33,
+      "name": "ka",
+      "sub_blocks": [
+        {
+          "codepoints": 33,
+          "name": "ka"
+        }
+      ]
+    },
+    {
+      "codepoints": 78,
+      "name": "kaa",
+      "sub_blocks": [
+        {
+          "codepoints": 78,
+          "name": "kaa"
+        }
+      ]
+    },
+    {
+      "codepoints": 70,
+      "name": "kab",
+      "sub_blocks": [
+        {
+          "codepoints": 70,
+          "name": "kab"
+        }
+      ]
+    },
+    {
+      "codepoints": 86,
+      "name": "kaw",
+      "sub_blocks": [
+        {
+          "codepoints": 86,
+          "name": "kaw"
+        }
+      ]
+    },
+    {
+      "codepoints": 83,
+      "name": "khb",
+      "sub_blocks": [
+        {
+          "codepoints": 83,
+          "name": "khb"
+        }
+      ]
+    },
+    {
+      "codepoints": 56,
+      "name": "ki",
+      "sub_blocks": [
+        {
+          "codepoints": 56,
+          "name": "ki"
+        }
+      ]
+    },
+    {
+      "codepoints": 52,
+      "name": "kj",
+      "sub_blocks": [
+        {
+          "codepoints": 52,
+          "name": "kj"
+        }
+      ]
+    },
+    {
+      "codepoints": 77,
+      "name": "kk",
+      "sub_blocks": [
+        {
+          "codepoints": 77,
+          "name": "kk"
+        }
+      ]
+    },
+    {
+      "codepoints": 81,
+      "name": "kl",
+      "sub_blocks": [
+        {
+          "codepoints": 81,
+          "name": "kl"
+        }
+      ]
+    },
+    {
+      "codepoints": 63,
+      "name": "km",
+      "sub_blocks": [
+        {
+          "codepoints": 63,
+          "name": "km"
+        }
+      ]
+    },
+    {
+      "codepoints": 70,
+      "name": "kn",
+      "sub_blocks": [
+        {
+          "codepoints": 70,
+          "name": "kn"
+        }
+      ]
+    },
+    {
+      "codepoints": 2442,
+      "name": "ko",
+      "sub_blocks": [
+        {
+          "codepoints": 2442,
+          "name": "ko"
+        }
+      ]
+    },
+    {
+      "codepoints": 68,
+      "name": "kok",
+      "sub_blocks": [
+        {
+          "codepoints": 68,
+          "name": "kok"
+        }
+      ]
+    },
+    {
+      "codepoints": 56,
+      "name": "kr",
+      "sub_blocks": [
+        {
+          "codepoints": 56,
+          "name": "kr"
+        }
+      ]
+    },
+    {
+      "codepoints": 33,
+      "name": "ks",
+      "sub_blocks": [
+        {
+          "codepoints": 33,
+          "name": "ks"
+        }
+      ]
+    },
+    {
+      "codepoints": 64,
+      "name": "ku_am",
+      "sub_blocks": [
+        {
+          "codepoints": 64,
+          "name": "ku_am"
+        }
+      ]
+    },
+    {
+      "codepoints": 32,
+      "name": "ku_iq",
+      "sub_blocks": [
+        {
+          "codepoints": 32,
+          "name": "ku_iq"
+        }
+      ]
+    },
+    {
+      "codepoints": 32,
+      "name": "ku_ir",
+      "sub_blocks": [
+        {
+          "codepoints": 32,
+          "name": "ku_ir"
+        }
+      ]
+    },
+    {
+      "codepoints": 62,
+      "name": "ku_tr",
+      "sub_blocks": [
+        {
+          "codepoints": 62,
+          "name": "ku_tr"
+        }
+      ]
+    },
+    {
+      "codepoints": 66,
+      "name": "kum",
+      "sub_blocks": [
+        {
+          "codepoints": 66,
+          "name": "kum"
+        }
+      ]
+    },
+    {
+      "codepoints": 70,
+      "name": "kv",
+      "sub_blocks": [
+        {
+          "codepoints": 70,
+          "name": "kv"
+        }
+      ]
+    },
+    {
+      "codepoints": 64,
+      "name": "kw",
+      "sub_blocks": [
+        {
+          "codepoints": 64,
+          "name": "kw"
+        }
+      ]
+    },
+    {
+      "codepoints": 52,
+      "name": "kwm",
+      "sub_blocks": [
+        {
+          "codepoints": 52,
+          "name": "kwm"
+        }
+      ]
+    },
+    {
+      "codepoints": 70,
+      "name": "ky",
+      "sub_blocks": [
+        {
+          "codepoints": 70,
+          "name": "ky"
+        }
+      ]
+    },
+    {
+      "codepoints": 68,
+      "name": "la",
+      "sub_blocks": [
+        {
+          "codepoints": 68,
+          "name": "la"
+        }
+      ]
+    },
+    {
+      "codepoints": 27,
+      "name": "lah",
+      "sub_blocks": [
+        {
+          "codepoints": 27,
+          "name": "lah"
+        }
+      ]
+    },
+    {
+      "codepoints": 75,
+      "name": "lb",
+      "sub_blocks": [
+        {
+          "codepoints": 75,
+          "name": "lb"
+        }
+      ]
+    },
+    {
+      "codepoints": 74,
+      "name": "lep",
+      "sub_blocks": [
+        {
+          "codepoints": 74,
+          "name": "lep"
+        }
+      ]
+    },
+    {
+      "codepoints": 67,
+      "name": "lez",
+      "sub_blocks": [
+        {
+          "codepoints": 67,
+          "name": "lez"
+        }
+      ]
+    },
+    {
+      "codepoints": 54,
+      "name": "lg",
+      "sub_blocks": [
+        {
+          "codepoints": 54,
+          "name": "lg"
+        }
+      ]
+    },
+    {
+      "codepoints": 62,
+      "name": "li",
+      "sub_blocks": [
+        {
+          "codepoints": 62,
+          "name": "li"
+        }
+      ]
+    },
+    {
+      "codepoints": 68,
+      "name": "lif",
+      "sub_blocks": [
+        {
+          "codepoints": 68,
+          "name": "lif"
+        }
+      ]
+    },
+    {
+      "codepoints": 77,
+      "name": "lij",
+      "sub_blocks": [
+        {
+          "codepoints": 77,
+          "name": "lij"
+        }
+      ]
+    },
+    {
+      "codepoints": 48,
+      "name": "lis",
+      "sub_blocks": [
+        {
+          "codepoints": 48,
+          "name": "lis"
+        }
+      ]
+    },
+    {
+      "codepoints": 81,
+      "name": "ln",
+      "sub_blocks": [
+        {
+          "codepoints": 81,
+          "name": "ln"
+        }
+      ]
+    },
+    {
+      "codepoints": 55,
+      "name": "lo",
+      "sub_blocks": [
+        {
+          "codepoints": 55,
+          "name": "lo"
+        }
+      ]
+    },
+    {
+      "codepoints": 70,
+      "name": "lt",
+      "sub_blocks": [
+        {
+          "codepoints": 70,
+          "name": "lt"
+        }
+      ]
+    },
+    {
+      "codepoints": 78,
+      "name": "lv",
+      "sub_blocks": [
+        {
+          "codepoints": 78,
+          "name": "lv"
+        }
+      ]
+    },
+    {
+      "codepoints": 13063,
+      "name": "lzh",
+      "sub_blocks": [
+        {
+          "codepoints": 13063,
+          "name": "lzh"
+        }
+      ]
+    },
+    {
+      "codepoints": 68,
+      "name": "mag",
+      "sub_blocks": [
+        {
+          "codepoints": 68,
+          "name": "mag"
+        }
+      ]
+    },
+    {
+      "codepoints": 68,
+      "name": "mai",
+      "sub_blocks": [
+        {
+          "codepoints": 68,
+          "name": "mai"
+        }
+      ]
+    },
+    {
+      "codepoints": 84,
+      "name": "mfe",
+      "sub_blocks": [
+        {
+          "codepoints": 84,
+          "name": "mfe"
+        }
+      ]
+    },
+    {
+      "codepoints": 56,
+      "name": "mg",
+      "sub_blocks": [
+        {
+          "codepoints": 56,
+          "name": "mg"
+        }
+      ]
+    },
+    {
+      "codepoints": 62,
+      "name": "mh",
+      "sub_blocks": [
+        {
+          "codepoints": 62,
+          "name": "mh"
+        }
+      ]
+    },
+    {
+      "codepoints": 66,
+      "name": "mhr",
+      "sub_blocks": [
+        {
+          "codepoints": 66,
+          "name": "mhr"
+        }
+      ]
+    },
+    {
+      "codepoints": 64,
+      "name": "mi",
+      "sub_blocks": [
+        {
+          "codepoints": 64,
+          "name": "mi"
+        }
+      ]
+    },
+    {
+      "codepoints": 29,
+      "name": "mid",
+      "sub_blocks": [
+        {
+          "codepoints": 29,
+          "name": "mid"
+        }
+      ]
+    },
+    {
+      "codepoints": 71,
+      "name": "miq",
+      "sub_blocks": [
+        {
+          "codepoints": 71,
+          "name": "miq"
+        }
+      ]
+    },
+    {
+      "codepoints": 72,
+      "name": "mjw",
+      "sub_blocks": [
+        {
+          "codepoints": 72,
+          "name": "mjw"
+        }
+      ]
+    },
+    {
+      "codepoints": 42,
+      "name": "mk",
+      "sub_blocks": [
+        {
+          "codepoints": 42,
+          "name": "mk"
+        }
+      ]
+    },
+    {
+      "codepoints": 68,
+      "name": "ml",
+      "sub_blocks": [
+        {
+          "codepoints": 68,
+          "name": "ml"
+        }
+      ]
+    },
+    {
+      "codepoints": 130,
+      "name": "mn_cn",
+      "sub_blocks": [
+        {
+          "codepoints": 130,
+          "name": "mn_cn"
+        }
+      ]
+    },
+    {
+      "codepoints": 70,
+      "name": "mn_mn",
+      "sub_blocks": [
+        {
+          "codepoints": 70,
+          "name": "mn_mn"
+        }
+      ]
+    },
+    {
+      "codepoints": 78,
+      "name": "mni",
+      "sub_blocks": [
+        {
+          "codepoints": 78,
+          "name": "mni"
+        }
+      ]
+    },
+    {
+      "codepoints": 48,
+      "name": "mnw",
+      "sub_blocks": [
+        {
+          "codepoints": 48,
+          "name": "mnw"
+        }
+      ]
+    },
+    {
+      "codepoints": 128,
+      "name": "mo",
+      "sub_blocks": [
+        {
+          "codepoints": 128,
+          "name": "mo"
+        }
+      ]
+    },
+    {
+      "codepoints": 68,
+      "name": "mr",
+      "sub_blocks": [
+        {
+          "codepoints": 68,
+          "name": "mr"
+        }
+      ]
+    },
+    {
+      "codepoints": 43,
+      "name": "mro",
+      "sub_blocks": [
+        {
+          "codepoints": 43,
+          "name": "mro"
+        }
+      ]
+    },
+    {
+      "codepoints": 52,
+      "name": "ms",
+      "sub_blocks": [
+        {
+          "codepoints": 52,
+          "name": "ms"
+        }
+      ]
+    },
+    {
+      "codepoints": 72,
+      "name": "mt",
+      "sub_blocks": [
+        {
+          "codepoints": 72,
+          "name": "mt"
+        }
+      ]
+    },
+    {
+      "codepoints": 48,
+      "name": "my",
+      "sub_blocks": [
+        {
+          "codepoints": 48,
+          "name": "my"
+        }
+      ]
+    },
+    {
+      "codepoints": 60,
+      "name": "na",
+      "sub_blocks": [
+        {
+          "codepoints": 60,
+          "name": "na"
+        }
+      ]
+    },
+    {
+      "codepoints": 13135,
+      "name": "nan",
+      "sub_blocks": [
+        {
+          "codepoints": 13135,
+          "name": "nan"
+        }
+      ]
+    },
+    {
+      "codepoints": 70,
+      "name": "nb",
+      "sub_blocks": [
+        {
+          "codepoints": 70,
+          "name": "nb"
+        }
+      ]
+    },
+    {
+      "codepoints": 59,
+      "name": "nds",
+      "sub_blocks": [
+        {
+          "codepoints": 59,
+          "name": "nds"
+        }
+      ]
+    },
+    {
+      "codepoints": 72,
+      "name": "ne",
+      "sub_blocks": [
+        {
+          "codepoints": 72,
+          "name": "ne"
+        }
+      ]
+    },
+    {
+      "codepoints": 52,
+      "name": "ng",
+      "sub_blocks": [
+        {
+          "codepoints": 52,
+          "name": "ng"
+        }
+      ]
+    },
+    {
+      "codepoints": 68,
+      "name": "nhn",
+      "sub_blocks": [
+        {
+          "codepoints": 68,
+          "name": "nhn"
+        }
+      ]
+    },
+    {
+      "codepoints": 77,
+      "name": "niu",
+      "sub_blocks": [
+        {
+          "codepoints": 77,
+          "name": "niu"
+        }
+      ]
+    },
+    {
+      "codepoints": 82,
+      "name": "nl",
+      "sub_blocks": [
+        {
+          "codepoints": 82,
+          "name": "nl"
+        }
+      ]
+    },
+    {
+      "codepoints": 76,
+      "name": "nn",
+      "sub_blocks": [
+        {
+          "codepoints": 76,
+          "name": "nn"
+        }
+      ]
+    },
+    {
+      "codepoints": 59,
+      "name": "nnp",
+      "sub_blocks": [
+        {
+          "codepoints": 59,
+          "name": "nnp"
+        }
+      ]
+    },
+    {
+      "codepoints": 70,
+      "name": "no",
+      "sub_blocks": [
+        {
+          "codepoints": 70,
+          "name": "no"
+        }
+      ]
+    },
+    {
+      "codepoints": 59,
+      "name": "nqo",
+      "sub_blocks": [
+        {
+          "codepoints": 59,
+          "name": "nqo"
+        }
+      ]
+    },
+    {
+      "codepoints": 52,
+      "name": "nr",
+      "sub_blocks": [
+        {
+          "codepoints": 52,
+          "name": "nr"
+        }
+      ]
+    },
+    {
+      "codepoints": 58,
+      "name": "nso",
+      "sub_blocks": [
+        {
+          "codepoints": 58,
+          "name": "nso"
+        }
+      ]
+    },
+    {
+      "codepoints": 72,
+      "name": "nv",
+      "sub_blocks": [
+        {
+          "codepoints": 72,
+          "name": "nv"
+        }
+      ]
+    },
+    {
+      "codepoints": 54,
+      "name": "ny",
+      "sub_blocks": [
+        {
+          "codepoints": 54,
+          "name": "ny"
+        }
+      ]
+    },
+    {
+      "codepoints": 70,
+      "name": "oc",
+      "sub_blocks": [
+        {
+          "codepoints": 70,
+          "name": "oc"
+        }
+      ]
+    },
+    {
+      "codepoints": 52,
+      "name": "om",
+      "sub_blocks": [
+        {
+          "codepoints": 52,
+          "name": "om"
+        }
+      ]
+    },
+    {
+      "codepoints": 68,
+      "name": "or",
+      "sub_blocks": [
+        {
+          "codepoints": 68,
+          "name": "or"
+        }
+      ]
+    },
+    {
+      "codepoints": 66,
+      "name": "os",
+      "sub_blocks": [
+        {
+          "codepoints": 66,
+          "name": "os"
+        }
+      ]
+    },
+    {
+      "codepoints": 72,
+      "name": "osa",
+      "sub_blocks": [
+        {
+          "codepoints": 72,
+          "name": "osa"
+        }
+      ]
+    },
+    {
+      "codepoints": 37,
+      "name": "ota",
+      "sub_blocks": [
+        {
+          "codepoints": 37,
+          "name": "ota"
+        }
+      ]
+    },
+    {
+      "codepoints": 73,
+      "name": "otk",
+      "sub_blocks": [
+        {
+          "codepoints": 73,
+          "name": "otk"
+        }
+      ]
+    },
+    {
+      "codepoints": 26,
+      "name": "oui",
+      "sub_blocks": [
+        {
+          "codepoints": 26,
+          "name": "oui"
+        }
+      ]
+    },
+    {
+      "codepoints": 63,
+      "name": "pa",
+      "sub_blocks": [
+        {
+          "codepoints": 63,
+          "name": "pa"
+        }
+      ]
+    },
+    {
+      "codepoints": 27,
+      "name": "pa_pk",
+      "sub_blocks": [
+        {
+          "codepoints": 27,
+          "name": "pa_pk"
+        }
+      ]
+    },
+    {
+      "codepoints": 27,
+      "name": "pal",
+      "sub_blocks": [
+        {
+          "codepoints": 27,
+          "name": "pal"
+        }
+      ]
+    },
+    {
+      "codepoints": 72,
+      "name": "pap_an",
+      "sub_blocks": [
+        {
+          "codepoints": 72,
+          "name": "pap_an"
+        }
+      ]
+    },
+    {
+      "codepoints": 54,
+      "name": "pap_aw",
+      "sub_blocks": [
+        {
+          "codepoints": 54,
+          "name": "pap_aw"
+        }
+      ]
+    },
+    {
+      "codepoints": 50,
+      "name": "peo",
+      "sub_blocks": [
+        {
+          "codepoints": 50,
+          "name": "peo"
+        }
+      ]
+    },
+    {
+      "codepoints": 40,
+      "name": "pes",
+      "sub_blocks": [
+        {
+          "codepoints": 40,
+          "name": "pes"
+        }
+      ]
+    },
+    {
+      "codepoints": 68,
+      "name": "pgd",
+      "sub_blocks": [
+        {
+          "codepoints": 68,
+          "name": "pgd"
+        }
+      ]
+    },
+    {
+      "codepoints": 29,
+      "name": "pgl",
+      "sub_blocks": [
+        {
+          "codepoints": 29,
+          "name": "pgl"
+        }
+      ]
+    },
+    {
+      "codepoints": 29,
+      "name": "phn",
+      "sub_blocks": [
+        {
+          "codepoints": 29,
+          "name": "phn"
+        }
+      ]
+    },
+    {
+      "codepoints": 70,
+      "name": "pl",
+      "sub_blocks": [
+        {
+          "codepoints": 70,
+          "name": "pl"
+        }
+      ]
+    },
+    {
+      "codepoints": 40,
+      "name": "prs",
+      "sub_blocks": [
+        {
+          "codepoints": 40,
+          "name": "prs"
+        }
+      ]
+    },
+    {
+      "codepoints": 49,
+      "name": "ps_af",
+      "sub_blocks": [
+        {
+          "codepoints": 49,
+          "name": "ps_af"
+        }
+      ]
+    },
+    {
+      "codepoints": 49,
+      "name": "ps_pk",
+      "sub_blocks": [
+        {
+          "codepoints": 49,
+          "name": "ps_pk"
+        }
+      ]
+    },
+    {
+      "codepoints": 82,
+      "name": "pt",
+      "sub_blocks": [
+        {
+          "codepoints": 82,
+          "name": "pt"
+        }
+      ]
+    },
+    {
+      "codepoints": 55,
+      "name": "qu",
+      "sub_blocks": [
+        {
+          "codepoints": 55,
+          "name": "qu"
+        }
+      ]
+    },
+    {
+      "codepoints": 55,
+      "name": "quz",
+      "sub_blocks": [
+        {
+          "codepoints": 55,
+          "name": "quz"
+        }
+      ]
+    },
+    {
+      "codepoints": 68,
+      "name": "raj",
+      "sub_blocks": [
+        {
+          "codepoints": 68,
+          "name": "raj"
+        }
+      ]
+    },
+    {
+      "codepoints": 50,
+      "name": "rhg",
+      "sub_blocks": [
+        {
+          "codepoints": 50,
+          "name": "rhg"
+        }
+      ]
+    },
+    {
+      "codepoints": 83,
+      "name": "rif",
+      "sub_blocks": [
+        {
+          "codepoints": 83,
+          "name": "rif"
+        }
+      ]
+    },
+    {
+      "codepoints": 66,
+      "name": "rm",
+      "sub_blocks": [
+        {
+          "codepoints": 66,
+          "name": "rm"
+        }
+      ]
+    },
+    {
+      "codepoints": 52,
+      "name": "rn",
+      "sub_blocks": [
+        {
+          "codepoints": 52,
+          "name": "rn"
+        }
+      ]
+    },
+    {
+      "codepoints": 62,
+      "name": "ro",
+      "sub_blocks": [
+        {
+          "codepoints": 62,
+          "name": "ro"
+        }
+      ]
+    },
+    {
+      "codepoints": 66,
+      "name": "ru",
+      "sub_blocks": [
+        {
+          "codepoints": 66,
+          "name": "ru"
+        }
+      ]
+    },
+    {
+      "codepoints": 52,
+      "name": "rw",
+      "sub_blocks": [
+        {
+          "codepoints": 52,
+          "name": "rw"
+        }
+      ]
+    },
+    {
+      "codepoints": 68,
+      "name": "sa",
+      "sub_blocks": [
+        {
+          "codepoints": 68,
+          "name": "sa"
+        }
+      ]
+    },
+    {
+      "codepoints": 76,
+      "name": "sah",
+      "sub_blocks": [
+        {
+          "codepoints": 76,
+          "name": "sah"
+        }
+      ]
+    },
+    {
+      "codepoints": 61,
+      "name": "sam",
+      "sub_blocks": [
+        {
+          "codepoints": 61,
+          "name": "sam"
+        }
+      ]
+    },
+    {
+      "codepoints": 48,
+      "name": "sat",
+      "sub_blocks": [
+        {
+          "codepoints": 48,
+          "name": "sat"
+        }
+      ]
+    },
+    {
+      "codepoints": 62,
+      "name": "sc",
+      "sub_blocks": [
+        {
+          "codepoints": 62,
+          "name": "sc"
+        }
+      ]
+    },
+    {
+      "codepoints": 56,
+      "name": "sco",
+      "sub_blocks": [
+        {
+          "codepoints": 56,
+          "name": "sco"
+        }
+      ]
+    },
+    {
+      "codepoints": 54,
+      "name": "sd",
+      "sub_blocks": [
+        {
+          "codepoints": 54,
+          "name": "sd"
+        }
+      ]
+    },
+    {
+      "codepoints": 66,
+      "name": "se",
+      "sub_blocks": [
+        {
+          "codepoints": 66,
+          "name": "se"
+        }
+      ]
+    },
+    {
+      "codepoints": 66,
+      "name": "sel",
+      "sub_blocks": [
+        {
+          "codepoints": 66,
+          "name": "sel"
+        }
+      ]
+    },
+    {
+      "codepoints": 72,
+      "name": "sg",
+      "sub_blocks": [
+        {
+          "codepoints": 72,
+          "name": "sg"
+        }
+      ]
+    },
+    {
+      "codepoints": 76,
+      "name": "sgs",
+      "sub_blocks": [
+        {
+          "codepoints": 76,
+          "name": "sgs"
+        }
+      ]
+    },
+    {
+      "codepoints": 156,
+      "name": "sh",
+      "sub_blocks": [
+        {
+          "codepoints": 156,
+          "name": "sh"
+        }
+      ]
+    },
+    {
+      "codepoints": 48,
+      "name": "shn",
+      "sub_blocks": [
+        {
+          "codepoints": 48,
+          "name": "shn"
+        }
+      ]
+    },
+    {
+      "codepoints": 48,
+      "name": "shs",
+      "sub_blocks": [
+        {
+          "codepoints": 48,
+          "name": "shs"
+        }
+      ]
+    },
+    {
+      "codepoints": 73,
+      "name": "si",
+      "sub_blocks": [
+        {
+          "codepoints": 73,
+          "name": "si"
+        }
+      ]
+    },
+    {
+      "codepoints": 281,
+      "name": "sid",
+      "sub_blocks": [
+        {
+          "codepoints": 281,
+          "name": "sid"
+        }
+      ]
+    },
+    {
+      "codepoints": 86,
+      "name": "sk",
+      "sub_blocks": [
+        {
+          "codepoints": 86,
+          "name": "sk"
+        }
+      ]
+    },
+    {
+      "codepoints": 62,
+      "name": "sl",
+      "sub_blocks": [
+        {
+          "codepoints": 62,
+          "name": "sl"
+        }
+      ]
+    },
+    {
+      "codepoints": 53,
+      "name": "sm",
+      "sub_blocks": [
+        {
+          "codepoints": 53,
+          "name": "sm"
+        }
+      ]
+    },
+    {
+      "codepoints": 60,
+      "name": "sma",
+      "sub_blocks": [
+        {
+          "codepoints": 60,
+          "name": "sma"
+        }
+      ]
+    },
+    {
+      "codepoints": 60,
+      "name": "smj",
+      "sub_blocks": [
+        {
+          "codepoints": 60,
+          "name": "smj"
+        }
+      ]
+    },
+    {
+      "codepoints": 68,
+      "name": "smn",
+      "sub_blocks": [
+        {
+          "codepoints": 68,
+          "name": "smn"
+        }
+      ]
+    },
+    {
+      "codepoints": 80,
+      "name": "sms",
+      "sub_blocks": [
+        {
+          "codepoints": 80,
+          "name": "sms"
+        }
+      ]
+    },
+    {
+      "codepoints": 52,
+      "name": "sn",
+      "sub_blocks": [
+        {
+          "codepoints": 52,
+          "name": "sn"
+        }
+      ]
+    },
+    {
+      "codepoints": 40,
+      "name": "so",
+      "sub_blocks": [
+        {
+          "codepoints": 40,
+          "name": "so"
+        }
+      ]
+    },
+    {
+      "codepoints": 42,
+      "name": "sog",
+      "sub_blocks": [
+        {
+          "codepoints": 42,
+          "name": "sog"
+        }
+      ]
+    },
+    {
+      "codepoints": 56,
+      "name": "sq",
+      "sub_blocks": [
+        {
+          "codepoints": 56,
+          "name": "sq"
+        }
+      ]
+    },
+    {
+      "codepoints": 60,
+      "name": "sr",
+      "sub_blocks": [
+        {
+          "codepoints": 60,
+          "name": "sr"
+        }
+      ]
+    },
+    {
+      "codepoints": 52,
+      "name": "ss",
+      "sub_blocks": [
+        {
+          "codepoints": 52,
+          "name": "ss"
+        }
+      ]
+    },
+    {
+      "codepoints": 52,
+      "name": "st",
+      "sub_blocks": [
+        {
+          "codepoints": 52,
+          "name": "st"
+        }
+      ]
+    },
+    {
+      "codepoints": 72,
+      "name": "su",
+      "sub_blocks": [
+        {
+          "codepoints": 72,
+          "name": "su"
+        }
+      ]
+    },
+    {
+      "codepoints": 1234,
+      "name": "sux",
+      "sub_blocks": [
+        {
+          "codepoints": 1234,
+          "name": "sux"
+        }
+      ]
+    },
+    {
+      "codepoints": 44,
+      "name": "suz",
+      "sub_blocks": [
+        {
+          "codepoints": 44,
+          "name": "suz"
+        }
+      ]
+    },
+    {
+      "codepoints": 68,
+      "name": "sv",
+      "sub_blocks": [
+        {
+          "codepoints": 68,
+          "name": "sv"
+        }
+      ]
+    },
+    {
+      "codepoints": 52,
+      "name": "sw",
+      "sub_blocks": [
+        {
+          "codepoints": 52,
+          "name": "sw"
+        }
+      ]
+    },
+    {
+      "codepoints": 45,
+      "name": "syr",
+      "sub_blocks": [
+        {
+          "codepoints": 45,
+          "name": "syr"
+        }
+      ]
+    },
+    {
+      "codepoints": 76,
+      "name": "szl",
+      "sub_blocks": [
+        {
+          "codepoints": 76,
+          "name": "szl"
+        }
+      ]
+    },
+    {
+      "codepoints": 48,
+      "name": "ta",
+      "sub_blocks": [
+        {
+          "codepoints": 48,
+          "name": "ta"
+        }
+      ]
+    },
+    {
+      "codepoints": 18,
+      "name": "tbw",
+      "sub_blocks": [
+        {
+          "codepoints": 18,
+          "name": "tbw"
+        }
+      ]
+    },
+    {
+      "codepoints": 70,
+      "name": "tcy",
+      "sub_blocks": [
+        {
+          "codepoints": 70,
+          "name": "tcy"
+        }
+      ]
+    },
+    {
+      "codepoints": 35,
+      "name": "tdd",
+      "sub_blocks": [
+        {
+          "codepoints": 35,
+          "name": "tdd"
+        }
+      ]
+    },
+    {
+      "codepoints": 70,
+      "name": "te",
+      "sub_blocks": [
+        {
+          "codepoints": 70,
+          "name": "te"
+        }
+      ]
+    },
+    {
+      "codepoints": 78,
+      "name": "tg",
+      "sub_blocks": [
+        {
+          "codepoints": 78,
+          "name": "tg"
+        }
+      ]
+    },
+    {
+      "codepoints": 74,
+      "name": "th",
+      "sub_blocks": [
+        {
+          "codepoints": 74,
+          "name": "th"
+        }
+      ]
+    },
+    {
+      "codepoints": 68,
+      "name": "the",
+      "sub_blocks": [
+        {
+          "codepoints": 68,
+          "name": "the"
+        }
+      ]
+    },
+    {
+      "codepoints": 255,
+      "name": "ti_er",
+      "sub_blocks": [
+        {
+          "codepoints": 255,
+          "name": "ti_er"
+        }
+      ]
+    },
+    {
+      "codepoints": 281,
+      "name": "ti_et",
+      "sub_blocks": [
+        {
+          "codepoints": 281,
+          "name": "ti_et"
+        }
+      ]
+    },
+    {
+      "codepoints": 221,
+      "name": "tig",
+      "sub_blocks": [
+        {
+          "codepoints": 221,
+          "name": "tig"
+        }
+      ]
+    },
+    {
+      "codepoints": 68,
+      "name": "tk",
+      "sub_blocks": [
+        {
+          "codepoints": 68,
+          "name": "tk"
+        }
+      ]
+    },
+    {
+      "codepoints": 25,
+      "name": "tl",
+      "sub_blocks": [
+        {
+          "codepoints": 25,
+          "name": "tl"
+        }
+      ]
+    },
+    {
+      "codepoints": 58,
+      "name": "tn",
+      "sub_blocks": [
+        {
+          "codepoints": 58,
+          "name": "tn"
+        }
+      ]
+    },
+    {
+      "codepoints": 53,
+      "name": "to",
+      "sub_blocks": [
+        {
+          "codepoints": 53,
+          "name": "to"
+        }
+      ]
+    },
+    {
+      "codepoints": 72,
+      "name": "tpi",
+      "sub_blocks": [
+        {
+          "codepoints": 72,
+          "name": "tpi"
+        }
+      ]
+    },
+    {
+      "codepoints": 70,
+      "name": "tr",
+      "sub_blocks": [
+        {
+          "codepoints": 70,
+          "name": "tr"
+        }
+      ]
+    },
+    {
+      "codepoints": 52,
+      "name": "ts",
+      "sub_blocks": [
+        {
+          "codepoints": 52,
+          "name": "ts"
+        }
+      ]
+    },
+    {
+      "codepoints": 76,
+      "name": "tt",
+      "sub_blocks": [
+        {
+          "codepoints": 76,
+          "name": "tt"
+        }
+      ]
+    },
+    {
+      "codepoints": 73,
+      "name": "tw",
+      "sub_blocks": [
+        {
+          "codepoints": 73,
+          "name": "tw"
+        }
+      ]
+    },
+    {
+      "codepoints": 6913,
+      "name": "txg",
+      "sub_blocks": [
+        {
+          "codepoints": 6913,
+          "name": "txg"
+        }
+      ]
+    },
+    {
+      "codepoints": 65,
+      "name": "ty",
+      "sub_blocks": [
+        {
+          "codepoints": 65,
+          "name": "ty"
+        }
+      ]
+    },
+    {
+      "codepoints": 70,
+      "name": "tyv",
+      "sub_blocks": [
+        {
+          "codepoints": 70,
+          "name": "tyv"
+        }
+      ]
+    },
+    {
+      "codepoints": 33,
+      "name": "ug",
+      "sub_blocks": [
+        {
+          "codepoints": 33,
+          "name": "ug"
+        }
+      ]
+    },
+    {
+      "codepoints": 31,
+      "name": "uga",
+      "sub_blocks": [
+        {
+          "codepoints": 31,
+          "name": "uga"
+        }
+      ]
+    },
+    {
+      "codepoints": 72,
+      "name": "uk",
+      "sub_blocks": [
+        {
+          "codepoints": 72,
+          "name": "uk"
+        }
+      ]
+    },
+    {
+      "codepoints": 468,
+      "name": "und_zmth",
+      "sub_blocks": [
+        {
+          "codepoints": 468,
+          "name": "und_zmth"
+        }
+      ]
+    },
+    {
+      "codepoints": 641,
+      "name": "und_zsye",
+      "sub_blocks": [
+        {
+          "codepoints": 641,
+          "name": "und_zsye"
+        }
+      ]
+    },
+    {
+      "codepoints": 72,
+      "name": "unm",
+      "sub_blocks": [
+        {
+          "codepoints": 72,
+          "name": "unm"
+        }
+      ]
+    },
+    {
+      "codepoints": 27,
+      "name": "ur",
+      "sub_blocks": [
+        {
+          "codepoints": 27,
+          "name": "ur"
+        }
+      ]
+    },
+    {
+      "codepoints": 52,
+      "name": "uz",
+      "sub_blocks": [
+        {
+          "codepoints": 52,
+          "name": "uz"
+        }
+      ]
+    },
+    {
+      "codepoints": 300,
+      "name": "vai",
+      "sub_blocks": [
+        {
+          "codepoints": 300,
+          "name": "vai"
+        }
+      ]
+    },
+    {
+      "codepoints": 62,
+      "name": "ve",
+      "sub_blocks": [
+        {
+          "codepoints": 62,
+          "name": "ve"
+        }
+      ]
+    },
+    {
+      "codepoints": 194,
+      "name": "vi",
+      "sub_blocks": [
+        {
+          "codepoints": 194,
+          "name": "vi"
+        }
+      ]
+    },
+    {
+      "codepoints": 54,
+      "name": "vo",
+      "sub_blocks": [
+        {
+          "codepoints": 54,
+          "name": "vo"
+        }
+      ]
+    },
+    {
+      "codepoints": 62,
+      "name": "vot",
+      "sub_blocks": [
+        {
+          "codepoints": 62,
+          "name": "vot"
+        }
+      ]
+    },
+    {
+      "codepoints": 70,
+      "name": "wa",
+      "sub_blocks": [
+        {
+          "codepoints": 70,
+          "name": "wa"
+        }
+      ]
+    },
+    {
+      "codepoints": 59,
+      "name": "wae",
+      "sub_blocks": [
+        {
+          "codepoints": 59,
+          "name": "wae"
+        }
+      ]
+    },
+    {
+      "codepoints": 281,
+      "name": "wal",
+      "sub_blocks": [
+        {
+          "codepoints": 281,
+          "name": "wal"
+        }
+      ]
+    },
+    {
+      "codepoints": 76,
+      "name": "wen",
+      "sub_blocks": [
+        {
+          "codepoints": 76,
+          "name": "wen"
+        }
+      ]
+    },
+    {
+      "codepoints": 66,
+      "name": "wo",
+      "sub_blocks": [
+        {
+          "codepoints": 66,
+          "name": "wo"
+        }
+      ]
+    },
+    {
+      "codepoints": 53,
+      "name": "xag",
+      "sub_blocks": [
+        {
+          "codepoints": 53,
+          "name": "xag"
+        }
+      ]
+    },
+    {
+      "codepoints": 28,
+      "name": "xco",
+      "sub_blocks": [
+        {
+          "codepoints": 28,
+          "name": "xco"
+        }
+      ]
+    },
+    {
+      "codepoints": 49,
+      "name": "xcr",
+      "sub_blocks": [
+        {
+          "codepoints": 49,
+          "name": "xcr"
+        }
+      ]
+    },
+    {
+      "codepoints": 52,
+      "name": "xh",
+      "sub_blocks": [
+        {
+          "codepoints": 52,
+          "name": "xh"
+        }
+      ]
+    },
+    {
+      "codepoints": 29,
+      "name": "xlc",
+      "sub_blocks": [
+        {
+          "codepoints": 29,
+          "name": "xlc"
+        }
+      ]
+    },
+    {
+      "codepoints": 27,
+      "name": "xld",
+      "sub_blocks": [
+        {
+          "codepoints": 27,
+          "name": "xld"
+        }
+      ]
+    },
+    {
+      "codepoints": 122,
+      "name": "xmr",
+      "sub_blocks": [
+        {
+          "codepoints": 122,
+          "name": "xmr"
+        }
+      ]
+    },
+    {
+      "codepoints": 32,
+      "name": "xna",
+      "sub_blocks": [
+        {
+          "codepoints": 32,
+          "name": "xna"
+        }
+      ]
+    },
+    {
+      "codepoints": 30,
+      "name": "xpr",
+      "sub_blocks": [
+        {
+          "codepoints": 30,
+          "name": "xpr"
+        }
+      ]
+    },
+    {
+      "codepoints": 32,
+      "name": "xsa",
+      "sub_blocks": [
+        {
+          "codepoints": 32,
+          "name": "xsa"
+        }
+      ]
+    },
+    {
+      "codepoints": 68,
+      "name": "xzh",
+      "sub_blocks": [
+        {
+          "codepoints": 68,
+          "name": "xzh"
+        }
+      ]
+    },
+    {
+      "codepoints": 58,
+      "name": "yap",
+      "sub_blocks": [
+        {
+          "codepoints": 58,
+          "name": "yap"
+        }
+      ]
+    },
+    {
+      "codepoints": 27,
+      "name": "yi",
+      "sub_blocks": [
+        {
+          "codepoints": 27,
+          "name": "yi"
+        }
+      ]
+    },
+    {
+      "codepoints": 119,
+      "name": "yo",
+      "sub_blocks": [
+        {
+          "codepoints": 119,
+          "name": "yo"
+        }
+      ]
+    },
+    {
+      "codepoints": 1083,
+      "name": "yue",
+      "sub_blocks": [
+        {
+          "codepoints": 1083,
+          "name": "yue"
+        }
+      ]
+    },
+    {
+      "codepoints": 72,
+      "name": "yuw",
+      "sub_blocks": [
+        {
+          "codepoints": 72,
+          "name": "yuw"
+        }
+      ]
+    },
+    {
+      "codepoints": 52,
+      "name": "za",
+      "sub_blocks": [
+        {
+          "codepoints": 52,
+          "name": "za"
+        }
+      ]
+    },
+    {
+      "codepoints": 6765,
+      "name": "zh_cn",
+      "sub_blocks": [
+        {
+          "codepoints": 6765,
+          "name": "zh_cn"
+        }
+      ]
+    },
+    {
+      "codepoints": 14146,
+      "name": "zh_hk",
+      "sub_blocks": [
+        {
+          "codepoints": 13063,
+          "name": "zh_tw"
+        },
+        {
+          "codepoints": 1083,
+          "name": "zh_hk_supplement"
+        }
+      ]
+    },
+    {
+      "codepoints": 14146,
+      "name": "zh_mo",
+      "sub_blocks": [
+        {
+          "codepoints": 13063,
+          "name": "zh_tw"
+        },
+        {
+          "codepoints": 1083,
+          "name": "zh_hk_supplement"
+        }
+      ]
+    },
+    {
+      "codepoints": 6765,
+      "name": "zh_sg",
+      "sub_blocks": [
+        {
+          "codepoints": 6765,
+          "name": "zh_sg"
+        }
+      ]
+    },
+    {
+      "codepoints": 13063,
+      "name": "zh_tw",
+      "sub_blocks": [
+        {
+          "codepoints": 13063,
+          "name": "zh_tw"
+        }
+      ]
+    },
+    {
+      "codepoints": 470,
+      "name": "zkt",
+      "sub_blocks": [
+        {
+          "codepoints": 470,
+          "name": "zkt"
+        }
+      ]
+    },
+    {
+      "codepoints": 52,
+      "name": "zu",
+      "sub_blocks": [
+        {
+          "codepoints": 52,
+          "name": "zu"
+        }
+      ]
+    }
+  ],
+  "source": "fontconfig fc-lang corpus via fontalloy_core.presets",
+  "standalone_sets": [
+    "zh_hk_supplement"
+  ]
+}

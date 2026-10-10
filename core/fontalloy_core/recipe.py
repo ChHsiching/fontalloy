@@ -51,11 +51,13 @@ A font reference (issue #4) is either a plain path string or a mapping:
 
 Paths in a recipe resolve against the recipe file's directory, not the
 working directory — a recipe is a share unit and must mean the same thing
-wherever it is run. Parsing is strict: unknown fields, missing fields,
-and type errors all raise :class:`~fontalloy_core.errors.RecipeError`
-with a message naming the offending field. ``rules``, ``sets``, and
-``normalization`` are optional, so a v0 recipe (base + donors only)
-parses unchanged.
+wherever it is run. :func:`parse_recipe` is the same schema over
+already-decoded data (serve submits recipes as JSON, issue #11), with
+paths resolving against the caller's root. Parsing is strict: unknown
+fields, missing fields, and type errors all raise
+:class:`~fontalloy_core.errors.RecipeError` with a message naming the
+offending field. ``rules``, ``sets``, ``normalization``, and ``weights``
+are optional, so a v0 recipe (base + donors only) parses unchanged.
 """
 
 from __future__ import annotations
@@ -196,6 +198,20 @@ def load_recipe(path: Path | str) -> Recipe:
     except yaml.YAMLError as exc:
         raise RecipeError(f"recipe is not valid YAML: {exc}") from None
 
+    return parse_recipe(data, recipe_path.parent)
+
+
+def parse_recipe(data: object, root: Path | str) -> Recipe:
+    """Parse already-decoded recipe data, resolving font paths to ``root``.
+
+    The single validation path for the recipe schema: ``load_recipe``
+    feeds it the YAML it read from a file, and serve (issue #11) feeds
+    it the JSON body of a merge submission — the same recipe schema,
+    parsed by the same code, never duplicated. ``root`` is the
+    directory relative font paths resolve against (the recipe file's
+    directory on disk; the serve process's working directory for a
+    submission).
+    """
     if not isinstance(data, dict):
         raise RecipeError(
             "recipe must be a YAML mapping with the fields "
@@ -209,7 +225,7 @@ def load_recipe(path: Path | str) -> Recipe:
             f"(the recipe accepts: {', '.join(RECIPE_FIELDS)})"
         )
 
-    root = recipe_path.parent
+    root = Path(root)
     base = _parse_base(data, root)
     donors = _parse_donors(data, root)
 

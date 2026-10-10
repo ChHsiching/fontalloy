@@ -107,6 +107,95 @@ def build(
     typer.echo(fontalloy_core.render_text(result.report), nl=False)
 
 
+@app.command()
+def serve(
+    port: Annotated[
+        int,
+        typer.Option(
+            "--port",
+            min=0,
+            max=65535,
+            help="Port to bind on 127.0.0.1 (0 = an OS-assigned ephemeral "
+            "port; the bound URL is printed on stdout as the startup line).",
+        ),
+    ] = 0,
+    allow_origin: Annotated[
+        Optional[list[str]],
+        typer.Option(
+            "--allow-origin",
+            help="Origin CORS allows, e.g. the WebApp's (repeatable). The "
+            "Tauri GUI passes its webview origins (tauri://localhost on "
+            "macOS/Linux, http://tauri.localhost on Windows). Unlisted "
+            "origins get no CORS headers and their preflights are rejected.",
+        ),
+    ] = None,
+    manifest: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--manifest",
+            help="Catalog manifest to enumerate at /catalog "
+            "(default: assets/fonts.manifest.json in the working directory; "
+            "a missing manifest means an empty catalog).",
+        ),
+    ] = Path("assets") / "fonts.manifest.json",
+    font_dir: Annotated[
+        Optional[list[Path]],
+        typer.Option(
+            "--font-dir",
+            help="Local font directory to enumerate at /fonts (repeatable).",
+        ),
+    ] = None,
+    work_dir: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--work-dir",
+            help="Directory for build scratch and retained artifacts "
+            "(default: a fresh system temp directory, removed on exit; a "
+            "given directory itself is kept, only the service's scratch "
+            "inside it is removed).",
+        ),
+    ] = None,
+    keep_builds: Annotated[
+        int,
+        typer.Option(
+            "--keep-builds",
+            min=1,
+            help="How many of the newest finished builds keep their "
+            "downloadable artifacts (default: 10).",
+        ),
+    ] = 10,
+) -> None:
+    """Run the core as a localhost HTTP service (127.0.0.1 only).
+
+    The contract both frontends consume (issue #11): enumerate the font
+    catalog (/catalog) and local font directories (/fonts), submit a
+    merge as recipe-shaped JSON (POST /builds — the same recipe schema
+    ``fontalloy build`` parses), poll build progress (GET /builds/<id>
+    reports the pipeline stage), and download the output font and its
+    verification report. Builds run asynchronously on a queue; the
+    output formats are ttf, ttc, and woff2.
+
+    The bind address is 127.0.0.1, always — there is deliberately no
+    way to widen it. The implementation is the Python standard library
+    only, so the sidecar binary the GUI bundles stays lean. Graceful
+    shutdown on SIGINT/SIGTERM (Ctrl-Break on Windows) removes every
+    temporary artifact.
+    """
+    options = fontalloy_core.ServeOptions(
+        port=port,
+        allow_origins=tuple(allow_origin or ()),
+        manifest=manifest,
+        font_dirs=tuple(font_dir or ()),
+        work_dir=work_dir,
+        keep_builds=keep_builds,
+    )
+    try:
+        fontalloy_core.run_serve(options)
+    except FontAlloyError as exc:
+        typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from None
+
+
 @assets_app.command("fetch")
 def assets_fetch(
     manifest: Annotated[

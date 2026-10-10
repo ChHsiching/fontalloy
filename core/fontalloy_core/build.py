@@ -3,7 +3,8 @@
 ``build(recipe_path, output_path, ...)`` is the single public entry point
 of the core: recipe + font files in, built font + verification report out.
 The CLI calls it in-process; later consumers (serve, the GUI sidecar) do
-the same.
+the same — serve through :func:`build_recipe`, which runs the identical
+pipeline over an already-parsed recipe (issue #11).
 
 Pipeline stages in this ticket (issues #2 through #10): load and detect
 the base and donor fonts (TTC face selection, variable instantiation,
@@ -38,10 +39,12 @@ matrix with those formats is a clear error pointing at ``ttc`` (the
 rejected multi-file alternative is recorded in ADR-0006). Every format
 saves through the one reproducible boundary
 (:func:`fontalloy_core.output.save_output`): identical inputs produce
-byte-identical outputs and reports, with no wall clock in the file."""
+byte-identical outputs and reports, with no wall clock in the file.
+"""
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import NamedTuple
@@ -72,7 +75,7 @@ from fontalloy_core.precedence import (
     resolve_precedence,
     rule_id,
 )
-from fontalloy_core.recipe import FontRef, load_recipe
+from fontalloy_core.recipe import FontRef, Recipe, load_recipe
 from fontalloy_core.render import render_html
 from fontalloy_core.report import (
     BorrowRecord,
@@ -118,12 +121,16 @@ def build(
     *,
     report_path: Path | str | None = None,
     output_format: str | None = None,
+    progress: Callable[[str], None] | None = None,
 ) -> BuildOutput:
-    """Build a merged font (or weight/style matrix) from a recipe.
+    """Build a merged font (or weight/style matrix) from a recipe file.
 
     ``output_path`` defaults to ``<recipe stem>.<format>`` beside the
     recipe; ``output_format`` (``ttf``, ``ttc``, or ``woff2``) overrides
     the recipe's ``output.format`` — the CLI switch rides this argument.
+    ``progress`` (issue #11), when given, is called with a stage name as
+    the pipeline enters each stage; serve uses it to report build
+    progress over HTTP.
 
     The requested matrix comes from the base font file's faces (a
     recipe ``weights`` section selects a subset); every donor family
@@ -135,6 +142,40 @@ def build(
     """
     recipe = load_recipe(recipe_path)
     fmt = output_format if output_format is not None else recipe.output.format
+    if output_path is None:
+        # The file-caller default: <recipe stem>.<format> beside the recipe.
+        output_path = Path(recipe_path).with_suffix(f".{fmt}")
+    return build_recipe(
+        recipe,
+        output_path,
+        report_path=report_path,
+        output_format=output_format,
+        progress=progress,
+    )
+
+
+def build_recipe(
+    recipe: Recipe,
+    output_path: Path | str | None = None,
+    *,
+    report_path: Path | str | None = None,
+    output_format: str | None = None,
+    progress: Callable[[str], None] | None = None,
+) -> BuildOutput:
+    """Build a merged font from an already-parsed recipe.
+
+    The whole pipeline over a :class:`~fontalloy_core.recipe.Recipe`
+    object — what :func:`build` runs after loading the recipe file, and
+    what serve (issue #11) runs on a recipe submitted as JSON.
+    ``output_path`` is required in practice for non-file callers and
+    defaults to ``fontalloy.<format>`` in the working directory.
+    """
+
+    def _stage(name: str) -> None:
+        if progress is not None:
+            progress(name)
+
+    fmt = output_format if output_format is not None else recipe.output.format
     if fmt not in OUTPUT_FORMATS:
         raise BuildError(
             f"unknown output format {fmt!r} "
@@ -143,13 +184,14 @@ def build(
     output = (
         Path(output_path)
         if output_path is not None
-        else Path(recipe_path).with_suffix(f".{fmt}")
+        else Path(f"fontalloy.{fmt}")
     )
 
     # The base faces the matrix draws from: a pinned face contributes
     # one, an unpinned file all of them. The one-face rule for the
     # single-file formats moves to the slot-count check below, so a
     # weights selection of one slot can stand in for a face pin.
+    _stage("loading")
     bases = load_faces(recipe.base, role="base font")
     pools: dict[str, DonorPool] = {}
     loaded_donors: list[LoadedFace] = []
@@ -158,6 +200,7 @@ def build(
         loaded_donors.extend(faces)
         pools[f"donor-{index}"] = _donor_pool(f"donor-{index}", faces, ref, index)
 
+    _stage("planning")
     slots = plan_matrix(bases, pools, recipe.weights)
     if fmt != "ttc" and len(slots) > 1:
         if recipe.weights:
@@ -182,6 +225,9 @@ def build(
             donor_id: _pool_codepoints(pool)
             for donor_id, pool in pools.items()
         }
+        # Stage: resolve the precedence rules into the effective table —
+        # per slot, since each slot's container is its own output face.
+        _stage("resolving")
         named_sets = {**BUILTIN_NAMED_SETS, **recipe.named_sets}
         resolutions: list[Resolution] = []
         for slot in slots:
@@ -217,6 +263,7 @@ def build(
         # started from (a variable base's instance, not the file's
         # default) — and the plans' k/s0 per donor are kept for the
         # report's normalization records.
+        _stage("grafting")
         base_snapshots = [_face_snapshot(slot.base.font) for slot in slots]
         slot_normalization: list[tuple[DonorNormalizationRecord, ...]] = []
         for slot, resolution in zip(slots, resolutions):
@@ -237,6 +284,7 @@ def build(
             # rewritten font. Each slot's container carries its own
             # subfamily, so the slots become the output family's
             # weight/style variants.
+            _stage("rewriting")
             apply_output_identity(
                 slot.base.font, OutputNaming(recipe.output.family)
             )
@@ -244,6 +292,7 @@ def build(
 
         # Stage: write the output at the single reproducible boundary —
         # pinned head timestamps, no recalculation, TTC dedup on.
+        _stage("saving")
         save_output(
             [slot.base.font for slot in slots], output, fmt, timestamp=timestamp
         )
@@ -257,6 +306,7 @@ def build(
     # the output cmap actually covers, not what the pipeline intended —
     # and the metric comparison measures the saved file, never the
     # in-memory container.
+    _stage("reporting")
     readback = _read_back(output, fmt, len(slots))
     try:
         output_cmaps = [set(font.getBestCmap()) for font in readback]

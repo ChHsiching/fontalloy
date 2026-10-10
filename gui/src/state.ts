@@ -77,17 +77,19 @@ export interface AppState {
   catalog: CatalogState;
 }
 
-type Listener = (state: AppState) => void;
+type Listener<T> = (state: T) => void;
 
-export interface Store {
-  get(): AppState;
-  set(patch: Partial<AppState>): void;
-  subscribe(fn: Listener): () => void;
+export interface Store<T> {
+  get(): T;
+  set(patch: Partial<T>): void;
+  subscribe(fn: Listener<T>): () => void;
 }
 
-export function createStore(initial: AppState): Store {
+/** Generic store factory: the GUI workspace and the web recipe builder
+ *  (webapp/state.ts) are two instances of the same pattern. */
+export function createStore<T extends object>(initial: T): Store<T> {
   let state = initial;
-  const listeners = new Set<Listener>();
+  const listeners = new Set<Listener<T>>();
   return {
     get: () => state,
     set(patch) {
@@ -101,7 +103,7 @@ export function createStore(initial: AppState): Store {
   };
 }
 
-export const store = createStore({
+export const store = createStore<AppState>({
   fonts: [],
   selected: { en: null, cjk: null },
   mode: "charmap",
