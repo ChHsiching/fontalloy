@@ -17,6 +17,7 @@ target/
 *.ttc
 *.woff
 *.woff2
+assets/fonts/
 
 # Local working files
 .playwright-mcp/

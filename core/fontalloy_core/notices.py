@@ -83,7 +83,23 @@ _LICENSE_NOTES: dict[str, str] = {
         "The Vic Fieger free license: free use and redistribution; the "
         "license text travels with the font."
     ),
+    "OFL-1.1-no-RFN OR LGPL-2.1-only": (
+        "Dual-licensed (upstream's choice applies): the OFL terms above, or"
+        " LGPL-2.1-only; the upstream license file states the choice."
+    ),
 }
+
+#: Extra per-license note for LXGW's modified OFL: the reserved-name
+#: carve-out that excludes installable desktop modified versions.
+_LXGW_CARVE_OUT = (
+    "LXGW's OFL reserves the names 霞鹜, 霞鶩, 落霞孤鹜, 落霞孤鶩 and LXGW, "
+    "with an additional permission covering only Modified Versions "
+    "recompiled from the Original Version without font source changes, or "
+    "subsetted/web-converted versions for web delivery — explicitly NOT "
+    "installable desktop fonts. FontAlloy merged outputs are installable "
+    "desktop Modified Versions and must never carry these names (output "
+    "names default to the fixed brand default, never source font names)."
+)
 
 
 def generate_notices(manifest_path: Path | str) -> str:
@@ -174,5 +190,7 @@ def _render_family(entry: CatalogEntry) -> list[str]:
     note = _LICENSE_NOTES.get(entry.license_spdx)
     if note:
         lines.append(f"- License obligations: {note}")
+    if entry.license_file.name == "OFL-1.1-LXGW.txt":
+        lines.append(f"- Reserved-name carve-out: {_LXGW_CARVE_OUT}")
     lines.append("")
     return lines

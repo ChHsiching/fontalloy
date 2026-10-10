@@ -388,3 +388,58 @@ class TestAssetsNotices:
         assert result.returncode == 0, result.stderr
         assert (tmp_path / "NOTICES.md").is_file()
         assert not (tmp_path / "THIRD-PARTY-NOTICES.md").exists()
+
+
+@pytest.fixture
+def repo_root() -> Path:
+    """The repository root (the manifest and licenses are committed data)."""
+    return Path(__file__).resolve().parents[1]
+
+
+class TestCommittedCatalog:
+    """The committed manifest is data under test — offline, no network.
+
+    These assertions are the regression net for manifest edits: the file
+    must always parse, validate, and generate notices deterministically.
+    """
+
+    def test_committed_manifest_validates_and_generates_notices(
+        self, fontalloy_exe, repo_root, tmp_path
+    ):
+        result = run_cli(
+            fontalloy_exe,
+            "assets",
+            "notices",
+            "--manifest",
+            str(repo_root / "assets" / "fonts.manifest.json"),
+            "--output",
+            str(tmp_path / "NOTICES.md"),
+            cwd=tmp_path,
+        )
+
+        assert result.returncode == 0, result.stderr
+        text = (tmp_path / "NOTICES.md").read_text(encoding="utf-8")
+        data = json.loads(
+            (repo_root / "assets" / "fonts.manifest.json").read_text(encoding="utf-8")
+        )
+        for family in {e["family"] for e in data["families"]}:
+            assert family in text, f"family {family} missing from notices"
+        # the catalog scale the spec pins (~81 families)
+        assert len({e["family"] for e in data["families"]}) >= 80
+
+    def test_every_committed_checksum_is_pinned(self, repo_root):
+        data = json.loads(
+            (repo_root / "assets" / "fonts.manifest.json").read_text(encoding="utf-8")
+        )
+        pending = [
+            e for e in data["families"] if e["sha256"] is None
+        ]
+        assert pending == [], f"entries without a pinned sha256: {pending}"
+        sources = {e["checksum_source"] for e in data["families"]}
+        assert sources <= {"upstream-published", "self-computed"}
+        # upstream URLs stay tag/commit-pinned, never floating 'latest'
+        for entry in data["families"]:
+            assert "/releases/download/" in entry["upstream_url"] or (
+                "raw.githubusercontent.com/google/fonts/" in entry["upstream_url"]
+            ), entry["upstream_url"]
+            assert "latest" not in entry["upstream_url"]
