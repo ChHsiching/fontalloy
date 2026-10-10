@@ -13,8 +13,15 @@ The only capability layer (ADR-0002). Public surface:
   GUI's effective-preview consistency check) call it directly.
 - ``load_manifest(path)``: parse the font catalog manifest strictly into a
   ``Catalog``; ``fetch_catalog(...)`` downloads and sha256-verifies it.
-- ``RecipeError`` / ``BuildError`` / ``CatalogError`` / ``AssetsError``:
-  the error types callers catch.
+- ``load_catalog_release(path)``: parse catalog-release metadata strictly
+  into a ``CatalogRelease`` — the ordered origin list the app-side
+  downloader consumes; ``fetch_from_origins(...)`` fetches an artifact
+  trying origins in list order.
+- ``package_catalog_release(...)``: repackage a fetched catalog into
+  per-family zips plus SHA256SUMS and catalog-release metadata (the CI
+  catalog release job).
+- ``RecipeError`` / ``BuildError`` / ``CatalogError`` / ``AssetsError`` /
+  ``ReleaseError``: the error types callers catch.
 """
 
 from __future__ import annotations
@@ -22,13 +29,22 @@ from __future__ import annotations
 from fontalloy_core.assets import FetchSummary, fetch_catalog
 from fontalloy_core.build import BuildOutput, build
 from fontalloy_core.catalog import Catalog, CatalogEntry, load_manifest
+from fontalloy_core.catalog_release import (
+    CatalogRelease,
+    Origin,
+    ReleaseFamily,
+    ReleaseFile,
+    load_catalog_release,
+)
 from fontalloy_core.errors import (
     AssetsError,
     BuildError,
     CatalogError,
     FontAlloyError,
     RecipeError,
+    ReleaseError,
 )
+from fontalloy_core.origins import OriginFetch, fetch_from_origins
 from fontalloy_core.notices import generate_notices, write_notices
 from fontalloy_core.precedence import (
     BUILTIN_NAMED_SETS,
@@ -56,12 +72,19 @@ __all__ = [
     "FontAlloyError",
     "PrecedenceRule",
     "Recipe",
+    "Origin",
+    "OriginFetch",
     "RecipeError",
+    "ReleaseError",
+    "ReleaseFamily",
+    "ReleaseFile",
     "Resolution",
     "SameLayerConflict",
     "VerificationReport",
     "build",
     "fetch_catalog",
+    "fetch_from_origins",
+    "load_catalog_release",
     "generate_notices",
     "load_manifest",
     "load_recipe",

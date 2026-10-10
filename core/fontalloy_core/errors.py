@@ -21,3 +21,7 @@ class CatalogError(FontAlloyError):
 
 class AssetsError(FontAlloyError):
     """A catalog fetch failed (unreachable origin, checksum mismatch)."""
+
+
+class ReleaseError(FontAlloyError):
+    """Catalog-release metadata is invalid, or release packaging failed."""
