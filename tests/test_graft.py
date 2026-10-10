@@ -331,12 +331,15 @@ class TestProvenanceReadback:
 
 
 class TestBaseContainerPassThrough:
-    """The base font stays the container: identity and metrics pass
-    through unmodified (name rewriting is a later ticket). Donor glyphs
-    land normalized on top (issue #8) — the v-era verbatim expectations
-    this class used to pin are superseded by the stage-4 scales."""
+    """The base font stays the container: vertical metrics pass through
+    unmodified; donor glyphs land normalized on top (issue #8 — the
+    v-era verbatim expectations this class used to pin are superseded by
+    the stage-4 scales). The name table and OS/2 no longer pass
+    through: stage 6 (issue #6) rewrites the output identity around the
+    brand default family, which is exactly why no source font name may
+    leak."""
 
-    def test_identity_and_vertical_metrics_pass_through_untouched(
+    def test_vertical_metrics_pass_through_and_identity_is_rewritten(
         self, tmp_path: Path, synth_font_factory
     ):
         # The donor runs at a different upem (2048): normalization scales
@@ -361,16 +364,21 @@ class TestBaseContainerPassThrough:
 
         out, base_font = TTFont(result.font_path), TTFont(base)
 
-        # Identity: the complete name record set is the base's own —
-        # no rewriting, no donor names leaking in (enumerate records;
-        # getDebugName can mask platform duplicates).
-        def name_records(font: TTFont) -> list[tuple]:
-            return sorted(
-                (r.nameID, r.platformID, r.platEncID, r.langID, r.toUnicode())
-                for r in font["name"].names
-            )
-
-        assert name_records(out) == name_records(base_font)
+        # Identity: stage 6 rewrote it around the output family — both
+        # platform encodings, and no source font name anywhere in the
+        # record set (enumerate records; getDebugName can mask platform
+        # duplicates).
+        identity = {
+            (r.platformID, r.platEncID, r.langID): r.toUnicode()
+            for r in out["name"].names
+            if r.nameID == 1
+        }
+        assert identity == {
+            (3, 1, 0x409): "ChHsich",
+            (1, 0, 0): "ChHsich",
+        }
+        texts = {r.toUnicode() for r in out["name"].names}
+        assert not any("SynthBase" in text or "SynthDonor" in text for text in texts)
 
         # Container metrics: upem, hhea, OS/2 typo/win, and post values
         # all pass through identical — donor glyphs ride on top, the
@@ -396,13 +404,16 @@ class TestBaseContainerPassThrough:
         assert _bounds(out, out_cmap[0x4E2D]) == (23, 0, 328, 234)
         assert _bounds(out, out_cmap[0x56FD]) == (23, 0, 328, 293)
 
-    def test_a_donor_that_wins_nothing_leaves_the_base_untouched(
+    def test_a_donor_that_wins_nothing_leaves_the_base_glyphs_untouched(
         self, tmp_path: Path, synth_font_factory
     ):
         # The donor's coverage is a subset of the base's: no codepoint
-        # resolves to it, nothing is grafted, and the output is exactly
-        # the base font recompiled — byte-identical to a plain
-        # load-and-save of the base, cmap unchanged.
+        # resolves to it, nothing is grafted — the output's glyph set
+        # and cmap are exactly the base's own. The bytes differ from a
+        # plain base recompile only because stage 6 rewrote the output
+        # identity (name table, OS/2 corrections) — that rewrite runs
+        # for every build, grafted or not (byte-level reproducibility
+        # is pinned separately by the repeated-build tests, issue #10).
         base = synth_font_factory(
             tmp_path / "base.ttf",
             family="SynthBase",
@@ -417,11 +428,14 @@ class TestBaseContainerPassThrough:
         )
 
         result = build(recipe, tmp_path / "out.ttf")
-        reference = tmp_path / "reference.ttf"
-        TTFont(base).save(reference)
+        base_font = TTFont(base)
+        out = TTFont(result.font_path)
 
-        assert result.font_path.read_bytes() == reference.read_bytes()
-        assert TTFont(result.font_path).getBestCmap() == TTFont(base).getBestCmap()
+        assert out.getBestCmap() == base_font.getBestCmap()
+        assert out.getGlyphOrder() == base_font.getGlyphOrder()
+        assert out["hmtx"].metrics == base_font["hmtx"].metrics
+        # And stage 6 still ran: the output carries its own identity.
+        assert out["name"].getDebugName(1) == "ChHsich"
 
 
 def _bounds(font: TTFont, name: str) -> tuple[int, int, int, int] | None:

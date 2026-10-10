@@ -1,7 +1,7 @@
 """Recipe loading: parse a recipe YAML file strictly.
 
-Recipe fields (base + donors since issue #2; rules + sets since issue #3;
-normalization since issue #8):
+Recipe fields (base + donors since issue #2; rules + sets since issue
+#3; normalization since issue #8; output naming since issues #6/#10):
 
 - ``base``: the base font reference
 - ``donors``: the donor list of font references
@@ -18,6 +18,12 @@ normalization since issue #8):
   ``quote_dash_width`` (``halfwidth``, the UAX #11 default, or
   ``fullwidth`` for the CJK locale convention). Every key is optional;
   a recipe without a ``normalization`` block builds with the defaults.
+- ``output``: the build's output settings — ``format`` selects the
+  output format tier (``ttf`` the default, ``ttc``, or ``woff2``;
+  issue #10) and ``family`` the output family name (default: the fixed
+  brand default ``ChHsich``, never a name derived from the source
+  fonts; validated ASCII letters/digits/hyphens, spaces converted to
+  hyphens, at most 31 characters; issue #6)
 
 A font reference (issue #4) is either a plain path string or a mapping:
 
@@ -63,6 +69,7 @@ from fontalloy_core.normalize import (
     NormalizationOptions,
     QUOTE_DASH_POLICIES,
 )
+from fontalloy_core.output import OUTPUT_FORMATS
 from fontalloy_core.precedence import (
     BUILTIN_NAMED_SETS,
     CODEPOINT,
@@ -73,9 +80,10 @@ from fontalloy_core.precedence import (
     compress_intervals,
     is_unicode_scalar,
 )
+from fontalloy_core.rewrite import BRAND_DEFAULT_FAMILY, validate_family_name
 
 #: The fields the recipe accepts.
-RECIPE_FIELDS = ("base", "donors", "rules", "sets", "normalization")
+RECIPE_FIELDS = ("base", "donors", "rules", "sets", "normalization", "output")
 
 #: The target fields a rule may declare; exactly one per rule.
 _TARGET_FIELDS = (CODEPOINT, RANGE, SET)
@@ -85,6 +93,9 @@ REF_FIELDS = ("path", "face", "instance")
 
 #: The keys the normalization block accepts.
 _NORMALIZATION_FIELDS = ("mode", "optical_ratio", "quote_dash_width")
+
+#: The keys the output section accepts.
+OUTPUT_FIELDS = ("format", "family")
 
 
 @dataclass(frozen=True)
@@ -103,6 +114,22 @@ class FontRef:
 
 
 @dataclass(frozen=True)
+class OutputSpec:
+    """The build's output settings (issues #6 and #10).
+
+    ``format`` selects the output format tier: ``ttf`` (the default),
+    ``ttc`` (a collection packaging one merged face per selected face
+    of the base font file), or ``woff2`` (optional, behind this
+    explicit choice). ``family`` is the validated output family name
+    (default: the fixed brand default ``ChHsich``, never a name derived
+    from the source fonts).
+    """
+
+    format: str = "ttf"
+    family: str = BRAND_DEFAULT_FAMILY
+
+
+@dataclass(frozen=True)
 class Recipe:
     """A parsed recipe, with font paths resolved to absolute locations."""
 
@@ -113,6 +140,7 @@ class Recipe:
     normalization: NormalizationOptions = field(
         default_factory=NormalizationOptions
     )
+    output: OutputSpec = field(default_factory=OutputSpec)
 
 
 def load_recipe(path: Path | str) -> Recipe:
@@ -147,6 +175,7 @@ def load_recipe(path: Path | str) -> Recipe:
     named_sets = _parse_sets(data.get("sets"))
     rules = _parse_rules(data.get("rules"), len(donors), named_sets)
     normalization = _parse_normalization(data.get("normalization"))
+    output = _parse_output(data.get("output"))
 
     return Recipe(
         base=base,
@@ -154,6 +183,35 @@ def load_recipe(path: Path | str) -> Recipe:
         rules=rules,
         named_sets=named_sets,
         normalization=normalization,
+        output=output,
+    )
+
+
+def _parse_output(raw: object) -> OutputSpec:
+    if raw is None:
+        return OutputSpec()
+    if not isinstance(raw, dict):
+        raise RecipeError(
+            "recipe field 'output' must be a mapping with the fields "
+            f"{', '.join(repr(f) for f in OUTPUT_FIELDS)}"
+        )
+    unknown = sorted(set(raw) - set(OUTPUT_FIELDS))
+    if unknown:
+        raise RecipeError(
+            f"unknown output field {unknown[0]!r} in recipe field 'output' "
+            f"(accepts: {', '.join(OUTPUT_FIELDS)})"
+        )
+    fmt = raw.get("format", "ttf")
+    if fmt not in OUTPUT_FORMATS:
+        raise RecipeError(
+            f"recipe field 'output.format' must be one of: "
+            f"{', '.join(OUTPUT_FORMATS)} (got {fmt!r})"
+        )
+    if "family" not in raw:
+        return OutputSpec(format=fmt)
+    return OutputSpec(
+        format=fmt,
+        family=validate_family_name(raw["family"], "output.family"),
     )
 
 

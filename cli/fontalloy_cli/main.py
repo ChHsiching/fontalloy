@@ -13,6 +13,7 @@ from typing import Annotated, Optional
 import typer
 
 import fontalloy_core
+from fontalloy_core.catalog_release import Origin
 from fontalloy_core.errors import FontAlloyError
 
 app = typer.Typer(
@@ -49,7 +50,7 @@ def build(
         typer.Option(
             "--output",
             "-o",
-            help="Output font path (default: <recipe stem>.ttf beside the recipe).",
+            help="Output font path (default: <recipe stem>.<format> beside the recipe).",
         ),
     ] = None,
     report: Annotated[
@@ -60,23 +61,37 @@ def build(
             "(default: <output stem>.report.json beside the output).",
         ),
     ] = None,
+    output_format: Annotated[
+        Optional[str],
+        typer.Option(
+            "--format",
+            "-f",
+            help="Output format: ttf (default), ttc, or woff2. Overrides the "
+            "recipe's output.format.",
+        ),
+    ] = None,
 ) -> None:
     """Build a merged font from a recipe.
 
-    v0: the base font passes through with donors loaded and validated;
-    every build emits a verification report with per-codepoint provenance.
+    Donor glyphs graft into the base font per the recipe's precedence
+    rules, the output identity is rewritten (name table and OS/2, the
+    fixed brand default `ChHsich` unless the recipe overrides
+    `output.family`), and every build emits a verification report with
+    per-codepoint provenance and the source font hashes backing
+    reproducibility.
     """
-    output = output if output is not None else recipe.with_suffix(".ttf")
     try:
-        result = fontalloy_core.build(recipe, output, report_path=report)
+        result = fontalloy_core.build(
+            recipe, output, report_path=report, output_format=output_format
+        )
     except FontAlloyError as exc:
         typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=2) from None
 
     summary = result.report.summary
     typer.echo(
-        f"built {result.font_path} "
-        f"({summary['output_codepoints']} codepoints in output)"
+        f"built {result.font_path} (format {result.format}, "
+        f"{summary['output_codepoints']} codepoints in output)"
     )
     typer.echo(
         f"report {result.report_path} "
@@ -153,6 +168,105 @@ def assets_notices(
         typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=2) from None
     typer.echo(f"notices generated from {manifest} -> {notices_path}")
+
+
+@assets_app.command("package")
+def assets_package(
+    manifest: Annotated[
+        Path,
+        typer.Option(
+            "--manifest",
+            help="Path to the catalog manifest "
+            "(default: assets/fonts.manifest.json in the working directory).",
+        ),
+    ] = Path("assets") / "fonts.manifest.json",
+    fetched: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--fetched",
+            help="Fetched catalog directory (default: a fonts directory "
+            "beside the manifest, as `assets fetch` fills it).",
+        ),
+    ] = None,
+    out: Annotated[
+        Path,
+        typer.Option(
+            "--out",
+            help="Staging directory for the release artifacts (default: dist).",
+        ),
+    ] = Path("dist"),
+    repo: Annotated[
+        str,
+        typer.Option(
+            "--repo",
+            help="GitHub repository hosting the catalog release "
+            "(default: this project's repository).",
+        ),
+    ] = "ChHsiching/fontalloy",
+    tag: Annotated[
+        str,
+        typer.Option(
+            "--tag",
+            help="Dedicated catalog release tag (default: font-catalog-v1).",
+        ),
+    ] = "font-catalog-v1",
+    extra_origin: Annotated[
+        Optional[list[str]],
+        typer.Option(
+            "--extra-origin",
+            help="Additional download origin as id=base_url, appended after "
+            "the GitHub origin (repeatable).",
+        ),
+    ] = None,
+    include: Annotated[
+        Optional[list[Path]],
+        typer.Option(
+            "--include",
+            help="Extra file to attach and checksum, e.g. the generated "
+            "THIRD-PARTY-NOTICES.md (repeatable).",
+        ),
+    ] = None,
+) -> None:
+    """Stage the catalog release: per-family zips, SHA256SUMS, metadata.
+
+    Reads the fetched catalog and writes the release layout CI attaches
+    to the dedicated tag: one zip per family (all faces plus the license
+    file), a SHA256SUMS covering every artifact, and catalog-release
+    metadata whose ordered origin list is the app downloader's delivery
+    contract. Byte-reproducible: re-running on the same inputs yields
+    identical artifacts.
+    """
+    origins = [Origin(id="github-releases", base_url=f"https://github.com/{repo}/releases/download/{tag}")]
+    for spec in extra_origin or []:
+        origin_id, separator, base_url = spec.partition("=")
+        if not separator or not origin_id.strip() or not base_url.strip():
+            typer.secho(
+                f"error: --extra-origin must be id=base_url, got {spec!r}",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        origins.append(Origin(id=origin_id, base_url=base_url))
+
+    try:
+        package = fontalloy_core.package_catalog_release(
+            manifest,
+            fetched,
+            out,
+            tag=tag,
+            origins=origins,
+            include=include or [],
+            echo=typer.echo,
+        )
+    except FontAlloyError as exc:
+        typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from None
+
+    typer.echo(
+        f"packaged {package.families} family zip(s) "
+        f"({package.faces} faces) -> {package.out_dir}"
+    )
+    typer.echo(f"metadata {package.out_dir / 'catalog-release.json'} ({len(origins)} origin(s))")
 
 
 if __name__ == "__main__":

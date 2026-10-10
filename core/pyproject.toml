@@ -9,6 +9,11 @@ license = "AGPL-3.0-only"
 dependencies = [
     "fonttools[woff]>=4.47",
     "pyyaml>=6.0",
+    # woff2 output (and decode) rides brotli. Its compressed bytes are
+    # reproducible within one brotli major version only, so the range
+    # stays bounded and uv.lock pins the exact build — that pin is what
+    # makes woff2 output byte-stable across environments.
+    "brotli>=1.1,<2",
 ]
 
 [build-system]
