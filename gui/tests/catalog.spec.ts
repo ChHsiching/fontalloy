@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { parseFontMeta } from "../src/fonts/sfnt";
 import {
@@ -18,6 +18,10 @@ import { SimCatalog, injectCatalogConfig } from "./catalog-fixtures";
  * real catalog-release metadata schema (see ./catalog-fixtures.ts). The
  * app's storage abstraction persists into the browser profile, so a
  * `page.reload()` inside one test is a real "later launch".
+ *
+ * Settle signal: the progress screen's DOM (per-family statuses, counts)
+ * survives being hidden, so tests wait on its text rather than trying to
+ * catch the overlay mid-flight.
  */
 
 const [FONT_A, FONT_B] = fixtureFontPaths();
@@ -39,6 +43,20 @@ async function parsedCssFamily(path: string): Promise<string> {
     ) as ArrayBuffer,
   ).family;
 }
+
+/** The first-run progress screen (its DOM persists while hidden). */
+const screen = (page: Page) => page.locator(".catalog-screen");
+const familyStatus = (page: Page, family: string) =>
+  screen(page).locator(`.catalog-family[data-family='${family}'] .catalog-family-status`);
+/** Settles once the bootstrap document parsed and families initialized. */
+const catalogTotal = (page: Page) =>
+  screen(page).locator("[data-stat='catalog-total']");
+const catalogDone = (page: Page) =>
+  screen(page).locator("[data-stat='catalog-done']");
+/** The EN picker popup (scoped: both pickers keep popups on <body>). */
+const enPopup = (page: Page) => page.locator('[data-picker-popup="en"]');
+const catalogRow = (page: Page, family: string) =>
+  enPopup(page).locator(`.picker-row[data-family='${family}']`);
 
 test.describe("first-run catalog download", () => {
   const jsErrors: string[] = [];
@@ -79,20 +97,15 @@ test.describe("first-run catalog download", () => {
     await injectCatalogConfig(page);
     await page.goto("/");
 
-    const screen = page.locator(".catalog-screen");
-    await expect(screen).toBeVisible();
-    await expect(screen.locator("[data-stat='catalog-done']")).toHaveText("1");
-    await expect(screen.locator("[data-stat='catalog-total']")).toHaveText("3");
-    const status = (family: string) =>
-      screen.locator(
-        `.catalog-family[data-family='${family}'] .catalog-family-status`,
-      );
-    await expect(status("Alloy Sans")).toHaveText("已完成");
-    await expect(status("Alloy Serif")).toHaveText("下载中");
-    await expect(status("Alloy Mono")).toHaveText("等待下载");
+    await expect(screen(page)).toBeVisible();
+    await expect(catalogDone(page)).toHaveText("1");
+    await expect(catalogTotal(page)).toHaveText("3");
+    await expect(familyStatus(page, "Alloy Sans")).toHaveText("已完成");
+    await expect(familyStatus(page, "Alloy Serif")).toHaveText("下载中");
+    await expect(familyStatus(page, "Alloy Mono")).toHaveText("等待下载");
 
     openGate();
-    await expect(screen).toBeHidden();
+    await expect(screen(page)).toBeHidden();
     await expect(page.locator(".workspace-rail")).toBeVisible();
     await expect(page.locator(".charmap")).toBeVisible();
   });
@@ -110,10 +123,9 @@ test.describe("first-run catalog download", () => {
     await injectCatalogConfig(page);
     await page.goto("/");
 
-    const screen = page.locator(".catalog-screen");
-    await expect(screen).toBeVisible();
-    await pointerClick(page, screen.locator(".catalog-skip"));
-    await expect(screen).toBeHidden();
+    await expect(screen(page)).toBeVisible();
+    await pointerClick(page, screen(page).locator(".catalog-skip"));
+    await expect(screen(page)).toBeHidden();
 
     // The workspace was alive under the overlay the whole time.
     await expect(page.locator(".workspace-rail")).toBeVisible();
@@ -135,23 +147,20 @@ test.describe("first-run catalog download", () => {
     await injectCatalogConfig(page);
     await page.goto("/");
 
-    const screen = page.locator(".catalog-screen");
-    await expect(screen).toBeVisible();
-    await expect(screen).toBeHidden(); // auto-closes once the run settles
+    await expect(catalogTotal(page)).toHaveText("3");
+    await expect(familyStatus(page, "Alloy Mono")).toHaveText("下载失败");
+    await expect(familyStatus(page, "Alloy Sans")).toHaveText("已完成");
+    await expect(catalogDone(page)).toHaveText("2");
+    await expect(screen(page)).toBeHidden();
 
     // The picker lists the verified families and marks the missing one.
     await pointerClick(
       page,
       page.locator('[data-role="picker-en"] .picker-anchor'),
     );
-    const popup = page.locator('[data-picker-popup="en"]');
-    await expect(
-      popup.locator(".picker-row[data-family='Alloy Sans']"),
-    ).toBeVisible();
-    await expect(
-      popup.locator(".picker-row[data-family='Alloy Serif']"),
-    ).toBeVisible();
-    const missing = popup.locator(".picker-row[data-family='Alloy Mono']");
+    await expect(catalogRow(page, "Alloy Sans")).toBeVisible();
+    await expect(catalogRow(page, "Alloy Serif")).toBeVisible();
+    const missing = catalogRow(page, "Alloy Mono");
     await expect(missing).toBeVisible();
     await expect(missing.locator(".picker-row-tag")).toContainText("未下载");
     expect(await missing.getAttribute("aria-disabled")).toBe("true");
@@ -172,15 +181,10 @@ test.describe("first-run catalog download", () => {
     await injectCatalogConfig(page);
     await page.goto("/");
 
-    const screen = page.locator(".catalog-screen");
-    await expect(screen).toBeVisible();
+    await expect(catalogTotal(page)).toHaveText("3");
     openGate();
-    await expect(
-      screen.locator(
-        ".catalog-family[data-family='Alloy Mono'] .catalog-family-status",
-      ),
-    ).toHaveText("下载失败");
-    await expect(screen).toBeHidden();
+    await expect(familyStatus(page, "Alloy Mono")).toHaveText("下载失败");
+    await expect(screen(page)).toBeHidden();
 
     // Both origins were tried before giving up (ordered origin list).
     expect(sim.count("primary:Alloy Mono")).toBe(1);
@@ -192,7 +196,7 @@ test.describe("first-run catalog download", () => {
       page.locator('[data-role="picker-en"] .picker-anchor'),
     );
     await expect(
-      page.locator(".picker-row[data-family='Alloy Mono'] .picker-row-tag"),
+      catalogRow(page, "Alloy Mono").locator(".picker-row-tag"),
     ).toContainText("未下载");
   });
 
@@ -203,11 +207,14 @@ test.describe("first-run catalog download", () => {
     await sim.install(page);
     await injectCatalogConfig(page);
     await page.goto("/");
-    await expect(page.locator(".catalog-screen")).toBeHidden();
+    await expect(catalogDone(page)).toHaveText("3");
+    await expect(screen(page)).toBeHidden();
 
     await page.reload();
     await waitForFontsReady(page);
-    await expect(page.locator(".catalog-screen")).toBeHidden();
+    await expect(catalogTotal(page)).toHaveText("3");
+    await expect(catalogDone(page)).toHaveText("3");
+    await expect(screen(page)).toBeHidden();
 
     // Only the bootstrap document was fetched again; no zip was re-downloaded.
     expect(sim.count("release")).toBe(2);
@@ -220,9 +227,7 @@ test.describe("first-run catalog download", () => {
       page,
       page.locator('[data-role="picker-en"] .picker-anchor'),
     );
-    await expect(
-      page.locator(".picker-row[data-family='Alloy Sans']"),
-    ).toBeVisible();
+    await expect(catalogRow(page, "Alloy Sans")).toBeVisible();
   });
 
   test("a failed family retries and heals on a later launch", async ({
@@ -233,12 +238,14 @@ test.describe("first-run catalog download", () => {
     await sim.install(page);
     await injectCatalogConfig(page);
     await page.goto("/");
-    await expect(page.locator(".catalog-screen")).toBeHidden();
+    await expect(familyStatus(page, "Alloy Mono")).toHaveText("下载失败");
     expect(sim.count("primary:Alloy Mono")).toBe(1);
 
     sim.fail = {}; // the origin heals between launches
     await page.reload();
     await waitForFontsReady(page);
+    await expect(familyStatus(page, "Alloy Mono")).toHaveText("已完成");
+    await expect(catalogDone(page)).toHaveText("3");
 
     // Only the missing family was fetched again; verified ones were skipped.
     expect(sim.count("primary:Alloy Mono")).toBe(2);
@@ -248,7 +255,7 @@ test.describe("first-run catalog download", () => {
       page,
       page.locator('[data-role="picker-en"] .picker-anchor'),
     );
-    const healed = page.locator(".picker-row[data-family='Alloy Mono']");
+    const healed = catalogRow(page, "Alloy Mono");
     await expect(healed).toBeVisible();
     await expect(healed.locator(".picker-row-tag")).toHaveCount(0);
     expect(await healed.getAttribute("aria-disabled")).toBeNull();
@@ -257,12 +264,14 @@ test.describe("first-run catalog download", () => {
   test("the ordered origin list is consumed: a down primary falls through to the backup", async ({
     page,
   }) => {
+    expectNetworkFailures = true; // the down primary aborts by design
     const sim = await SimCatalog.create(FAMILY_SPECS);
     sim.downOrigin["Alloy Serif"] = "primary";
     await sim.install(page);
     await injectCatalogConfig(page);
     await page.goto("/");
-    await expect(page.locator(".catalog-screen")).toBeHidden();
+    await expect(catalogDone(page)).toHaveText("3");
+    await expect(screen(page)).toBeHidden();
 
     expect(sim.count("primary:Alloy Serif")).toBe(1);
     expect(sim.count("backup:Alloy Serif")).toBe(1);
@@ -271,7 +280,7 @@ test.describe("first-run catalog download", () => {
       page,
       page.locator('[data-role="picker-en"] .picker-anchor'),
     );
-    const row = page.locator(".picker-row[data-family='Alloy Serif']");
+    const row = catalogRow(page, "Alloy Serif");
     await expect(row).toBeVisible();
     expect(await row.getAttribute("aria-disabled")).toBeNull();
   });
@@ -284,44 +293,38 @@ test.describe("first-run catalog download", () => {
     await sim.install(page);
     await injectCatalogConfig(page);
     await page.goto("/");
-    await expect(page.locator(".catalog-screen")).toBeHidden();
+    await expect(catalogDone(page)).toHaveText("3");
 
     await pointerClick(
       page,
       page.locator('[data-role="picker-en"] .picker-anchor'),
     );
-    const popup = page.locator('[data-picker-popup="en"]');
-    const sansRow = popup.locator(".picker-row[data-family='Alloy Sans']");
+    const sansRow = catalogRow(page, "Alloy Sans");
     await expect(sansRow).toBeVisible();
 
     // The row TEXT is the metadata family; the row FONT is the parsed face.
     // The two differ by construction here, which pins "metadata-driven".
+    // (Computed font-family drops the quotes — compare the bare name.)
     await expect(sansRow).toContainText("Alloy Sans");
     await expect
       .poll(() => sansRow.evaluate((el) => getComputedStyle(el).fontFamily))
-      .toContain(cssFamilyQuote(cssA));
+      .toContain(cssA);
     const rendered = await sansRow.evaluate(
       (el) => getComputedStyle(el).fontFamily,
     );
     expect(rendered).not.toContain("Alloy Sans");
 
     // Search filters across the catalog rows.
-    const search = popup.locator(".picker-search");
+    const search = enPopup(page).locator(".picker-search");
     await expect(search).toBeVisible();
     await search.fill("Serif");
-    await expect(
-      popup.locator(".picker-row[data-family='Alloy Sans']"),
-    ).toBeHidden();
-    await expect(
-      popup.locator(".picker-row[data-family='Alloy Serif']"),
-    ).toBeVisible();
+    await expect(catalogRow(page, "Alloy Sans")).toBeHidden();
+    await expect(catalogRow(page, "Alloy Serif")).toBeVisible();
     await search.fill("");
-    await expect(
-      popup.locator(".picker-row[data-family='Alloy Sans']"),
-    ).toBeVisible();
+    await expect(catalogRow(page, "Alloy Sans")).toBeVisible();
 
     // The local-file footer stays outside the scroll area.
-    await expect(popup.locator(".popup-footer")).toContainText(
+    await expect(enPopup(page).locator(".popup-footer")).toContainText(
       "加载本地字体文件",
     );
   });
@@ -334,16 +337,13 @@ test.describe("first-run catalog download", () => {
     await sim.install(page);
     await injectCatalogConfig(page);
     await page.goto("/");
-    await expect(page.locator(".catalog-screen")).toBeHidden();
+    await expect(catalogDone(page)).toHaveText("3");
 
     await pointerClick(
       page,
       page.locator('[data-role="picker-en"] .picker-anchor'),
     );
-    await pointerClick(
-      page,
-      page.locator(".picker-row[data-family='Alloy Sans']"),
-    );
+    await pointerClick(page, catalogRow(page, "Alloy Sans"));
     await waitForFontsReady(page);
 
     await expect(
@@ -384,26 +384,25 @@ test.describe("first-run catalog download", () => {
     await waitForFontsReady(page);
 
     // No progress screen when there is nothing to download.
-    await expect(page.locator(".catalog-screen")).toBeHidden();
+    await expect(screen(page)).toBeHidden();
     await expect(page.locator(".workspace-rail")).toBeVisible();
 
     await pointerClick(
       page,
       page.locator('[data-role="picker-en"] .picker-anchor'),
     );
-    const popup = page.locator('[data-picker-popup="en"]');
-    await expect(popup.locator(".picker-catalog-note")).toContainText(
-      "目录不可用",
-    );
-    await expect(popup.locator(".picker-row[data-family]")).toHaveCount(0);
+    await expect(
+      enPopup(page).locator(".picker-catalog-note"),
+    ).toContainText("目录不可用");
+    await expect(catalogRow(page, "Alloy Sans")).toHaveCount(0);
 
     // Local files load and preview exactly as before the catalog existed.
-    await popup
+    await enPopup(page)
       .locator(".popup-footer input[type=file]")
       .setInputFiles(FONT_A);
     await waitForFontsReady(page);
     await expect(page.locator("[data-stat='fonts']")).toHaveText("1");
-    await pointerClick(page, popup.locator(".picker-row").first());
+    await pointerClick(page, enPopup(page).locator(".picker-row").first());
     const coverage = await page
       .locator("[data-stat='coverage']")
       .textContent();
