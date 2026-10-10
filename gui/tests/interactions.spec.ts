@@ -1,4 +1,6 @@
 import { test, expect } from "@playwright/test";
+import { readFile } from "node:fs/promises";
+import { parseFontMeta } from "../src/fonts/sfnt";
 import {
   assertNoJsErrors,
   collectJsErrors,
@@ -59,10 +61,38 @@ test.describe("cell details (click-reachable information)", () => {
       page,
       page.locator(".charmap-categories .block-button", { hasText: "杂项符号" }),
     );
-    // U+2603 SNOWMAN is not covered by the shipped host fonts.
-    await pointerClick(page, page.locator(".charmap-grid .cell[data-cp='U+2603']"));
+    // The uncovered example must be derived from the fixture's real cmap —
+    // host fonts differ per platform (DejaVu Sans covers U+2603; the Windows
+    // fixtures do not), so a hardcoded codepoint would not be portable.
+    const [font1] = fixtureFontPaths();
+    const bytes = await readFile(font1);
+    const meta = parseFontMeta(
+      bytes.buffer.slice(
+        bytes.byteOffset,
+        bytes.byteOffset + bytes.byteLength,
+      ) as ArrayBuffer,
+    );
+    const covered = new Set(meta.codepoints);
+    const cells = page.locator(".charmap-grid .cell");
+    const cellCount = await cells.count();
+    let target: string | null = null;
+    for (let i = 0; i < cellCount; i++) {
+      const cp = await cells.nth(i).getAttribute("data-cp");
+      if (cp && !covered.has(parseInt(cp.slice(2), 16))) {
+        target = cp;
+        break;
+      }
+    }
+    expect(
+      target,
+      "the fixture font covers every codepoint on the visible page",
+    ).not.toBeNull();
+    await pointerClick(
+      page,
+      page.locator(`.charmap-grid .cell[data-cp='${target}']`),
+    );
     const text = (await page.locator(".charmap-details").textContent()) ?? "";
-    expect(text).toContain("U+2603");
+    expect(text).toContain(target!);
     expect(text).toContain("未被所选字体覆盖");
   });
 });
