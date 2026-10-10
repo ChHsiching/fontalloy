@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Node / Tauri
+node_modules/
+target/
+
+# Font binaries — this repo ships the tool, not fonts
+*.ttf
+*.otf
+*.ttc
+*.woff
+*.woff2
+
+# Local working files
+.playwright-mcp/
+*.log
+.scratch/
+gui/prototype/_shots/
+
+# GUI prototype lives on the prototype/gui branch, never on main
+gui/
+
+# OS
+.DS_Store
+Thumbs.db
