@@ -2,9 +2,9 @@
 
 ``build(recipe_path, output_path, ...)`` is the single public entry point
 of the core: recipe + font files in, built font + verification report out.
-The CLI calls it in-process; later consumers (serve, the GUI sidecar) do
-the same — serve through :func:`build_recipe`, which runs the identical
-pipeline over an already-parsed recipe (issue #11).
+The CLI calls it in-process; serve (issue #11) does the same through
+:func:`build_recipe`, which runs the identical pipeline over an
+already-parsed recipe.
 
 Pipeline stages in this ticket (issues #2 through #10): load and detect
 the base and donor fonts (TTC face selection, variable instantiation,

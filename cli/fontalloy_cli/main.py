@@ -1,8 +1,10 @@
 """The ``fontalloy`` command line: a thin typer shell over the core.
 
 The CLI holds no logic of its own (ADR-0002): it parses arguments, calls
-``fontalloy_core`` in-process, and reports results. ``serve`` arrives in a
-later ticket as a sibling command.
+``fontalloy_core`` in-process, and reports results. ``build`` and
+``serve`` drive the pipeline (``serve`` as the localhost HTTP service
+both frontends consume), and the ``assets`` / ``recipes`` subcommands
+cover the catalog and release workflow.
 """
 
 from __future__ import annotations

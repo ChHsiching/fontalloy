@@ -7,10 +7,11 @@
  * range / single codepoint) with an ordered font list referencing
  * `base` or `donor-<join index>`, and output naming (family + format).
  *
- * Extension points for in-flight siblings, kept deliberately open:
- * - `weight` mapping overrides land with issue #9 — the builder carries
- *   a placeholder section, not a field, until the schema exists;
- * - normalization switches land with issue #8 — same treatment.
+ * The schema sections that once lagged behind are draft fields now:
+ * `normalization` (issue #8, ADR-0003) and `weights` (issue #9, the
+ * weight/style matrix) are parsed by the core, edited in the builder's
+ * settings scene, and serialized into the recipe like every other
+ * section.
  */
 
 /** One catalog entry as statically rendered at build time. */
