@@ -166,10 +166,12 @@ def _recipe(tmp_path: Path, body: str) -> Path:
 # --- the reference schema (the strict loader) ------------------------------
 
 
-def test_a_catalog_reference_parses_with_family_variant_and_pattern():
+def test_a_catalog_reference_parses_with_family_variant_and_pattern(
+    tmp_path: Path,
+):
     recipe = load_recipe(
         _recipe(
-            Path("."),
+            tmp_path,
             "base:\n"
             "  family: FakeCode\n"
             "  variant: Nerd Font\n"
