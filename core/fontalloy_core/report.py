@@ -13,9 +13,12 @@ built font's own cmap — read back from the output, never assumed — and
 the summary's ``output_codepoints`` counts the true merged coverage.
 Output formats landed next (issue #10): ``format`` records the tier a
 build wrote, and a collection build carries one face record per packaged
-face with its identity and its own summary counts. The weight-borrow
-table and metric comparison join as new sections. The JSON carries no
-timestamps or nondeterministic ordering, so identical inputs yield
+face with its identity and its own summary counts. The weight and style
+matrix (issue #9) added the ``weights`` section — one slot record per
+output weight/style with its borrow table: which donor weight landed in
+which output weight, chosen how, and whether a style fell back to
+upright. The metric comparison joins as a new section. The JSON carries
+no timestamps or nondeterministic ordering, so identical inputs yield
 byte-identical reports — and the source hashes below are what make
 "identical inputs" checkable in the first place.
 """
@@ -92,6 +95,44 @@ class FaceRecord:
 
 
 @dataclass(frozen=True)
+class BorrowRecord:
+    """One donor face's landing in one output slot (issue #9).
+
+    ``donor`` is the source record id; ``face`` is the donor file's own
+    face index; ``weight``/``italic`` are that face's identity (which
+    donor weight landed); ``via`` states how it was chosen —
+    ``nearest``, ``override``, or ``pinned``; ``style_fallback`` states
+    that the donor family lacked the slot's style and its other style
+    (upright, by the terminal convention) landed instead.
+    """
+
+    donor: str
+    face: int
+    weight: int
+    italic: bool
+    via: str
+    style_fallback: bool
+
+
+@dataclass(frozen=True)
+class WeightSlotRecord:
+    """One output slot of the weight/style matrix (issue #9).
+
+    ``index`` is the slot's output position (its face position in a
+    collection); ``weight``/``italic`` are the output identity — the
+    base face's own; ``base_face`` is that face's index in the base
+    font file; ``borrows`` states every donor landing: which donor
+    weight ended up in this output weight, and how it was chosen.
+    """
+
+    index: int
+    weight: int
+    italic: bool
+    base_face: int
+    borrows: tuple[BorrowRecord, ...] = ()
+
+
+@dataclass(frozen=True)
 class VerificationReport:
     """The verification report of one build.
 
@@ -112,6 +153,7 @@ class VerificationReport:
     conflicts: tuple[ConflictRecord, ...] = ()
     format: str = "ttf"
     faces: tuple[FaceRecord, ...] = ()
+    weights: tuple[WeightSlotRecord, ...] = ()
 
     @property
     def summary(self) -> dict[str, int]:
@@ -195,6 +237,26 @@ class VerificationReport:
                     for conflict in self.conflicts
                 ],
             },
+            "weights": [
+                {
+                    "index": slot.index,
+                    "weight": slot.weight,
+                    "style": "italic" if slot.italic else "upright",
+                    "base_face": slot.base_face,
+                    "borrows": [
+                        {
+                            "donor": borrow.donor,
+                            "face": borrow.face,
+                            "weight": borrow.weight,
+                            "style": "italic" if borrow.italic else "upright",
+                            "via": borrow.via,
+                            "style_fallback": borrow.style_fallback,
+                        }
+                        for borrow in slot.borrows
+                    ],
+                }
+                for slot in self.weights
+            ],
             "summary": self.summary,
         }
 

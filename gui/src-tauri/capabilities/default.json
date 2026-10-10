@@ -3,5 +3,27 @@
   "identifier": "default",
   "description": "Capabilities of the main FontAlloy window",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": [
+    "core:default",
+    {
+      "identifier": "fs:allow-exists",
+      "allow": [{ "path": "$APPDATA/catalog" }, { "path": "$APPDATA/catalog/**" }]
+    },
+    {
+      "identifier": "fs:allow-read-file",
+      "allow": [{ "path": "$APPDATA/catalog/**" }]
+    },
+    {
+      "identifier": "fs:allow-write-file",
+      "allow": [{ "path": "$APPDATA/catalog/**" }]
+    },
+    {
+      "identifier": "fs:allow-mkdir",
+      "allow": [{ "path": "$APPDATA/catalog" }, { "path": "$APPDATA/catalog/**" }]
+    },
+    {
+      "identifier": "fs:allow-read-dir",
+      "allow": [{ "path": "$APPDATA/catalog" }, { "path": "$APPDATA/catalog/**" }]
+    }
+  ]
 }
