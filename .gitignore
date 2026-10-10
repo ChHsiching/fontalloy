@@ -10,6 +10,7 @@ build/
 # Node / Tauri
 node_modules/
 target/
+*.tsbuildinfo
 
 # Font binaries — this repo ships the tool, not fonts
 *.ttf
@@ -24,6 +25,13 @@ assets/fonts/
 *.log
 .scratch/
 gui/prototype/_shots/
+
+# Frontend test artifacts (seam 3)
+gui/test-results/
+gui/playwright-report/
+
+# Tauri generated files (schemas, android/ios projects)
+gui/src-tauri/gen/
 
 # GUI prototype lives on the prototype/gui branch, never on main
 gui/prototype/

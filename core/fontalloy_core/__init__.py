@@ -6,6 +6,11 @@ The only capability layer (ADR-0002). Public surface:
   font plus a verification report out. This is the one entry point the whole
   pipeline is tested through (seam 1 of the testing decisions).
 - ``load_recipe(path)``: parse a recipe YAML strictly into a ``Recipe``.
+- ``resolve_precedence(rules, coverages=..., named_sets=...)``: the
+  precedence engine — expand a rule set (with font coverages and named
+  range sets) to codepoint level, producing the effective table. The
+  build pipeline consumes it, and later consumers (grafting, serve, the
+  GUI's effective-preview consistency check) call it directly.
 - ``load_manifest(path)``: parse the font catalog manifest strictly into a
   ``Catalog``; ``fetch_catalog(...)`` downloads and sha256-verifies it.
 - ``RecipeError`` / ``BuildError`` / ``CatalogError`` / ``AssetsError``:
@@ -25,6 +30,14 @@ from fontalloy_core.errors import (
     RecipeError,
 )
 from fontalloy_core.notices import generate_notices, write_notices
+from fontalloy_core.precedence import (
+    BUILTIN_NAMED_SETS,
+    EffectiveEntry,
+    PrecedenceRule,
+    Resolution,
+    SameLayerConflict,
+    resolve_precedence,
+)
 from fontalloy_core.recipe import Recipe, load_recipe
 from fontalloy_core.report import VerificationReport
 
@@ -32,20 +45,26 @@ __version__ = "0.1.0"
 
 __all__ = [
     "AssetsError",
+    "BUILTIN_NAMED_SETS",
     "BuildError",
     "BuildOutput",
     "Catalog",
     "CatalogEntry",
     "CatalogError",
+    "EffectiveEntry",
     "FetchSummary",
     "FontAlloyError",
+    "PrecedenceRule",
     "Recipe",
     "RecipeError",
+    "Resolution",
+    "SameLayerConflict",
     "VerificationReport",
     "build",
     "fetch_catalog",
     "generate_notices",
     "load_manifest",
     "load_recipe",
+    "resolve_precedence",
     "write_notices",
 ]

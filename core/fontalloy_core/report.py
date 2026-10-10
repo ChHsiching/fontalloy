@@ -1,16 +1,17 @@
 """The verification report.
 
 Every build emits one (issue #2, and the spec's "every build ships a
-verification report"). Report v0 records the build's sources and the
-per-codepoint provenance — for each codepoint in the union of all source
-coverages, which font wins it under the default precedence (base first,
-donors in join order, absence never overrides).
+verification report"). The report records the build's sources and the
+effective table — for each codepoint in the union of all source
+coverages, which font wins it (``winner``), through which precedence
+(``via``: the global default or the winning rule), and how the glyph got
+there (``kind``: base keep, fill, or override).
 
-v0 is the structure later tickets extend, not the final content: when
-grafting lands, donor-won codepoints flip ``in_output`` to true and the
-summary converges; the weight-borrow table and metric comparison join as
-new sections. The JSON carries no timestamps or nondeterministic ordering,
-so identical inputs yield byte-identical reports.
+This is still the structure later tickets extend, not the final content:
+when grafting lands, donor-won codepoints flip ``in_output`` to true and
+the summary converges; the weight-borrow table and metric comparison
+join as new sections. The JSON carries no timestamps or nondeterministic
+ordering, so identical inputs yield byte-identical reports.
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 #: Schema identifier, bumped when the report shape changes meaningfully.
-SCHEMA = "fontalloy/verification-report@v0"
+SCHEMA = "fontalloy/verification-report@v1"
 
 
 @dataclass(frozen=True)
@@ -42,6 +43,29 @@ class ProvenanceEntry:
     codepoint: int
     winner: str  # a SourceRecord id
     in_output: bool  # present in the built font (v0: base coverage only)
+    via: str  # "default" or a rule id ("rule-<declaration index>")
+    kind: str  # "base" | "fill" | "override"
+
+
+@dataclass(frozen=True)
+class RuleRecord:
+    """One precedence rule declaration, as the recipe made it."""
+
+    id: str  # "rule-<declaration index>"
+    granularity: str  # "codepoint" | "range" | "set"
+    target: str  # recipe syntax: "0x4E2D", "0x2100-0x214F", or a set name
+    fonts: tuple[str, ...]  # the ordered font list, as declared
+
+
+@dataclass(frozen=True)
+class ConflictRecord:
+    """A same-layer overlap: the later rule shadows the earlier one."""
+
+    granularity: str
+    shadowed: str  # rule id of the earlier declaration
+    winner: str  # rule id of the later declaration
+    overlap: tuple[str, ...]  # recipe-syntax intervals of the overlap
+    codepoints: int  # size of the overlap
 
 
 @dataclass(frozen=True)
@@ -50,6 +74,8 @@ class VerificationReport:
     provenance: tuple[ProvenanceEntry, ...]
     output_path: Path
     output_sha256: str
+    rules: tuple[RuleRecord, ...] = ()
+    conflicts: tuple[ConflictRecord, ...] = ()
 
     @property
     def summary(self) -> dict[str, int]:
@@ -59,6 +85,16 @@ class VerificationReport:
             "from_base": from_base,
             "from_donors": len(self.provenance) - from_base,
             "output_codepoints": sum(1 for e in self.provenance if e.in_output),
+        }
+
+    @property
+    def precedence_counts(self) -> dict[str, int]:
+        """The fill/override accounting over the effective table."""
+        kinds = [e.kind for e in self.provenance]
+        return {
+            "base": kinds.count("base"),
+            "fill": kinds.count("fill"),
+            "override": kinds.count("override"),
         }
 
     def to_json_dict(self) -> dict:
@@ -78,14 +114,38 @@ class VerificationReport:
                 }
                 for source in self.sources
             ],
+            "rules": [
+                {
+                    "id": rule.id,
+                    "granularity": rule.granularity,
+                    "target": rule.target,
+                    "fonts": list(rule.fonts),
+                }
+                for rule in self.rules
+            ],
             "provenance": [
                 {
                     "codepoint": entry.codepoint,
                     "winner": entry.winner,
                     "in_output": entry.in_output,
+                    "via": entry.via,
+                    "kind": entry.kind,
                 }
                 for entry in self.provenance
             ],
+            "precedence": {
+                "counts": self.precedence_counts,
+                "same_layer_conflicts": [
+                    {
+                        "granularity": conflict.granularity,
+                        "shadowed": conflict.shadowed,
+                        "winner": conflict.winner,
+                        "overlap": list(conflict.overlap),
+                        "codepoints": conflict.codepoints,
+                    }
+                    for conflict in self.conflicts
+                ],
+            },
             "summary": self.summary,
         }
 
