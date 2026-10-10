@@ -469,6 +469,9 @@ class _BuildWorker(threading.Thread):
                 job.recipe,
                 job.font_path,
                 report_path=job.report_path,
+                # Catalog-family references in submissions resolve
+                # against the serve process's configured manifest.
+                manifest=state.options.manifest,
                 progress=state.progress_of(job),
             )
             # Artifact facts are computed once at completion — polling a

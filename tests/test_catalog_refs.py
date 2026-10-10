@@ -451,3 +451,20 @@ def test_fetch_catalog_rejects_an_unknown_family(catalog_site: Path):
             catalog_site / "filtered",
             families=("Nope",),
         )
+
+
+def test_a_verified_zip_with_a_vanished_extraction_is_reextracted(
+    catalog_site: Path,
+):
+    """Fetch repairs the layout, not just the bytes: a recipe build
+    whose error says "re-run assets fetch" must be fixable by doing
+    exactly that (issue #23 hit this with a hand-seeded zip)."""
+    fonts = catalog_site / "fonts"
+    faces = fonts / "FakeCode"
+    for face in faces.iterdir():
+        face.unlink()
+    faces.rmdir()
+    summary = fetch_catalog(catalog_site / "fonts.manifest.json", fonts)
+    assert summary.downloaded == 0
+    assert summary.skipped == 3  # nothing re-downloaded, everything verified
+    assert (faces / "FakeCodeNerdFont-Regular.ttf").is_file()

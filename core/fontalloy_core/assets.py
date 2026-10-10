@@ -97,6 +97,13 @@ def fetch_catalog(
     for entry in entries:
         target = dest_dir / entry.file
         if target.is_file() and sha256_of(target) == entry.sha256:
+            # The artifact is verified, but the layout must be whole:
+            # a zip whose extracted faces vanished is re-extracted, so
+            # "re-run assets fetch" genuinely repairs any state the
+            # error messages point it at (issue #23).
+            if zipfile.is_zipfile(target) and not (dest_dir / target.stem).is_dir():
+                extracted = _extract_faces(target, dest_dir / target.stem)
+                echo(f"{entry.file}: extracted {extracted} font file(s)")
             skipped += 1
             echo(f"{entry.file}: already verified")
             continue
