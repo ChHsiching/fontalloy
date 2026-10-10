@@ -64,8 +64,11 @@ def build(
 ) -> None:
     """Build a merged font from a recipe.
 
-    v0: the base font passes through with donors loaded and validated;
-    every build emits a verification report with per-codepoint provenance.
+    Donor glyphs are grafted into the base font per the precedence
+    rules, the output identity is rewritten (name table and OS/2, the
+    fixed brand default `ChHsich` unless the recipe overrides
+    `output.family`), and every build emits a verification report with
+    per-codepoint provenance.
     """
     output = output if output is not None else recipe.with_suffix(".ttf")
     try:
