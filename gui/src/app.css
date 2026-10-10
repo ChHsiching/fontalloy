@@ -377,6 +377,18 @@ button {
   flex-direction: column;
 }
 
+.charmap-details {
+  flex: none;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12.5px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .charmap-pager {
   flex: none;
   display: flex;

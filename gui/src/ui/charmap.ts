@@ -21,6 +21,7 @@ export function mountCharmap(root: HTMLElement): void {
   root.innerHTML = `
     <nav class="charmap-categories" aria-label="字符分类"></nav>
     <div class="charmap-main">
+      <div class="charmap-details" data-details></div>
       <div class="charmap-pager">
         <button class="page-prev" disabled>‹ 上一页</button>
         <span class="page-indicator"></span>
@@ -36,6 +37,7 @@ export function mountCharmap(root: HTMLElement): void {
   `;
 
   const categories = root.querySelector<HTMLElement>(".charmap-categories")!;
+  const details = root.querySelector<HTMLElement>("[data-details]")!;
   const grid = root.querySelector<HTMLElement>(".charmap-grid")!;
   const indicator = root.querySelector<HTMLElement>(".page-indicator")!;
   const prev = root.querySelector<HTMLButtonElement>(".page-prev")!;
@@ -65,7 +67,7 @@ export function mountCharmap(root: HTMLElement): void {
   });
 
   const render = (): void => {
-    const { categoryId, page, selected, selectedCodepoint } = store.get();
+    const { categoryId, page, selected, selectedCodepoint, fonts } = store.get();
     const last = pageCountFor(categoryId);
     const safePage = Math.min(Math.max(page, 1), last);
 
@@ -73,6 +75,7 @@ export function mountCharmap(root: HTMLElement): void {
     prev.disabled = safePage <= 1;
     next.disabled = safePage >= last;
 
+    renderDetails(details, selectedCodepoint, fonts, selected);
     renderGrid(
       grid,
       categoryId,
@@ -85,6 +88,45 @@ export function mountCharmap(root: HTMLElement): void {
   };
   store.subscribe(render);
   render();
+}
+
+/**
+ * Click-reachable cell information (ADR-0004: no hover-only info). Shows the
+ * codepoint, the character, and which of the selected fonts covers it.
+ */
+function renderDetails(
+  details: HTMLElement,
+  codepoint: number | null,
+  fonts: ReturnType<typeof store.get>["fonts"],
+  selected: { en: string | null; cjk: string | null },
+): void {
+  if (codepoint === null) {
+    details.textContent = "点击任一字符格，查看码位与所选字体的覆盖情况。";
+    return;
+  }
+  const covers = (key: string | null, label: string): string => {
+    const font = fonts.find((f) => f.cssFamily === key);
+    if (!font) return "";
+    return coversCodepoint(font, codepoint) ? ` ${label}·${font.family}` : "";
+  };
+  const hits =
+    covers(selected.en, "英文字体") + covers(selected.cjk, "中文字体");
+  details.textContent =
+    `码位 ${formatCp(codepoint)} · 字符 “${String.fromCodePoint(codepoint)}” · ` +
+    (hits.trim() ? `覆盖：${hits.trim()}` : "未被所选字体覆盖");
+}
+
+function coversCodepoint(font: { codepoints: number[] }, cp: number): boolean {
+  const arr = font.codepoints;
+  let lo = 0;
+  let hi = arr.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (arr[mid] === cp) return true;
+    if (arr[mid] < cp) lo = mid + 1;
+    else hi = mid - 1;
+  }
+  return false;
 }
 
 function buildCategoryTree(root: HTMLElement): void {
