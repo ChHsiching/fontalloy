@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import {
+  allowProbeRefusal,
   assertNoJsErrors,
   cliCommand,
   collectJsErrors,
@@ -16,12 +17,22 @@ import { driveFixtureState } from "./flow";
  * base/donor selection, the no-service fallback rendering, validation
  * gating, download, and the copy-CLI path. Real pointer events with
  * hit-testing guards; DOM textContent assertions only.
+ *
+ * Since issue #22 the page probes the local service on load; these
+ * tests run against an address nothing answers on, so the degraded
+ * rendering is the REAL refused-connection path (the browser's own
+ * console line for the refused probe is declared benign per the
+ * suite's error-gate policy).
  */
+
+/** A loopback address nothing listens on (deterministic absence). */
+const UNUSED_SERVE = "http://127.0.0.1:59999";
 
 test.beforeEach(async ({ page }) => {
   const errors: string[] = [];
-  collectJsErrors(page, errors);
-  await page.goto("/");
+  const gate = collectJsErrors(page, errors);
+  allowProbeRefusal(gate, UNUSED_SERVE);
+  await page.goto(`/?serve=${encodeURIComponent(UNUSED_SERVE)}`);
   await waitForFontsReady(page);
   assertNoJsErrors(errors);
 });
@@ -35,12 +46,67 @@ test("no-service state: the copy-CLI fallback is the default rendering", async (
   expect(text).toContain("fontalloy serve");
   expect(text).toContain("127.0.0.1");
   expect(text).toContain("复制 CLI 命令");
+  // The statement says WHY: no service was detected at the address.
+  expect(text).toContain("未检测到本地服务");
+  expect(text).toContain(UNUSED_SERVE);
 
   await expect(page.locator('[data-testid="service-chip"]')).toHaveText(
     /本地服务：未连接/,
   );
   await expect(page.locator('[data-testid="copy-command"]')).toBeVisible();
   await expect(cliCommand(page)).toContainText("fontalloy build");
+  // The live-merge surface stays out of the degraded rendering.
+  await expect(page.locator('[data-testid="live-merge-panel"]')).toBeHidden();
+});
+
+test("absent service: the re-probe affordance is click-reachable", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  const gate = collectJsErrors(page, errors);
+  allowProbeRefusal(gate, UNUSED_SERVE);
+
+  const reprobe = page.locator('[data-testid="reprobe"]');
+  await expect(reprobe).toBeVisible();
+  await expect(page.locator('[data-testid="service-chip"]')).toHaveText(
+    /本地服务：未连接/,
+  );
+
+  // Clicking re-probes (the refused fetch is redeclared benign); the
+  // page stays honest about still being without a service.
+  await pointerClick(page, reprobe);
+  await expect(page.locator('[data-testid="service-chip"]')).toHaveText(
+    /本地服务：未连接/,
+  );
+  await expect(page.locator('[data-testid="service-notice"]')).toContainText(
+    "未检测到本地服务",
+  );
+
+  assertNoJsErrors(errors);
+});
+
+test("absent service with an intercepted probe degrades identically", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  const gate = collectJsErrors(page, errors);
+  // Deterministic failure without any port race: the default-address
+  // probe is intercepted and aborted (seam-3 notes §7).
+  await page.route("http://127.0.0.1:7777/**", (route) => route.abort());
+  allowProbeRefusal(gate, "http://127.0.0.1:7777");
+
+  await page.goto("/");
+  await waitForFontsReady(page);
+
+  await expect(page.locator('[data-testid="service-chip"]')).toHaveText(
+    /本地服务：未连接/,
+  );
+  const notice = page.locator('[data-testid="service-notice"]');
+  await expect(notice).toContainText("未检测到本地服务");
+  await expect(page.locator('[data-testid="copy-command"]')).toBeVisible();
+  await expect(cliCommand(page)).toContainText("fontalloy build");
+
+  assertNoJsErrors(errors);
 });
 
 test("base and donors select from the catalog through the real picker", async ({
@@ -210,7 +276,9 @@ test("normalization switches and weight slots cover the landed recipe schema", a
 
 test("zero JS errors across a full builder interaction", async ({ page }) => {
   const errors: string[] = [];
-  collectJsErrors(page, errors);
+  const gate = collectJsErrors(page, errors);
+  // The probe may still be in flight when this second sink attaches.
+  allowProbeRefusal(gate, UNUSED_SERVE);
 
   await driveFixtureState(page);
   await expect(page.locator('[data-testid="problems"]')).toBeEmpty();
