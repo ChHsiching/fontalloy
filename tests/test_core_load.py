@@ -16,7 +16,13 @@ from pathlib import Path
 import pytest
 from fontTools.ttLib import TTFont
 
-from conftest import BASE_CODEPOINTS, synth_font, synth_ttc, synth_variable_font
+from conftest import (
+    BASE_CODEPOINTS,
+    synth_font,
+    synth_ttc,
+    synth_variable_font,
+    synth_woff2,
+)
 from fontalloy_core import BuildError, build
 
 
@@ -277,6 +283,57 @@ class TestVariableInput:
             f"donors:\n  - {donor.name}\n",
             encoding="utf-8",
         )
+        output = tmp_path / "out.ttf"
+        report_path = tmp_path / "out.report.json"
+
+        build(recipe, output, report_path=report_path)
+        font_bytes = output.read_bytes()
+        report_bytes = report_path.read_bytes()
+
+        build(recipe, output, report_path=report_path)
+        assert output.read_bytes() == font_bytes
+        assert report_path.read_bytes() == report_bytes
+
+
+class TestWoff2Input:
+    """A woff2 input is decoded: the merge and its output are plain TTF."""
+
+    def test_woff2_base_builds_a_plain_ttf(self, tmp_path):
+        woff2 = synth_woff2(
+            tmp_path / "base.woff2", family="SynthWoff", codepoints=BASE_CODEPOINTS
+        )
+        recipe = tmp_path / "recipe.yaml"
+        recipe.write_text(f"base: {woff2.name}\ndonors: []\n", encoding="utf-8")
+
+        result = build(recipe, tmp_path / "out.ttf")
+
+        # Decoded, not passed through: the output is a plain sfnt TTF.
+        assert result.font_path.read_bytes()[:4] == b"\x00\x01\x00\x00"
+        font = TTFont(result.font_path)
+        assert font.flavor is None
+        assert set(font.getBestCmap()) == set(BASE_CODEPOINTS)
+
+    def test_woff2_donor_contributes_its_coverage(self, tmp_path, base_font):
+        woff2 = synth_woff2(
+            tmp_path / "donor.woff2", family="SynthWoff", codepoints=(0x4E2D, 0x56FD)
+        )
+        recipe = tmp_path / "recipe.yaml"
+        recipe.write_text(
+            f"base: {base_font.name}\ndonors:\n  - {woff2.name}\n", encoding="utf-8"
+        )
+
+        result = build(recipe, tmp_path / "out.ttf")
+
+        report = _load_report(result.report_path)
+        assert report["summary"]["from_donors"] == 2
+        assert set(TTFont(result.font_path).getBestCmap()) == set(BASE_CODEPOINTS)
+
+    def test_woff2_builds_are_byte_deterministic(self, tmp_path):
+        woff2 = synth_woff2(
+            tmp_path / "base.woff2", family="SynthWoff", codepoints=BASE_CODEPOINTS
+        )
+        recipe = tmp_path / "recipe.yaml"
+        recipe.write_text(f"base: {woff2.name}\ndonors: []\n", encoding="utf-8")
         output = tmp_path / "out.ttf"
         report_path = tmp_path / "out.report.json"
 
