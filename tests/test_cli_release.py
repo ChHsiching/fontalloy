@@ -99,6 +99,8 @@ def fetch_and_package(fontalloy_exe, tmp_path: Path, *, out: str = "dist") -> ob
             "font-catalog-v1",
             "--include",
             f"{out}/THIRD-PARTY-NOTICES.md",
+            "--extra-origin",
+            "china-mirror=https://mirror.example.com/fontalloy/v1",
         ),
     ):
         result = run_cli(fontalloy_exe, *args, cwd=tmp_path)
@@ -143,7 +145,8 @@ class TestAssetsPackage:
             (
                 "github-releases",
                 "https://github.com/ChHsiching/fontalloy/releases/download/font-catalog-v1",
-            )
+            ),
+            ("china-mirror", "https://mirror.example.com/fontalloy/v1"),
         ]
         families = {f.family: f for f in release.families}
         assert set(families) == {"FakeCode", "LXGWTest"}
