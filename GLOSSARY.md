@@ -64,6 +64,14 @@ _Avoid_: config file, preset file
 The output of running a recipe against pinned source fonts: reproducible by CI, released through the storefront.
 _Avoid_: release font, official font
 
+**Catalog release**:
+The consolidated font catalog republished by CI to a dedicated GitHub Releases tag (`font-catalog-v1`): one zip per family, checksums, and release metadata. The app's download origin, distinct from the upstream releases the manifest pins as provenance.
+_Avoid_: font bundle, CDN
+
+**Origin list**:
+The ordered download sources carried in catalog-release metadata; the downloader tries origins in list order, so adding a mirror is a data change, never a code change.
+_Avoid_: mirror config, fallback list
+
 **Reserved Font Name (RFN)**:
 A name an upstream font author reserves under its license; a modified version — every built font is one — must not carry it. The catalog records an `rfn` flag per family, and the default output name is the fixed brand default, never derived from source font names.
 _Avoid_: trademark (it is a license term, not a trademark)

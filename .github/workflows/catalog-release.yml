@@ -1,0 +1,90 @@
+name: Catalog release
+
+# Republishes the consolidated font catalog to the dedicated catalog
+# release tag (font-catalog-v1), which is the app's download origin
+# (ADR-0005). Runs only when the catalog data changes — a manifest or
+# license-file edit on main, or a manual dispatch — never on every push.
+# The release layout: one zip per family (all faces plus the license
+# file), SHA256SUMS, catalog-release.json (the ordered origin list the
+# app downloader consumes), and THIRD-PARTY-NOTICES.md.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - assets/fonts.manifest.json
+      - assets/licenses/**
+      - .github/workflows/catalog-release.yml
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Catalog release tag to publish to"
+        default: font-catalog-v1
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: catalog-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Package and publish the catalog
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    if: github.repository == 'ChHsiching/fontalloy' # forks never publish
+    env:
+      TAG: ${{ inputs.tag || 'font-catalog-v1' }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install the workspace
+        run: uv sync --locked
+
+      # Fetch the catalog per the manifest into the gitignored fonts/
+      # directory; every artifact is sha256-verified against its pin.
+      - name: Fetch the catalog
+        run: uv run fontalloy assets fetch
+
+      # Stage the release: per-family zips, SHA256SUMS, catalog-release
+      # metadata carrying the ordered origin list. Byte-reproducible.
+      - name: Stage the release artifacts
+        run: |
+          uv run fontalloy assets notices --output dist/THIRD-PARTY-NOTICES.md
+          uv run fontalloy assets package \
+            --out dist \
+            --repo "$GITHUB_REPOSITORY" \
+            --tag "$TAG" \
+            --include dist/THIRD-PARTY-NOTICES.md
+
+      - name: Verify the checksums file
+        run: cd dist && sha256sum -c SHA256SUMS
+
+      - name: Write the release notes
+        run: |
+          FAMILIES=$(python -c "import json; print(len({e['family'] for e in json.load(open('assets/fonts.manifest.json'))['families']}))")
+          ENTRIES=$(python -c "import json; print(len(json.load(open('assets/fonts.manifest.json'))['families']))")
+          export TAG FAMILIES ENTRIES
+          envsubst '$TAG $FAMILIES $ENTRIES $GITHUB_REPOSITORY $GITHUB_SHA' \
+            < .github/catalog-release-notes.md > release-notes.md
+
+      - name: Publish to the catalog release tag
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --notes-file release-notes.md
+          else
+            gh release create "$TAG" \
+              --target "$GITHUB_SHA" \
+              --title "$TAG" \
+              --notes-file release-notes.md \
+              --make-latest false
+          fi
+          gh release upload "$TAG" dist/* --clobber

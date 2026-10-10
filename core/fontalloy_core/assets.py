@@ -70,7 +70,7 @@ def fetch_catalog(
     skipped = 0
     for entry in catalog.entries:
         target = dest_dir / entry.file
-        if target.is_file() and _sha256(target) == entry.sha256:
+        if target.is_file() and sha256_of(target) == entry.sha256:
             skipped += 1
             echo(f"{entry.file}: already verified")
             continue
@@ -86,26 +86,43 @@ def fetch_catalog(
 
 def _download_verified(entry: CatalogEntry, target: Path) -> None:
     """Download ``entry`` to a temp file, verify it, then move it into place."""
+    download_verified(
+        entry.upstream_url,
+        target,
+        entry.sha256,
+        describe=f"{entry.family} ({entry.file})",
+    )
+
+
+def download_verified(
+    url: str, target: Path, expected: str, *, describe: str
+) -> None:
+    """Download ``url`` to a temp file, verify sha256, then move into place.
+
+    Shared by the catalog fetch and the origin-list consumer
+    (:mod:`fontalloy_core.origins`): one download-and-verify
+    implementation, so both paths fail identically. ``describe`` names the
+    artifact in errors (``"<family> (<file>)"`` from the fetch path).
+    """
     temp = target.with_name(target.name + ".part")
     try:
         digest = hashlib.sha256()
-        with urllib.request.urlopen(entry.upstream_url, timeout=_TIMEOUT_SECONDS) as response:  # noqa: S310
+        with urllib.request.urlopen(url, timeout=_TIMEOUT_SECONDS) as response:  # noqa: S310
             # file:// responses carry no HTTP status; only http(s) is checked
             if response.status not in (None, 200):
                 raise AssetsError(
-                    f"{entry.family} ({entry.file}): origin returned HTTP "
-                    f"{response.status} for {entry.upstream_url}"
+                    f"{describe}: origin returned HTTP {response.status} for {url}"
                 )
             with temp.open("wb") as out:
                 while chunk := response.read(_CHUNK):
                     digest.update(chunk)
                     out.write(chunk)
         actual = digest.hexdigest()
-        if actual != entry.sha256:
+        if actual != expected:
             raise AssetsError(
-                f"{entry.family} ({entry.file}): sha256 mismatch — expected "
-                f"{entry.sha256}, got {actual}; the download was deleted and "
-                "NOT placed in the assets directory"
+                f"{describe}: sha256 mismatch — expected {expected}, got "
+                f"{actual}; the download was deleted and NOT placed in the "
+                "assets directory"
             )
         temp.replace(target)
     except AssetsError:
@@ -114,8 +131,7 @@ def _download_verified(entry: CatalogEntry, target: Path) -> None:
     except (urllib.error.URLError, OSError) as exc:
         temp.unlink(missing_ok=True)
         raise AssetsError(
-            f"{entry.family} ({entry.file}): download failed from "
-            f"{entry.upstream_url}: {exc}"
+            f"{describe}: download failed from {url}: {exc}"
         ) from None
 
 
@@ -141,7 +157,8 @@ def _extract_faces(archive: Path, into: Path) -> int:
     return extracted
 
 
-def _sha256(path: Path) -> str:
+def sha256_of(path: Path) -> str:
+    """The sha256 hex digest of a file, read in chunks."""
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         while chunk := handle.read(_CHUNK):
