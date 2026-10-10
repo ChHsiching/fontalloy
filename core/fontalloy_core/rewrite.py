@@ -154,8 +154,15 @@ def apply_output_identity(font: TTFont, naming: OutputNaming) -> None:
         name.names = []
     # Clear every record of the owned nameIDs — any platform, any
     # language. A stale Macintosh or localized record left behind would
-    # either leak a source family or shadow the rewrite.
-    name.names = [r for r in name.names if r.nameID not in values]
+    # either leak a source family or shadow the rewrite. The
+    # typographic pair (16/17) is owned whether or not this face
+    # writes it: a RIBBI face drops the pair, and a stale pair from
+    # the base must die with that drop — the real JetBrainsMono Nerd
+    # Font carries nameID 16, and applications preferring the
+    # typographic family would read the source's name, not the
+    # output's (the RFN trap, exposed by issue #23's flagship).
+    owned = set(values) | {16, 17}
+    name.names = [r for r in name.names if r.nameID not in owned]
     for name_id, text in values.items():
         name.setName(text, name_id, *WINDOWS)
         name.setName(text, name_id, *MACINTOSH)

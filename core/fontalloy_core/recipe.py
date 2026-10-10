@@ -33,14 +33,20 @@ weights since issue #9):
   that must land in this output (explicit demand, exact — never a
   silent nearest approximation)
 
-A font reference (issue #4) is either a plain path string or a mapping:
+A font reference (issue #4; catalog form since issue #23) is a plain
+path string, a mapping with a ``path``, or a mapping naming a catalog
+``family`` the committed manifest pins:
 
 .. code-block:: yaml
 
-    base: JetBrainsMono.ttf
+    base:
+      family: JetBrainsMono            # catalog family (manifest-pinned)
+      pattern: "JetBrainsMonoNerdFont-*.ttf"   # narrow a multi-file zip
     donors:
-      - MapleMono.ttc#1              # string form: path with a '#face' index
-      - path: SourceHanSans.ttc      # mapping form: full face/instance control
+      - family: MapleMono
+        variant: NF-CN                 # required when the family has several
+        pattern: "MapleMono-NF-CN-*.ttf"
+      - path: SourceHanSans.ttc        # path form: full face/instance control
         face: 2
       - path: Inter-Variable.ttf
         instance:
@@ -49,9 +55,12 @@ A font reference (issue #4) is either a plain path string or a mapping:
       mode: grid
       quote_dash_width: fullwidth
 
-Paths in a recipe resolve against the recipe file's directory, not the
-working directory — a recipe is a share unit and must mean the same thing
-wherever it is run. :func:`parse_recipe` is the same schema over
+Path references resolve against the recipe file's directory, not the
+working directory — a recipe is a share unit and must mean the same
+thing wherever it is run. Catalog references never carry URLs: the
+assets machinery resolves them against the sha256-verified fetched
+catalog (``fontalloy assets fetch``), so a recipe names pinned source
+fonts, exactly what CI builds and the storefront releases. :func:`parse_recipe` is the same schema over
 already-decoded data (serve submits recipes as JSON, issue #11), with
 paths resolving against the caller's root. Parsing is strict: unknown
 fields, missing fields, and type errors all raise
@@ -115,8 +124,12 @@ WEIGHT_MIN, WEIGHT_MAX = 1, 1000
 #: The target fields a rule may declare; exactly one per rule.
 _TARGET_FIELDS = (CODEPOINT, RANGE, SET)
 
-#: The keys a font-reference mapping accepts.
-REF_FIELDS = ("path", "face", "instance")
+#: The keys a font-reference mapping accepts: ``path`` (a font file,
+#: resolved against the recipe) or ``family`` (a catalog family pinned
+#: by the manifest; ``variant`` disambiguates a family with several
+#: entries, ``pattern`` is a bare-filename glob narrowing a multi-file
+#: artifact such as a Nerd Fonts zip), plus ``face``/``instance``.
+REF_FIELDS = ("path", "face", "instance", "family", "variant", "pattern")
 
 #: The keys the normalization block accepts.
 _NORMALIZATION_FIELDS = ("mode", "optical_ratio", "quote_dash_width")
@@ -129,15 +142,37 @@ OUTPUT_FIELDS = ("format", "family")
 class FontRef:
     """A reference to one face of one font file.
 
+    Two forms (issue #23): a *path* reference (``path`` set — one font
+    file, resolved against the recipe root) or a *catalog* reference
+    (``family`` set — a family the committed manifest pins). A catalog
+    reference carries no loose URL: the assets machinery resolves it
+    against the fetched catalog (:func:`fontalloy_core.assets.resolve_recipe_fonts`),
+    filling ``paths`` with the referenced files (an optional
+    ``pattern`` — a bare-filename glob — narrows a multi-file artifact
+    such as a Nerd Fonts zip, whose extracted directory carries several
+    internal families) and ``artifact`` with the manifest-pinned file
+    the reference resolved through (the zip or the bare font file),
+    which the build's source records carry as provenance.
+
     ``face`` selects a face of a TTC collection (``None`` means "not a
     collection reference"). ``instance`` pins variable-font axis values
     (``None`` means "no pinning; use the default instance"), as an ordered
     tuple of ``(axis tag, value)`` pairs in declaration order.
     """
 
-    path: Path
+    path: Path | None = None
     face: int | None = None
     instance: tuple[tuple[str, int | float], ...] | None = None
+    family: str | None = None
+    variant: str | None = None
+    pattern: str | None = None
+    paths: tuple[Path, ...] = ()
+    artifact: Path | None = None
+
+    @property
+    def is_catalog_ref(self) -> bool:
+        """True when this reference names a manifest family, not a path."""
+        return self.family is not None
 
 
 @dataclass(frozen=True)
@@ -636,29 +671,38 @@ def _parse_string_ref(value: str, field: str, root: Path) -> FontRef:
     """Parse ``path`` or ``path#face`` — the compact share-unit form."""
     path_text, sep, tail = value.rpartition("#")
     if sep and tail.isdigit():
-        return FontRef(path=(root / path_text).resolve(), face=int(tail))
-    return FontRef(path=(root / value).resolve())
+        path = (root / path_text).resolve()
+        return FontRef(path=path, face=int(tail), paths=(path,))
+    path = (root / value).resolve()
+    return FontRef(path=path, paths=(path,))
 
 
 def _parse_mapping_ref(value: dict, field: str, root: Path) -> FontRef:
-    """Parse ``{path, face, instance}`` — the full reference form."""
+    """Parse ``{path, face, instance, family, variant, pattern}``."""
     unknown = sorted(set(value) - set(REF_FIELDS))
     if unknown:
         raise RecipeError(
             f"unknown font reference field {unknown[0]!r} in recipe field "
-            f"'{field}' (accepts: {', '.join(REF_FIELDS)})"
+            f"{field!r} (accepts: {', '.join(REF_FIELDS)})"
         )
 
-    if "path" not in value:
+    if "path" in value and "family" in value:
         raise RecipeError(
-            f"font reference in recipe field '{field}' is missing the "
-            "required 'path' key"
+            f"font reference in recipe field {field!r} declares both 'path' "
+            "and 'family' — a reference is exactly one of them"
         )
-    path_text = value["path"]
-    if not _is_path_string(path_text):
+    for dependent in ("variant", "pattern"):
+        if dependent in value and "family" not in value:
+            raise RecipeError(
+                f"font reference field {dependent!r} in recipe field "
+                f"{field!r} requires 'family' (it narrows a catalog-family "
+                "reference)"
+            )
+    if "path" not in value and "family" not in value:
         raise RecipeError(
-            f"font reference 'path' in recipe field '{field}' must be a "
-            "non-empty font file path string"
+            f"font reference in recipe field {field!r} is missing the "
+            "required 'path' key (a font file) or 'family' key (a catalog "
+            "family pinned by the manifest)"
         )
 
     face = None
@@ -666,12 +710,12 @@ def _parse_mapping_ref(value: dict, field: str, root: Path) -> FontRef:
         face = value["face"]
         if _is_bool(face) or not isinstance(face, int):
             raise RecipeError(
-                f"font reference 'face' in recipe field '{field}' must be a "
+                f"font reference 'face' in recipe field {field!r} must be a "
                 "non-negative integer (the TTC face index)"
             )
         if face < 0:
             raise RecipeError(
-                f"font reference 'face' in recipe field '{field}' must be a "
+                f"font reference 'face' in recipe field {field!r} must be a "
                 "non-negative integer (the TTC face index)"
             )
 
@@ -680,26 +724,69 @@ def _parse_mapping_ref(value: dict, field: str, root: Path) -> FontRef:
         raw = value["instance"]
         if not isinstance(raw, dict):
             raise RecipeError(
-                f"font reference 'instance' in recipe field '{field}' must be "
+                f"font reference 'instance' in recipe field {field!r} must be "
                 "a mapping of variable-font axis tag to value"
             )
         pins: list[tuple[str, int | float]] = []
         for tag, pinned in raw.items():
             if not isinstance(tag, str) or not tag:
                 raise RecipeError(
-                    f"font reference 'instance' in recipe field '{field}' has "
-                    f"a non-string axis tag {tag!r} (axis tags are 4-character "
-                    "strings like 'wght')"
+                    f"font reference 'instance' in recipe field {field!r} has "
+                    f"a non-string axis tag {tag!r} (axis tags are "
+                    "4-character strings like 'wght')"
                 )
             if _is_bool(pinned) or not isinstance(pinned, (int, float)):
                 raise RecipeError(
                     f"font reference 'instance' axis {tag!r} in recipe field "
-                    f"'{field}' must be a number"
+                    f"{field!r} must be a number"
                 )
             pins.append((tag, pinned))
         instance = tuple(pins)
 
-    return FontRef(path=(root / path_text).resolve(), face=face, instance=instance)
+    if "family" in value:
+        family = value["family"]
+        if not _is_path_string(family):
+            raise RecipeError(
+                f"font reference 'family' in recipe field {field!r} must be "
+                "a non-empty catalog family name (the manifest pins it)"
+            )
+        variant = None
+        if "variant" in value:
+            variant = value["variant"]
+            if not isinstance(variant, str):
+                raise RecipeError(
+                    f"font reference 'variant' in recipe field {field!r} "
+                    "must be a string (the manifest variant)"
+                )
+        pattern = None
+        if "pattern" in value:
+            pattern = value["pattern"]
+            if (
+                not _is_path_string(pattern)
+                or "/" in pattern
+                or "\\" in pattern
+            ):
+                raise RecipeError(
+                    f"font reference 'pattern' in recipe field {field!r} "
+                    "must be a bare filename glob like "
+                    f'"Family-Regular*.ttf" (got {pattern!r})'
+                )
+        return FontRef(
+            face=face,
+            instance=instance,
+            family=family,
+            variant=variant,
+            pattern=pattern,
+        )
+
+    path_text = value["path"]
+    if not _is_path_string(path_text):
+        raise RecipeError(
+            f"font reference 'path' in recipe field {field!r} must be a "
+            "non-empty font file path string"
+        )
+    path = (root / path_text).resolve()
+    return FontRef(path=path, face=face, instance=instance, paths=(path,))
 
 
 def _is_bool(value: object) -> bool:

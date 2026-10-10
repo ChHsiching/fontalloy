@@ -56,7 +56,13 @@ The only capability layer (ADR-0002). Public surface:
 from __future__ import annotations
 
 from fontalloy_core import presets
-from fontalloy_core.assets import FetchSummary, fetch_catalog
+from fontalloy_core.assets import (
+    FetchSummary,
+    fetch_catalog,
+    recipe_catalog_families,
+    recipes_catalog_families,
+    resolve_recipe_fonts,
+)
 from fontalloy_core.build import BuildOutput, build, build_recipe
 from fontalloy_core.catalog import Catalog, CatalogEntry, load_manifest
 from fontalloy_core.catalog_release import (
@@ -95,6 +101,7 @@ from fontalloy_core.recipe import (
 from fontalloy_core.render import render_html, render_text
 from fontalloy_core.report import VerificationReport
 from fontalloy_core.release import ReleasePackage, package_catalog_release
+from fontalloy_core.recipe_release import RecipePackage, package_recipe_release
 from fontalloy_core.rewrite import (
     BRAND_DEFAULT_FAMILY,
     OutputNaming,
@@ -130,6 +137,7 @@ __all__ = [
     "PrecedenceRule",
     "Recipe",
     "RecipeError",
+    "RecipePackage",
     "ReleaseError",
     "ReleaseFamily",
     "ReleaseFile",
@@ -151,12 +159,16 @@ __all__ = [
     "load_manifest",
     "load_recipe",
     "package_catalog_release",
+    "package_recipe_release",
     "parse_recipe",
     "plan_matrix",
     "presets",
+    "recipe_catalog_families",
+    "recipes_catalog_families",
     "render_html",
     "render_text",
     "resolve_precedence",
+    "resolve_recipe_fonts",
     "run_serve",
     "scan_families",
     "validate_family_name",

@@ -63,7 +63,7 @@ The default output name is the fixed brand default `ChHsich` — never derived f
 
 ## Recipe (YAML)
 
-Fields: base font reference (family + version/hash), donor list, precedence rules at every granularity, weight mapping overrides, output naming, normalization switches. Three roles at once: CLI input (`fontalloy build x.yaml`), CI build input, community share unit. **A built font is a recipe run against pinned source fonts** — reproducible by CI, released through the storefront's Releases (reusing the old repo's AUR / install.sh experience). Built fonts are the marketing front and the no-install option.
+Fields: base font reference (family + version/hash), donor list, precedence rules at every granularity, weight mapping overrides, output naming, normalization switches. Three roles at once: CLI input (`fontalloy build x.yaml`), CI build input, community share unit. **A built font is a recipe run against pinned source fonts** — reproducible by CI, released through the storefront's Releases (reusing the old repo's AUR / install.sh experience). Built fonts are the marketing front and the no-install option. A font reference names a catalog family the manifest pins (`family`/`variant`, plus a filename `pattern` narrowing multi-file zips) — never a loose URL; the assets machinery resolves it against the fetched, sha256-verified catalog, and official recipes live in `recipes/`.
 
 ## v1 format tiers
 

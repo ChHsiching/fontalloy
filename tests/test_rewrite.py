@@ -382,6 +382,39 @@ class TestTypographicNames:
         assert records(out, 16) == {}
         assert records(out, 17) == {}
 
+    def test_a_stale_typographic_pair_dies_with_the_ribbi_drop(
+        self, tmp_path: Path, synth_font_factory
+    ):
+        """The RFN leak the real catalog exposed (issue #23's flagship).
+
+        A RIBBI face writes no 16/17 — and a stale pair the base
+        carried must not survive that drop: applications preferring
+        the typographic family would see the source font's family
+        (JetBrainsMono Nerd Font carries nameID 16) instead of the
+        output's own.
+        """
+        base = synth_font_factory(
+            tmp_path / "base.ttf",
+            family="SynthBase",
+            codepoints=BASE_CODEPOINTS,
+            subfamily="Regular",
+            typographic_family="SynthBase Extended",
+        )
+        donor = synth_font_factory(
+            tmp_path / "donor.ttf", family="SynthDonor", codepoints=DONOR_CODEPOINTS
+        )
+        recipe = write_recipe(tmp_path, minimal_recipe(base, donor))
+
+        result = build(recipe, tmp_path / "out.ttf")
+        out = TTFont(result.font_path)
+
+        assert one_record_per_platform(out, 1) == "ChHsich"
+        assert records(out, 16) == {}
+        assert records(out, 17) == {}
+        assert "SynthBase Extended" not in {
+            r.toUnicode() for r in out["name"].names
+        }
+
     def test_a_stale_typographic_pair_from_the_base_is_replaced(
         self, tmp_path: Path, synth_font_factory
     ):
