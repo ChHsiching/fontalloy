@@ -29,6 +29,8 @@ gui/prototype/_shots/
 # Frontend test artifacts (seam 3)
 gui/test-results/
 gui/playwright-report/
+web/test-results/
+web/playwright-report/
 
 # Tauri generated files (schemas, android/ios projects)
 gui/src-tauri/gen/
