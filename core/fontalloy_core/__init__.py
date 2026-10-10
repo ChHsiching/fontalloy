@@ -9,6 +9,11 @@ The only capability layer (ADR-0002). Public surface:
 - ``scan_families(paths)`` / ``aggregate_families(faces)``: group font
   faces by family into weight/style matrices (stage 1's detection side,
   consumed by the catalog, the pickers, and the weight matching).
+- ``resolve_precedence(rules, coverages=..., named_sets=...)``: the
+  precedence engine — expand a rule set (with font coverages and named
+  range sets) to codepoint level, producing the effective table. The
+  build pipeline consumes it, and later consumers (grafting, serve, the
+  GUI's effective-preview consistency check) call it directly.
 - ``RecipeError`` / ``BuildError``: the error types callers catch.
 """
 
@@ -17,22 +22,36 @@ from __future__ import annotations
 from fontalloy_core.build import BuildOutput, build
 from fontalloy_core.errors import BuildError, FontAlloyError, RecipeError
 from fontalloy_core.load import FaceInfo, Family, aggregate_families, scan_families
+from fontalloy_core.precedence import (
+    BUILTIN_NAMED_SETS,
+    EffectiveEntry,
+    PrecedenceRule,
+    Resolution,
+    SameLayerConflict,
+    resolve_precedence,
+)
 from fontalloy_core.recipe import Recipe, load_recipe
 from fontalloy_core.report import VerificationReport
 
 __version__ = "0.1.0"
 
 __all__ = [
+    "BUILTIN_NAMED_SETS",
     "BuildError",
     "BuildOutput",
+    "EffectiveEntry",
     "FaceInfo",
     "Family",
     "FontAlloyError",
+    "PrecedenceRule",
     "Recipe",
     "RecipeError",
+    "Resolution",
+    "SameLayerConflict",
     "VerificationReport",
     "aggregate_families",
     "build",
     "load_recipe",
+    "resolve_precedence",
     "scan_families",
 ]

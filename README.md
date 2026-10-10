@@ -12,7 +12,7 @@ Design is settled ([docs/DESIGN.md](docs/DESIGN.md)); implementation has started
 2. Absence never overrides presence — one invariant that replaces all special-case protection logic.
 3. `core` is the only capability layer; CLI / GUI / Web are all consumers of it. Merge logic exists exactly once.
 
-What works today: the core skeleton and the build tracer bullet — `fontalloy build <recipe.yaml>` loads and validates the base and donor fonts, writes a valid TTF (base pass-through at this stage), and emits a verification report v0 with per-codepoint provenance. The precedence engine, glyph grafting, and normalization arrive in later tickets.
+What works today: the core skeleton and the precedence engine — `fontalloy build <recipe.yaml>` loads and validates the base and donor fonts, resolves layered precedence rules (single codepoint > custom range > named set > global default; last declared wins within a layer; absence never overrides) into the effective table, writes a valid TTF (base pass-through at this stage), and emits a verification report with per-codepoint provenance (which font won, through which rule, as a fill or an override), the rule declarations, and the same-layer conflict list. Recipes accept `rules` and `sets` on top of `base`/`donors`; language presets plug in later as named-set data. Glyph grafting and normalization arrive in later tickets.
 
 ## Development setup
 
