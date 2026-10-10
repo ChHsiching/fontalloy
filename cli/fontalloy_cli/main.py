@@ -49,7 +49,7 @@ def build(
         typer.Option(
             "--output",
             "-o",
-            help="Output font path (default: <recipe stem>.ttf beside the recipe).",
+            help="Output font path (default: <recipe stem>.<format> beside the recipe).",
         ),
     ] = None,
     report: Annotated[
@@ -60,23 +60,34 @@ def build(
             "(default: <output stem>.report.json beside the output).",
         ),
     ] = None,
+    output_format: Annotated[
+        Optional[str],
+        typer.Option(
+            "--format",
+            "-f",
+            help="Output format: ttf (default), ttc, or woff2. Overrides the "
+            "recipe's output.format.",
+        ),
+    ] = None,
 ) -> None:
     """Build a merged font from a recipe.
 
-    v0: the base font passes through with donors loaded and validated;
-    every build emits a verification report with per-codepoint provenance.
+    Donor glyphs graft into the base font per the recipe's precedence
+    rules; every build emits a verification report with per-codepoint
+    provenance and the source font hashes backing reproducibility.
     """
-    output = output if output is not None else recipe.with_suffix(".ttf")
     try:
-        result = fontalloy_core.build(recipe, output, report_path=report)
+        result = fontalloy_core.build(
+            recipe, output, report_path=report, output_format=output_format
+        )
     except FontAlloyError as exc:
         typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=2) from None
 
     summary = result.report.summary
     typer.echo(
-        f"built {result.font_path} "
-        f"({summary['output_codepoints']} codepoints in output)"
+        f"built {result.font_path} (format {result.format}, "
+        f"{summary['output_codepoints']} codepoints in output)"
     )
     typer.echo(
         f"report {result.report_path} "
