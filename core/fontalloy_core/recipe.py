@@ -1,7 +1,8 @@
 """Recipe loading: parse a recipe YAML file strictly.
 
 Recipe fields (base + donors since issue #2; rules + sets since issue
-#3; output naming since issue #6):
+#3; normalization since issue #8; output naming since issues #6/#10;
+weights since issue #9):
 
 - ``base``: the base font reference
 - ``donors``: the donor list of font references
@@ -12,6 +13,12 @@ Recipe fields (base + donors since issue #2; rules + sets since issue
   reference ``base`` or ``donor-<join index>``
 - ``sets``: user-defined named range sets — a mapping of a name to a
   codepoint, an interval string, or a non-empty list of either
+- ``normalization``: the normalization switches (ADR-0003) — ``mode``
+  (``grid``, the terminal 2:1 default, or ``optical``),
+  ``optical_ratio`` (Han ink to cap height; default 1.23), and
+  ``quote_dash_width`` (``halfwidth``, the UAX #11 default, or
+  ``fullwidth`` for the CJK locale convention). Every key is optional;
+  a recipe without a ``normalization`` block builds with the defaults.
 - ``output``: the build's output settings — ``format`` selects the
   output format tier (``ttf`` the default, ``ttc``, or ``woff2``;
   issue #10) and ``family`` the output family name (default: the fixed
@@ -38,17 +45,22 @@ A font reference (issue #4) is either a plain path string or a mapping:
       - path: Inter-Variable.ttf
         instance:
           wght: 600
+    normalization:
+      mode: grid
+      quote_dash_width: fullwidth
 
 Paths in a recipe resolve against the recipe file's directory, not the
 working directory — a recipe is a share unit and must mean the same thing
 wherever it is run. Parsing is strict: unknown fields, missing fields,
 and type errors all raise :class:`~fontalloy_core.errors.RecipeError`
-with a message naming the offending field. ``rules`` and ``sets`` are
-optional, so a v0 recipe (base + donors only) parses unchanged.
+with a message naming the offending field. ``rules``, ``sets``, and
+``normalization`` are optional, so a v0 recipe (base + donors only)
+parses unchanged.
 """
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -56,6 +68,15 @@ from pathlib import Path
 import yaml
 
 from fontalloy_core.errors import RecipeError
+from fontalloy_core.normalize import (
+    DEFAULT_OPTICAL_RATIO,
+    FULLWIDTH,
+    GRID,
+    HALFWIDTH,
+    MODES,
+    NormalizationOptions,
+    QUOTE_DASH_POLICIES,
+)
 from fontalloy_core.output import OUTPUT_FORMATS
 from fontalloy_core.precedence import (
     BUILTIN_NAMED_SETS,
@@ -70,7 +91,15 @@ from fontalloy_core.precedence import (
 from fontalloy_core.rewrite import BRAND_DEFAULT_FAMILY, validate_family_name
 
 #: The fields the recipe accepts.
-RECIPE_FIELDS = ("base", "donors", "rules", "sets", "output", "weights")
+RECIPE_FIELDS = (
+    "base",
+    "donors",
+    "rules",
+    "sets",
+    "normalization",
+    "output",
+    "weights",
+)
 
 #: The keys a weights-section entry accepts.
 WEIGHT_FIELDS = ("weight", "style", "donors")
@@ -86,6 +115,9 @@ _TARGET_FIELDS = (CODEPOINT, RANGE, SET)
 
 #: The keys a font-reference mapping accepts.
 REF_FIELDS = ("path", "face", "instance")
+
+#: The keys the normalization block accepts.
+_NORMALIZATION_FIELDS = ("mode", "optical_ratio", "quote_dash_width")
 
 #: The keys the output section accepts.
 OUTPUT_FIELDS = ("format", "family")
@@ -145,6 +177,9 @@ class Recipe:
     donors: tuple[FontRef, ...]
     rules: tuple[PrecedenceRule, ...] = ()
     named_sets: dict[str, tuple[Interval, ...]] = field(default_factory=dict)
+    normalization: NormalizationOptions = field(
+        default_factory=NormalizationOptions
+    )
     output: OutputSpec = field(default_factory=OutputSpec)
     weights: tuple[WeightRequest, ...] = ()
 
@@ -180,6 +215,7 @@ def load_recipe(path: Path | str) -> Recipe:
 
     named_sets = _parse_sets(data.get("sets"))
     rules = _parse_rules(data.get("rules"), len(donors), named_sets)
+    normalization = _parse_normalization(data.get("normalization"))
     output = _parse_output(data.get("output"))
     weights = _parse_weights(data.get("weights"), len(donors))
 
@@ -188,6 +224,7 @@ def load_recipe(path: Path | str) -> Recipe:
         donors=donors,
         rules=rules,
         named_sets=named_sets,
+        normalization=normalization,
         output=output,
         weights=weights,
     )
@@ -365,6 +402,68 @@ def _parse_set_body(body: object, where: str) -> tuple[Interval, ...]:
                 f'interval string like "0x4E00-0x9FFF" (got {element!r})'
             )
     return compress_intervals(intervals)
+
+
+def _parse_normalization(raw: object) -> NormalizationOptions:
+    """Parse the optional ``normalization`` block (strictly)."""
+    if raw is None:
+        return NormalizationOptions()
+    if not isinstance(raw, dict):
+        raise RecipeError(
+            "recipe field 'normalization' must be a mapping with any of "
+            f"the fields {', '.join(_NORMALIZATION_FIELDS)}"
+        )
+
+    unknown = sorted(set(raw) - set(_NORMALIZATION_FIELDS))
+    if unknown:
+        raise RecipeError(
+            f"recipe field 'normalization.{unknown[0]}' is unknown "
+            f"(the normalization switches are: "
+            f"{', '.join(_NORMALIZATION_FIELDS)})"
+        )
+
+    mode = GRID
+    if "mode" in raw:
+        mode = raw["mode"]
+        if mode not in MODES:
+            raise RecipeError(
+                f"recipe field 'normalization.mode' must be one of "
+                f"{', '.join(repr(m) for m in MODES)} (got {raw['mode']!r})"
+            )
+
+    ratio = DEFAULT_OPTICAL_RATIO
+    if "optical_ratio" in raw:
+        ratio = raw["optical_ratio"]
+        if _is_bool(ratio) or not isinstance(ratio, (int, float)):
+            raise RecipeError(
+                f"recipe field 'normalization.optical_ratio' must be a "
+                f"positive number (the Han ink to cap height ratio; got "
+                f"{ratio!r})"
+            )
+        ratio = float(ratio)
+        if not math.isfinite(ratio) or ratio <= 0:
+            raise RecipeError(
+                f"recipe field 'normalization.optical_ratio' must be a "
+                f"positive number (the Han ink to cap height ratio; got "
+                f"{ratio!r})"
+            )
+
+    quote_dash_width = HALFWIDTH
+    if "quote_dash_width" in raw:
+        quote_dash_width = raw["quote_dash_width"]
+        if quote_dash_width not in QUOTE_DASH_POLICIES:
+            raise RecipeError(
+                f"recipe field 'normalization.quote_dash_width' must be "
+                f"{FULLWIDTH!r} (the CJK locale convention) or "
+                f"{HALFWIDTH!r} (the UAX #11 default; got "
+                f"{raw['quote_dash_width']!r})"
+            )
+
+    return NormalizationOptions(
+        mode=mode,
+        optical_ratio=ratio,
+        quote_dash_width=quote_dash_width,
+    )
 
 
 def _parse_rules(

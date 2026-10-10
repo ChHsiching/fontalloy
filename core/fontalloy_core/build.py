@@ -5,20 +5,22 @@ of the core: recipe + font files in, built font + verification report out.
 The CLI calls it in-process; later consumers (serve, the GUI sidecar) do
 the same.
 
-Pipeline stages in this ticket (issues #2 through #6, #9, #10): load and
-detect the base and donor fonts (TTC face selection, variable
-instantiation, woff2 decode), plan the weight/style matrix — one output
-slot per requested weight/style, donors matched at the nearest OS/2
+Pipeline stages in this ticket (issues #2 through #10): load and detect
+the base and donor fonts (TTC face selection, variable instantiation,
+woff2 decode), plan the weight/style matrix — one output slot per
+requested weight/style, donors matched at the nearest OS/2
 usWeightClass per slot with recipe overrides beating nearest-match
 (issue #9) — resolve the precedence rules — layered rules at every
-granularity, absence never overrides — into the effective table, graft
-the donor glyphs into each slot's base container per the effective table
-with a rebuilt cmap (the base is the container, ADR-0001), rewrite each
-slot's output identity — the name record set plus OS/2 corrections,
-around the recipe's ``output.family`` (issue #6; normalization arrives
-in a later ticket) — and emit the verification report carrying the
-effective table, the conflict/fill accounting, and the weight borrow
-table.
+granularity, absence never overrides — into the effective table, plan
+the normalization per slot (ADR-0003, issue #8: upem unified by
+s0 = U/u, the grid school scale k with the optical ratio as the knob,
+UAX #11 advances), graft the donor glyphs into each slot's base
+container per the effective table with a rebuilt cmap (the base is the
+container, ADR-0001), each donor glyph normalized onto that base
+face's metrics, rewrite each slot's output identity — the name record
+set plus OS/2 corrections, around the recipe's ``output.family``
+(issue #6) — and emit the verification report carrying the effective
+table, the conflict/fill accounting, and the weight borrow table.
 
 Output formats (issue #10), reconciled with the matrix (issue #9): the
 recipe's ``output.format`` (or the ``output_format`` argument) selects
@@ -32,8 +34,7 @@ matrix with those formats is a clear error pointing at ``ttc`` (the
 rejected multi-file alternative is recorded in ADR-0006). Every format
 saves through the one reproducible boundary
 (:func:`fontalloy_core.output.save_output`): identical inputs produce
-byte-identical outputs and reports, with no wall clock in the file.
-"""
+byte-identical outputs and reports, with no wall clock in the file."""
 
 from __future__ import annotations
 
@@ -46,6 +47,7 @@ from fontalloy_core.errors import BuildError
 from fontalloy_core.graft import graft_effective_glyphs
 from fontalloy_core.load import LoadedFace, aggregate_families, load_faces
 from fontalloy_core.matrix import DonorPool, plan_matrix
+from fontalloy_core.normalize import plan_normalization
 from fontalloy_core.output import (
     OUTPUT_FORMATS,
     output_timestamp,
@@ -184,15 +186,22 @@ def build(
             )
 
         # Stage: graft the donor glyphs into each slot's base container
-        # and rebuild the cmap (ADR-0001). A donor face may serve
-        # several slots; grafting takes private glyph copies, so each
-        # slot's graft is independent. Normalization (upem scaling,
-        # advance re-gridding) is a later stage.
+        # and rebuild the cmap (ADR-0001), each glyph normalized onto
+        # that slot's base face metrics (ADR-0003, issue #8: upem
+        # unified by s0 = U/u, the grid school scale k with the optical
+        # ratio as the recipe's knob, UAX #11 advances, usWin grown
+        # only to prevent clipping). A donor face may serve several
+        # slots; grafting takes private glyph copies, so each slot's
+        # graft and normalization plan are independent.
         for slot, resolution in zip(slots, resolutions):
+            donor_fonts = {
+                match.donor_id: match.face.font for match in slot.donors
+            }
+            plan = plan_normalization(
+                slot.base.font, donor_fonts, recipe.normalization
+            )
             graft_effective_glyphs(
-                slot.base.font,
-                {match.donor_id: match.face.font for match in slot.donors},
-                resolution.effective_table,
+                slot.base.font, donor_fonts, resolution.effective_table, plan
             )
             # Stage: rewrite the output identity — the full name record
             # set (both platform encodings, nameID 16/17 consistent with
