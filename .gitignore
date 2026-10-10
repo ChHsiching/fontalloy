@@ -23,6 +23,10 @@ target/
 .scratch/
 gui/prototype/_shots/
 
+# Frontend test artifacts (seam 3)
+gui/test-results/
+gui/playwright-report/
+
 # GUI prototype lives on the prototype/gui branch, never on main
 gui/prototype/
 

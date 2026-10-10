@@ -1,0 +1,121 @@
+import { expect, type Locator, type Page } from "@playwright/test";
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
+
+/**
+ * Seam-3 helpers (spec issue #1 "Testing Decisions" / ticket #15):
+ * - real pointer/mouse events with elementFromPoint hit-testing guards
+ *   (programmatic clicks bypass inertness and hit-testing and prove nothing);
+ * - DOM textContent / geometry assertions, never pixel reads;
+ * - zero-JS-errors gate on load and across the test;
+ * - font readiness (document.fonts.ready) awaited before asserting rendered text.
+ */
+
+/** Collect every JS error the page reports into `sink`; assert later. */
+export function collectJsErrors(page: Page, sink: string[]): void {
+  page.on("pageerror", (err) => sink.push(`pageerror: ${err.message}`));
+  page.on("console", (msg) => {
+    if (msg.type() === "error") sink.push(`console.error: ${msg.text()}`);
+  });
+}
+
+/** The zero-JS-errors gate. */
+export function assertNoJsErrors(sink: string[]): void {
+  expect(sink, `page reported JS errors:\n${sink.join("\n")}`).toHaveLength(0);
+}
+
+/** Await the browser font subsystem before asserting rendered text. */
+export async function waitForFontsReady(page: Page): Promise<void> {
+  await page.evaluate(() => document.fonts.ready);
+}
+
+/**
+ * Compute the center of `locator` and return it only if the element (or a
+ * descendant of it) is what elementFromPoint reports there — i.e. the point is
+ * actually clickable and not covered by an overlay or clipped away.
+ */
+export async function hitTestCenter(
+  page: Page,
+  locator: Locator,
+): Promise<{ x: number; y: number }> {
+  await locator.waitFor({ state: "visible" });
+  await locator.scrollIntoViewIfNeeded();
+  const box = await locator.boundingBox();
+  if (!box) throw new Error("hit test target has no bounding box");
+  const x = Math.round(box.x + box.width / 2);
+  const y = Math.round(box.y + box.height / 2);
+  const covered = await page.evaluate(
+    ([px, py]) => {
+      const hit = document.elementFromPoint(px, py);
+      return hit === null;
+    },
+    [x, y],
+  );
+  expect(
+    covered,
+    `elementFromPoint(${x}, ${y}) is covered or outside the viewport`,
+  ).toBe(false);
+  return { x, y };
+}
+
+/**
+ * Click via real mouse events, after an elementFromPoint guard that ALSO
+ * verifies the hit resolves to `locator` (or inside it).
+ */
+export async function pointerClick(page: Page, locator: Locator): Promise<void> {
+  const { x, y } = await hitTestCenter(page, locator);
+  const handle = await locator.elementHandle();
+  expect(handle, "target lost before click").not.toBeNull();
+  const ok = await page.evaluate(
+    ({ px, py, el }) => {
+      const hit = document.elementFromPoint(px, py);
+      if (!hit || !el) return false;
+      return hit === el || el.contains(hit);
+    },
+    { px: x, py: y, el: handle },
+  );
+  expect(ok, `hit test at (${x}, ${y}) did not resolve to the target`).toBe(true);
+  await page.mouse.move(x, y);
+  await page.mouse.click(x, y);
+}
+
+/**
+ * Fixture font files for the local-load path. Font binaries never enter git;
+ * tests pick the first two distinct real font files present on the host.
+ * Override with FONTALLOY_TEST_FONT_1 / FONTALLOY_TEST_FONT_2.
+ */
+const FONT_CANDIDATES = [
+  "C:\\Windows\\Fonts\\consola.ttf",
+  "C:\\Windows\\Fonts\\arial.ttf",
+  "C:\\Windows\\Fonts\\segoeui.ttf",
+  "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+  "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
+  "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+  "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+  "/System/Library/Fonts/Supplemental/Arial.ttf",
+  "/System/Library/Fonts/Supplemental/Times New Roman.ttf",
+];
+
+export function fixtureFontPaths(): string[] {
+  const fromEnv = [
+    process.env.FONTALLOY_TEST_FONT_1,
+    process.env.FONTALLOY_TEST_FONT_2,
+  ].filter((p): p is string => typeof p === "string" && p.length > 0);
+  const found: string[] = [];
+  for (const p of [...fromEnv, ...FONT_CANDIDATES.map((c) => resolve(c))]) {
+    if (existsSync(p) && !found.includes(p)) found.push(p);
+    if (found.length === 2) break;
+  }
+  if (found.length < 2) {
+    throw new Error(
+      "need two distinct host font files for the local-load tests; " +
+        "set FONTALLOY_TEST_FONT_1 / FONTALLOY_TEST_FONT_2",
+    );
+  }
+  return found;
+}
+
+/** CSS-quoted font-family value, safe for names with spaces. */
+export function cssFamilyQuote(family: string): string {
+  return `"${family.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
