@@ -366,7 +366,9 @@ class TestBaseContainerPassThrough:
         # The donor's coverage is a subset of the base's: no codepoint
         # resolves to it, nothing is grafted, and the output is exactly
         # the base font recompiled — byte-identical to a plain
-        # load-and-save of the base, cmap unchanged.
+        # load-and-save of the base (carrying the same reproducibility
+        # pin the build applies at its save boundary, issue #10), cmap
+        # unchanged.
         base = synth_font_factory(
             tmp_path / "base.ttf",
             family="SynthBase",
@@ -381,8 +383,11 @@ class TestBaseContainerPassThrough:
         )
 
         result = build(recipe, tmp_path / "out.ttf")
+        reference_font = TTFont(base)
+        reference_font["head"].modified = reference_font["head"].created
+        reference_font.recalcTimestamp = False
         reference = tmp_path / "reference.ttf"
-        TTFont(base).save(reference)
+        reference_font.save(reference)
 
         assert result.font_path.read_bytes() == reference.read_bytes()
         assert TTFont(result.font_path).getBestCmap() == TTFont(base).getBestCmap()

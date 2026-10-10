@@ -64,6 +64,18 @@ _Avoid_: config file, preset file
 The output of running a recipe against pinned source fonts: reproducible by CI, released through the storefront.
 _Avoid_: release font, official font
 
+**Format tier**:
+The v1 classification of font formats: required (TTF/OTF in, TTF out — always, the default), expected (TTC in with face selection; TTC out with shared-table dedup), optional (woff2 out, behind an explicit format choice). Selected by the recipe's `output.format` or the CLI `--format` switch.
+_Avoid_: output type, file kind
+
+**Shared-table dedup**:
+How a TTC output stays small: a table compiling to identical bytes across faces — the grafted donor glyphs above all — is stored once and pointed at by every face, instead of once per face (the old repo's 284 MB lesson). Content-keyed: any accidental per-face difference silently defeats sharing for that table.
+_Avoid_: compression (it is deduplication, not encoding)
+
+**Byte-reproducible build**:
+Identical pinned inputs rebuild byte-identical output: no wall clock in the file (head timestamps pinned from the base font), deterministic ordering, brotli pinned in the lockfile for woff2. The verification report records the source font hashes that make "identical inputs" checkable.
+_Avoid_: deterministic build (weaker: that only means same behavior)
+
 **Reserved Font Name (RFN)**:
 A name an upstream font author reserves under its license; a modified version — every built font is one — must not carry it. The catalog records an `rfn` flag per family, and the default output name is the fixed brand default, never derived from source font names.
 _Avoid_: trademark (it is a license term, not a trademark)

@@ -11,6 +11,9 @@ Recipe fields (base + donors since issue #2; rules + sets since issue #3):
   reference ``base`` or ``donor-<join index>``
 - ``sets``: user-defined named range sets — a mapping of a name to a
   codepoint, an interval string, or a non-empty list of either
+- ``output``: the build's output settings — ``format`` selects the
+  output format tier (``ttf`` the default, ``ttc``, or ``woff2``;
+  issue #10)
 
 A font reference (issue #4) is either a plain path string or a mapping:
 
@@ -42,6 +45,7 @@ from pathlib import Path
 import yaml
 
 from fontalloy_core.errors import RecipeError
+from fontalloy_core.output import OUTPUT_FORMATS
 from fontalloy_core.precedence import (
     BUILTIN_NAMED_SETS,
     CODEPOINT,
@@ -54,7 +58,10 @@ from fontalloy_core.precedence import (
 )
 
 #: The fields the recipe accepts.
-RECIPE_FIELDS = ("base", "donors", "rules", "sets")
+RECIPE_FIELDS = ("base", "donors", "rules", "sets", "output")
+
+#: The keys the output section accepts.
+OUTPUT_FIELDS = ("format",)
 
 #: The target fields a rule may declare; exactly one per rule.
 _TARGET_FIELDS = (CODEPOINT, RANGE, SET)
@@ -79,6 +86,20 @@ class FontRef:
 
 
 @dataclass(frozen=True)
+class OutputSpec:
+    """The build's output settings (issue #10).
+
+    ``format`` selects the output format tier: ``ttf`` (the default,
+    required), ``ttc`` (a collection packaging one merged face per
+    selected face of the base font file), or ``woff2`` (optional, behind
+    this explicit choice). Output naming joins this section in a later
+    ticket (stage 6).
+    """
+
+    format: str = "ttf"
+
+
+@dataclass(frozen=True)
 class Recipe:
     """A parsed recipe, with font paths resolved to absolute locations."""
 
@@ -86,6 +107,7 @@ class Recipe:
     donors: tuple[FontRef, ...]
     rules: tuple[PrecedenceRule, ...] = ()
     named_sets: dict[str, tuple[Interval, ...]] = field(default_factory=dict)
+    output: OutputSpec = field(default_factory=OutputSpec)
 
 
 def load_recipe(path: Path | str) -> Recipe:
@@ -119,13 +141,43 @@ def load_recipe(path: Path | str) -> Recipe:
 
     named_sets = _parse_sets(data.get("sets"))
     rules = _parse_rules(data.get("rules"), len(donors), named_sets)
+    output = _parse_output(data.get("output"))
 
     return Recipe(
         base=base,
         donors=donors,
         rules=rules,
         named_sets=named_sets,
+        output=output,
     )
+
+
+def _parse_output(raw: object) -> OutputSpec:
+    if raw is None:
+        return OutputSpec()
+    if not isinstance(raw, dict):
+        raise RecipeError(
+            "recipe field 'output' must be a mapping with the fields "
+            f"{', '.join(repr(f) for f in OUTPUT_FIELDS)}"
+        )
+    unknown = sorted(set(raw) - set(OUTPUT_FIELDS))
+    if unknown:
+        raise RecipeError(
+            f"unknown output field {unknown[0]!r} in recipe field 'output' "
+            f"(accepts: {', '.join(OUTPUT_FIELDS)})"
+        )
+    if "format" not in raw:
+        raise RecipeError(
+            "recipe field 'output' is missing the required 'format' key "
+            f"(one of: {', '.join(OUTPUT_FORMATS)})"
+        )
+    fmt = raw["format"]
+    if fmt not in OUTPUT_FORMATS:
+        raise RecipeError(
+            f"recipe field 'output.format' must be one of: "
+            f"{', '.join(OUTPUT_FORMATS)} (got {fmt!r})"
+        )
+    return OutputSpec(format=fmt)
 
 
 def _parse_base(data: dict, root: Path) -> FontRef:
