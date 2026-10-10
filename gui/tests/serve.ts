@@ -152,7 +152,18 @@ export async function startServeFixture(
     baseFont: resolve(fontsDir, "base.ttf"),
     donorFont: resolve(fontsDir, "donor.ttf"),
     dispose: async () => {
-      child.kill();
+      // A tree kill: the console-script launcher (and, on Windows, any
+      // child it spawned) must not survive the test — a leaked serve
+      // holds the work dir and, for the frozen sidecar, the binary.
+      if (child.pid !== undefined) {
+        if (process.platform === "win32") {
+          await run("taskkill", ["/pid", String(child.pid), "/T", "/F"], repoRoot).catch(
+            () => child.kill(),
+          );
+        } else {
+          child.kill("SIGTERM");
+        }
+      }
       await new Promise<void>((resolvePromise) => {
         const timer = setTimeout(() => resolvePromise(), 3_000);
         child.once("exit", () => {

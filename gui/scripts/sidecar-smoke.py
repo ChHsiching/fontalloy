@@ -90,7 +90,16 @@ with tempfile.TemporaryDirectory(prefix="sidecar-smoke-") as tmp:
         print(f"SMOKE OK: {BINARY.name} served {doc['font']['filename']} "
               f"({doc['font']['size']} bytes) + report")
     finally:
-        child.terminate()
+        # A onefile PyInstaller binary is a bootloader with a child: a
+        # plain terminate() kills only the bootloader and leaks the real
+        # server (which then holds the exe file itself). Kill the TREE.
+        if sys.platform == "win32":
+            subprocess.run(
+                ["taskkill", "/pid", str(child.pid), "/T", "/F"],
+                capture_output=True,
+            )
+        else:
+            child.terminate()
         try:
             child.wait(timeout=10)
         except subprocess.TimeoutExpired:

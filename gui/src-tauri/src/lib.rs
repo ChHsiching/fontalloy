@@ -200,7 +200,12 @@ fn spawn_sidecar(handle: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         command = command.args(["--allow-origin", origin]);
     }
 
-    let (mut rx, child) = command.spawn()?;
+    let (mut rx, child) = command
+        // The sidecar lifecycle watchdog: if the app dies without a
+        // chance to kill the process tree, the stdin pipe closes and
+        // the service stops itself gracefully (serve's STDIN_WATCH_ENV).
+        .env("FONTALLOY_SERVE_STDIN_WATCH", "1")
+        .spawn()?;
     let state = handle.state::<ShellState>();
     *state.sidecar.lock().map_err(|_| "state poisoned")? = Some(child);
 
