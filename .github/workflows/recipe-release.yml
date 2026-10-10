@@ -1,0 +1,224 @@
+name: Recipe release
+
+# Built fonts as the no-install option (issue #23): builds every
+# official recipe from the manifest's pinned source fonts, proves
+# byte-reproducibility (build twice, compare), and stages the release
+# — per-recipe zips (font + verification report + notices),
+# SHA256SUMS, release notes stating the source-font licenses. The
+# staging always lands as a workflow artifact (the same-repo dry run);
+# publishing goes to the STOREFRONT repository's Releases through a
+# PAT the owner configures once (docs/storefront-releases.md).
+# Community recipes build through the identical gate but are not
+# packaged into the release.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - recipes/**
+      - assets/fonts.manifest.json
+      - assets/licenses/**
+      - core/**
+      - cli/**
+      - pyproject.toml
+      - uv.lock
+      - .github/workflows/recipe-release.yml
+  pull_request:
+    paths:
+      - recipes/**
+      - assets/fonts.manifest.json
+      - assets/licenses/**
+      - core/**
+      - cli/**
+      - pyproject.toml
+      - uv.lock
+      - .github/workflows/recipe-release.yml
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Storefront release tag to publish to"
+        default: fontalloy-v1
+        type: string
+      publish:
+        description: "Publish to the storefront (needs STOREFRONT_TOKEN)"
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: recipe-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build every recipe reproducibly
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      MANIFEST: assets/fonts.manifest.json
+      TAG: ${{ inputs.tag || 'fontalloy-v1' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install the workspace
+        run: uv sync --locked
+
+      # Fetch exactly what the recipes pin (official and community
+      # alike): every artifact sha256-verified against the manifest.
+      - name: Fetch the recipes' pinned source fonts
+        run: uv run fontalloy assets fetch --manifest "$MANIFEST" --recipes recipes
+
+      # Build every recipe — official and community — through the one
+      # seam-1 entry point, exactly as a local user's `fontalloy build`
+      # does; catalog references resolve against the fetched, verified
+      # fonts. Output naming follows the build's rule: <stem>.<format>.
+      - name: Build every recipe
+        run: |
+          mkdir -p build
+          uv run python - <<'PY'
+          from pathlib import Path
+
+          import yaml
+
+          from fontalloy_core import build
+
+          manifest = "assets/fonts.manifest.json"
+          for recipe in sorted(Path("recipes").rglob("*.yaml")):
+              data = yaml.safe_load(recipe.read_text(encoding="utf-8"))
+              fmt = (data.get("output") or {}).get("format", "ttf")
+              out = Path("build") / f"{recipe.stem}.{fmt}"
+              print(f"::group::build {recipe}")
+              result = build(recipe, out, manifest=manifest)
+              summary = result.report.summary
+              print(
+                  f"built {out} ({result.format}, "
+                  f"{summary['output_codepoints']} codepoints in output)"
+              )
+              print("::endgroup::")
+          PY
+          ls -la build
+
+      # The gate: rebuild over the same paths and demand byte-identical
+      # fonts, report JSON, and report HTML. Any difference fails the job.
+      - name: Assert byte-reproducibility (build twice, compare)
+        run: |
+          cp -r build snapshot
+          uv run python - <<'PY'
+          from pathlib import Path
+
+          import yaml
+
+          from fontalloy_core import build
+
+          manifest = "assets/fonts.manifest.json"
+          for recipe in sorted(Path("recipes").rglob("*.yaml")):
+              data = yaml.safe_load(recipe.read_text(encoding="utf-8"))
+              fmt = (data.get("output") or {}).get("format", "ttf")
+              build(recipe, Path("build") / f"{recipe.stem}.{fmt}", manifest=manifest)
+          PY
+          if ! diff -r snapshot build; then
+            echo "::error::rebuild differs — the build is not byte-reproducible"
+            exit 1
+          fi
+          echo "rebuild is byte-identical for every recipe (font + report.json + report.html)"
+
+      # The release carries only the source fonts its recipes merged:
+      # notices filtered to the referenced families.
+      - name: Generate the release notices
+        run: |
+          mkdir -p dist
+          uv run fontalloy assets notices \
+            --manifest "$MANIFEST" --recipes recipes \
+            --output dist/THIRD-PARTY-NOTICES.md
+
+      - name: Package the official recipes
+        run: |
+          uv run fontalloy recipes package \
+            recipes/*.yaml \
+            --builds build --out dist \
+            --notices dist/THIRD-PARTY-NOTICES.md
+
+      - name: Verify the checksums file
+        run: cd dist && sha256sum -c SHA256SUMS
+
+      # The release body (not an attached asset): rendered from the
+      # template over the manifest's licensing truth.
+      - name: Render the release notes
+        run: |
+          uv run python .github/scripts/render-recipe-notes.py \
+            --manifest "$MANIFEST" \
+            --template .github/recipe-release-notes.md \
+            --output dist/release-notes.md \
+            --tag "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --sha "$GITHUB_SHA"
+          cat dist/release-notes.md
+
+      # The same-repo dry run: whatever happens downstream, the chain's
+      # output is inspectable here. Needs no secret.
+      - name: Upload the staged release (dry-run target)
+        uses: actions/upload-artifact@v4
+        with:
+          name: recipe-release
+          path: dist
+          if-no-files-found: error
+
+  publish:
+    name: Publish to the storefront
+    needs: build
+    if: >-
+      github.event_name != 'pull_request' &&
+      github.repository == 'ChHsiching/fontalloy' &&
+      ((github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+       (github.event_name == 'workflow_dispatch' && inputs.publish))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ secrets.STOREFRONT_TOKEN }}
+      STOREFRONT_REPO: ChHsiching/chhsich-nerd-font
+      TAG: ${{ inputs.tag || 'fontalloy-v1' }}
+    steps:
+      - name: Download the staged release
+        uses: actions/download-artifact@v4
+        with:
+          name: recipe-release
+          path: dist
+
+      # A push to main without the configured secret stays green and
+      # says so; an explicit dispatch without it is an operator error.
+      - name: Guard the one-time setup
+        id: guard
+        run: |
+          if [ -z "${GH_TOKEN:-}" ]; then
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "::error::STOREFRONT_TOKEN is not configured — see docs/storefront-releases.md for the one-time setup, then re-run"
+              exit 1
+            fi
+            echo "STOREFRONT_TOKEN is not configured; skipping the storefront publish."
+            echo "The workflow artifact 'recipe-release' is the dry run of this release."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Assets explicitly listed: the rendered notes ride the artifact
+      # but are the release body, not an attached file.
+      - name: Publish to the storefront repository's Releases
+        if: steps.guard.outputs.skip != 'true'
+        run: |
+          if gh release view "$TAG" --repo "$STOREFRONT_REPO" >/dev/null 2>&1; then
+            gh release edit "$TAG" --repo "$STOREFRONT_REPO" --notes-file dist/release-notes.md
+          else
+            gh release create "$TAG" --repo "$STOREFRONT_REPO" \
+              --title "FontAlloy built fonts — $TAG" \
+              --notes-file dist/release-notes.md
+          fi
+          gh release upload "$TAG" \
+            dist/*.zip dist/SHA256SUMS dist/THIRD-PARTY-NOTICES.md \
+            --clobber --repo "$STOREFRONT_REPO"
+          echo "published $TAG to $STOREFRONT_REPO"
