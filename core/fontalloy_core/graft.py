@@ -11,13 +11,26 @@ route (see the fontTools research note) is direct ``glyf`` surgery:
   walks ``glyf`` components recursively, and each component reference is
   re-pointed at the prefixed private copy. In the binary, components
   reference glyph indices, so pre-save renaming is safe.
-- ``hmtx`` entries (advance, side bearing) copy verbatim — scaling is
-  stage 4 (normalization, a later ticket); at this stage nothing is
-  scaled.
+- Normalization (ADR-0003, issue #8) rides the same surgery: each donor
+  glyph scales by the donor's planned factor about the shared baseline
+  (zero vertical displacement — coordinates and composite offsets scale,
+  component 2x2 matrices do not, exactly what ``scale_upem`` does
+  font-wide), the advance re-grids per UAX #11 (Fullwidth/Wide two
+  cells, everything else one), and the side bearing rides the same
+  scale. CFF donors carry the scale through the cu2qu pen chain.
+- Donor hinting never survives the graft: per-glyph instructions are
+  stripped (a scaled outline with unscaled hinting would misrender, and
+  ADR-0003 drops donor hinting outright). No other donor table is read,
+  so donor kern/GPOS/GDEF cannot enter the container — the base keeps
+  its own.
 - The cmap is rebuilt from the effective table, never merged table-wise:
   a format 4 subtable (Windows Unicode BMP) plus a format 12 subtable
   (Windows UCS-4) whenever an astral codepoint is present — mirroring
   what fontTools' own fontBuilder emits.
+- After the graft, ``usWinAscent``/``usWinDescent`` grow — only ever
+  grow — to cover the merged ink and prevent clipping. hhea and the
+  OS/2 typo metrics are never touched here: line height fully inherits
+  the base font.
 - Glyph names only survive save/load through a ``post`` format 2.0
   table written in the same save: the base's post values are kept and
   the format upgraded, so the grafted names persist in the output and
@@ -34,11 +47,15 @@ import struct
 from collections.abc import Mapping, Sequence
 
 from fontTools.fontBuilder import buildCmapSubTable
+from fontTools.misc.fixedTools import otRound
 from fontTools.pens.cu2quPen import Cu2QuPen
 from fontTools.pens.ttGlyphPen import TTGlyphPen
+from fontTools.pens.transformPen import TransformPen
+from fontTools.misc.transform import Transform
 from fontTools.ttLib import TTFont, newTable
 
 from fontalloy_core.errors import BuildError
+from fontalloy_core.normalize import NormalizationPlan
 from fontalloy_core.precedence import EffectiveEntry
 
 #: Prefix separating the donor index from the donor's own glyph name.
@@ -49,12 +66,14 @@ def graft_effective_glyphs(
     base: TTFont,
     donors: Mapping[str, TTFont],
     effective_table: Sequence[EffectiveEntry],
+    plan: NormalizationPlan,
 ) -> None:
     """Graft donor glyphs into ``base`` per the effective table, in place.
 
     ``donors`` maps donor ids (``"donor-<index>"``) to loaded fonts, in
     join order. Base-won codepoints keep the base font's own glyphs and
-    cmap mappings; donor-won codepoints map to freshly grafted glyphs.
+    cmap mappings; donor-won codepoints map to freshly grafted glyphs,
+    each normalized onto the base's metrics per ``plan`` (ADR-0003).
     """
     base_cmap = dict(base.getBestCmap())
     # Per donor, the glyph names to graft (winning glyphs plus composite
@@ -62,6 +81,10 @@ def graft_effective_glyphs(
     # by codepoint, so the order is deterministic.
     closure: dict[str, list[str]] = {}
     seen: dict[str, set[str]] = {}
+    # The first winning codepoint each mapped donor glyph serves (a donor
+    # glyph can be mapped at several codepoints of different UAX #11
+    # classes; the lowest codepoint's class wins, deterministically).
+    mapped_at: dict[str, dict[str, int]] = {}
     for entry in effective_table:
         if entry.winner == "base":
             continue
@@ -69,6 +92,7 @@ def graft_effective_glyphs(
         names = closure.setdefault(entry.winner, [])
         known = seen.setdefault(entry.winner, set())
         donor_name = _donor_glyph_for(donor, entry.codepoint)
+        mapped_at.setdefault(entry.winner, {}).setdefault(donor_name, entry.codepoint)
         if donor_name not in known:
             _collect_with_components(donor, donor_name, names, known)
 
@@ -77,21 +101,27 @@ def graft_effective_glyphs(
 
     order = list(base.getGlyphOrder())
     for donor_id, donor in donors.items():  # join order
+        scale = plan.scale_for(donor_id)
         for name in closure.get(donor_id, ()):
             out_name = _prefixed(donor_id, name)
             order.append(out_name)
-            _copy_glyph(base, donor, donor_id, name, out_name)
+            codepoint = mapped_at.get(donor_id, {}).get(name)
+            _copy_glyph(base, donor, donor_id, name, out_name, scale, plan, codepoint)
     base.setGlyphOrder(order)
 
     mapping = {
         entry.codepoint: (
             base_cmap[entry.codepoint]
             if entry.winner == "base"
-            else _prefixed(entry.winner, _donor_glyph_for(donors[entry.winner], entry.codepoint))
+            else _prefixed(
+                entry.winner,
+                _donor_glyph_for(donors[entry.winner], entry.codepoint),
+            )
         )
         for entry in effective_table
     }
     _rebuild_cmap(base, mapping)
+    _grow_win_metrics(base)
     _persist_glyph_names(base)
 
 
@@ -120,34 +150,109 @@ def _collect_with_components(
 
 
 def _copy_glyph(
-    base: TTFont, donor: TTFont, donor_id: str, name: str, out_name: str
+    base: TTFont,
+    donor: TTFont,
+    donor_id: str,
+    name: str,
+    out_name: str,
+    scale: float,
+    plan: NormalizationPlan,
+    codepoint: int | None,
 ) -> None:
-    """Copy one donor glyph (outlines, components, metrics) into ``base``."""
+    """Copy one donor glyph into ``base``, normalized (ADR-0003).
+
+    The outline scales by ``scale`` about the shared baseline; a mapped
+    winner's advance re-grids per UAX #11 through ``plan`` (an unmapped
+    composite component keeps its own scaled advance); the side bearing
+    rides the outline scale; donor hinting is stripped.
+    """
+    donor_advance, donor_lsb = donor["hmtx"][name]
     if "glyf" in donor:
         glyph = donor["glyf"][name]
         # Re-point composite components at the prefixed private copies;
         # the reference is by name in-session and by index once compiled.
         for component in getattr(glyph, "components", None) or ():
             component.glyphName = _prefixed(donor_id, component.glyphName)
+        _scale_glyf_glyph(glyph, scale)
+        # Donor hinting never enters: the donor's instructions describe
+        # its unscaled outline (ADR-0003 drops donor hinting outright).
+        glyph.removeHinting()
         base["glyf"][out_name] = glyph
     elif "CFF " in donor or "CFF2" in donor:
-        base["glyf"][out_name] = _convert_cff_glyph(donor, name)
+        base["glyf"][out_name] = _convert_cff_glyph(donor, name, scale)
     else:
         raise BuildError(
             f"donor glyph {name!r} has no graftable outlines "
             "(neither glyf nor CFF)"
         )
-    base["hmtx"][out_name] = tuple(donor["hmtx"][name])
+    advance = (
+        plan.advance_for(codepoint)
+        if codepoint is not None
+        else otRound(donor_advance * scale)
+    )
+    base["hmtx"][out_name] = (advance, otRound(donor_lsb * scale))
 
 
-def _convert_cff_glyph(donor: TTFont, name: str):
-    """Draw a CFF glyph into quadratic TrueType outlines (OTF in, TTF out)."""
+def _scale_glyf_glyph(glyph, scale: float) -> None:
+    """Scale one TrueType glyph by ``scale`` about the origin, in place.
+
+    Exactly what ``fontTools.ttLib.scaleUpem`` does font-wide: simple
+    glyphs scale their coordinates, composites scale their component
+    offsets (the referenced glyphs scale individually — the same closure
+    — so the assembled ink scales once), and component 2x2 matrices stay
+    untouched. No translation: zero vertical displacement (ADR-0003).
+    """
+    if glyph.isComposite():
+        for component in glyph.components:
+            component.x = otRound(component.x * scale)
+            component.y = otRound(component.y * scale)
+    elif getattr(glyph, "coordinates", None) is not None:
+        coordinates = glyph.coordinates
+        for index, (x, y) in enumerate(coordinates):
+            coordinates[index] = otRound(x * scale), otRound(y * scale)
+    for attr in ("xMin", "yMin", "xMax", "yMax"):
+        value = getattr(glyph, attr, None)
+        if value is not None:
+            setattr(glyph, attr, otRound(value * scale))
+
+
+def _convert_cff_glyph(donor: TTFont, name: str, scale: float):
+    """Draw a CFF glyph into scaled quadratic TrueType outlines
+    (OTF in, TTF out); the stage-4 scale rides the pen chain."""
     max_err = donor["head"].unitsPerEm / 1000  # ~1 unit at 1000 upem
     pen = TTGlyphPen(None)
     donor.getGlyphSet()[name].draw(
-        Cu2QuPen(pen, max_err, reverse_direction=True)
+        TransformPen(
+            Cu2QuPen(pen, max_err, reverse_direction=True),
+            Transform().scale(scale, scale),
+        )
     )
     return pen.glyph()
+
+
+def _grow_win_metrics(base: TTFont) -> None:
+    """Grow usWinAscent/usWinDescent to cover the merged ink (only ever
+    grow — ADR-0003: prevent clipping, change nothing else).
+
+    hhea and the OS/2 typo metrics are deliberately untouched: line
+    height fully inherits the base font.
+    """
+    os2 = base.get("OS/2")
+    if os2 is None:
+        return
+    glyf = base["glyf"]
+    y_max, y_min = 0, 0
+    for name in base.getGlyphOrder():
+        glyph = glyf[name]  # glyph access expands lazy glyph data
+        if glyph.numberOfContours == 0:
+            continue  # empty outlines carry no ink
+        glyph.recalcBounds(glyf)
+        if glyph.yMax > y_max:
+            y_max = glyph.yMax
+        if glyph.yMin < y_min:
+            y_min = glyph.yMin
+    os2.usWinAscent = max(os2.usWinAscent, y_max)
+    os2.usWinDescent = max(os2.usWinDescent, -y_min)
 
 
 def _rebuild_cmap(font: TTFont, mapping: dict[int, str]) -> None:

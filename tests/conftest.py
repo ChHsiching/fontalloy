@@ -44,8 +44,14 @@ def synth_font(
     subfamily: str = "Regular",
     italic: bool = False,
     typographic_family: str | None = None,
+    ink_dy: int = 0,
 ) -> Path:
-    """Write a small synthetic TTF covering exactly ``codepoints``."""
+    """Write a small synthetic TTF covering exactly ``codepoints``.
+
+    ``ink_dy`` shifts every mapped glyph's ink vertically (the ink height
+    is unchanged) so tests can tell a translated/scaled glyph from an
+    unscaled one by its baseline-relative bounds.
+    """
     font = _build_font_object(
         family,
         codepoints,
@@ -55,6 +61,7 @@ def synth_font(
         subfamily=subfamily,
         italic=italic,
         typographic_family=typographic_family,
+        ink_dy=ink_dy,
     )
     font.save(path)
     return Path(path)
@@ -101,7 +108,13 @@ def synth_variable_font(
     builder.setupGlyf(glyphs)  # type: ignore[arg-type]
     builder.setupHorizontalMetrics({name: (600, 40) for name in glyph_names})
     builder.setupHorizontalHeader(ascent=800, descent=-200)
-    builder.setupOS2(sTypoAscender=800, sTypoDescender=-200, usWeightClass=400)
+    builder.setupOS2(
+        sTypoAscender=800,
+        sTypoDescender=-200,
+        usWinAscent=900,
+        usWinDescent=300,
+        usWeightClass=400,
+    )
     builder.setupNameTable({"familyName": family, "styleName": "Regular"})
     builder.setupPost()
     builder.setupHead(created=FIXED_TIMESTAMP, modified=FIXED_TIMESTAMP)
@@ -149,13 +162,16 @@ def _build_font_object(
     subfamily: str = "Regular",
     italic: bool = False,
     typographic_family: str | None = None,
+    ink_dy: int = 0,
 ) -> TTFont:
     """Build (but do not save) a synthetic single-face font."""
     glyph_names = [".notdef"] + [f"uni{cp:04X}" for cp in codepoints]
     glyphs: dict[str, object] = {".notdef": _box_glyph(0, 0, 500, 700)}
     for index, cp in enumerate(codepoints):
         # Distinct ink height per codepoint so a glyph is traceable to its font.
-        glyphs[f"uni{cp:04X}"] = _box_glyph(40, 0, advance - 40, 300 + 100 * (index + 1))
+        glyphs[f"uni{cp:04X}"] = _box_glyph(
+            40, ink_dy, advance - 40, ink_dy + 300 + 100 * (index + 1)
+        )
 
     builder = FontBuilder(unitsPerEm=upem, isTTF=True)
     builder.setupGlyphOrder(glyph_names)
@@ -163,7 +179,16 @@ def _build_font_object(
     builder.setupGlyf(glyphs)  # type: ignore[arg-type]
     builder.setupHorizontalMetrics({name: (advance, 40) for name in glyph_names})
     builder.setupHorizontalHeader(ascent=800, descent=-200)
-    builder.setupOS2(sTypoAscender=800, sTypoDescender=-200, usWeightClass=weight)
+    # Sane win metrics (fontBuilder's zero defaults would make every ink
+    # "clip"): ascent 900 / descent 300 sit above the tallest fixture ink
+    # unless a test deliberately grafts taller ink.
+    builder.setupOS2(
+        sTypoAscender=800,
+        sTypoDescender=-200,
+        usWinAscent=900,
+        usWinDescent=300,
+        usWeightClass=weight,
+    )
     if italic:
         builder.font["OS/2"].fsSelection |= 0x01  # ITALIC bit
     builder.setupNameTable({"familyName": family, "styleName": subfamily})
@@ -172,7 +197,7 @@ def _build_font_object(
         name_table.setName(typographic_family, 16, 3, 1, 0x409)
         name_table.setName(subfamily, 17, 3, 1, 0x409)
     builder.setupPost()
-    builder.setupHead(created=FIXED_TIMESTAMP, modified=FIXED_TIMESTAMP)
+    builder.setupHead(unitsPerEm=upem, created=FIXED_TIMESTAMP, modified=FIXED_TIMESTAMP)
     return builder.font
 
 
@@ -221,10 +246,16 @@ def synth_composite_font(
     builder.setupGlyf(glyphs)  # type: ignore[arg-type]
     builder.setupHorizontalMetrics({name: (advance, 40) for name in glyph_names})
     builder.setupHorizontalHeader(ascent=800, descent=-200)
-    builder.setupOS2(sTypoAscender=800, sTypoDescender=-200, usWeightClass=400)
+    builder.setupOS2(
+        sTypoAscender=800,
+        sTypoDescender=-200,
+        usWinAscent=900,
+        usWinDescent=300,
+        usWeightClass=400,
+    )
     builder.setupNameTable({"familyName": family, "styleName": "Regular"})
     builder.setupPost()
-    builder.setupHead(created=FIXED_TIMESTAMP, modified=FIXED_TIMESTAMP)
+    builder.setupHead(unitsPerEm=upem, created=FIXED_TIMESTAMP, modified=FIXED_TIMESTAMP)
     builder.save(path)
     return Path(path)
 
@@ -265,10 +296,16 @@ def synth_cff_font(
     builder.setupCFF(family, {"FullName": family}, glyphs, {})
     builder.setupHorizontalMetrics({name: (advance, 40) for name in glyph_names})
     builder.setupHorizontalHeader(ascent=800, descent=-200)
-    builder.setupOS2(sTypoAscender=800, sTypoDescender=-200, usWeightClass=400)
+    builder.setupOS2(
+        sTypoAscender=800,
+        sTypoDescender=-200,
+        usWinAscent=900,
+        usWinDescent=300,
+        usWeightClass=400,
+    )
     builder.setupNameTable({"familyName": family, "styleName": "Regular"})
     builder.setupPost()
-    builder.setupHead(created=FIXED_TIMESTAMP, modified=FIXED_TIMESTAMP)
+    builder.setupHead(unitsPerEm=upem, created=FIXED_TIMESTAMP, modified=FIXED_TIMESTAMP)
     builder.save(path)
     return Path(path)
 
