@@ -1,0 +1,28 @@
+# The FontAlloy flagship recipe: JetBrains Mono x Maple Mono NF-CN.
+
+# An English coding font merged with a CJK donor under the zh_cn
+# language preset — the terminal merge FontAlloy exists for. The base
+# keeps its own glyphs, metrics, hinting, and Nerd Font symbols; every
+# codepoint it lacks fills from the donor, with the zh_cn preset
+# declared explicitly (donor-first for the Simplified Chinese set).
+# Normalization is the grid school: CJK advance exactly 2x the Latin
+# advance, one shared baseline, line height inherited from the base.
+
+base:
+  family: JetBrainsMono
+  variant: Nerd Font
+  pattern: "JetBrainsMonoNerdFont-*.ttf"
+donors:
+  - family: MapleMono
+    variant: NF-CN
+    pattern: "MapleMono-NF-CN-*.ttf"
+rules:
+  - set: zh_cn
+    fonts: [donor-0]
+weights:
+  - weight: 400
+normalization:
+  mode: grid
+  quote_dash_width: fullwidth
+output:
+  family: ChHsich

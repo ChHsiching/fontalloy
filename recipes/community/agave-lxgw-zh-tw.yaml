@@ -1,0 +1,33 @@
+# A community recipe: what a user shares, not what the project ships.
+
+# This file demonstrates the share unit as a community member writes
+# it: a different pair (Agave x LXGW WenKai Light), the zh_tw preset
+# plus a hand-written Bopomofo range, and the default normalization
+# switches (grid mode, halfwidth quotes — the UAX #11 defaults). The
+# output family avoids every Reserved Font Name of its sources — LXGW
+# reserves 霞鹜 / 霞鶩 / 落霞孤鹜 / 落霞孤鶩 / LXGW, so the name must
+# not carry them (the LXGW carve-out explicitly excludes installable
+# desktop modified versions from its additional permission).
+
+# CI builds this recipe exactly like the official ones — same fetch,
+# same pipeline, same byte-reproducibility gate — which is the proof
+# that a community-supplied recipe builds identically. It is not
+# packaged into the storefront release: official recipes are the ones
+# at the top level of recipes/.
+
+base:
+  family: Agave
+  variant: Nerd Font
+  pattern: "AgaveNerdFont-*.ttf"
+donors:
+  - family: LXGWWenKai
+    variant: Light
+rules:
+  - set: zh_tw
+    fonts: [donor-0]
+  - range: "0x3100-0x312F"
+    fonts: [donor-0]
+weights:
+  - weight: 400
+output:
+  family: Community-Agave-Kai

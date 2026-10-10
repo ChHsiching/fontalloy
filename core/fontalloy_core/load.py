@@ -69,12 +69,13 @@ def load_face(ref: FontRef, *, role: str) -> LoadedFace:
 
     Raises :class:`~fontalloy_core.errors.BuildError` when the file is
     missing, is not a usable font, or the reference's face selection or
-    instance pins do not fit the file.
+    instance pins do not fit the file. Only a single-file reference can
+    load through here — a catalog-family reference that resolved to
+    several files is a clear error (it carries a family, not a face).
     """
-    path = ref.path
+    path = _single_path(ref, role)
     if not path.is_file():
         raise BuildError(f"{role} file not found: {path}")
-
     face_index = _select_face(path, ref.face, role)
     return _load_face_at(path, face_index, ref.instance, role)
 
@@ -89,16 +90,47 @@ def load_faces(ref: FontRef, *, role: str) -> list[LoadedFace]:
     file contributes its single face). Every per-face behavior of
     :func:`load_face` — variable instantiation, woff2 decode, identity
     detection — applies unchanged.
+
+    A catalog-family reference (issue #23) resolves to the files its
+    manifest entry contributes (one bare font file, or the extracted
+    faces of a pinned archive narrowed by the recipe's pattern); every
+    face of every file loads here in deterministic file order, which is
+    how one reference carries a whole weight matrix.
     """
-    path = ref.path
-    if not path.is_file():
-        raise BuildError(f"{role} file not found: {path}")
-    face_count = _face_count(path)
-    indices = range(face_count) if ref.face is None else [ref.face]
-    return [
-        _load_face_at(path, index, ref.instance, role)
-        for index in indices
-    ]
+    faces: list[LoadedFace] = []
+    for path in _ref_paths(ref, role):
+        if not path.is_file():
+            raise BuildError(f"{role} file not found: {path}")
+        face_count = _face_count(path)
+        indices = range(face_count) if ref.face is None else [ref.face]
+        faces.extend(
+            _load_face_at(path, index, ref.instance, role) for index in indices
+        )
+    return faces
+
+
+def _ref_paths(ref: FontRef, role: str) -> tuple[Path, ...]:
+    """Every file a reference points at (path and catalog forms alike)."""
+    if ref.paths:
+        return ref.paths
+    if ref.path is not None:
+        return (ref.path,)
+    raise BuildError(
+        f"{role} reference carries no font files — a catalog-family "
+        "reference must be resolved against the fetched catalog first "
+        "(the build does this when given a manifest)"
+    )
+
+
+def _single_path(ref: FontRef, role: str) -> Path:
+    """The one file a single-face reference points at."""
+    paths = _ref_paths(ref, role)
+    if len(paths) > 1:
+        raise BuildError(
+            f"{role} reference resolved to {len(paths)} files; a single "
+            "face needs exactly one — narrow the recipe's pattern"
+        )
+    return paths[0]
 
 
 def _load_face_at(

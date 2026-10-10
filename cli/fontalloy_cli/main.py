@@ -28,6 +28,12 @@ assets_app = typer.Typer(
 )
 app.add_typer(assets_app, name="assets")
 
+recipes_app = typer.Typer(
+    help="Work with recipe files: the families they pin, release packaging.",
+    no_args_is_help=True,
+)
+app.add_typer(recipes_app, name="recipes")
+
 
 @app.callback()
 def main() -> None:
@@ -70,6 +76,24 @@ def build(
             "recipe's output.format.",
         ),
     ] = None,
+    manifest: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--manifest",
+            help="Catalog manifest resolving the recipe's catalog-family "
+            "font references (default: assets/fonts.manifest.json in the "
+            "working directory). Unnecessary for path-only recipes.",
+        ),
+    ] = None,
+    fonts_dir: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--fonts-dir",
+            help="Fetched catalog directory the references resolve in "
+            "(default: a fonts directory beside the manifest, as "
+            "`assets fetch` fills it).",
+        ),
+    ] = None,
 ) -> None:
     """Build a merged font from a recipe.
 
@@ -86,7 +110,12 @@ def build(
     """
     try:
         result = fontalloy_core.build(
-            recipe, output, report_path=report, output_format=output_format
+            recipe,
+            output,
+            report_path=report,
+            output_format=output_format,
+            manifest=manifest,
+            fonts_dir=fonts_dir,
         )
     except FontAlloyError as exc:
         typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
@@ -213,6 +242,23 @@ def assets_fetch(
             help="Download directory (default: a fonts directory beside the manifest).",
         ),
     ] = None,
+    family: Annotated[
+        Optional[list[str]],
+        typer.Option(
+            "--family",
+            help="Fetch only the named manifest family (repeatable); the "
+            "default fetches the whole catalog.",
+        ),
+    ] = None,
+    recipes: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--recipes",
+            help="Recipe directory whose referenced families to fetch "
+            "(every .yaml under it, recursively) — CI fetches exactly what "
+            "the recipes pin. Combines with --family (union).",
+        ),
+    ] = None,
 ) -> None:
     """Download the catalog into a gitignored directory, verifying sha256.
 
@@ -221,7 +267,10 @@ def assets_fetch(
     verified artifacts are skipped, so re-runs only fill what is missing.
     """
     try:
-        summary = fontalloy_core.fetch_catalog(manifest, dest, echo=typer.echo)
+        families = _collect_families(manifest, family, recipes)
+        summary = fontalloy_core.fetch_catalog(
+            manifest, dest, families=families, echo=typer.echo
+        )
     except FontAlloyError as exc:
         typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=2) from None
@@ -250,6 +299,24 @@ def assets_notices(
             help="Notices output path (default: THIRD-PARTY-NOTICES.md).",
         ),
     ] = Path("THIRD-PARTY-NOTICES.md"),
+    family: Annotated[
+        Optional[list[str]],
+        typer.Option(
+            "--family",
+            help="Include only the named manifest family (repeatable); the "
+            "default covers the whole catalog.",
+        ),
+    ] = None,
+    recipes: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--recipes",
+            help="Recipe directory whose referenced families to cover "
+            "(every .yaml under it, recursively) — a recipe release "
+            "carries exactly its source fonts' notices. Combines with "
+            "--family (union).",
+        ),
+    ] = None,
 ) -> None:
     """Generate THIRD-PARTY-NOTICES.md from the catalog manifest.
 
@@ -258,8 +325,12 @@ def assets_notices(
     output — regenerate instead of editing by hand.
     """
     try:
+        families = _collect_families(manifest, family, recipes)
         notices_path = fontalloy_core.write_notices(
-            manifest, output, reporter=lambda p: typer.echo(f"wrote {p}")
+            manifest,
+            output,
+            families=families,
+            reporter=lambda p: typer.echo(f"wrote {p}"),
         )
     except FontAlloyError as exc:
         typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
@@ -364,6 +435,156 @@ def assets_package(
         f"({package.faces} faces) -> {package.out_dir}"
     )
     typer.echo(f"metadata {package.out_dir / 'catalog-release.json'} ({len(origins)} origin(s))")
+
+
+def _collect_families(
+    manifest: Path, family: Optional[list[str]], recipes: Optional[Path]
+) -> Optional[list[str]]:
+    """The union of --family names and --recipes-referenced families.
+
+    None means "no filter" (everything); an empty union is an error, not
+    a silent no-op fetch. Recipes that fail to parse stop the command —
+    a broken recipe must never look like an empty family list.
+    """
+    if family is None and recipes is None:
+        return None
+    families: list[str] = list(family or [])
+    if recipes is not None:
+        recipes_dir = Path(recipes)
+        if not recipes_dir.is_dir():
+            raise fontalloy_core.errors.RecipeError(
+                f"recipe directory not found: {recipes_dir}"
+            )
+        recipe_paths = sorted(recipes_dir.rglob("*.yaml"))
+        if not recipe_paths:
+            raise fontalloy_core.errors.RecipeError(
+                f"recipe directory holds no .yaml recipes: {recipes_dir}"
+            )
+        parsed = [fontalloy_core.load_recipe(path) for path in recipe_paths]
+        families.extend(fontalloy_core.recipes_catalog_families(parsed))
+        # The recipe files are only read for their families here; say
+        # which recipes were consulted so a surprise is traceable.
+        typer.echo(
+            f"recipes under {recipes_dir}: "
+            + ", ".join(path.name for path in recipe_paths)
+        )
+    unique = list(dict.fromkeys(families))
+    if not unique:
+        raise fontalloy_core.errors.RecipeError(
+            "the family filter is empty — name a --family or point --recipes "
+            "at recipes that reference catalog families"
+        )
+    return unique
+
+
+@recipes_app.command("families")
+def recipes_families(
+    recipes: Annotated[
+        Path,
+        typer.Option(
+            "--recipes",
+            help="Recipe directory to scan (every .yaml under it, "
+            "recursively).",
+        ),
+    ] = Path("recipes"),
+) -> None:
+    """List the manifest families recipes reference, one per line.
+
+    The fetch filter CI composes: `fontalloy recipes families --recipes "
+    "recipes` feeds `fontalloy assets fetch --family`. Recipes that "
+    fail to parse stop the command with exit code 2.
+    """
+    try:
+        families = _recipes_families(Path(recipes))
+    except FontAlloyError as exc:
+        typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from None
+    for name in families:
+        typer.echo(name)
+
+
+def _recipes_families(recipes_dir: Path) -> list[str]:
+    if not recipes_dir.is_dir():
+        raise fontalloy_core.errors.RecipeError(
+            f"recipe directory not found: {recipes_dir}"
+        )
+    recipe_paths = sorted(recipes_dir.rglob("*.yaml"))
+    if not recipe_paths:
+        raise fontalloy_core.errors.RecipeError(
+            f"recipe directory holds no .yaml recipes: {recipes_dir}"
+        )
+    parsed = [fontalloy_core.load_recipe(path) for path in recipe_paths]
+    families = list(fontalloy_core.recipes_catalog_families(parsed))
+    if not families:
+        raise fontalloy_core.errors.RecipeError(
+            f"no recipe under {recipes_dir} references a catalog family"
+        )
+    return families
+
+
+@recipes_app.command("package")
+def recipes_package(
+    recipe: Annotated[
+        list[Path],
+        typer.Argument(
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            help="Recipe files whose builds to package (repeatable).",
+        ),
+    ],
+    builds: Annotated[
+        Path,
+        typer.Option(
+            "--builds",
+            help="Directory holding the builds (fonts plus report.json / "
+            "report.html per recipe stem).",
+        ),
+    ] = Path("build"),
+    out: Annotated[
+        Path,
+        typer.Option(
+            "--out",
+            help="Staging directory for the release artifacts (default: dist).",
+        ),
+    ] = Path("dist"),
+    notices: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--notices",
+            help="THIRD-PARTY-NOTICES.md to carry inside every recipe zip "
+            "and at the release root (generate with `assets notices "
+            "--recipes ...`).",
+        ),
+    ] = None,
+    include: Annotated[
+        Optional[list[Path]],
+        typer.Option(
+            "--include",
+            help="Extra file to attach and checksum (repeatable).",
+        ),
+    ] = None,
+) -> None:
+    """Stage the recipe release: one zip per recipe, SHA256SUMS.
+
+    Each zip carries the built font, both verification report forms, and
+    the notices — self-contained and license-compliant. Byte-reproducible:
+    re-running over the same builds yields identical artifacts.
+    """
+    try:
+        package = fontalloy_core.package_recipe_release(
+            recipe,
+            builds,
+            out,
+            notices=notices,
+            include=include or [],
+            echo=typer.echo,
+        )
+    except FontAlloyError as exc:
+        typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from None
+    typer.echo(f"packaged {package.recipes} recipe zip(s) -> {package.out_dir}")
+    typer.echo(f"checksums {package.out_dir / 'SHA256SUMS'}")
 
 
 if __name__ == "__main__":

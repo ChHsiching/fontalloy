@@ -51,6 +51,7 @@ from typing import NamedTuple
 
 from fontTools.ttLib import TTFont
 
+from fontalloy_core.assets import resolve_recipe_fonts
 from fontalloy_core.errors import BuildError
 from fontalloy_core.graft import graft_effective_glyphs
 from fontalloy_core.load import LoadedFace, aggregate_families, load_faces
@@ -121,6 +122,8 @@ def build(
     *,
     report_path: Path | str | None = None,
     output_format: str | None = None,
+    manifest: Path | str | None = None,
+    fonts_dir: Path | str | None = None,
     progress: Callable[[str], None] | None = None,
 ) -> BuildOutput:
     """Build a merged font (or weight/style matrix) from a recipe file.
@@ -128,8 +131,13 @@ def build(
     ``output_path`` defaults to ``<recipe stem>.<format>`` beside the
     recipe; ``output_format`` (``ttf``, ``ttc``, or ``woff2``) overrides
     the recipe's ``output.format`` — the CLI switch rides this argument.
-    ``progress`` (issue #11), when given, is called with a stage name as
-    the pipeline enters each stage; serve uses it to report build
+    ``manifest`` resolves the recipe's catalog-family references
+    against the fetched catalog (issue #23; default:
+    ``assets/fonts.manifest.json`` in the working directory, with
+    ``fonts_dir`` defaulting to the ``fonts`` directory beside it —
+    exactly what ``fontalloy assets fetch`` fills). ``progress``
+    (issue #11), when given, is called with a stage name as the
+    pipeline enters each stage; serve uses it to report build
     progress over HTTP.
 
     The requested matrix comes from the base font file's faces (a
@@ -150,8 +158,15 @@ def build(
         output_path,
         report_path=report_path,
         output_format=output_format,
+        manifest=manifest,
+        fonts_dir=fonts_dir,
         progress=progress,
     )
+
+
+#: Where a catalog-referencing build looks for the manifest when the
+#: caller names none — the CLI's default, and the repo-root layout.
+DEFAULT_MANIFEST = Path("assets") / "fonts.manifest.json"
 
 
 def build_recipe(
@@ -160,6 +175,8 @@ def build_recipe(
     *,
     report_path: Path | str | None = None,
     output_format: str | None = None,
+    manifest: Path | str | None = None,
+    fonts_dir: Path | str | None = None,
     progress: Callable[[str], None] | None = None,
 ) -> BuildOutput:
     """Build a merged font from an already-parsed recipe.
@@ -169,11 +186,19 @@ def build_recipe(
     what serve (issue #11) runs on a recipe submitted as JSON.
     ``output_path`` is required in practice for non-file callers and
     defaults to ``fontalloy.<format>`` in the working directory.
+    Catalog-family references are resolved here, through the assets
+    machinery, when the recipe carries any (``manifest`` names the
+    catalog; see :func:`build`).
     """
 
     def _stage(name: str) -> None:
         if progress is not None:
             progress(name)
+
+    if recipe.base.is_catalog_ref or any(
+        ref.is_catalog_ref for ref in recipe.donors
+    ):
+        recipe = _resolve_catalog(recipe, manifest, fonts_dir)
 
     fmt = output_format if output_format is not None else recipe.output.format
     if fmt not in OUTPUT_FORMATS:
@@ -321,23 +346,16 @@ def build_recipe(
 
     sources = tuple(
         [
-            SourceRecord(
+            _source_record(
+                recipe.base,
                 id="base",
-                role="base",
-                path=recipe.base.path,
-                sha256=file_sha256(recipe.base.path),
-                # The base font file's own coverage (its first face's,
-                # for a collection) — not the base-won share of the
-                # merge, which the provenance already accounts for.
                 codepoints=base_codepoints,
             )
         ]
     ) + tuple(
-        SourceRecord(
+        _source_record(
+            ref,
             id=f"donor-{index}",
-            role="donor",
-            path=ref.path,
-            sha256=file_sha256(ref.path),
             codepoints=donor_codepoints[f"donor-{index}"],
         )
         for index, ref in enumerate(recipe.donors)
@@ -445,6 +463,50 @@ def build_recipe(
     )
 
 
+def _resolve_catalog(
+    recipe: Recipe,
+    manifest: Path | str | None,
+    fonts_dir: Path | str | None,
+) -> Recipe:
+    """Resolve catalog references, with a readable no-manifest error."""
+    from fontalloy_core.errors import CatalogError
+
+    manifest_path = Path(manifest) if manifest is not None else DEFAULT_MANIFEST
+    if manifest is None and not manifest_path.is_file():
+        raise BuildError(
+            "the recipe references catalog families but no manifest was "
+            f"found at {manifest_path} — pass a manifest (the CLI's "
+            "--manifest) or run from the repository root"
+        )
+    try:
+        return resolve_recipe_fonts(recipe, manifest_path, fonts_dir)
+    except CatalogError as exc:
+        raise BuildError(
+            f"cannot resolve the recipe's catalog references: {exc}"
+        ) from None
+
+
+def _source_record(
+    ref: FontRef, *, id: str, codepoints: int
+) -> SourceRecord:
+    """One source record: the file (or pinned artifact) a reference built from.
+
+    A path reference records the font file; a catalog reference records
+    the manifest-pinned artifact it resolved through (the zip or the
+    bare font file) — the build's provenance is the pin itself, so the
+    report's source hashes verify a build against the manifest.
+    """
+    path = ref.artifact if ref.artifact is not None else ref.path
+    assert path is not None  # a resolved reference always carries one
+    return SourceRecord(
+        id=id,
+        role="base" if id == "base" else "donor",
+        path=path,
+        sha256=file_sha256(path),
+        codepoints=codepoints,
+    )
+
+
 def _donor_pool(
     donor_id: str, faces: list[LoadedFace], ref: FontRef, index: int
 ) -> DonorPool:
@@ -457,10 +519,11 @@ def _donor_pool(
     """
     families = aggregate_families([face.info for face in faces])
     if len(families) > 1:
+        source = ref.family if ref.family is not None else str(ref.path)
         raise BuildError(
-            f"donor font {index} file carries multiple families "
-            f"({', '.join(family.name for family in families)}); pin one "
-            f"face or split the file: {ref.path}"
+            f"donor font {index} carries multiple families "
+            f"({', '.join(family.name for family in families)}); narrow its "
+            f"pattern or pin a face: {source}"
         )
     by_identity = {
         (face.info.path, face.info.face_index): face for face in faces

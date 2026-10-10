@@ -16,7 +16,7 @@ must respect.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from fontalloy_core.catalog import Catalog, CatalogEntry, load_manifest
@@ -102,9 +102,29 @@ _LXGW_CARVE_OUT = (
 )
 
 
-def generate_notices(manifest_path: Path | str) -> str:
-    """Render the THIRD-PARTY-NOTICES.md content for a catalog manifest."""
+def generate_notices(
+    manifest_path: Path | str,
+    *,
+    families: Sequence[str] | None = None,
+) -> str:
+    """Render the THIRD-PARTY-NOTICES.md content for a catalog manifest.
+
+    ``families`` narrows the document to the named manifest families
+    (issue #23): a recipe release carries the notices of exactly the
+    source fonts its recipes merged, not the whole catalog. An unknown
+    family name is a clear error.
+    """
     catalog: Catalog = load_manifest(manifest_path)
+    entries = catalog.entries
+    if families is not None:
+        selected = set(families)
+        unknown = sorted(selected - {entry.family for entry in catalog.entries})
+        if unknown:
+            raise CatalogError(
+                f"unknown family {unknown[0]!r} in the notices filter "
+                f"(the manifest carries {len(catalog.entries)} entries)"
+            )
+        entries = [entry for entry in catalog.entries if entry.family in selected]
     lines: list[str] = []
     w = lines.append
 
@@ -127,11 +147,11 @@ def generate_notices(manifest_path: Path | str) -> str:
     w("")
     w("## Font families")
     w("")
-    for entry in sorted(catalog.entries, key=lambda e: (e.family.lower(), e.variant.lower())):
+    for entry in sorted(entries, key=lambda e: (e.family.lower(), e.variant.lower())):
         lines.extend(_render_family(entry))
     w("## License texts")
     w("")
-    for license_file in sorted({entry.license_file for entry in catalog.entries}):
+    for license_file in sorted({entry.license_file for entry in entries}):
         w(f"### {license_file.name}")
         w("")
         w("```text")
@@ -146,10 +166,11 @@ def write_notices(
     manifest_path: Path | str,
     output: Path | str,
     *,
+    families: Sequence[str] | None = None,
     reporter: Callable[[Path], None] = lambda _p: None,
 ) -> Path:
     """Generate and write the notices file; returns its path."""
-    content = generate_notices(manifest_path)
+    content = generate_notices(manifest_path, families=families)
     output_path = Path(output)
     try:
         output_path.parent.mkdir(parents=True, exist_ok=True)

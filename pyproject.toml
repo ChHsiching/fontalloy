@@ -27,4 +27,5 @@ members = ["core", "cli"]
 testpaths = ["tests"]
 markers = [
     "anchor: downloads and merges the pinned JetBrains Mono x Noto Sans SC pair (network on first run; opt out with FONTALLOY_SKIP_ANCHOR=1)",
+    "recipes_online: fetches the official recipes' families and builds the flagship against the real pinned pair (network on first run; opt out with FONTALLOY_SKIP_ANCHOR=1)",
 ]

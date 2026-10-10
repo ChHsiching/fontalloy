@@ -1,0 +1,39 @@
+# The preset-plus-custom recipe: language presets and hand-written
+# ranges in one rule set, over a variable-font donor.
+
+# The donor is the pinned Noto Sans SC variable font, instantiated at
+# wght 400 (its fvar default is 100 — the instance pin makes the
+# demand explicit). The rule set mixes every granularity: the zh_cn
+# preset, a custom range (hiragana + katakana from the donor), a
+# recipe-defined named set (Enclosed CJK Letters and Months), and a
+# single-codepoint override pinning the middle dot to the base font —
+# the narrowest rule wins, so U+00B7 stays JetBrains Mono's own glyph
+# whatever any wider rule says.
+
+base:
+  family: JetBrainsMono
+  variant: Nerd Font
+  pattern: "JetBrainsMonoNerdFont-*.ttf"
+donors:
+  - family: NotoSansSC
+    variant: Variable
+    instance:
+      wght: 400
+sets:
+  enclosed-cjk: "0x32C0-0x32FF"
+rules:
+  - set: zh_cn
+    fonts: [donor-0]
+  - range: "0x3040-0x30FF"
+    fonts: [donor-0]
+  - set: enclosed-cjk
+    fonts: [donor-0]
+  - codepoint: 0x00B7
+    fonts: [base]
+weights:
+  - weight: 400
+normalization:
+  mode: grid
+  quote_dash_width: fullwidth
+output:
+  family: ChHsich-Noto
