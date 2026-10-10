@@ -207,6 +207,112 @@ def _load_report(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+class TestSourcePinning:
+    """A path-form font reference may pin its source file's sha256.
+
+    The catalog form pins through the manifest (issue #23); the path
+    form pins the file directly: the build verifies the pin when it
+    loads the file, and a mismatch fails naming the reference and both
+    hashes. A reference without a pin builds as before — the report
+    still records the file's hash.
+    """
+
+    def test_matching_pins_build_and_report_the_pinned_hashes(
+        self, tmp_path, base_font, donor_font
+    ):
+        recipe = tmp_path / "recipe.yaml"
+        recipe.write_text(
+            f"base:\n  path: {base_font.name}\n"
+            f"  sha256: {_sha256(base_font)}\n"
+            f"donors:\n  - path: {donor_font.name}\n"
+            f"    sha256: {_sha256(donor_font)}\n",
+            encoding="utf-8",
+        )
+
+        result = build(recipe, tmp_path / "out.ttf")
+
+        report = _load_report(result.report_path)
+        assert report["summary"]["from_donors"] == len(DONOR_CODEPOINTS)
+        by_id = {source["id"]: source for source in report["sources"]}
+        assert by_id["base"]["sha256"] == _sha256(base_font)
+        assert by_id["donor-0"]["sha256"] == _sha256(donor_font)
+
+    def test_a_mismatched_base_pin_is_rejected_naming_both_hashes(
+        self, tmp_path, base_font, donor_font
+    ):
+        # "a" * 64, not "0" * 64: a run of zeros is YAML-parsed as the
+        # integer 0 and would hit the malformed-pin branch instead.
+        wrong = "a" * 64
+        recipe = tmp_path / "recipe.yaml"
+        recipe.write_text(
+            f"base:\n  path: {base_font.name}\n  sha256: {wrong}\n"
+            f"donors:\n  - {donor_font.name}\n",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(BuildError) as exc_info:
+            build(recipe, tmp_path / "out.ttf")
+
+        message = str(exc_info.value)
+        assert "base" in message
+        assert wrong in message
+        assert _sha256(base_font) in message
+
+    def test_a_mismatched_donor_pin_names_the_donor(
+        self, tmp_path, base_font, donor_font
+    ):
+        wrong = "f" * 64
+        recipe = tmp_path / "recipe.yaml"
+        recipe.write_text(
+            f"base: {base_font.name}\n"
+            f"donors:\n  - path: {donor_font.name}\n    sha256: {wrong}\n",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(BuildError, match=r"donor-0.*sha256 mismatch"):
+            build(recipe, tmp_path / "out.ttf")
+
+    def test_a_missing_pinned_file_is_a_clear_error(self, tmp_path, base_font):
+        recipe = tmp_path / "recipe.yaml"
+        recipe.write_text(
+            f"base:\n  path: vanished.ttf\n  sha256: {_sha256(base_font)}\n"
+            "donors: []\n",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(BuildError, match=r"base file not found.*vanished"):
+            build(recipe, tmp_path / "out.ttf")
+
+    def test_a_malformed_pin_is_rejected_at_parse(
+        self, tmp_path, base_font, donor_font
+    ):
+        recipe = tmp_path / "recipe.yaml"
+        recipe.write_text(
+            f"base:\n  path: {base_font.name}\n  sha256: deadbeef\n"
+            f"donors:\n  - {donor_font.name}\n",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(RecipeError, match="sha256"):
+            build(recipe, tmp_path / "out.ttf")
+
+    def test_a_pin_on_a_catalog_family_reference_is_rejected(
+        self, tmp_path, base_font
+    ):
+        # sha256 is the path form's pin; a family reference pins through
+        # the manifest, so the two must not mix.
+        recipe = tmp_path / "recipe.yaml"
+        recipe.write_text(
+            "base:\n  family: MapleMono\n"
+            f"  sha256: {'a' * 64}\n"
+            "donors: []\n",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(RecipeError, match=r"sha256.*path"):
+            build(recipe, tmp_path / "out.ttf")
+
+
 class TestBuild:
     """The tracer bullet: recipe + fonts in, valid TTF + report v0 out."""
 

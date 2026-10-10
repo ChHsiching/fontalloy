@@ -217,6 +217,7 @@ def build_recipe(
     # single-file formats moves to the slot-count check below, so a
     # weights selection of one slot can stand in for a face pin.
     _stage("loading")
+    _verify_pinned_sources(recipe)
     bases = load_faces(recipe.base, role="base font")
     pools: dict[str, DonorPool] = {}
     loaded_donors: list[LoadedFace] = []
@@ -484,6 +485,35 @@ def _resolve_catalog(
         raise BuildError(
             f"cannot resolve the recipe's catalog references: {exc}"
         ) from None
+
+
+def _verify_pinned_sources(recipe: Recipe) -> None:
+    """Verify the path references' ``sha256`` pins before any load.
+
+    A path-form reference may pin its file (spec story 39); a pinned
+    recipe builds from exact bytes the way a catalog-referencing recipe
+    builds from the manifest's pin — a drifted file is a clear error
+    naming the reference and both hashes, a missing pinned file
+    likewise. Unpinned references verify nothing here; the report
+    still records every source's hash either way.
+    """
+    pinned = [("base", recipe.base)] + [
+        (f"donor-{index}", ref) for index, ref in enumerate(recipe.donors)
+    ]
+    for label, ref in pinned:
+        if ref.sha256 is None:
+            continue
+        if not ref.path.is_file():
+            raise BuildError(
+                f"{label} file not found: {ref.path} "
+                f"(the reference pins sha256 {ref.sha256})"
+            )
+        actual = file_sha256(ref.path)
+        if actual != ref.sha256:
+            raise BuildError(
+                f"{label} ({ref.path}): sha256 mismatch — the recipe pins "
+                f"{ref.sha256}, the file hashes {actual}"
+            )
 
 
 def _source_record(

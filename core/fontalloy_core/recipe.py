@@ -51,13 +51,18 @@ path string, a mapping with a ``path``, or a mapping naming a catalog
       - path: Inter-Variable.ttf
         instance:
           wght: 600
+        sha256: "<64 hex chars>"       # optional: pin the file's exact bytes
     normalization:
       mode: grid
       quote_dash_width: fullwidth
 
 Path references resolve against the recipe file's directory, not the
 working directory — a recipe is a share unit and must mean the same
-thing wherever it is run. Catalog references never carry URLs: the
+thing wherever it is run. A path reference may pin its file with
+``sha256`` (64 lowercase hex): the build verifies the pin when it loads
+the file and fails naming the reference and both hashes on a mismatch;
+without a pin the build proceeds and the report still records the
+file's hash. Catalog references never carry URLs: the
 assets machinery resolves them against the sha256-verified fetched
 catalog (``fontalloy assets fetch``), so a recipe names pinned source
 fonts, exactly what CI builds and the storefront releases. :func:`parse_recipe` is the same schema over
@@ -128,8 +133,13 @@ _TARGET_FIELDS = (CODEPOINT, RANGE, SET)
 #: resolved against the recipe) or ``family`` (a catalog family pinned
 #: by the manifest; ``variant`` disambiguates a family with several
 #: entries, ``pattern`` is a bare-filename glob narrowing a multi-file
-#: artifact such as a Nerd Fonts zip), plus ``face``/``instance``.
-REF_FIELDS = ("path", "face", "instance", "family", "variant", "pattern")
+#: artifact such as a Nerd Fonts zip), plus ``face``/``instance`` and
+#: ``sha256`` (a path reference's optional content pin).
+REF_FIELDS = ("path", "face", "instance", "family", "variant", "pattern", "sha256")
+
+#: A pinned source hash: 64 lowercase hex characters, like the catalog
+#: manifest's pins.
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 #: The keys the normalization block accepts.
 _NORMALIZATION_FIELDS = ("mode", "optical_ratio", "quote_dash_width")
@@ -158,6 +168,12 @@ class FontRef:
     collection reference"). ``instance`` pins variable-font axis values
     (``None`` means "no pinning; use the default instance"), as an ordered
     tuple of ``(axis tag, value)`` pairs in declaration order.
+
+    ``sha256`` (path references only, ``None`` = unpinned) pins the
+    referenced file's exact bytes: the build verifies the pin when it
+    loads the file and fails naming the reference and both hashes on a
+    mismatch. A catalog reference pins through the manifest instead and
+    never carries ``sha256``.
     """
 
     path: Path | None = None
@@ -166,6 +182,7 @@ class FontRef:
     family: str | None = None
     variant: str | None = None
     pattern: str | None = None
+    sha256: str | None = None
     paths: tuple[Path, ...] = ()
     artifact: Path | None = None
 
@@ -678,7 +695,7 @@ def _parse_string_ref(value: str, field: str, root: Path) -> FontRef:
 
 
 def _parse_mapping_ref(value: dict, field: str, root: Path) -> FontRef:
-    """Parse ``{path, face, instance, family, variant, pattern}``."""
+    """Parse ``{path, face, instance, family, variant, pattern, sha256}``."""
     unknown = sorted(set(value) - set(REF_FIELDS))
     if unknown:
         raise RecipeError(
@@ -698,6 +715,12 @@ def _parse_mapping_ref(value: dict, field: str, root: Path) -> FontRef:
                 f"{field!r} requires 'family' (it narrows a catalog-family "
                 "reference)"
             )
+    if "sha256" in value and "path" not in value:
+        raise RecipeError(
+            f"font reference field 'sha256' in recipe field {field!r} "
+            "requires 'path' (it pins a path-form reference; a "
+            "catalog-family reference pins through the manifest)"
+        )
     if "path" not in value and "family" not in value:
         raise RecipeError(
             f"font reference in recipe field {field!r} is missing the "
@@ -785,8 +808,19 @@ def _parse_mapping_ref(value: dict, field: str, root: Path) -> FontRef:
             f"font reference 'path' in recipe field {field!r} must be a "
             "non-empty font file path string"
         )
+    sha256 = None
+    if "sha256" in value:
+        sha256 = value["sha256"]
+        if not isinstance(sha256, str) or not _SHA256_RE.fullmatch(sha256):
+            raise RecipeError(
+                f"font reference 'sha256' in recipe field {field!r} must be "
+                f"64 lowercase hex characters (the pinned file's hash; "
+                f"got {sha256!r})"
+            )
     path = (root / path_text).resolve()
-    return FontRef(path=path, face=face, instance=instance, paths=(path,))
+    return FontRef(
+        path=path, face=face, instance=instance, sha256=sha256, paths=(path,)
+    )
 
 
 def _is_bool(value: object) -> bool:
