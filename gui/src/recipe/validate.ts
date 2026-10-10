@@ -65,6 +65,14 @@ export function validateFamilyName(input: string): FamilyValidation {
 
 const MAX_SCALAR = 0x10ffff;
 
+/** OS/2 usWeightClass range the core accepts (recipe.py). */
+export const WEIGHT_MIN = 1;
+export const WEIGHT_MAX = 1000;
+
+export function isValidWeight(value: number): boolean {
+  return Number.isInteger(value) && value >= WEIGHT_MIN && value <= WEIGHT_MAX;
+}
+
 export function isUnicodeScalar(value: number): boolean {
   return (
     Number.isInteger(value) &&
@@ -151,6 +159,50 @@ export function validateDraft(
 
   const family = validateFamilyName(draft.output.family);
   if (!family.ok) out.push({ where: "输出", message: family.error });
+
+  // Normalization: the ratio must be a positive finite number when set.
+  if (
+    draft.normalization.mode === "optical" &&
+    draft.normalization.opticalRatio !== null &&
+    !(Number.isFinite(draft.normalization.opticalRatio) && draft.normalization.opticalRatio > 0)
+  ) {
+    out.push({ where: "规范化", message: "光学比例必须是正数（汉字墨高与大写高度之比）。" });
+  }
+
+  // Weight matrix: integer weights in range, valid donor refs, no
+  // duplicate (weight, style) slots — the strict loader's rules.
+  const seen = new Set<string>();
+  draft.weights.forEach((slot, index) => {
+    const where = `字重槽位 ${index + 1}`;
+    if (slot.weight === null || !isValidWeight(slot.weight)) {
+      out.push({
+        where,
+        message: `字重必须是 ${WEIGHT_MIN}–${WEIGHT_MAX} 的整数（OS/2 usWeightClass）。`,
+      });
+    }
+    for (const [ref, demanded] of Object.entries(slot.donors)) {
+      if (demanded === null) continue;
+      const donorIndex = Number(ref.slice("donor-".length));
+      if (!ref.startsWith("donor-") || Number.isNaN(donorIndex) || donorIndex < 0 || donorIndex >= draft.donors.length) {
+        out.push({ where, message: `供体覆写引用 ${ref} 不在本配方中。` });
+      } else if (!isValidWeight(demanded)) {
+        out.push({
+          where,
+          message: `供体 ${ref} 的覆写字重必须是 ${WEIGHT_MIN}–${WEIGHT_MAX} 的整数。`,
+        });
+      }
+    }
+    if (slot.weight !== null && isValidWeight(slot.weight)) {
+      const key = `${slot.weight}/${slot.style}`;
+      if (seen.has(key)) {
+        out.push({
+          where,
+          message: `字重 ${slot.weight}（${slot.style === "italic" ? "italic" : "upright"}）重复声明。`,
+        });
+      }
+      seen.add(key);
+    }
+  });
 
   return out;
 }

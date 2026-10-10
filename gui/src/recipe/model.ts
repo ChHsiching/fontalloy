@@ -61,12 +61,37 @@ export interface BuilderRule {
 
 export type OutputFormat = "ttf" | "ttc" | "woff2";
 
+/** Normalization switches (ADR-0003 / issue #8 recipe schema). */
+export interface NormalizationDraft {
+  /** `grid` (the terminal 2:1 default) or `optical`. */
+  mode: "grid" | "optical";
+  /** Han ink to cap-height ratio; only meaningful in optical mode. */
+  opticalRatio: number | null;
+  /** Fullwidth quotes/dashes (CJK convention) or halfwidth (UAX #11). */
+  quoteDashWidth: "halfwidth" | "fullwidth";
+}
+
+/** One weight/style matrix slot (issue #9 recipe schema). */
+export interface WeightSlotDraft {
+  id: number;
+  /** The base face's OS/2 usWeightClass for this output. */
+  weight: number | null;
+  style: "upright" | "italic";
+  /** Per-donor demanded weights (donor ref → weight); empty = nearest. */
+  donors: Record<string, number | null>;
+}
+
 export interface RecipeDraft {
   base: FontSlot;
   donors: FontSlot[];
   rules: BuilderRule[];
+  normalization: NormalizationDraft;
+  weights: WeightSlotDraft[];
   output: { family: string; format: OutputFormat };
 }
+
+/** The core's defaults — the writer omits an all-defaults block. */
+export const DEFAULT_OPTICAL_RATIO = 1.23;
 
 /** The recipe font-reference string: `path` or the compact `path#face`. */
 export function fontRef(slot: FontSlot): string {
@@ -83,6 +108,12 @@ export function defaultDraft(): RecipeDraft {
     base: { catalog: null, path: "", face: null },
     donors: [],
     rules: [],
+    normalization: {
+      mode: "grid",
+      opticalRatio: DEFAULT_OPTICAL_RATIO,
+      quoteDashWidth: "halfwidth",
+    },
+    weights: [],
     // The fixed brand default (spec: never derived from source names).
     output: { family: "ChHsich", format: "ttf" },
   };

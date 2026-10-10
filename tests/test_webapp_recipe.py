@@ -16,6 +16,13 @@ from fontalloy_core.precedence import CODEPOINT, RANGE, SET
 FIXTURE = (
     Path(__file__).parent.parent / "web" / "tests" / "fixtures" / "sample-recipe.yaml"
 )
+EXTENDED_FIXTURE = (
+    Path(__file__).parent.parent
+    / "web"
+    / "tests"
+    / "fixtures"
+    / "sample-recipe-extended.yaml"
+)
 
 
 def test_webapp_sample_recipe_parses() -> None:
@@ -42,3 +49,24 @@ def test_webapp_sample_recipe_parses() -> None:
 
     assert recipe.output.family == "My-Merged-Font"
     assert recipe.output.format == "ttf"
+
+
+def test_webapp_extended_sample_parses() -> None:
+    """The builder's normalization + weight-matrix emission (issues
+    #8/#9 schema): the defaults-omitted blocks, when written, parse."""
+    recipe = load_recipe(EXTENDED_FIXTURE)
+
+    assert recipe.normalization.mode == "optical"
+    assert recipe.normalization.optical_ratio == 1.3
+    assert recipe.normalization.quote_dash_width == "fullwidth"
+
+    assert len(recipe.weights) == 2
+    first, second = recipe.weights
+    assert (first.weight, first.italic, first.donor_weights) == (400, False, {})
+    assert (second.weight, second.italic, second.donor_weights) == (
+        700,
+        True,
+        {"donor-0": 700},
+    )
+
+    assert recipe.output.format == "ttc"

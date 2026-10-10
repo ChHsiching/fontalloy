@@ -706,67 +706,309 @@ function mountOutput(root: HTMLElement): void {
   box.appendChild(formatField);
 }
 
-/** Weight mapping: extension point until the #9 recipe schema lands. */
-function mountWeightPlaceholder(root: HTMLElement): void {
-  const sec = section(
-    root,
-    "字重映射",
-    "字重映射的配方 schema 将随后续版本落定（正在并行开发）。",
-  );
-  const body = document.createElement("div");
-  body.className = "section-body placeholder-note wb-placeholder-body";
-  const select = document.createElement("select");
-  select.className = "wb-input wb-select";
-  select.disabled = true;
-  const option = document.createElement("option");
-  option.textContent = "就近匹配 OS/2 usWeightClass（默认，待开放覆写）";
-  option.selected = true;
-  select.appendChild(option);
-  const note = document.createElement("div");
-  note.textContent =
-    "默认按 OS/2 usWeightClass 就近匹配，每次借用都会在界面与构建报告中明示；按字重覆写映射的选项将在 schema 就绪后在此开放。";
-  body.append(select, note);
-  sec.appendChild(body);
-}
-
-/** Normalization switches: extension point until the #8 schema lands. */
-function mountNormalizationPlaceholder(root: HTMLElement): void {
+/**
+ * Normalization switches (the #8 recipe schema): grid/optical school,
+ * the optical ratio, and the fullwidth quotes/dashes policy. The block
+ * is omitted from the YAML while everything sits at the core defaults.
+ */
+function mountNormalization(root: HTMLElement): void {
   const sec = section(
     root,
     "规范化开关",
-    "规范化开关（网格比例、宽度策略等可调项）将随后续版本落定。",
+    "全部保持默认时配方不写该块（核心默认：网格 2:1、半角引号与破折号）；改动后仅写入非默认项。",
   );
   const body = document.createElement("div");
-  body.className = "section-body placeholder-note wb-placeholder-body";
-  const defaults = [
-    ["网格比例（CJK 宽 = 2 × 拉丁宽）", "默认开"],
-    ["零垂直位移（CJK em 盒 [−0.12em, +0.88em]）", "默认开"],
-    ["行高与垂直度量继承基底", "默认开"],
-    ["全角引号与破折号宽度策略", "跟随 UAX #11"],
-  ];
-  for (const [label, value] of defaults) {
-    const line = document.createElement("div");
-    line.className = "wb-switch-row";
-    const toggle = document.createElement("input");
-    toggle.type = "checkbox";
-    toggle.checked = true;
-    toggle.disabled = true;
-    const text = document.createElement("span");
-    text.textContent = `${label} · ${value}`;
-    line.append(toggle, text);
-    body.appendChild(line);
-  }
-  const note = document.createElement("div");
-  note.textContent =
-    "以上为当前构建的核心默认（transform-only，不重排字形）；可调开关的配方字段就绪后在此开放。";
-  body.appendChild(note);
+  body.className = "wb-output-box";
   sec.appendChild(body);
+
+  const modeField = document.createElement("label");
+  modeField.className = "wb-field wb-field-narrow";
+  const modeLabel = document.createElement("span");
+  modeLabel.className = "wb-field-label";
+  modeLabel.textContent = "规范化模式";
+  const modeSelect = document.createElement("select");
+  modeSelect.className = "wb-input wb-select";
+  modeSelect.dataset.role = "normalization-mode";
+  for (const [value, label] of [
+    ["grid", "网格（2:1，默认）"],
+    ["optical", "光学（按比例）"],
+  ] as const) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    modeSelect.appendChild(option);
+  }
+  modeSelect.value = builderStore.get().draft.normalization.mode;
+  modeSelect.addEventListener("change", () => {
+    const mode = modeSelect.value as RecipeDraft["normalization"]["mode"];
+    updateDraft((draft) => ({
+      ...draft,
+      normalization: { ...draft.normalization, mode },
+    }));
+    renderRatioVisibility();
+  });
+  modeField.append(modeLabel, modeSelect);
+  body.appendChild(modeField);
+
+  const ratioBox = document.createElement("label");
+  ratioBox.className = "wb-field wb-field-narrow";
+  const ratioLabel = document.createElement("span");
+  ratioLabel.className = "wb-field-label";
+  ratioLabel.textContent = "光学比例";
+  const ratioInput = document.createElement("input");
+  ratioInput.type = "number";
+  ratioInput.min = "0";
+  ratioInput.step = "0.01";
+  ratioInput.className = "wb-input";
+  ratioInput.dataset.role = "normalization-ratio";
+  ratioInput.value = String(
+    builderStore.get().draft.normalization.opticalRatio ?? "",
+  );
+  const ratioNote = document.createElement("span");
+  ratioNote.className = "wb-field-feedback";
+  ratioNote.textContent = "汉字墨高 / 大写高度（默认 1.23）";
+  ratioInput.addEventListener("input", () => {
+    const text = ratioInput.value.trim();
+    const value = text === "" ? null : Number(text);
+    updateDraft((draft) => ({
+      ...draft,
+      normalization: { ...draft.normalization, opticalRatio: value },
+    }));
+  });
+  ratioBox.append(ratioLabel, ratioInput, ratioNote);
+  body.appendChild(ratioBox);
+
+  const quoteField = document.createElement("label");
+  quoteField.className = "wb-field";
+  const quoteLabel = document.createElement("span");
+  quoteLabel.className = "wb-field-label";
+  quoteLabel.textContent = "全角引号与破折号";
+  const quoteSelect = document.createElement("select");
+  quoteSelect.className = "wb-input wb-select";
+  quoteSelect.dataset.role = "normalization-quote-dash";
+  for (const [value, label] of [
+    ["halfwidth", "半角（UAX #11 默认）"],
+    ["fullwidth", "全角（CJK 习惯）"],
+  ] as const) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    quoteSelect.appendChild(option);
+  }
+  quoteSelect.value = builderStore.get().draft.normalization.quoteDashWidth;
+  quoteSelect.addEventListener("change", () => {
+    updateDraft((draft) => ({
+      ...draft,
+      normalization: {
+        ...draft.normalization,
+        quoteDashWidth: quoteSelect.value as RecipeDraft["normalization"]["quoteDashWidth"],
+      },
+    }));
+  });
+  quoteField.append(quoteLabel, quoteSelect);
+  body.appendChild(quoteField);
+
+  const renderRatioVisibility = (): void => {
+    const optical = builderStore.get().draft.normalization.mode === "optical";
+    ratioBox.hidden = !optical;
+  };
+  renderRatioVisibility();
+}
+
+/**
+ * The weight/style matrix (the #9 recipe schema): explicit output
+ * slots; each slot may rewrite the per-donor weight mapping (an exact
+ * demand — never a silent nearest approximation). No slots declared
+ * means the core's implicit default (one output per base face,
+ * nearest-match donors), and the recipe omits the block.
+ */
+function mountWeights(root: HTMLElement): void {
+  const sec = section(
+    root,
+    "字重映射",
+    "默认按 OS/2 usWeightClass 就近匹配（不写 weights 块）；声明槽位即按需求精确供体字重，每次借用都会在构建报告中明示。",
+  );
+  const slotList = document.createElement("div");
+  slotList.className = "wb-rule-list";
+  const addSlot = document.createElement("button");
+  addSlot.type = "button";
+  addSlot.className = "wb-add-button";
+  addSlot.dataset.role = "add-weight-slot";
+  addSlot.textContent = "＋ 添加字重槽位";
+  addSlot.addEventListener("click", () => {
+    const id = takeId();
+    updateDraft((draft) => ({
+      ...draft,
+      weights: [
+        ...draft.weights,
+        { id, weight: 400, style: "upright", donors: {} },
+      ],
+    }));
+  });
+  sec.append(slotList, addSlot);
+
+  const renderSlots = (): void => {
+    const draft = builderStore.get().draft;
+    // Inputs (weight numbers, overrides) are state, not structure.
+    const signature = JSON.stringify([
+      draft.weights.map((slot) => [slot.id, slot.style]),
+      draft.donors.map((d) =>
+        d.catalog ? `${d.catalog.family}/${d.catalog.variant}` : "",
+      ),
+    ]);
+    if (slotList.dataset.signature === signature) return;
+    slotList.dataset.signature = signature;
+    slotList.replaceChildren();
+
+    if (draft.weights.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "placeholder-note";
+      empty.textContent =
+        "未声明字重槽位——构建默认为基底每个字面一个输出，供体按就近字重匹配。";
+      slotList.appendChild(empty);
+      return;
+    }
+
+    for (const slot of draft.weights) {
+      const row = document.createElement("div");
+      row.className = "wb-rule";
+      row.dataset.weightSlotId = String(slot.id);
+
+      const head = document.createElement("div");
+      head.className = "wb-rule-head";
+      const tag = document.createElement("span");
+      tag.className = "wb-donor-tag";
+      tag.textContent = `字重槽位 ${draft.weights.indexOf(slot) + 1}`;
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "wb-remove-button";
+      remove.dataset.role = "remove-weight-slot";
+      remove.setAttribute("aria-label", "删除字重槽位");
+      remove.textContent = "删除";
+      remove.addEventListener("click", () => {
+        updateDraft((d) => ({
+          ...d,
+          weights: d.weights.filter((s) => s.id !== slot.id),
+        }));
+      });
+      head.append(tag, remove);
+      row.appendChild(head);
+
+      const controls = document.createElement("div");
+      controls.className = "wb-rule-target";
+
+      const weightField = document.createElement("label");
+      weightField.className = "wb-field wb-field-narrow";
+      const weightLabel = document.createElement("span");
+      weightLabel.className = "wb-field-label";
+      weightLabel.textContent = "字重（usWeightClass）";
+      const weightInput = document.createElement("input");
+      weightInput.type = "number";
+      weightInput.min = "1";
+      weightInput.max = "1000";
+      weightInput.step = "1";
+      weightInput.className = "wb-input";
+      weightInput.dataset.role = `weight-slot-weight-${slot.id}`;
+      weightInput.value = slot.weight === null ? "" : String(slot.weight);
+      weightInput.addEventListener("input", () => {
+        const text = weightInput.value.trim();
+        const value = text === "" ? null : Number(text);
+        updateDraft((d) => ({
+          ...d,
+          weights: d.weights.map((s) =>
+            s.id === slot.id ? { ...s, weight: value } : s,
+          ),
+        }));
+      });
+      weightField.append(weightLabel, weightInput);
+      controls.appendChild(weightField);
+
+      const styleField = document.createElement("label");
+      styleField.className = "wb-field wb-field-narrow";
+      const styleLabel = document.createElement("span");
+      styleLabel.className = "wb-field-label";
+      styleLabel.textContent = "样式";
+      const styleSelect = document.createElement("select");
+      styleSelect.className = "wb-input wb-select";
+      styleSelect.dataset.role = `weight-slot-style-${slot.id}`;
+      for (const [value, label] of [
+        ["upright", "正体（默认）"],
+        ["italic", "斜体"],
+      ] as const) {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = label;
+        styleSelect.appendChild(option);
+      }
+      styleSelect.value = slot.style;
+      styleSelect.addEventListener("change", () => {
+        updateDraft((d) => ({
+          ...d,
+          weights: d.weights.map((s) =>
+            s.id === slot.id
+              ? {
+                  ...s,
+                  style: styleSelect.value as RecipeDraft["weights"][number]["style"],
+                }
+              : s,
+          ),
+        }));
+      });
+      styleField.append(styleLabel, styleSelect);
+      controls.appendChild(styleField);
+      row.appendChild(controls);
+
+      if (draft.donors.length > 0) {
+        const overrides = document.createElement("div");
+        overrides.className = "wb-rule-fonts";
+        const title = document.createElement("div");
+        title.className = "wb-rule-fonts-title";
+        title.textContent = "供体字重覆写（留空 = 就近匹配）";
+        overrides.appendChild(title);
+        for (let index = 0; index < draft.donors.length; index++) {
+          const ref = donorRef(index);
+          const line = document.createElement("label");
+          line.className = "wb-rule-font";
+          const text = document.createElement("span");
+          text.textContent = `${refLabel(draft, ref)} → 字重`;
+          const input = document.createElement("input");
+          input.type = "number";
+          input.min = "1";
+          input.max = "1000";
+          input.step = "1";
+          input.className = "wb-input wb-hex-input";
+          input.dataset.role = `weight-override-${slot.id}-${ref}`;
+          const current = slot.donors[ref];
+          input.value =
+            current === null || current === undefined ? "" : String(current);
+          input.addEventListener("input", () => {
+            const text2 = input.value.trim();
+            const value = text2 === "" ? null : Number(text2);
+            updateDraft((d) => ({
+              ...d,
+              weights: d.weights.map((s) =>
+                s.id === slot.id
+                  ? { ...s, donors: { ...s.donors, [ref]: value } }
+                  : s,
+              ),
+            }));
+          });
+          line.append(text, input);
+          overrides.appendChild(line);
+        }
+        row.appendChild(overrides);
+      }
+      slotList.appendChild(row);
+    }
+  };
+  builderStore.subscribe(renderSlots);
+  renderSlots();
 }
 
 export function mountBuilder(root: HTMLElement): void {
   mountFonts(root);
   mountRules(root);
-  mountWeightPlaceholder(root);
-  mountNormalizationPlaceholder(root);
+  mountWeights(root);
+  mountNormalization(root);
   mountOutput(root);
 }

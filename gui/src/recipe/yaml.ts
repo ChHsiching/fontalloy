@@ -17,6 +17,7 @@
 
 import { fontRef, type RecipeDraft } from "./model";
 import { normalizeFamilyName } from "./validate";
+import { DEFAULT_OPTICAL_RATIO } from "./model";
 
 /**
  * The output block as written: the family normalized exactly like the
@@ -41,6 +42,11 @@ function quote(value: string): string {
 /** Uppercase `0x`-prefixed hex (YAML 1.1 integer form). */
 function hex(value: number): string {
   return `0x${value.toString(16).toUpperCase()}`;
+}
+
+/** Compact plain-scalar number (1.3, not 1.3000000000000000444). */
+function number(value: number): string {
+  return String(Number(value.toFixed(4)));
 }
 
 function flowList(values: string[]): string {
@@ -73,6 +79,45 @@ export function recipeYaml(draft: RecipeDraft): string {
     return `  - ${target}\n    fonts: ${flowList(rule.fonts)}`;
   });
   lines.push(rules.length === 0 ? "rules: []" : "rules:\n" + rules.join("\n"));
+
+  // Normalization: omitted entirely at the core defaults (issue #8's
+  // schema — "a recipe without a normalization block builds with the
+  // defaults"); only non-default switches are written.
+  const normalization: string[] = [];
+  if (draft.normalization.mode !== "grid") {
+    normalization.push(`  mode: ${draft.normalization.mode}`);
+    const ratio = draft.normalization.opticalRatio;
+    if (ratio !== null && Number.isFinite(ratio) && ratio !== DEFAULT_OPTICAL_RATIO) {
+      normalization.push(`  optical_ratio: ${number(ratio)}`);
+    }
+  }
+  if (draft.normalization.quoteDashWidth !== "halfwidth") {
+    normalization.push(`  quote_dash_width: ${draft.normalization.quoteDashWidth}`);
+  }
+  if (normalization.length > 0) {
+    lines.push("normalization:\n" + normalization.join("\n"));
+  }
+
+  // Weight matrix (issue #9's schema): written only when a slot is
+  // declared — no slots means the core's implicit default (one output
+  // per base face, nearest-match donors).
+  if (draft.weights.length > 0) {
+    const slots = draft.weights.map((slot) => {
+      const entry: string[] = [`  - weight: ${slot.weight ?? ""}`];
+      if (slot.style === "italic") entry.push("    style: italic");
+      const overrides = Object.entries(slot.donors).filter(
+        ([, weight]) => weight !== null,
+      );
+      if (overrides.length > 0) {
+        entry.push("    donors:");
+        for (const [ref, weight] of overrides) {
+          entry.push(`      ${ref}: ${weight}`);
+        }
+      }
+      return entry.join("\n");
+    });
+    lines.push("weights:\n" + slots.join("\n"));
+  }
 
   const { family, format } = normalizeOutput(draft);
   lines.push("output:");

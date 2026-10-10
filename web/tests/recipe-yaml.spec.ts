@@ -17,6 +17,9 @@ import { driveFixtureState } from "./flow";
 const FIXTURE = fileURLToPath(
   new URL("./fixtures/sample-recipe.yaml", import.meta.url),
 );
+const EXTENDED_FIXTURE = fileURLToPath(
+  new URL("./fixtures/sample-recipe-extended.yaml", import.meta.url),
+);
 
 test("the builder's YAML matches the core-parseable fixture semantically", async ({
   page,
@@ -99,4 +102,56 @@ test("font order inside a rule follows the builder's up/down edits", async ({
   ) as Record<string, unknown>;
   const rules = recipe.rules as Array<Record<string, unknown>>;
   expect(rules[1].fonts).toEqual(["donor-1", "base"]);
+});
+
+test("the extended state matches the normalization/weights fixture the core suite pins", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await waitForFontsReady(page);
+
+  // Base + one donor.
+  await page
+    .locator('[data-role="base-path"]')
+    .fill("fonts/MapleMono-NF-CN/MapleMonoNerdFont-CN-Regular.ttf");
+  await page.locator('[data-role="add-donor"]').click();
+  await page
+    .locator('[data-role="donor-path-0"]')
+    .fill("fonts/LXGWWenKai/LXGWWenKai-Regular.ttf");
+
+  // Preset rule: zh_cn -> [donor-0].
+  await page.locator('[data-role="add-rule"]').click();
+  const presetAnchor = page.locator('[data-role="rule-preset-1"]');
+  await presetAnchor.click();
+  const popup = page.locator('[data-picker-popup="rule-preset-1"]');
+  await expect(popup).toBeVisible();
+  await popup.locator(".wb-search-input").fill("zh_cn");
+  await popup.locator('[data-option-id="zh_cn"]').click();
+  await page.locator('[data-role="rule-font-1-donor-0"]').click();
+
+  // Normalization: optical 1.3 + fullwidth quotes/dashes.
+  await page.locator('[data-role="normalization-mode"]').selectOption("optical");
+  await page.locator('[data-role="normalization-ratio"]').fill("1.3");
+  await page
+    .locator('[data-role="normalization-quote-dash"]')
+    .selectOption("fullwidth");
+
+  // Weight matrix: 400 upright; 700 italic demanding donor-0 at 700.
+  await page.locator('[data-role="add-weight-slot"]').click();
+  await page.locator('[data-role="add-weight-slot"]').click();
+  await page.locator('[data-role="weight-slot-weight-2"]').fill("400");
+  await page.locator('[data-role="weight-slot-weight-3"]').fill("700");
+  await page.locator('[data-role="weight-slot-style-3"]').selectOption("italic");
+  await page.locator('[data-role="weight-override-3-donor-0"]').fill("700");
+
+  // Output: family + ttc format.
+  await page.locator('[data-role="output-family"]').fill("Extended-Font");
+  await page.locator('[data-role="output-format"]').selectOption("ttc");
+
+  await expect(page.locator('[data-testid="problems"]')).toBeEmpty();
+
+  const generated = YAML.parse((await yamlPreview(page).textContent())!);
+  const fixture = YAML.parse(await readFile(EXTENDED_FIXTURE, "utf8"));
+  expect(generated).toEqual(fixture);
+  await expect(cliCommand(page)).toHaveText("fontalloy build Extended-Font.yaml");
 });

@@ -149,20 +149,63 @@ test("download produces the recipe file; copy falls back to a reachable state", 
   await expect(cliCommand(page)).toContainText("fontalloy build ChHsich.yaml");
 });
 
-test("weight and normalization extension points state their status in page text", async ({
+test("normalization switches and weight slots cover the landed recipe schema", async ({
   page,
 }) => {
-  const sections = page.locator(".wb-section .section-title");
-  await expect(sections.filter({ hasText: "字重映射" })).toBeVisible();
-  await expect(sections.filter({ hasText: "规范化开关" })).toBeVisible();
-  const weight = page.locator(".wb-section", { hasText: "字重映射" });
-  await expect(weight).toContainText("就近匹配");
-  await expect(page.locator(".wb-section", { hasText: "规范化开关" })).toContainText(
-    "2 × 拉丁宽",
-  );
-  // The placeholder controls are disabled — visible, not yet usable.
-  const disabledSelect = weight.locator("select[disabled]");
-  await expect(disabledSelect).toHaveCount(1);
+  const YAMLmod = await import("yaml");
+  const preview = yamlPreview(page);
+
+  // At the core defaults neither block is written (omission IS default).
+  expect(await preview.textContent()).not.toContain("normalization:");
+  expect(await preview.textContent()).not.toContain("weights:");
+
+  // Base + a donor, so the draft is valid and per-donor weight
+  // overrides become reachable.
+  await page
+    .locator('[data-role="base-path"]')
+    .fill("fonts/MapleMono-NF-CN/MapleMonoNerdFont-CN-Regular.ttf");
+  await pointerClick(page, page.locator('[data-role="add-donor"]'));
+  await page
+    .locator('[data-role="donor-path-0"]')
+    .fill("fonts/LXGWWenKai/LXGWWenKai-Regular.ttf");
+
+  // Normalization: optical mode reveals the ratio; defaults-omission
+  // becomes an explicit non-default block.
+  await page.locator('[data-role="normalization-mode"]').selectOption("optical");
+  await expect(page.locator('[data-role="normalization-ratio"]')).toBeVisible();
+  await page.locator('[data-role="normalization-ratio"]').fill("1.3");
+  await page.locator('[data-role="normalization-quote-dash"]').selectOption("fullwidth");
+
+  let recipe = YAMLmod.default.parse(await preview.textContent());
+  expect(recipe.normalization).toEqual({
+    mode: "optical",
+    optical_ratio: 1.3,
+    quote_dash_width: "fullwidth",
+  });
+
+  // Weight matrix: slot 1 at the default 400 upright; slot 2 italic 700
+  // with an explicit donor-0 demand.
+  await pointerClick(page, page.locator('[data-role="add-weight-slot"]'));
+  await pointerClick(page, page.locator('[data-role="add-weight-slot"]'));
+  await page.locator('[data-role="weight-slot-weight-1"]').fill("400");
+  await page.locator('[data-role="weight-slot-weight-2"]').fill("700");
+  await page.locator('[data-role="weight-slot-style-2"]').selectOption("italic");
+  await page.locator('[data-role="weight-override-2-donor-0"]').fill("700");
+
+  recipe = YAMLmod.default.parse(await preview.textContent());
+  expect(recipe.weights).toEqual([
+    { weight: 400 },
+    { weight: 700, style: "italic", donors: { "donor-0": 700 } },
+  ]);
+
+  // Back to grid mode: the mode/ratio collapse away, but the still
+  // non-default fullwidth policy correctly remains written.
+  await page.locator('[data-role="normalization-mode"]').selectOption("grid");
+  recipe = YAMLmod.default.parse(await preview.textContent());
+  expect(recipe.normalization).toEqual({ quote_dash_width: "fullwidth" });
+  expect(recipe.weights).toBeDefined();
+
+  await expect(page.locator('[data-testid="problems"]')).toBeEmpty();
 });
 
 test("zero JS errors across a full builder interaction", async ({ page }) => {
