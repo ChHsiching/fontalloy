@@ -22,10 +22,17 @@ from pathlib import Path
 from fontTools.ttLib import TTFont
 
 from fontalloy_core.errors import BuildError
-from fontalloy_core.precedence import BUILTIN_NAMED_SETS, resolve_precedence
+from fontalloy_core.precedence import (
+    BUILTIN_NAMED_SETS,
+    interval_label,
+    resolve_precedence,
+    rule_id,
+)
 from fontalloy_core.recipe import load_recipe
 from fontalloy_core.report import (
+    ConflictRecord,
     ProvenanceEntry,
+    RuleRecord,
     SourceRecord,
     VerificationReport,
     file_sha256,
@@ -128,6 +135,25 @@ def build(
         provenance=provenance,
         output_path=output,
         output_sha256=file_sha256(output),
+        rules=tuple(
+            RuleRecord(
+                id=rule_id(index),
+                granularity=rule.granularity,
+                target=rule.target_label(),
+                fonts=rule.fonts,
+            )
+            for index, rule in enumerate(recipe.rules)
+        ),
+        conflicts=tuple(
+            ConflictRecord(
+                granularity=conflict.granularity,
+                shadowed=conflict.shadowed,
+                winner=conflict.winner,
+                overlap=tuple(interval_label(span) for span in conflict.overlap),
+                codepoints=conflict.codepoints,
+            )
+            for conflict in resolution.conflicts
+        ),
     )
 
     if report_path is None:

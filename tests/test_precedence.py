@@ -547,3 +547,222 @@ class TestEffectiveTable:
             "donor-1",
             "fill",
         )
+
+
+class TestConflictAndFillReport:
+    """The report distinguishes fills, overrides, and same-layer conflicts."""
+
+    def test_rule_less_recipes_report_no_conflicts_and_no_rules(
+        self, recipe_file, tmp_path
+    ):
+        result = build(recipe_file, tmp_path / "out.ttf")
+
+        report = _report(result)
+        assert report["rules"] == []
+        assert report["precedence"] == {
+            "counts": {"base": 2, "fill": 2, "override": 0},
+            "same_layer_conflicts": [],
+        }
+
+    def test_the_report_counts_fills_overrides_and_base_keeps(
+        self, tmp_path, synth_font_factory
+    ):
+        # The fill/override scenario: one override (0x41), two fills
+        # (0x42, 0x4E2E), one base keep through an explicit rule (0x4E2D).
+        synth_font_factory(
+            tmp_path / "base.ttf", family="SynthBase", codepoints=(0x41, 0x4E2D)
+        )
+        synth_font_factory(
+            tmp_path / "donor0.ttf", family="SynthDonorZero", codepoints=(0x41, 0x42)
+        )
+        synth_font_factory(
+            tmp_path / "donor1.ttf", family="SynthDonorOne", codepoints=(0x4E2D, 0x4E2E)
+        )
+        recipe = _recipe(
+            tmp_path,
+            "base: base.ttf\n"
+            "donors:\n"
+            "  - donor0.ttf\n"
+            "  - donor1.ttf\n"
+            "rules:\n"
+            "  - range: 0x41-0x42\n"
+            "    fonts: [donor-0]\n"
+            "  - range: 0x4E2D-0x4E2E\n"
+            "    fonts: [base, donor-1]\n",
+        )
+
+        result = build(recipe, tmp_path / "out.ttf")
+
+        report = _report(result)
+        assert report["precedence"]["counts"] == {
+            "base": 1,
+            "fill": 2,
+            "override": 1,
+        }
+
+    def test_overlapping_custom_ranges_report_their_overlap(
+        self, tmp_path, synth_font_factory
+    ):
+        synth_font_factory(
+            tmp_path / "base.ttf", family="SynthBase", codepoints=(0x41,)
+        )
+        synth_font_factory(
+            tmp_path / "donor0.ttf",
+            family="SynthDonorZero",
+            codepoints=(0x4E00, 0x4E01, 0x4E02),
+        )
+        synth_font_factory(
+            tmp_path / "donor1.ttf",
+            family="SynthDonorOne",
+            codepoints=(0x4E01, 0x4E02, 0x4E03),
+        )
+        recipe = _recipe(
+            tmp_path,
+            "base: base.ttf\n"
+            "donors:\n"
+            "  - donor0.ttf\n"
+            "  - donor1.ttf\n"
+            "rules:\n"
+            "  - range: 0x4E00-0x4E02\n"
+            "    fonts: [donor-0]\n"
+            "  - range: 0x4E01-0x4E03\n"
+            "    fonts: [donor-1]\n",
+        )
+
+        result = build(recipe, tmp_path / "out.ttf")
+
+        assert _report(result)["precedence"]["same_layer_conflicts"] == [
+            {
+                "granularity": "range",
+                "shadowed": "rule-0",
+                "winner": "rule-1",
+                "overlap": ["0x4E01-0x4E02"],
+                "codepoints": 2,
+            }
+        ]
+
+    def test_overlapping_named_sets_report_a_set_granularity_conflict(
+        self, tmp_path, synth_font_factory
+    ):
+        synth_font_factory(
+            tmp_path / "base.ttf", family="SynthBase", codepoints=(0x41,)
+        )
+        synth_font_factory(
+            tmp_path / "donor0.ttf", family="SynthDonorZero", codepoints=(0x4E00, 0x4E01)
+        )
+        synth_font_factory(
+            tmp_path / "donor1.ttf", family="SynthDonorOne", codepoints=(0x4E01,)
+        )
+        recipe = _recipe(
+            tmp_path,
+            "base: base.ttf\n"
+            "donors:\n"
+            "  - donor0.ttf\n"
+            "  - donor1.ttf\n"
+            "sets:\n"
+            "  alpha: 0x4E00-0x4E01\n"
+            "  beta: 0x4E01\n"
+            "rules:\n"
+            "  - set: alpha\n"
+            "    fonts: [donor-0]\n"
+            "  - set: beta\n"
+            "    fonts: [donor-1]\n",
+        )
+
+        result = build(recipe, tmp_path / "out.ttf")
+
+        assert _report(result)["precedence"]["same_layer_conflicts"] == [
+            {
+                "granularity": "set",
+                "shadowed": "rule-0",
+                "winner": "rule-1",
+                "overlap": ["0x4E01-0x4E01"],
+                "codepoints": 1,
+            }
+        ]
+
+    def test_overlaps_across_granularity_layers_are_not_conflicts(
+        self, tmp_path, synth_font_factory
+    ):
+        # A custom range overlapping a named set resolves by granularity,
+        # not by declaration order — that is a layering decision, not a
+        # same-layer conflict.
+        synth_font_factory(
+            tmp_path / "base.ttf", family="SynthBase", codepoints=(0x41,)
+        )
+        synth_font_factory(
+            tmp_path / "donor0.ttf", family="SynthDonorZero", codepoints=(0x4E00, 0x4E01)
+        )
+        synth_font_factory(
+            tmp_path / "donor1.ttf", family="SynthDonorOne", codepoints=(0x4E01,)
+        )
+        recipe = _recipe(
+            tmp_path,
+            "base: base.ttf\n"
+            "donors:\n"
+            "  - donor0.ttf\n"
+            "  - donor1.ttf\n"
+            "sets:\n"
+            "  alpha: 0x4E00-0x4E01\n"
+            "rules:\n"
+            "  - set: alpha\n"
+            "    fonts: [donor-0]\n"
+            "  - range: 0x4E01-0x4E01\n"
+            "    fonts: [donor-1]\n",
+        )
+
+        result = build(recipe, tmp_path / "out.ttf")
+
+        report = _report(result)
+        assert report["precedence"]["same_layer_conflicts"] == []
+        assert (entries := _entries(report))[0x4E01]["via"] == "rule-1"
+
+    def test_the_report_lists_the_rule_declarations(
+        self, tmp_path, synth_font_factory
+    ):
+        synth_font_factory(
+            tmp_path / "base.ttf", family="SynthBase", codepoints=(0x41,)
+        )
+        synth_font_factory(
+            tmp_path / "donor0.ttf", family="SynthDonorZero", codepoints=(0x4E00,)
+        )
+        recipe = _recipe(
+            tmp_path,
+            "base: base.ttf\n"
+            "donors:\n"
+            "  - donor0.ttf\n"
+            "sets:\n"
+            "  alpha:\n"
+            "    - 0x4E00\n"
+            "    - 0x2100-0x2101\n"
+            "rules:\n"
+            "  - range: 0x2100-0x214F\n"
+            "    fonts: [donor-0, base]\n"
+            "  - set: alpha\n"
+            "    fonts: [donor-0]\n"
+            "  - codepoint: 0x4E00\n"
+            "    fonts: [donor-0]\n",
+        )
+
+        result = build(recipe, tmp_path / "out.ttf")
+
+        assert _report(result)["rules"] == [
+            {
+                "id": "rule-0",
+                "granularity": "range",
+                "target": "0x2100-0x214F",
+                "fonts": ["donor-0", "base"],
+            },
+            {
+                "id": "rule-1",
+                "granularity": "set",
+                "target": "alpha",
+                "fonts": ["donor-0"],
+            },
+            {
+                "id": "rule-2",
+                "granularity": "codepoint",
+                "target": "0x4E00",
+                "fonts": ["donor-0"],
+            },
+        ]

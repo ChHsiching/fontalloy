@@ -92,6 +92,34 @@ class PrecedenceRule:
             return self.span[0] <= codepoint <= self.span[1]  # type: ignore[index]
         return any(start <= codepoint <= end for start, end in named_sets[self.set_name])  # type: ignore[index]
 
+    def declared_intervals(
+        self, named_sets: Mapping[str, Sequence[Interval]]
+    ) -> tuple[Interval, ...]:
+        """The rule's declared target as sorted, disjoint intervals."""
+        if self.granularity == CODEPOINT:
+            return ((self.codepoint, self.codepoint),)  # type: ignore[misc]
+        if self.granularity == RANGE:
+            return (self.span,)  # type: ignore[misc]
+        return tuple(named_sets[self.set_name])  # type: ignore[index]
+
+    def target_label(self) -> str:
+        """The rule's target as recipe syntax (also its report label)."""
+        if self.granularity == CODEPOINT:
+            return codepoint_label(self.codepoint)  # type: ignore[arg-type]
+        if self.granularity == RANGE:
+            return interval_label(self.span)  # type: ignore[arg-type]
+        return self.set_name  # type: ignore[return-value]
+
+
+def codepoint_label(codepoint: int) -> str:
+    """A codepoint as recipe syntax, e.g. ``"0x4E2D"``."""
+    return f"0x{codepoint:X}"
+
+
+def interval_label(interval: Interval) -> str:
+    """An interval as recipe syntax, e.g. ``"0x4E00-0x9FFF"``."""
+    return f"0x{interval[0]:X}-0x{interval[1]:X}"
+
 
 def compress_intervals(intervals: Iterable[Interval]) -> tuple[Interval, ...]:
     """Sort intervals and merge overlapping or adjacent ones."""
@@ -125,10 +153,27 @@ class EffectiveEntry:
 
 
 @dataclass(frozen=True)
+class SameLayerConflict:
+    """Two same-granularity rules whose declared targets overlap.
+
+    The later declaration (``winner``) shadows the earlier one
+    (``shadowed``) over ``overlap``; the report surfaces this so the user
+    sees exactly which declarations interacted.
+    """
+
+    granularity: str
+    shadowed: str  # rule id of the earlier declaration
+    winner: str  # rule id of the later declaration
+    overlap: tuple[Interval, ...]  # the declared targets' intersection
+    codepoints: int  # size of the overlap
+
+
+@dataclass(frozen=True)
 class Resolution:
     """The resolver's output: the effective table, codepoint by codepoint."""
 
     effective_table: tuple[EffectiveEntry, ...]  # sorted by codepoint
+    conflicts: tuple[SameLayerConflict, ...]  # declaration order
 
     @property
     def counts(self) -> dict[str, int]:
@@ -169,7 +214,55 @@ def resolve_precedence(
         _resolve_codepoint(codepoint, ordered, default_list, coverages, named_sets, base_coverage)
         for codepoint in sorted(set().union(*coverages.values()))
     )
-    return Resolution(effective_table=table)
+    return Resolution(effective_table=table, conflicts=_same_layer_conflicts(rules, named_sets))
+
+
+def _same_layer_conflicts(
+    rules: Sequence[PrecedenceRule],
+    named_sets: Mapping[str, Sequence[Interval]],
+) -> tuple[SameLayerConflict, ...]:
+    """Pairwise overlaps within one granularity layer, declaration order.
+
+    Overlaps across layers are not conflicts: granularity decides those.
+    """
+    conflicts: list[SameLayerConflict] = []
+    for earlier in range(len(rules)):
+        for later in range(earlier + 1, len(rules)):
+            if rules[earlier].granularity != rules[later].granularity:
+                continue
+            overlap = _intersect_intervals(
+                rules[earlier].declared_intervals(named_sets),
+                rules[later].declared_intervals(named_sets),
+            )
+            if overlap:
+                conflicts.append(
+                    SameLayerConflict(
+                        granularity=rules[later].granularity,
+                        shadowed=rule_id(earlier),
+                        winner=rule_id(later),
+                        overlap=overlap,
+                        codepoints=sum(end - start + 1 for start, end in overlap),
+                    )
+                )
+    return tuple(conflicts)
+
+
+def _intersect_intervals(
+    left: Sequence[Interval], right: Sequence[Interval]
+) -> tuple[Interval, ...]:
+    """The intersection of two sorted, disjoint interval lists."""
+    overlap: list[Interval] = []
+    i = j = 0
+    while i < len(left) and j < len(right):
+        start = max(left[i][0], right[j][0])
+        end = min(left[i][1], right[j][1])
+        if start <= end:
+            overlap.append((start, end))
+        if left[i][1] < right[j][1]:
+            i += 1
+        else:
+            j += 1
+    return tuple(overlap)
 
 
 def _resolve_codepoint(

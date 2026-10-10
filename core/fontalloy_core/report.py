@@ -48,11 +48,34 @@ class ProvenanceEntry:
 
 
 @dataclass(frozen=True)
+class RuleRecord:
+    """One precedence rule declaration, as the recipe made it."""
+
+    id: str  # "rule-<declaration index>"
+    granularity: str  # "codepoint" | "range" | "set"
+    target: str  # recipe syntax: "0x4E2D", "0x2100-0x214F", or a set name
+    fonts: tuple[str, ...]  # the ordered font list, as declared
+
+
+@dataclass(frozen=True)
+class ConflictRecord:
+    """A same-layer overlap: the later rule shadows the earlier one."""
+
+    granularity: str
+    shadowed: str  # rule id of the earlier declaration
+    winner: str  # rule id of the later declaration
+    overlap: tuple[str, ...]  # recipe-syntax intervals of the overlap
+    codepoints: int  # size of the overlap
+
+
+@dataclass(frozen=True)
 class VerificationReport:
     sources: tuple[SourceRecord, ...]
     provenance: tuple[ProvenanceEntry, ...]
     output_path: Path
     output_sha256: str
+    rules: tuple[RuleRecord, ...] = ()
+    conflicts: tuple[ConflictRecord, ...] = ()
 
     @property
     def summary(self) -> dict[str, int]:
@@ -62,6 +85,16 @@ class VerificationReport:
             "from_base": from_base,
             "from_donors": len(self.provenance) - from_base,
             "output_codepoints": sum(1 for e in self.provenance if e.in_output),
+        }
+
+    @property
+    def precedence_counts(self) -> dict[str, int]:
+        """The fill/override accounting over the effective table."""
+        kinds = [e.kind for e in self.provenance]
+        return {
+            "base": kinds.count("base"),
+            "fill": kinds.count("fill"),
+            "override": kinds.count("override"),
         }
 
     def to_json_dict(self) -> dict:
@@ -81,6 +114,15 @@ class VerificationReport:
                 }
                 for source in self.sources
             ],
+            "rules": [
+                {
+                    "id": rule.id,
+                    "granularity": rule.granularity,
+                    "target": rule.target,
+                    "fonts": list(rule.fonts),
+                }
+                for rule in self.rules
+            ],
             "provenance": [
                 {
                     "codepoint": entry.codepoint,
@@ -91,6 +133,19 @@ class VerificationReport:
                 }
                 for entry in self.provenance
             ],
+            "precedence": {
+                "counts": self.precedence_counts,
+                "same_layer_conflicts": [
+                    {
+                        "granularity": conflict.granularity,
+                        "shadowed": conflict.shadowed,
+                        "winner": conflict.winner,
+                        "overlap": list(conflict.overlap),
+                        "codepoints": conflict.codepoints,
+                    }
+                    for conflict in self.conflicts
+                ],
+            },
             "summary": self.summary,
         }
 

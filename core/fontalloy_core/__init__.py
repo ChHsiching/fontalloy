@@ -23,6 +23,7 @@ from fontalloy_core.precedence import (
     EffectiveEntry,
     PrecedenceRule,
     Resolution,
+    SameLayerConflict,
     resolve_precedence,
 )
 from fontalloy_core.recipe import Recipe, load_recipe
@@ -40,6 +41,7 @@ __all__ = [
     "Recipe",
     "RecipeError",
     "Resolution",
+    "SameLayerConflict",
     "VerificationReport",
     "build",
     "load_recipe",
