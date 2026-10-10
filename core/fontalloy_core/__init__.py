@@ -45,6 +45,7 @@ from fontalloy_core.errors import (
     ReleaseError,
 )
 from fontalloy_core.origins import OriginFetch, fetch_from_origins
+from fontalloy_core.release import ReleasePackage, package_catalog_release
 from fontalloy_core.notices import generate_notices, write_notices
 from fontalloy_core.precedence import (
     BUILTIN_NAMED_SETS,
@@ -76,6 +77,7 @@ __all__ = [
     "OriginFetch",
     "RecipeError",
     "ReleaseError",
+    "ReleasePackage",
     "ReleaseFamily",
     "ReleaseFile",
     "Resolution",
@@ -85,6 +87,7 @@ __all__ = [
     "fetch_catalog",
     "fetch_from_origins",
     "load_catalog_release",
+    "package_catalog_release",
     "generate_notices",
     "load_manifest",
     "load_recipe",
