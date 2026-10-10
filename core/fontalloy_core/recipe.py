@@ -14,6 +14,13 @@ Recipe fields (base + donors since issue #2; rules + sets since issue #3):
 - ``output``: the build's output settings — ``format`` selects the
   output format tier (``ttf`` the default, ``ttc``, or ``woff2``;
   issue #10)
+- ``weights``: the requested weight/style matrix (issue #9) — a list
+  of slot selections. Each entry carries ``weight`` (a base face's
+  OS/2 usWeightClass), an optional ``style`` (``upright`` the default,
+  or ``italic``), and an optional ``donors`` mapping rewriting the
+  weight mapping for that slot: donor id → the donor family weight
+  that must land in this output (explicit demand, exact — never a
+  silent nearest approximation)
 
 A font reference (issue #4) is either a plain path string or a mapping:
 
@@ -58,10 +65,19 @@ from fontalloy_core.precedence import (
 )
 
 #: The fields the recipe accepts.
-RECIPE_FIELDS = ("base", "donors", "rules", "sets", "output")
+RECIPE_FIELDS = ("base", "donors", "rules", "sets", "output", "weights")
 
 #: The keys the output section accepts.
 OUTPUT_FIELDS = ("format",)
+
+#: The keys a weights-section entry accepts.
+WEIGHT_FIELDS = ("weight", "style", "donors")
+
+#: The style names a weights entry may select.
+WEIGHT_STYLES = ("upright", "italic")
+
+#: The OS/2 usWeightClass range a recipe weight may demand.
+WEIGHT_MIN, WEIGHT_MAX = 1, 1000
 
 #: The target fields a rule may declare; exactly one per rule.
 _TARGET_FIELDS = (CODEPOINT, RANGE, SET)
@@ -100,6 +116,21 @@ class OutputSpec:
 
 
 @dataclass(frozen=True)
+class WeightRequest:
+    """One requested output slot of the weight/style matrix (issue #9).
+
+    ``weight`` and ``italic`` identify the slot (a base face's
+    ``(usWeightClass, italic)``); ``donor_weights`` rewrites the weight
+    mapping for this slot only — donor id → the family weight that must
+    land here, an explicit demand that beats nearest-match.
+    """
+
+    weight: int
+    italic: bool = False
+    donor_weights: dict[str, int] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class Recipe:
     """A parsed recipe, with font paths resolved to absolute locations."""
 
@@ -108,6 +139,7 @@ class Recipe:
     rules: tuple[PrecedenceRule, ...] = ()
     named_sets: dict[str, tuple[Interval, ...]] = field(default_factory=dict)
     output: OutputSpec = field(default_factory=OutputSpec)
+    weights: tuple[WeightRequest, ...] = ()
 
 
 def load_recipe(path: Path | str) -> Recipe:
@@ -142,6 +174,7 @@ def load_recipe(path: Path | str) -> Recipe:
     named_sets = _parse_sets(data.get("sets"))
     rules = _parse_rules(data.get("rules"), len(donors), named_sets)
     output = _parse_output(data.get("output"))
+    weights = _parse_weights(data.get("weights"), len(donors))
 
     return Recipe(
         base=base,
@@ -149,7 +182,100 @@ def load_recipe(path: Path | str) -> Recipe:
         rules=rules,
         named_sets=named_sets,
         output=output,
+        weights=weights,
     )
+
+
+def _parse_weights(raw: object, donor_count: int) -> tuple[WeightRequest, ...]:
+    """Parse the requested weight/style matrix strictly (issue #9)."""
+    if raw is None:
+        return ()
+    if not isinstance(raw, list) or not raw:
+        raise RecipeError(
+            "recipe field 'weights' must be a non-empty list of slot "
+            "selections (a weight, an optional style, optional donor "
+            "weight overrides)"
+        )
+
+    requests: list[WeightRequest] = []
+    seen: set[tuple[int, bool]] = set()
+    for index, entry in enumerate(raw):
+        where = f"weights[{index}]"
+        if not isinstance(entry, dict):
+            raise RecipeError(
+                f"recipe field '{where}' must be a mapping with the fields "
+                f"{', '.join(repr(f) for f in WEIGHT_FIELDS)}"
+            )
+        unknown = sorted(set(entry) - set(WEIGHT_FIELDS))
+        if unknown:
+            raise RecipeError(
+                f"recipe field '{where}' has unknown field {unknown[0]!r} "
+                f"(a weights entry accepts: "
+                f"{', '.join(repr(f) for f in WEIGHT_FIELDS)})"
+            )
+        if "weight" not in entry:
+            raise RecipeError(
+                f"recipe field '{where}' is missing the required 'weight' "
+                "key (a base face's OS/2 usWeightClass)"
+            )
+
+        weight = _parse_weight(entry["weight"], f"{where}.weight")
+
+        italic = False
+        if "style" in entry:
+            style = entry["style"]
+            if style not in WEIGHT_STYLES:
+                raise RecipeError(
+                    f"recipe field '{where}.style' must be one of: "
+                    f"{', '.join(WEIGHT_STYLES)} (got {style!r})"
+                )
+            italic = style == "italic"
+
+        donor_weights: dict[str, int] = {}
+        if "donors" in entry:
+            raw_donors = entry["donors"]
+            if not isinstance(raw_donors, dict) or not raw_donors:
+                raise RecipeError(
+                    f"recipe field '{where}.donors' must be a non-empty "
+                    "mapping of donor reference to weight "
+                    "(e.g. {donor-0: 300})"
+                )
+            for ref, demanded in raw_donors.items():
+                if (
+                    not isinstance(ref, str)
+                    or ref == "base"
+                    or not _is_font_ref(ref, donor_count)
+                ):
+                    available = [f"donor-{i}" for i in range(donor_count)]
+                    raise RecipeError(
+                        f"recipe field '{where}.donors' keys must reference "
+                        f"a donor in this build: {', '.join(available) or 'none'} "
+                        f"(got {ref!r})"
+                    )
+                donor_weights[ref] = _parse_weight(demanded, f"{where}.donors[{ref!r}]")
+
+        slot = (weight, italic)
+        if slot in seen:
+            raise RecipeError(
+                f"recipe field 'weights' lists weight {weight} "
+                f"({'italic' if italic else 'upright'}) more than once"
+            )
+        seen.add(slot)
+        requests.append(WeightRequest(weight=weight, italic=italic, donor_weights=donor_weights))
+    return tuple(requests)
+
+
+def _parse_weight(value: object, where: str) -> int:
+    """A weight is an integer in the OS/2 usWeightClass range."""
+    if _is_bool(value) or not isinstance(value, int) or not (
+        WEIGHT_MIN <= value <= WEIGHT_MAX
+    ):
+        raise RecipeError(
+            f"recipe field '{where}' must be an integer weight from "
+            f"{WEIGHT_MIN} to {WEIGHT_MAX} (an OS/2 usWeightClass; "
+            f"got {value!r})"
+        )
+    return value
 
 
 def _parse_output(raw: object) -> OutputSpec:

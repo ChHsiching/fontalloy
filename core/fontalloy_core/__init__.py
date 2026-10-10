@@ -14,6 +14,10 @@ The only capability layer (ADR-0002). Public surface:
   range sets) to codepoint level, producing the effective table. The
   build pipeline consumes it, and later consumers (grafting, serve, the
   GUI's effective-preview consistency check) call it directly.
+- ``plan_matrix(bases, pools, requests)``: the weight/style matrix
+  (issue #9) — which output weight/style slots a build emits and which
+  donor face lands in each (nearest OS/2 usWeightClass by default,
+  recipe overrides per slot, stated as borrows in the report).
 - ``fontalloy_core.presets``: the language-preset registry — the bundled
   fc-lang corpus, its raw per-language sets, and the presentation
   presets (sub-block unions) that fill ``BUILTIN_NAMED_SETS``.
@@ -52,6 +56,7 @@ from fontalloy_core.errors import (
     ReleaseError,
 )
 from fontalloy_core.load import FaceInfo, Family, aggregate_families, scan_families
+from fontalloy_core.matrix import DonorMatch, DonorPool, MatrixSlot, plan_matrix
 from fontalloy_core.notices import generate_notices, write_notices
 from fontalloy_core.origins import OriginFetch, fetch_from_origins
 from fontalloy_core.precedence import (
@@ -62,7 +67,7 @@ from fontalloy_core.precedence import (
     SameLayerConflict,
     resolve_precedence,
 )
-from fontalloy_core.recipe import Recipe, load_recipe
+from fontalloy_core.recipe import Recipe, WeightRequest, load_recipe
 from fontalloy_core.report import VerificationReport
 from fontalloy_core.release import ReleasePackage, package_catalog_release
 
@@ -77,11 +82,14 @@ __all__ = [
     "CatalogEntry",
     "CatalogError",
     "CatalogRelease",
+    "DonorMatch",
+    "DonorPool",
     "EffectiveEntry",
     "FaceInfo",
     "Family",
     "FetchSummary",
     "FontAlloyError",
+    "MatrixSlot",
     "Origin",
     "OriginFetch",
     "PrecedenceRule",
@@ -94,6 +102,7 @@ __all__ = [
     "Resolution",
     "SameLayerConflict",
     "VerificationReport",
+    "WeightRequest",
     "aggregate_families",
     "build",
     "fetch_catalog",
@@ -103,6 +112,7 @@ __all__ = [
     "load_manifest",
     "load_recipe",
     "package_catalog_release",
+    "plan_matrix",
     "presets",
     "resolve_precedence",
     "scan_families",
