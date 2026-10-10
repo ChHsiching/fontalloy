@@ -6,6 +6,12 @@ The only capability layer (ADR-0002). Public surface:
   font plus a verification report out. This is the one entry point the whole
   pipeline is tested through (seam 1 of the testing decisions).
 - ``load_recipe(path)``: parse a recipe YAML strictly into a ``Recipe``.
+- ``OutputNaming`` / ``apply_output_identity(font, naming)`` /
+  ``apply_os2_corrections(font)`` (stage 6): the output identity —
+  the validated output family (fixed brand default ``ChHsich``), the
+  full name record set on both platform encodings, and the OS/2
+  corrections (xAvgCharWidth per the OpenType a–z formula, the PANOSE
+  mono digits).
 - ``scan_families(paths)`` / ``aggregate_families(faces)``: group font
   faces by family into weight/style matrices (stage 1's detection side,
   consumed by the catalog, the pickers, and the weight matching).
@@ -48,11 +54,19 @@ from fontalloy_core.precedence import (
 )
 from fontalloy_core.recipe import Recipe, load_recipe
 from fontalloy_core.report import VerificationReport
+from fontalloy_core.rewrite import (
+    BRAND_DEFAULT_FAMILY,
+    OutputNaming,
+    apply_os2_corrections,
+    apply_output_identity,
+    validate_family_name,
+)
 
 __version__ = "0.1.0"
 
 __all__ = [
     "AssetsError",
+    "BRAND_DEFAULT_FAMILY",
     "BUILTIN_NAMED_SETS",
     "BuildError",
     "BuildOutput",
@@ -64,6 +78,7 @@ __all__ = [
     "Family",
     "FetchSummary",
     "FontAlloyError",
+    "OutputNaming",
     "PrecedenceRule",
     "Recipe",
     "RecipeError",
@@ -71,6 +86,8 @@ __all__ = [
     "SameLayerConflict",
     "VerificationReport",
     "aggregate_families",
+    "apply_os2_corrections",
+    "apply_output_identity",
     "build",
     "fetch_catalog",
     "generate_notices",
@@ -79,5 +96,6 @@ __all__ = [
     "presets",
     "resolve_precedence",
     "scan_families",
+    "validate_family_name",
     "write_notices",
 ]

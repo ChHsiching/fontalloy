@@ -1,6 +1,7 @@
 """Recipe loading: parse a recipe YAML file strictly.
 
-Recipe fields (base + donors since issue #2; rules + sets since issue #3):
+Recipe fields (base + donors since issue #2; rules + sets since issue
+#3; output naming since issue #6):
 
 - ``base``: the base font reference
 - ``donors``: the donor list of font references
@@ -11,6 +12,10 @@ Recipe fields (base + donors since issue #2; rules + sets since issue #3):
   reference ``base`` or ``donor-<join index>``
 - ``sets``: user-defined named range sets — a mapping of a name to a
   codepoint, an interval string, or a non-empty list of either
+- ``output``: output naming — a mapping with ``family``, the output
+  family name (default: the fixed brand default ``ChHsich``, never a
+  name derived from the source fonts; validated ASCII letters/digits/
+  hyphens, spaces converted to hyphens, at most 31 characters)
 
 A font reference (issue #4) is either a plain path string or a mapping:
 
@@ -52,15 +57,19 @@ from fontalloy_core.precedence import (
     compress_intervals,
     is_unicode_scalar,
 )
+from fontalloy_core.rewrite import OutputNaming, validate_family_name
 
 #: The fields the recipe accepts.
-RECIPE_FIELDS = ("base", "donors", "rules", "sets")
+RECIPE_FIELDS = ("base", "donors", "rules", "sets", "output")
 
 #: The target fields a rule may declare; exactly one per rule.
 _TARGET_FIELDS = (CODEPOINT, RANGE, SET)
 
 #: The keys a font-reference mapping accepts.
 REF_FIELDS = ("path", "face", "instance")
+
+#: The keys the output-naming mapping accepts.
+OUTPUT_FIELDS = ("family",)
 
 
 @dataclass(frozen=True)
@@ -86,6 +95,7 @@ class Recipe:
     donors: tuple[FontRef, ...]
     rules: tuple[PrecedenceRule, ...] = ()
     named_sets: dict[str, tuple[Interval, ...]] = field(default_factory=dict)
+    output: OutputNaming = field(default_factory=OutputNaming)
 
 
 def load_recipe(path: Path | str) -> Recipe:
@@ -119,13 +129,34 @@ def load_recipe(path: Path | str) -> Recipe:
 
     named_sets = _parse_sets(data.get("sets"))
     rules = _parse_rules(data.get("rules"), len(donors), named_sets)
+    output = _parse_output(data.get("output"))
 
     return Recipe(
         base=base,
         donors=donors,
         rules=rules,
         named_sets=named_sets,
+        output=output,
     )
+
+
+def _parse_output(raw: object) -> OutputNaming:
+    if raw is None:
+        return OutputNaming()
+    if not isinstance(raw, dict):
+        raise RecipeError(
+            "recipe field 'output' must be a mapping with the field "
+            f"{', '.join(repr(f) for f in OUTPUT_FIELDS)}"
+        )
+    unknown = sorted(set(raw) - set(OUTPUT_FIELDS))
+    if unknown:
+        raise RecipeError(
+            f"unknown output naming field {unknown[0]!r} "
+            f"(the output accepts: {', '.join(repr(f) for f in OUTPUT_FIELDS)})"
+        )
+    if "family" not in raw:
+        return OutputNaming()
+    return OutputNaming(family=validate_family_name(raw["family"], "output.family"))
 
 
 def _parse_base(data: dict, root: Path) -> FontRef:
