@@ -105,6 +105,11 @@ def _glyph_coordinates(font: TTFont, codepoint: int) -> tuple:
     return coords
 
 
+def _r(value: float) -> int:
+    """fontTools' otRound (half away from zero), for scaled expectations."""
+    return int((value + 0.5) if value >= 0 else (value - 0.5))
+
+
 def _name(font: TTFont, name_id: int) -> str | None:
     """One identity record, preferring the Windows encoding."""
     records = [r for r in font["name"].names if r.nameID == name_id]
@@ -529,9 +534,10 @@ class TestItalicFallback:
         """The italic slot's donor outlines are the upright donor's own.
 
         The transform-only rule (ADR-0003) forbids any style synthesis:
-        the grafted glyph must be coordinate-identical to the donor
-        file's upright glyph and to the upright slot's copy — no slant,
-        no interpolation, no instancing.
+        the grafted glyph must be the donor file's upright glyph under
+        the normalization's uniform scale — one factor for x and y
+        about the baseline, so no slant, no interpolation, no
+        instancing — and identical to the upright slot's copy.
         """
         base = synth_ttc(
             tmp_path / "base.ttc",
@@ -556,8 +562,14 @@ class TestItalicFallback:
 
         faces = TTCollection(result.font_path).fonts
         donor_own = _glyph_coordinates(TTFont(upright_donor), 0x4E2D)
-        assert _glyph_coordinates(faces[0], 0x4E2D) == donor_own
-        assert _glyph_coordinates(faces[1], 0x4E2D) == donor_own
+        # This fixture pair's normalization scale: the base's latin cell
+        # is 600 at 1000 upem, so the grid school k = 2*600/1000 = 1.2
+        # (ADR-0003). A uniform factor about the baseline — nothing else
+        # may move (a slant would mix y into x; instancing would bend
+        # the factor).
+        normalized = tuple((_r(x * 1.2), _r(y * 1.2)) for x, y in donor_own)
+        assert tuple(_glyph_coordinates(faces[0], 0x4E2D)) == normalized
+        assert tuple(_glyph_coordinates(faces[1], 0x4E2D)) == normalized
         # The italic identity is the base's own (the container), not a
         # synthesized one: the slot keeps its italic selection bit.
         assert bool(faces[1]["OS/2"].fsSelection & 0x01) is True
