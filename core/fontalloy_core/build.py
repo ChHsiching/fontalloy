@@ -5,13 +5,14 @@ of the core: recipe + font files in, built font + verification report out.
 The CLI calls it in-process; later consumers (serve, the GUI sidecar) do
 the same.
 
-Pipeline stages in this ticket (issues #2 and #3): load and validate the
-base and donor fonts, resolve the precedence rules — layered rules at
-every granularity, absence never overrides — into the effective table,
-write the base font through as the output TTF (grafting, normalization,
-and table rewriting arrive in later tickets), and emit the verification
-report carrying the effective table and the conflict/fill accounting.
-Identical inputs produce byte-identical outputs and reports.
+Pipeline stages in this ticket (issues #2, #3 and #4): load and detect the
+base and donor fonts (TTC face selection, variable instantiation, woff2
+decode), resolve the precedence rules — layered rules at every
+granularity, absence never overrides — into the effective table, write the
+base font through as the output TTF (grafting, normalization, and table
+rewriting arrive in later tickets), and emit the verification report
+carrying the effective table and the conflict/fill accounting. Identical
+inputs produce byte-identical outputs and reports.
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from pathlib import Path
 from fontTools.ttLib import TTFont
 
 from fontalloy_core.errors import BuildError
+from fontalloy_core.load import load_face
 from fontalloy_core.precedence import (
     BUILTIN_NAMED_SETS,
     interval_label,
@@ -63,16 +65,16 @@ def build(
     recipe = load_recipe(recipe_path)
     output = Path(output_path)
 
-    base = _load_font(recipe.base, "base font")
+    base = load_face(recipe.base, role="base font")
     donors = [
-        _load_font(path, f"donor font {index}")
-        for index, path in enumerate(recipe.donors)
+        load_face(ref, role=f"donor font {index}")
+        for index, ref in enumerate(recipe.donors)
     ]
 
     try:
-        coverages = {"base": _coverage(base)}
-        for index, font in enumerate(donors):
-            coverages[f"donor-{index}"] = _coverage(font)
+        coverages = {"base": _coverage(base.font)}
+        for index, donor in enumerate(donors):
+            coverages[f"donor-{index}"] = _coverage(donor.font)
 
         # Stage: resolve the precedence rules into the effective table.
         # Named sets come from the recipe, overriding any built-ins (the
@@ -86,15 +88,15 @@ def build(
         # Stage: output the built font. The base is the container (ADR-0001);
         # at this stage it passes through unchanged.
         try:
-            base.save(output)
+            base.font.save(output)
         except OSError as exc:
             raise BuildError(
                 f"cannot write the output font: {output} ({exc})"
             ) from None
     finally:
-        base.close()
+        base.font.close()
         for donor in donors:
-            donor.close()
+            donor.font.close()
 
     base_coverage = coverages["base"]
     provenance = tuple(
@@ -115,8 +117,8 @@ def build(
             SourceRecord(
                 id="base",
                 role="base",
-                path=recipe.base,
-                sha256=file_sha256(recipe.base),
+                path=recipe.base.path,
+                sha256=file_sha256(recipe.base.path),
                 codepoints=len(coverages["base"]),
             )
         ]
@@ -124,11 +126,11 @@ def build(
         SourceRecord(
             id=f"donor-{index}",
             role="donor",
-            path=path,
-            sha256=file_sha256(path),
+            path=ref.path,
+            sha256=file_sha256(ref.path),
             codepoints=len(coverages[f"donor-{index}"]),
         )
-        for index, path in enumerate(recipe.donors)
+        for index, ref in enumerate(recipe.donors)
     )
     report = VerificationReport(
         sources=sources,
@@ -167,20 +169,6 @@ def build(
         ) from None
 
     return BuildOutput(font_path=output, report_path=report_path, report=report)
-
-
-def _load_font(path: Path, role: str) -> TTFont:
-    """Load a font file and validate it has Unicode coverage."""
-    if not path.is_file():
-        raise BuildError(f"{role} file not found: {path}")
-    try:
-        font = TTFont(path)
-        best_cmap = font.getBestCmap()
-    except Exception as exc:  # fontTools raises TTLibError and friends
-        raise BuildError(f"{role} file is not a valid font: {path} ({exc})") from None
-    if not best_cmap:
-        raise BuildError(f"{role} has no Unicode coverage (no usable cmap): {path}")
-    return font
 
 
 def _coverage(font: TTFont) -> set[int]:

@@ -1,7 +1,7 @@
 """Shared fixtures: the synthetic fixture-font harness and the seam-2 CLI
 harness.
 
-Every font the test suite uses is a small synthetic TTF generated in-test
+Every font the test suite uses is a small synthetic font generated in-test
 with fontTools — the repo never contains font binaries, and no test
 touches the catalog. Fonts are deterministic (pinned head timestamps), so
 build outputs and reports are byte-reproducible.
@@ -12,12 +12,14 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import pytest
 from fontTools.fontBuilder import FontBuilder
 from fontTools.pens.ttGlyphPen import TTGlyphPen
+from fontTools.ttLib import TTCollection, TTFont
+from fontTools.ttLib.tables.TupleVariation import TupleVariation
 
 #: Coverage of the default base fixture: two Latin codepoints.
 BASE_CODEPOINTS = (0x41, 0x42)
@@ -37,8 +39,117 @@ def synth_font(
     codepoints: tuple[int, ...],
     upem: int = 1000,
     advance: int = 600,
+    weight: int = 400,
+    subfamily: str = "Regular",
+    italic: bool = False,
+    typographic_family: str | None = None,
 ) -> Path:
     """Write a small synthetic TTF covering exactly ``codepoints``."""
+    font = _build_font_object(
+        family,
+        codepoints,
+        upem=upem,
+        advance=advance,
+        weight=weight,
+        subfamily=subfamily,
+        italic=italic,
+        typographic_family=typographic_family,
+    )
+    font.save(path)
+    return Path(path)
+
+
+def synth_ttc(
+    path: Path | str,
+    faces: Sequence[dict],
+) -> Path:
+    """Write a tiny TTC collection with one face per ``faces`` entry.
+
+    Each entry is keyword arguments for the underlying synthetic font:
+    ``family``, ``codepoints``, ``weight``, ``subfamily``... Faces of one
+    collection typically share a family and differ in weight/coverage.
+    """
+    fonts = [_build_font_object(**face) for face in faces]
+    collection = TTCollection()
+    collection.fonts = fonts
+    collection.save(path)
+    return Path(path)
+
+
+def synth_variable_font(
+    path: Path | str,
+    *,
+    family: str,
+    codepoints: tuple[int, ...],
+    axes: Sequence[tuple[str, float, float, float]] = (("wght", 100, 400, 900),),
+) -> Path:
+    """Write a tiny variable TTF with an fvar and a gvar per axis.
+
+    The gvar deltas grow each glyph vertically toward each axis maximum,
+    so a pinned instance is distinguishable from the default instance by
+    glyph geometry, not just by table presence.
+    """
+    glyph_names = [".notdef"] + [f"uni{cp:04X}" for cp in codepoints]
+    glyphs: dict[str, object] = {".notdef": _box_glyph(0, 0, 500, 700)}
+    for index, cp in enumerate(codepoints):
+        glyphs[f"uni{cp:04X}"] = _box_glyph(40, 0, 559, 300 + 100 * (index + 1))
+
+    builder = FontBuilder(unitsPerEm=1000, isTTF=True)
+    builder.setupGlyphOrder(glyph_names)
+    builder.setupCharacterMap({cp: f"uni{cp:04X}" for cp in codepoints})
+    builder.setupGlyf(glyphs)  # type: ignore[arg-type]
+    builder.setupHorizontalMetrics({name: (600, 40) for name in glyph_names})
+    builder.setupHorizontalHeader(ascent=800, descent=-200)
+    builder.setupOS2(sTypoAscender=800, sTypoDescender=-200, usWeightClass=400)
+    builder.setupNameTable({"familyName": family, "styleName": "Regular"})
+    builder.setupPost()
+    builder.setupHead(created=FIXED_TIMESTAMP, modified=FIXED_TIMESTAMP)
+    builder.setupFvar(
+        [(tag, lo, default, hi, tag.upper()) for tag, lo, default, hi in axes],
+        [],
+    )
+    variations = {
+        name: [
+            # 4 real contour points + 4 phantom points per glyph; the top
+            # two points rise by 300 units at each axis maximum.
+            TupleVariation(
+                {tag: (0.0, 1.0, 1.0) for tag, _lo, _default, _hi in axes},
+                [(0, 0), (0, 0), (0, 300), (0, 300), (0, 0), (0, 0), (0, 0), (0, 0)],
+            )
+        ]
+        for name in glyph_names[1:]
+    }
+    builder.setupGvar(variations)
+    builder.save(path)
+    return Path(path)
+
+
+def synth_woff2(
+    path: Path | str,
+    *,
+    family: str,
+    codepoints: tuple[int, ...],
+    weight: int = 400,
+) -> Path:
+    """Write a tiny woff2 (a re-compressed synthetic TTF)."""
+    font = _build_font_object(family, codepoints, weight=weight)
+    font.flavor = "woff2"
+    font.save(path)
+    return Path(path)
+
+
+def _build_font_object(
+    family: str,
+    codepoints: tuple[int, ...],
+    *,
+    upem: int = 1000,
+    advance: int = 600,
+    weight: int = 400,
+    subfamily: str = "Regular",
+    italic: bool = False,
+    typographic_family: str | None = None,
+) -> TTFont:
+    """Build (but do not save) a synthetic single-face font."""
     glyph_names = [".notdef"] + [f"uni{cp:04X}" for cp in codepoints]
     glyphs: dict[str, object] = {".notdef": _box_glyph(0, 0, 500, 700)}
     for index, cp in enumerate(codepoints):
@@ -51,12 +162,17 @@ def synth_font(
     builder.setupGlyf(glyphs)  # type: ignore[arg-type]
     builder.setupHorizontalMetrics({name: (advance, 40) for name in glyph_names})
     builder.setupHorizontalHeader(ascent=800, descent=-200)
-    builder.setupOS2(sTypoAscender=800, sTypoDescender=-200, usWeightClass=400)
-    builder.setupNameTable({"familyName": family, "styleName": "Regular"})
+    builder.setupOS2(sTypoAscender=800, sTypoDescender=-200, usWeightClass=weight)
+    if italic:
+        builder.font["OS/2"].fsSelection |= 0x01  # ITALIC bit
+    builder.setupNameTable({"familyName": family, "styleName": subfamily})
+    if typographic_family is not None:
+        name_table = builder.font["name"]
+        name_table.setName(typographic_family, 16, 3, 1, 0x409)
+        name_table.setName(subfamily, 17, 3, 1, 0x409)
     builder.setupPost()
     builder.setupHead(created=FIXED_TIMESTAMP, modified=FIXED_TIMESTAMP)
-    builder.save(path)
-    return Path(path)
+    return builder.font
 
 
 def _box_glyph(x_min: int, y_min: int, x_max: int, y_max: int):
@@ -73,6 +189,24 @@ def _box_glyph(x_min: int, y_min: int, x_max: int, y_max: int):
 def synth_font_factory() -> Callable[..., Path]:
     """Factory for synthetic fonts; returns the written font's path."""
     return synth_font
+
+
+@pytest.fixture
+def synth_ttc_factory() -> Callable[..., Path]:
+    """Factory for synthetic TTC collections; returns the written path."""
+    return synth_ttc
+
+
+@pytest.fixture
+def synth_variable_font_factory() -> Callable[..., Path]:
+    """Factory for synthetic variable fonts; returns the written path."""
+    return synth_variable_font
+
+
+@pytest.fixture
+def synth_woff2_factory() -> Callable[..., Path]:
+    """Factory for synthetic woff2 files; returns the written path."""
+    return synth_woff2
 
 
 @pytest.fixture
