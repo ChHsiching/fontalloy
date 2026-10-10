@@ -15,6 +15,7 @@ cleared), so no later stage has to care what the file on disk was.
 from __future__ import annotations
 
 import struct
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -101,6 +102,75 @@ def load_face(ref: FontRef, *, role: str) -> LoadedFace:
             variable=False,  # instantiated above: the face is static now
         ),
     )
+
+
+def scan_families(paths: Iterable[Path | str]) -> tuple[Family, ...]:
+    """Scan font files and aggregate their faces by family.
+
+    One :class:`FaceInfo` per face of every file (a TTC contributes one
+    per face), grouped into :class:`Family` weight/style matrices — the
+    input side of the catalog, the GUI font pickers, and the weight
+    matching. Files are scanned as-is: a variable font reports its
+    default instance's weight with ``variable=True`` (no instantiation
+    happens here). Raises :class:`~fontalloy_core.errors.BuildError` for
+    a missing file or one fontTools cannot read.
+    """
+    faces: list[FaceInfo] = []
+    for path in map(Path, paths):
+        if not path.is_file():
+            raise BuildError(f"font file not found: {path}")
+        for index in range(_face_count(path)):
+            faces.append(_scan_face(path, index))
+    return aggregate_families(faces)
+
+
+def aggregate_families(faces: Iterable[FaceInfo]) -> tuple[Family, ...]:
+    """Group faces by family name into weight/style matrices.
+
+    Families sort by name, faces within a family by (weight, style,
+    path, face index), so the result is deterministic for equal input.
+    """
+    grouped: dict[str, list[FaceInfo]] = {}
+    for face in faces:
+        grouped.setdefault(face.family, []).append(face)
+    return tuple(
+        Family(
+            name=name,
+            faces=tuple(
+                sorted(
+                    group,
+                    key=lambda face: (
+                        face.weight,
+                        face.italic,
+                        face.subfamily,
+                        str(face.path),
+                        face.face_index,
+                    ),
+                )
+            ),
+        )
+        for name, group in sorted(grouped.items())
+    )
+
+
+def _scan_face(path: Path, index: int) -> FaceInfo:
+    """Read one face's identity without loading it as a merge input."""
+    try:
+        font = TTFont(path, fontNumber=index)
+    except Exception as exc:  # fontTools raises TTLibError and friends
+        raise BuildError(f"file is not a valid font: {path} ({exc})") from None
+    try:
+        return FaceInfo(
+            path=path,
+            face_index=index,
+            family=_name(font, 16, 1),
+            subfamily=_name(font, 17, 2),
+            weight=_weight(font),
+            italic=_italic(font),
+            variable="fvar" in font,
+        )
+    finally:
+        font.close()
 
 
 def _instantiate(

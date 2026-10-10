@@ -1,11 +1,13 @@
-"""Seam 1 tests: real-world input kinds through the build API.
+"""Stage 1 tests: real-world input kinds and family aggregation.
 
-Stage 1 of the pipeline (issue #4): TTC collections select by face,
-variable fonts are detected and instantiated to static, woff2 is decoded.
-All of it is observed through ``fontalloy_core.build`` — the output font
-and the verification report are the only windows, per the testing
-decisions in issue #1. Fixtures are synthetic (tiny TTC, tiny variable
-font, tiny woff2), generated in-test; the repo tracks no font binaries.
+TTC collections select by face, variable fonts are detected and
+instantiated to static, woff2 is decoded — all observed through
+``fontalloy_core.build`` (the output font and the verification report
+are the only windows, per the testing decisions in issue #1). The
+family aggregation is itself a public seam (``scan_families`` /
+``aggregate_families``), so those tests hit it directly. Fixtures are
+synthetic (tiny TTC, tiny variable font, tiny woff2), generated
+in-test; the repo tracks no font binaries.
 """
 
 from __future__ import annotations
@@ -23,7 +25,7 @@ from conftest import (
     synth_variable_font,
     synth_woff2,
 )
-from fontalloy_core import BuildError, build
+from fontalloy_core import BuildError, aggregate_families, build, scan_families
 
 
 def _load_report(path: Path) -> dict:
@@ -344,3 +346,141 @@ class TestWoff2Input:
         build(recipe, output, report_path=report_path)
         assert output.read_bytes() == font_bytes
         assert report_path.read_bytes() == report_bytes
+
+
+class TestFamilyAggregation:
+    """Faces aggregate by family into weight/style matrices (stage 1).
+
+    Scanning answers "what families live in these files, and which
+    weight/style faces does each carry" — the input side of the catalog,
+    the GUI font pickers, and the weight matching (a later ticket).
+    """
+
+    def test_plain_fonts_group_by_family_in_a_weight_matrix(self, tmp_path):
+        regular = synth_font(
+            tmp_path / "regular.ttf", family="SynthFam", codepoints=(0x41,)
+        )
+        bold = synth_font(
+            tmp_path / "bold.ttf",
+            family="SynthFam",
+            codepoints=(0x42,),
+            weight=700,
+            subfamily="Bold",
+        )
+        other = synth_font(
+            tmp_path / "other.ttf", family="AlphaFam", codepoints=(0x43,), weight=300
+        )
+
+        families = scan_families([regular, bold, other])
+
+        assert [family.name for family in families] == ["AlphaFam", "SynthFam"]
+        synth = families[1]
+        assert [(face.weight, face.subfamily) for face in synth.faces] == [
+            (400, "Regular"),
+            (700, "Bold"),
+        ]
+
+    def test_a_ttc_contributes_one_face_per_weight(self, tmp_path):
+        collection = synth_ttc(
+            tmp_path / "fam.ttc",
+            faces=[
+                {"family": "SynthTTC", "weight": 400, "codepoints": (0x61,)},
+                {
+                    "family": "SynthTTC",
+                    "weight": 700,
+                    "codepoints": (0x62,),
+                    "subfamily": "Bold",
+                },
+                {
+                    "family": "SynthTTC",
+                    "weight": 500,
+                    "codepoints": (0x63,),
+                    "subfamily": "Medium",
+                },
+            ],
+        )
+
+        families = scan_families([collection])
+
+        assert len(families) == 1
+        assert families[0].name == "SynthTTC"
+        # Sorted by weight; each face keeps its collection index.
+        assert [(f.weight, f.subfamily, f.face_index) for f in families[0].faces] == [
+            (400, "Regular", 0),
+            (500, "Medium", 2),
+            (700, "Bold", 1),
+        ]
+
+    def test_an_italic_face_carries_its_style_in_the_matrix(self, tmp_path):
+        upright = synth_font(
+            tmp_path / "up.ttf", family="SynthFam", codepoints=(0x41,)
+        )
+        italic = synth_font(
+            tmp_path / "it.ttf",
+            family="SynthFam",
+            codepoints=(0x41,),
+            italic=True,
+            subfamily="Italic",
+        )
+
+        families = scan_families([upright, italic])
+
+        assert [(f.italic, f.subfamily) for f in families[0].faces] == [
+            (False, "Regular"),
+            (True, "Italic"),
+        ]
+
+    def test_a_variable_font_scans_as_variable_at_its_default_weight(self, tmp_path):
+        variable = synth_variable_font(
+            tmp_path / "var.ttf", family="SynthVar", codepoints=(0x41,)
+        )
+
+        families = scan_families([variable])
+
+        face = families[0].faces[0]
+        # Detected, not instantiated: the scan reports the file as
+        # variable with the default instance's weight class.
+        assert face.variable is True
+        assert face.weight == 400
+
+    def test_a_woff2_file_scans_like_any_other_input(self, tmp_path):
+        woff2 = synth_woff2(
+            tmp_path / "fam.woff2", family="SynthWoff", codepoints=(0x41,), weight=600
+        )
+
+        families = scan_families([woff2])
+
+        assert families[0].name == "SynthWoff"
+        assert families[0].faces[0].weight == 600
+
+    def test_aggregate_families_merges_faces_from_separate_scans(self, tmp_path):
+        one = scan_families(
+            [synth_font(tmp_path / "a.ttf", family="SynthFam", codepoints=(0x41,))]
+        )
+        two = scan_families(
+            [
+                synth_font(
+                    tmp_path / "b.ttf",
+                    family="SynthFam",
+                    codepoints=(0x42,),
+                    weight=700,
+                    subfamily="Bold",
+                )
+            ]
+        )
+
+        families = aggregate_families(one[0].faces + two[0].faces)
+
+        assert len(families) == 1
+        assert [f.weight for f in families[0].faces] == [400, 700]
+
+    def test_a_missing_file_is_a_clear_error(self, tmp_path):
+        with pytest.raises(BuildError, match="not found"):
+            scan_families([tmp_path / "nope.ttf"])
+
+    def test_a_non_font_file_is_a_clear_error(self, tmp_path):
+        bogus = tmp_path / "bogus.ttf"
+        bogus.write_bytes(b"this is not a font")
+
+        with pytest.raises(BuildError, match="not a valid font"):
+            scan_families([bogus])
