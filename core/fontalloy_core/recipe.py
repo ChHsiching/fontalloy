@@ -1,7 +1,8 @@
 """Recipe loading: parse a recipe YAML file strictly.
 
 Recipe fields (base + donors since issue #2; rules + sets since issue
-#3; output naming since issue #6):
+#3; normalization since issue #8; output naming since issues #6/#10;
+weights since issue #9):
 
 - ``base``: the base font reference
 - ``donors``: the donor list of font references
@@ -12,12 +13,25 @@ Recipe fields (base + donors since issue #2; rules + sets since issue
   reference ``base`` or ``donor-<join index>``
 - ``sets``: user-defined named range sets — a mapping of a name to a
   codepoint, an interval string, or a non-empty list of either
+- ``normalization``: the normalization switches (ADR-0003) — ``mode``
+  (``grid``, the terminal 2:1 default, or ``optical``),
+  ``optical_ratio`` (Han ink to cap height; default 1.23), and
+  ``quote_dash_width`` (``halfwidth``, the UAX #11 default, or
+  ``fullwidth`` for the CJK locale convention). Every key is optional;
+  a recipe without a ``normalization`` block builds with the defaults.
 - ``output``: the build's output settings — ``format`` selects the
   output format tier (``ttf`` the default, ``ttc``, or ``woff2``;
   issue #10) and ``family`` the output family name (default: the fixed
   brand default ``ChHsich``, never a name derived from the source
   fonts; validated ASCII letters/digits/hyphens, spaces converted to
   hyphens, at most 31 characters; issue #6)
+- ``weights``: the requested weight/style matrix (issue #9) — a list
+  of slot selections. Each entry carries ``weight`` (a base face's
+  OS/2 usWeightClass), an optional ``style`` (``upright`` the default,
+  or ``italic``), and an optional ``donors`` mapping rewriting the
+  weight mapping for that slot: donor id → the donor family weight
+  that must land in this output (explicit demand, exact — never a
+  silent nearest approximation)
 
 A font reference (issue #4) is either a plain path string or a mapping:
 
@@ -31,6 +45,9 @@ A font reference (issue #4) is either a plain path string or a mapping:
       - path: Inter-Variable.ttf
         instance:
           wght: 600
+    normalization:
+      mode: grid
+      quote_dash_width: fullwidth
 
 Paths in a recipe resolve against the recipe file's directory, not the
 working directory — a recipe is a share unit and must mean the same thing
@@ -39,12 +56,13 @@ already-decoded data (serve submits recipes as JSON, issue #11), with
 paths resolving against the caller's root. Parsing is strict: unknown
 fields, missing fields, and type errors all raise
 :class:`~fontalloy_core.errors.RecipeError` with a message naming the
-offending field. ``rules`` and ``sets`` are optional, so a v0 recipe
-(base + donors only) parses unchanged.
+offending field. ``rules``, ``sets``, ``normalization``, and ``weights``
+are optional, so a v0 recipe (base + donors only) parses unchanged.
 """
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -52,6 +70,15 @@ from pathlib import Path
 import yaml
 
 from fontalloy_core.errors import RecipeError
+from fontalloy_core.normalize import (
+    DEFAULT_OPTICAL_RATIO,
+    FULLWIDTH,
+    GRID,
+    HALFWIDTH,
+    MODES,
+    NormalizationOptions,
+    QUOTE_DASH_POLICIES,
+)
 from fontalloy_core.output import OUTPUT_FORMATS
 from fontalloy_core.precedence import (
     BUILTIN_NAMED_SETS,
@@ -66,13 +93,33 @@ from fontalloy_core.precedence import (
 from fontalloy_core.rewrite import BRAND_DEFAULT_FAMILY, validate_family_name
 
 #: The fields the recipe accepts.
-RECIPE_FIELDS = ("base", "donors", "rules", "sets", "output")
+RECIPE_FIELDS = (
+    "base",
+    "donors",
+    "rules",
+    "sets",
+    "normalization",
+    "output",
+    "weights",
+)
+
+#: The keys a weights-section entry accepts.
+WEIGHT_FIELDS = ("weight", "style", "donors")
+
+#: The style names a weights entry may select.
+WEIGHT_STYLES = ("upright", "italic")
+
+#: The OS/2 usWeightClass range a recipe weight may demand.
+WEIGHT_MIN, WEIGHT_MAX = 1, 1000
 
 #: The target fields a rule may declare; exactly one per rule.
 _TARGET_FIELDS = (CODEPOINT, RANGE, SET)
 
 #: The keys a font-reference mapping accepts.
 REF_FIELDS = ("path", "face", "instance")
+
+#: The keys the normalization block accepts.
+_NORMALIZATION_FIELDS = ("mode", "optical_ratio", "quote_dash_width")
 
 #: The keys the output section accepts.
 OUTPUT_FIELDS = ("format", "family")
@@ -110,6 +157,21 @@ class OutputSpec:
 
 
 @dataclass(frozen=True)
+class WeightRequest:
+    """One requested output slot of the weight/style matrix (issue #9).
+
+    ``weight`` and ``italic`` identify the slot (a base face's
+    ``(usWeightClass, italic)``); ``donor_weights`` rewrites the weight
+    mapping for this slot only — donor id → the family weight that must
+    land here, an explicit demand that beats nearest-match.
+    """
+
+    weight: int
+    italic: bool = False
+    donor_weights: dict[str, int] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class Recipe:
     """A parsed recipe, with font paths resolved to absolute locations."""
 
@@ -117,7 +179,11 @@ class Recipe:
     donors: tuple[FontRef, ...]
     rules: tuple[PrecedenceRule, ...] = ()
     named_sets: dict[str, tuple[Interval, ...]] = field(default_factory=dict)
+    normalization: NormalizationOptions = field(
+        default_factory=NormalizationOptions
+    )
     output: OutputSpec = field(default_factory=OutputSpec)
+    weights: tuple[WeightRequest, ...] = ()
 
 
 def load_recipe(path: Path | str) -> Recipe:
@@ -165,15 +231,111 @@ def parse_recipe(data: object, root: Path | str) -> Recipe:
 
     named_sets = _parse_sets(data.get("sets"))
     rules = _parse_rules(data.get("rules"), len(donors), named_sets)
+    normalization = _parse_normalization(data.get("normalization"))
     output = _parse_output(data.get("output"))
+    weights = _parse_weights(data.get("weights"), len(donors))
 
     return Recipe(
         base=base,
         donors=donors,
         rules=rules,
         named_sets=named_sets,
+        normalization=normalization,
         output=output,
+        weights=weights,
     )
+
+
+def _parse_weights(raw: object, donor_count: int) -> tuple[WeightRequest, ...]:
+    """Parse the requested weight/style matrix strictly (issue #9)."""
+    if raw is None:
+        return ()
+    if not isinstance(raw, list) or not raw:
+        raise RecipeError(
+            "recipe field 'weights' must be a non-empty list of slot "
+            "selections (a weight, an optional style, optional donor "
+            "weight overrides)"
+        )
+
+    requests: list[WeightRequest] = []
+    seen: set[tuple[int, bool]] = set()
+    for index, entry in enumerate(raw):
+        where = f"weights[{index}]"
+        if not isinstance(entry, dict):
+            raise RecipeError(
+                f"recipe field '{where}' must be a mapping with the fields "
+                f"{', '.join(repr(f) for f in WEIGHT_FIELDS)}"
+            )
+        unknown = sorted(set(entry) - set(WEIGHT_FIELDS))
+        if unknown:
+            raise RecipeError(
+                f"recipe field '{where}' has unknown field {unknown[0]!r} "
+                f"(a weights entry accepts: "
+                f"{', '.join(repr(f) for f in WEIGHT_FIELDS)})"
+            )
+        if "weight" not in entry:
+            raise RecipeError(
+                f"recipe field '{where}' is missing the required 'weight' "
+                "key (a base face's OS/2 usWeightClass)"
+            )
+
+        weight = _parse_weight(entry["weight"], f"{where}.weight")
+
+        italic = False
+        if "style" in entry:
+            style = entry["style"]
+            if style not in WEIGHT_STYLES:
+                raise RecipeError(
+                    f"recipe field '{where}.style' must be one of: "
+                    f"{', '.join(WEIGHT_STYLES)} (got {style!r})"
+                )
+            italic = style == "italic"
+
+        donor_weights: dict[str, int] = {}
+        if "donors" in entry:
+            raw_donors = entry["donors"]
+            if not isinstance(raw_donors, dict) or not raw_donors:
+                raise RecipeError(
+                    f"recipe field '{where}.donors' must be a non-empty "
+                    "mapping of donor reference to weight "
+                    "(e.g. {donor-0: 300})"
+                )
+            for ref, demanded in raw_donors.items():
+                if (
+                    not isinstance(ref, str)
+                    or ref == "base"
+                    or not _is_font_ref(ref, donor_count)
+                ):
+                    available = [f"donor-{i}" for i in range(donor_count)]
+                    raise RecipeError(
+                        f"recipe field '{where}.donors' keys must reference "
+                        f"a donor in this build: {', '.join(available) or 'none'} "
+                        f"(got {ref!r})"
+                    )
+                donor_weights[ref] = _parse_weight(demanded, f"{where}.donors[{ref!r}]")
+
+        slot = (weight, italic)
+        if slot in seen:
+            raise RecipeError(
+                f"recipe field 'weights' lists weight {weight} "
+                f"({'italic' if italic else 'upright'}) more than once"
+            )
+        seen.add(slot)
+        requests.append(WeightRequest(weight=weight, italic=italic, donor_weights=donor_weights))
+    return tuple(requests)
+
+
+def _parse_weight(value: object, where: str) -> int:
+    """A weight is an integer in the OS/2 usWeightClass range."""
+    if _is_bool(value) or not isinstance(value, int) or not (
+        WEIGHT_MIN <= value <= WEIGHT_MAX
+    ):
+        raise RecipeError(
+            f"recipe field '{where}' must be an integer weight from "
+            f"{WEIGHT_MIN} to {WEIGHT_MAX} (an OS/2 usWeightClass; "
+            f"got {value!r})"
+        )
+    return value
 
 
 def _parse_output(raw: object) -> OutputSpec:
@@ -256,6 +418,68 @@ def _parse_set_body(body: object, where: str) -> tuple[Interval, ...]:
                 f'interval string like "0x4E00-0x9FFF" (got {element!r})'
             )
     return compress_intervals(intervals)
+
+
+def _parse_normalization(raw: object) -> NormalizationOptions:
+    """Parse the optional ``normalization`` block (strictly)."""
+    if raw is None:
+        return NormalizationOptions()
+    if not isinstance(raw, dict):
+        raise RecipeError(
+            "recipe field 'normalization' must be a mapping with any of "
+            f"the fields {', '.join(_NORMALIZATION_FIELDS)}"
+        )
+
+    unknown = sorted(set(raw) - set(_NORMALIZATION_FIELDS))
+    if unknown:
+        raise RecipeError(
+            f"recipe field 'normalization.{unknown[0]}' is unknown "
+            f"(the normalization switches are: "
+            f"{', '.join(_NORMALIZATION_FIELDS)})"
+        )
+
+    mode = GRID
+    if "mode" in raw:
+        mode = raw["mode"]
+        if mode not in MODES:
+            raise RecipeError(
+                f"recipe field 'normalization.mode' must be one of "
+                f"{', '.join(repr(m) for m in MODES)} (got {raw['mode']!r})"
+            )
+
+    ratio = DEFAULT_OPTICAL_RATIO
+    if "optical_ratio" in raw:
+        ratio = raw["optical_ratio"]
+        if _is_bool(ratio) or not isinstance(ratio, (int, float)):
+            raise RecipeError(
+                f"recipe field 'normalization.optical_ratio' must be a "
+                f"positive number (the Han ink to cap height ratio; got "
+                f"{ratio!r})"
+            )
+        ratio = float(ratio)
+        if not math.isfinite(ratio) or ratio <= 0:
+            raise RecipeError(
+                f"recipe field 'normalization.optical_ratio' must be a "
+                f"positive number (the Han ink to cap height ratio; got "
+                f"{ratio!r})"
+            )
+
+    quote_dash_width = HALFWIDTH
+    if "quote_dash_width" in raw:
+        quote_dash_width = raw["quote_dash_width"]
+        if quote_dash_width not in QUOTE_DASH_POLICIES:
+            raise RecipeError(
+                f"recipe field 'normalization.quote_dash_width' must be "
+                f"{FULLWIDTH!r} (the CJK locale convention) or "
+                f"{HALFWIDTH!r} (the UAX #11 default; got "
+                f"{raw['quote_dash_width']!r})"
+            )
+
+    return NormalizationOptions(
+        mode=mode,
+        optical_ratio=ratio,
+        quote_dash_width=quote_dash_width,
+    )
 
 
 def _parse_rules(

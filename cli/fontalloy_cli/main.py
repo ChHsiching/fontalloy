@@ -76,9 +76,12 @@ def build(
     Donor glyphs graft into the base font per the recipe's precedence
     rules, the output identity is rewritten (name table and OS/2, the
     fixed brand default `ChHsich` unless the recipe overrides
-    `output.family`), and every build emits a verification report with
-    per-codepoint provenance and the source font hashes backing
-    reproducibility.
+    `output.family`), and the requested weight/style matrix (the base
+    file's faces by default, a recipe `weights` selection otherwise)
+    emits one merged face per slot with donors matched at the nearest
+    weight. Every build emits a verification report with per-codepoint
+    provenance, the weight borrow table, and the source font hashes
+    backing reproducibility.
     """
     try:
         result = fontalloy_core.build(
@@ -97,6 +100,16 @@ def build(
         f"report {result.report_path} "
         f"({summary['from_base']} from base, {summary['from_donors']} from donors)"
     )
+    # The weight borrow table, stated in the interface too (issue #9):
+    # one line per output slot, every borrow named.
+    for slot in result.report.weights:
+        style = "italic" if slot.italic else "upright"
+        borrows = ", ".join(
+            f"{borrow.donor} from {borrow.weight} ({borrow.via})"
+            + (" upright" if borrow.style_fallback else "")
+            for borrow in slot.borrows
+        )
+        typer.echo(f"weight {slot.weight} {style}: {borrows or 'no donors'}")
 
 
 @app.command()

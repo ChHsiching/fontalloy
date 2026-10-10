@@ -76,6 +76,49 @@ class TestCliBuild:
         assert "base" in result.stderr
 
 
+class TestCliBuildMatrix:
+    """The weight matrix through the executable: borrows stated on stdout."""
+
+    def test_build_states_every_borrow_on_stdout(self, fontalloy_exe, tmp_path, synth_ttc_factory):
+        synth_ttc_factory(
+            tmp_path / "family.ttc",
+            faces=[
+                dict(family="SynthBase", codepoints=BASE_CODEPOINTS, weight=400),
+                dict(
+                    family="SynthBase",
+                    codepoints=BASE_CODEPOINTS,
+                    weight=700,
+                    subfamily="Bold",
+                ),
+            ],
+        )
+        synth_ttc_factory(
+            tmp_path / "cjk.ttc",
+            faces=[
+                dict(family="SynthCJK", weight=400, codepoints=DONOR_CODEPOINTS),
+                dict(family="SynthCJK", weight=600, codepoints=DONOR_CODEPOINTS),
+            ],
+        )
+        recipe = tmp_path / "recipe.yaml"
+        recipe.write_text(
+            "base: family.ttc\ndonors:\n  - cjk.ttc\n"
+            "output:\n  format: ttc\n",
+            encoding="utf-8",
+        )
+
+        result = run_cli(fontalloy_exe, "build", recipe.name, cwd=tmp_path)
+
+        assert result.returncode == 0, result.stderr
+        # The borrow table in the interface: which donor weight landed
+        # in which output weight, chosen how.
+        assert "weight 400 upright: donor-0 from 400 (nearest)" in result.stdout
+        assert "weight 700 upright: donor-0 from 600 (nearest)" in result.stdout
+        report = json.loads(
+            (tmp_path / "recipe.report.json").read_text(encoding="utf-8")
+        )
+        assert [slot["weight"] for slot in report["weights"]] == [400, 700]
+
+
 class TestCliBuildFormat:
     """The output format is a CLI switch over the same core build."""
 

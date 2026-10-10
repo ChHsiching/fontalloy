@@ -48,6 +48,18 @@ _Avoid_: fine-grained control
 The interface that renders the effective merged glyphs one codepoint per cell; click a cell or type a codepoint to set precedence.
 _Avoid_: glyph table, character map
 
+**Weight matrix**:
+The set of output weight/style slots one recipe emits — the base font file's faces by default, a recipe `weights` selection otherwise. Each slot is merged like a single build; donor families match their nearest OS/2 usWeightClass per slot, and a recipe may rewrite the mapping per slot. Nearest match, never interpolation or synthesis.
+_Avoid_: instance set, style bundle
+
+**Borrow**:
+One donor face's landing in one output slot: which donor weight ended up in which output weight, chosen how (nearest, override, or pin). Every borrow is stated in the build report.
+_Avoid_: substitution, weight mix
+
+**Style fallback**:
+A donor family without the requested style contributes its other style (upright, by the terminal convention) to that slot, stated in the borrow. The outlines are always some face's own — never slanted or synthesized.
+_Avoid_: fake italic (that is what this prevents)
+
 ## Normalization
 
 **Normalization**:

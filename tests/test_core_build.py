@@ -416,6 +416,7 @@ class TestBuildProgress:
 
         assert stages == [
             "loading",
+            "planning",
             "resolving",
             "grafting",
             "rewriting",
