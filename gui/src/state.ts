@@ -8,15 +8,58 @@
 
 export type ContentMode = "charmap" | "scene";
 
-/** One local font file loaded through the FontFace(arrayBuffer) path. */
+/** How a font face entered the registry (local file vs catalog download). */
+export type FontOrigin = "local" | "catalog";
+
+/** One font face registered through the FontFace(arrayBuffer) path. */
 export interface LoadedFont {
   /** CSS font-family key the face is registered under (the parsed family). */
   cssFamily: string;
-  /** Display family name (name table, nameID 16 preferred over 1). */
+  /**
+   * Display family name: the parsed name for local files, the catalog
+   * metadata family for downloaded fonts (pickers are metadata-driven).
+   */
   family: string;
   fileName: string;
+  origin: FontOrigin;
   /** Sorted covered codepoints from the cmap table. */
   codepoints: number[];
+}
+
+/* ---------- catalog (issue #17: first-run download) ---------- */
+
+export type CatalogFamilyStatus = "pending" | "downloading" | "verified" | "failed";
+
+/** One catalog family as the UI sees it (metadata family + download state). */
+export interface CatalogFamilyEntry {
+  family: string;
+  status: CatalogFamilyStatus;
+  /** Human-readable failure reason (shown inline, never hover-only). */
+  error?: string;
+}
+
+export type CatalogStatus =
+  /** No bootstrap configured (plain-browser builds and default tests). */
+  | "none"
+  /** Fetching catalog-release.json. */
+  | "bootstrapping"
+  /** Downloading missing families behind the progress screen. */
+  | "downloading"
+  /** Run finished; every metadata family is verified in storage. */
+  | "settled-complete"
+  /** Run finished; some families failed and retry on the next launch. */
+  | "settled-partial"
+  /** Bootstrap failed (offline / bad metadata); local fonts unaffected. */
+  | "unavailable";
+
+export interface CatalogState {
+  status: CatalogStatus;
+  bootstrapError?: string;
+  families: CatalogFamilyEntry[];
+  /** Metadata family -> cssFamily, once the family's face is registered. */
+  registered: Record<string, string>;
+  /** First-run progress screen visible (dismissable; never blocks). */
+  screen: boolean;
 }
 
 export interface AppState {
@@ -31,6 +74,7 @@ export interface AppState {
   page: number;
   /** Codepoint currently selected in the grid (details strip). */
   selectedCodepoint: number | null;
+  catalog: CatalogState;
 }
 
 type Listener = (state: AppState) => void;
@@ -64,6 +108,7 @@ export const store = createStore({
   categoryId: "all",
   page: 1,
   selectedCodepoint: null,
+  catalog: { status: "none", families: [], registered: {}, screen: false },
 });
 
 /** Distinct codepoints covered by the two selected fonts (union). */
