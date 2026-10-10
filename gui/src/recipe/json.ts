@@ -42,6 +42,12 @@ export function recipeJson(draft: RecipeDraft): Record<string, unknown> {
     rules,
   };
 
+  // User-defined named sets (issue #18: partial preset sub-block unions).
+  // Sent only when declared — a recipe without `sets` uses built-ins.
+  if (Object.keys(draft.sets).length > 0) {
+    out.sets = draft.sets;
+  }
+
   // Normalization: omitted entirely at the core defaults, mirroring the
   // YAML writer (a recipe without the block builds with the defaults).
   const normalization: Record<string, unknown> = {};

@@ -85,6 +85,13 @@ export interface RecipeDraft {
   base: FontSlot;
   donors: FontSlot[];
   rules: BuilderRule[];
+  /**
+   * User-defined named sets (issue #18): name -> interval labels in
+   * recipe syntax. The GUI writes partial preset sub-block unions here
+   * (a union that is not itself a built-in set); the builder leaves it
+   * empty. Serialized only when non-empty (the core defaults rule).
+   */
+  sets: Record<string, string[]>;
   normalization: NormalizationDraft;
   weights: WeightSlotDraft[];
   output: { family: string; format: OutputFormat };
@@ -108,6 +115,7 @@ export function defaultDraft(): RecipeDraft {
     base: { catalog: null, path: "", face: null },
     donors: [],
     rules: [],
+    sets: {},
     normalization: {
       mode: "grid",
       opticalRatio: DEFAULT_OPTICAL_RATIO,

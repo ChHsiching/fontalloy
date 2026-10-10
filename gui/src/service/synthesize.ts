@@ -11,6 +11,7 @@
 import { store, type LoadedFont } from "../state";
 import { defaultDraft } from "../recipe/model";
 import { recipeJson } from "../recipe/json";
+import { applyRulesToDraft } from "../precedence/serialize";
 import { saveArtifact } from "../platform/artifacts";
 import { isTauri, readConfig } from "../platform/config";
 import { ServeClient } from "./client";
@@ -193,6 +194,9 @@ export async function synthesize(): Promise<void> {
   const draft = defaultDraft();
   draft.base = { catalog: null, path: enPath, face: null };
   draft.donors = [{ catalog: null, path: cjkPath, face: null }];
+  // The SAME rule state the preview grid resolves (issue #18): the
+  // build and the preview can never drift apart.
+  applyRulesToDraft(draft, store.get().rules);
 
   const client = service.client;
   let submitted;

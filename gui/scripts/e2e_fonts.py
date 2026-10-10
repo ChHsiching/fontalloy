@@ -93,6 +93,13 @@ def main() -> int:
         default=2000,
         help="glyph count of the CJK donor (build duration knob)",
     )
+    parser.add_argument(
+        "--donor-ascii",
+        type=int,
+        default=0,
+        help="the donor ALSO covers the first N ASCII letters "
+        "(overlap knob: makes override cases observable)",
+    )
     args = parser.parse_args()
 
     args.outdir.mkdir(parents=True, exist_ok=True)
@@ -101,12 +108,13 @@ def main() -> int:
         family="AlloyBase",
         codepoints=BASE_CODEPOINTS,
     )
+    donor_codepoints = tuple(
+        range(DONOR_FIRST, DONOR_FIRST + args.donor_glyphs)
+    ) + tuple(range(0x41, 0x41 + args.donor_ascii))
     synth_font(
         args.outdir / "donor.ttf",
         family="AlloyDonor",
-        codepoints=tuple(
-            range(DONOR_FIRST, DONOR_FIRST + args.donor_glyphs)
-        ),
+        codepoints=donor_codepoints,
     )
     print(f"wrote {args.outdir / 'base.ttf'} and {args.outdir / 'donor.ttf'}")
     return 0

@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -30,6 +30,39 @@ export interface ServeFixture {
   baseFont: string;
   donorFont: string;
   dispose: () => Promise<void>;
+}
+
+/** Options for the synthetic fixture fonts. */
+export interface FixtureFontOptions {
+  /** Glyph count of the CJK donor run (build-duration knob). */
+  donorGlyphs?: number;
+  /**
+   * The donor ALSO covers the first N ASCII letters (default 0), so the
+   * two coverages overlap and override cases exist (precedence tests).
+   */
+  donorAscii?: number;
+}
+
+/** Generate the synthetic fixture pair into `fontsDir` (no service). */
+export async function generateFonts(
+  fontsDir: string,
+  options: FixtureFontOptions = {},
+): Promise<{ base: string; donor: string }> {
+  const python = process.env.FONTALLOY_PYTHON ?? "python";
+  const args = [
+    resolve(repoRoot, "gui/scripts/e2e_fonts.py"),
+    fontsDir,
+    "--donor-glyphs",
+    String(options.donorGlyphs ?? 2000),
+  ];
+  if (options.donorAscii) {
+    args.push("--donor-ascii", String(options.donorAscii));
+  }
+  await run(python, args, repoRoot);
+  return {
+    base: resolve(fontsDir, "base.ttf"),
+    donor: resolve(fontsDir, "donor.ttf"),
+  };
 }
 
 /** Run a command to completion, failing loudly with its output. */
@@ -74,23 +107,13 @@ function defaultServeBin(): string {
  * enough to observe progress mid-build.
  */
 export async function startServeFixture(
-  donorGlyphs = 30000,
+  options: number | FixtureFontOptions = 30000,
 ): Promise<ServeFixture> {
+  const fixture: FixtureFontOptions =
+    typeof options === "number" ? { donorGlyphs: options } : options;
   const root = await mkdtemp(resolve(tmpdir(), "fontalloy-e2e-"));
   const fontsDir = resolve(root, "fonts");
-  await mkdir(fontsDir, { recursive: true });
-
-  const python = process.env.FONTALLOY_PYTHON ?? "python";
-  await run(
-    python,
-    [
-      resolve(repoRoot, "gui/scripts/e2e_fonts.py"),
-      fontsDir,
-      "--donor-glyphs",
-      String(donorGlyphs),
-    ],
-    repoRoot,
-  );
+  await generateFonts(fontsDir, fixture);
 
   const bin = process.env.FONTALLOY_SERVE_BIN ?? defaultServeBin();
   const child: ChildProcess = spawn(

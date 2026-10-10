@@ -392,6 +392,12 @@ button {
   font-size: 12.5px;
   color: var(--text-dim);
   font-variant-numeric: tabular-nums;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.charmap-details > div:first-child {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1086,4 +1092,242 @@ button {
   font-size: 11px;
   line-height: 1.5;
   color: var(--text-dim);
+}
+
+/* ---------- precedence editing and the effective grid (issue #18) ---------- */
+
+/* Cells state their resolution: an override is an adjusted state and
+   carries the accent (ADR-0004); uncovered cells recede. */
+
+.cell.is-override {
+  border-color: var(--accent);
+}
+
+.cell.is-uncovered .cell-char {
+  opacity: 0.38;
+}
+
+.page-cp-box {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 12px;
+}
+
+.page-cp-box input {
+  width: 130px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.page-cp-box button,
+.add-rule-button,
+.cp-rule-actions button {
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--panel-2);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.12s ease, transform 0.12s ease;
+}
+
+.page-cp-box button:not(:disabled):hover,
+.add-rule-button:hover,
+.cp-rule-actions button:not(:disabled):hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: scale(1.02);
+}
+
+/* The single-codepoint editor lives under the details facts. */
+
+.cp-rule-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 560px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.cp-rule-title {
+  color: var(--text-faint);
+  font-size: 11.5px;
+}
+
+.cp-rule-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.cp-rule-actions button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Ordered font lists: shared by the cell editor and the rail rows. */
+
+.rule-fonts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rule-font-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.rule-font-line label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.rule-font-move {
+  padding: 1px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.rule-font-move:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.rule-font-move:not(:disabled):hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* The rail's rule list. */
+
+.rule-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.rule-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rule-list-empty {
+  color: var(--text-faint);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.rule-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.rule-row.is-preset {
+  border-color: var(--border-strong);
+}
+
+.rule-row-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.rule-target-label {
+  color: var(--text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.rule-effective-set {
+  color: var(--accent);
+  font-size: 11.5px;
+}
+
+.rule-cp-input,
+.rule-range-input {
+  width: 96px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.rule-remove {
+  margin-left: auto;
+  padding: 2px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text-faint);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.rule-remove:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.rule-subblocks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.rule-subblock {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.rule-subblock input:disabled {
+  opacity: 0.45;
+}
+
+/* The preset picker reuses the picker popup chrome; its rows carry the
+   codepoint count on the right. */
+
+.preset-picker-popup .picker-row {
+  gap: 10px;
+}
+
+.preset-picker-popup .picker-row-tag {
+  margin-left: auto;
 }

@@ -1,4 +1,5 @@
 import { store, selectedCoverage } from "../state";
+import { completeRules } from "../precedence/model";
 import { categoryName, pageCountFor } from "../unicode/blocks";
 
 /**
@@ -23,7 +24,9 @@ export function mountStatsbar(root: HTMLElement): void {
     q("coverage").textContent = selectedCoverage(state).length.toLocaleString(
       "en-US",
     );
-    q("rules").textContent = "0";
+    // Complete rules only — a row still being typed is not a rule yet,
+    // and this count is what the recipe will declare.
+    q("rules").textContent = String(completeRules(state.rules).length);
     q("category").textContent = `分类：${categoryName(state.categoryId)}`;
     q("page").textContent = `第 ${state.page} / ${pageCountFor(state.categoryId)} 页`;
   };

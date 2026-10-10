@@ -6,6 +6,8 @@
  * rebuild only), so each UI region subscribes and patches itself.
  */
 
+import type { EditorRule } from "./precedence/model";
+
 export type ContentMode = "charmap" | "scene";
 
 /** How a font face entered the registry (local file vs catalog download). */
@@ -80,6 +82,12 @@ export interface AppState {
   page: number;
   /** Codepoint currently selected in the grid (details strip). */
   selectedCodepoint: number | null;
+  /**
+   * The precedence rules under edit (issue #18): the single rule state
+   * the preview grid resolves client-side AND the synthesize flow
+   * serializes — one source of truth.
+   */
+  rules: EditorRule[];
   catalog: CatalogState;
 }
 
@@ -116,6 +124,7 @@ export const store = createStore<AppState>({
   categoryId: "all",
   page: 1,
   selectedCodepoint: null,
+  rules: [],
   catalog: { status: "none", families: [], registered: {}, screen: false },
 });
 
