@@ -1,0 +1,24 @@
+# The thin shell: a typer CLI that calls fontalloy-core directly (ADR-0002).
+[project]
+name = "fontalloy"
+version = "0.1.0"
+description = "FontAlloy command line: merge multiple fonts into one, driven by codepoint rules"
+requires-python = ">=3.11"
+license = "AGPL-3.0-only"
+dependencies = [
+    "fontalloy-core",
+    "typer>=0.12",
+]
+
+[project.scripts]
+fontalloy = "fontalloy_cli.main:app"
+
+[tool.uv.sources]
+fontalloy-core = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["fontalloy_cli"]
