@@ -11,17 +11,20 @@ The only capability layer (ADR-0002). Public surface:
 
 from __future__ import annotations
 
-from fontalloy_core.build import build
+from fontalloy_core.build import BuildOutput, build
 from fontalloy_core.errors import BuildError, FontAlloyError, RecipeError
 from fontalloy_core.recipe import Recipe, load_recipe
+from fontalloy_core.report import VerificationReport
 
 __version__ = "0.1.0"
 
 __all__ = [
     "BuildError",
+    "BuildOutput",
     "FontAlloyError",
     "Recipe",
     "RecipeError",
+    "VerificationReport",
     "build",
     "load_recipe",
 ]

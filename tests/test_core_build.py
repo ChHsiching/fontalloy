@@ -9,9 +9,15 @@ generated with fontTools — never catalog binaries.
 
 from __future__ import annotations
 
-import pytest
+import hashlib
+import json
+from pathlib import Path
 
-from fontalloy_core import RecipeError, build
+import pytest
+from fontTools.ttLib import TTFont
+
+from conftest import BASE_CODEPOINTS, DONOR_CODEPOINTS
+from fontalloy_core import BuildError, RecipeError, build
 
 
 class TestRecipeValidation:
@@ -74,3 +80,163 @@ class TestRecipeValidation:
 
         with pytest.raises(RecipeError, match=r"donors\[0\]"):
             build(recipe, tmp_path / "out.ttf")
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _load_report(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+class TestBuild:
+    """The tracer bullet: recipe + fonts in, valid TTF + report v0 out."""
+
+    def test_output_is_a_valid_ttf_pass_through(self, recipe_file, tmp_path):
+        output = tmp_path / "out.ttf"
+
+        result = build(recipe_file, output)
+
+        font = TTFont(result.font_path)  # reloads cleanly in fontTools
+        assert font["head"].unitsPerEm == 1000  # the base is the container
+        # v0 is base pass-through: donor glyphs are not grafted yet, so the
+        # output covers exactly the base coverage.
+        assert set(font.getBestCmap()) == set(BASE_CODEPOINTS)
+
+    def test_every_build_emits_a_report_with_provenance(self, recipe_file, tmp_path):
+        output = tmp_path / "out.ttf"
+
+        result = build(recipe_file, output)
+
+        assert result.report_path == tmp_path / "out.report.json"
+        report = _load_report(result.report_path)
+        entries = {entry["codepoint"]: entry for entry in report["provenance"]}
+        assert entries[0x41]["winner"] == "base"
+        assert entries[0x41]["in_output"] is True
+        # The donor's disjoint coverage is attributed to the donor even
+        # though its glyphs are not grafted yet.
+        assert entries[0x4E2D]["winner"] == "donor-0"
+        assert entries[0x4E2D]["in_output"] is False
+        assert report["summary"] == {
+            "codepoints_total": 4,
+            "from_base": 2,
+            "from_donors": 2,
+            "output_codepoints": 2,
+        }
+
+    def test_report_records_source_font_hashes(self, recipe_file, tmp_path,
+                                               base_font, donor_font):
+        result = build(recipe_file, tmp_path / "out.ttf")
+
+        report = _load_report(result.report_path)
+        sources = {record["id"]: record for record in report["sources"]}
+        assert sources["base"]["sha256"] == _sha256(base_font)
+        assert sources["donor-0"]["sha256"] == _sha256(donor_font)
+
+    def test_repeated_builds_are_byte_identical(self, recipe_file, tmp_path):
+        output = tmp_path / "out.ttf"
+        report_path = tmp_path / "out.report.json"
+
+        build(recipe_file, output, report_path=report_path)
+        font_bytes = output.read_bytes()
+        report_bytes = report_path.read_bytes()
+
+        build(recipe_file, output, report_path=report_path)
+        assert output.read_bytes() == font_bytes
+        assert report_path.read_bytes() == report_bytes
+
+    def test_recipe_paths_resolve_against_the_recipe_file(
+        self, tmp_path, synth_font_factory, monkeypatch
+    ):
+        shared = tmp_path / "shared"
+        shared.mkdir()
+        synth_font_factory(
+            shared / "base.ttf", family="SynthBase", codepoints=BASE_CODEPOINTS
+        )
+        synth_font_factory(
+            shared / "donor.ttf", family="SynthDonor", codepoints=DONOR_CODEPOINTS
+        )
+        (shared / "recipe.yaml").write_text(
+            "base: base.ttf\ndonors:\n  - donor.ttf\n", encoding="utf-8"
+        )
+        monkeypatch.chdir(tmp_path)  # run from elsewhere: cwd must not matter
+
+        result = build(shared / "recipe.yaml", tmp_path / "out.ttf")
+
+        assert set(TTFont(result.font_path).getBestCmap()) == set(BASE_CODEPOINTS)
+
+    def test_missing_donor_file_is_a_clear_error(self, tmp_path, base_font):
+        recipe = tmp_path / "recipe.yaml"
+        recipe.write_text(
+            f"base: {base_font.name}\ndonors:\n  - nope.ttf\n", encoding="utf-8"
+        )
+
+        with pytest.raises(BuildError, match="nope.ttf"):
+            build(recipe, tmp_path / "out.ttf")
+
+    def test_donor_that_is_not_a_font_is_a_clear_error(self, tmp_path, base_font):
+        junk = tmp_path / "junk.txt"
+        junk.write_text("this is not a font", encoding="utf-8")
+        recipe = tmp_path / "recipe.yaml"
+        recipe.write_text(
+            f"base: {base_font.name}\ndonors:\n  - {junk.name}\n", encoding="utf-8"
+        )
+
+        with pytest.raises(BuildError, match="font"):
+            build(recipe, tmp_path / "out.ttf")
+
+    def test_base_without_unicode_coverage_is_a_clear_error(self, tmp_path):
+        junk = tmp_path / "junk.txt"
+        junk.write_text("not a font either", encoding="utf-8")
+        recipe = tmp_path / "recipe.yaml"
+        recipe.write_text(f"base: {junk.name}\ndonors: []\n", encoding="utf-8")
+
+        with pytest.raises(BuildError, match="font"):
+            build(recipe, tmp_path / "out.ttf")
+
+    def test_empty_donor_list_builds_the_base_alone(self, tmp_path, base_font):
+        recipe = tmp_path / "recipe.yaml"
+        recipe.write_text(f"base: {base_font.name}\ndonors: []\n", encoding="utf-8")
+
+        result = build(recipe, tmp_path / "out.ttf")
+
+        report = _load_report(result.report_path)
+        assert all(entry["winner"] == "base" for entry in report["provenance"])
+        assert report["summary"]["from_donors"] == 0
+        assert set(TTFont(result.font_path).getBestCmap()) == set(BASE_CODEPOINTS)
+
+    def test_default_precedence_base_first_then_donors_in_join_order(
+        self, tmp_path, synth_font_factory
+    ):
+        base = synth_font_factory(
+            tmp_path / "base.ttf", family="SynthBase", codepoints=BASE_CODEPOINTS
+        )
+        # donor-0 shares 0x41 with the base and owns 0x4E2D;
+        # donor-1 owns 0x4E2D and 0x56FD.
+        donor0 = synth_font_factory(
+            tmp_path / "donor0.ttf",
+            family="SynthDonorZero",
+            codepoints=(0x41, 0x4E2D),
+        )
+        donor1 = synth_font_factory(
+            tmp_path / "donor1.ttf",
+            family="SynthDonorOne",
+            codepoints=(0x4E2D, 0x56FD),
+        )
+        recipe = tmp_path / "recipe.yaml"
+        recipe.write_text(
+            f"base: {base.name}\ndonors:\n  - {donor0.name}\n  - {donor1.name}\n",
+            encoding="utf-8",
+        )
+
+        result = build(recipe, tmp_path / "out.ttf")
+
+        report = _load_report(result.report_path)
+        winners = {entry["codepoint"]: entry["winner"] for entry in report["provenance"]}
+        # The base is never displaced without an explicit rule.
+        assert winners[0x41] == "base"
+        # Donors fill in join order...
+        assert winners[0x4E2D] == "donor-0"
+        # ...and absence never overrides: donor-1 wins only what donor-0 lacks.
+        assert winners[0x56FD] == "donor-1"
