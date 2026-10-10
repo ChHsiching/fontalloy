@@ -11,6 +11,7 @@
 import { store, type LoadedFont } from "../state";
 import { defaultDraft } from "../recipe/model";
 import { recipeJson } from "../recipe/json";
+import { applySettingsToDraft, fileFaceSlots } from "../recipe/settings";
 import { applyRulesToDraft } from "../precedence/serialize";
 import { saveArtifact } from "../platform/artifacts";
 import { isTauri, readConfig } from "../platform/config";
@@ -197,6 +198,18 @@ export async function synthesize(): Promise<void> {
   // The SAME rule state the preview grid resolves (issue #18): the
   // build and the preview can never drift apart.
   applyRulesToDraft(draft, store.get().rules);
+  // The synthesis settings (issue #19): baseline / CJK width land in
+  // the normalization block, the weight merge mode in the weights
+  // selection (face data from the service's own /fonts index).
+  const faces = synthStore.get().service.fontsIndex?.families.flatMap(
+    (family) => family.faces,
+  ) ?? [];
+  applySettingsToDraft(
+    draft,
+    store.get().settings,
+    fileFaceSlots(faces, enPath),
+    fileFaceSlots(faces, cjkPath),
+  );
 
   const client = service.client;
   let submitted;

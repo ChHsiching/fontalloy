@@ -1,16 +1,19 @@
 import { mountPicker, type FontPicker } from "./picker";
 import { mountPresetSection, mountRulesSection } from "./rulelist";
+import { mountSettings } from "./settings";
 
 /**
  * The fixed 260px left column (ADR-0004): English font, CJK font,
  * character scope (language presets, issue #18), custom rules (issue
- * #18), synthesis settings (placeholder for a later ticket).
+ * #18), synthesis settings (issue #19: weight merge mode, baseline
+ * alignment, CJK width — each with a worked-example ?-popover).
  */
 export function mountRail(root: HTMLElement): { en: FontPicker; cjk: FontPicker } {
   const enSlot = document.createElement("div");
   const cjkSlot = document.createElement("div");
   const presetSlot = document.createElement("div");
   const rulesSlot = document.createElement("div");
+  const settingsSlot = document.createElement("div");
 
   const sections: Array<[string, string | null, HTMLElement | null]> = [
     ["英文字体", "基底：合成结果继承它的度量与身份", enSlot],
@@ -25,7 +28,11 @@ export function mountRail(root: HTMLElement): { en: FontPicker; cjk: FontPicker 
       "码位/区间 → 有序字体列表。窄者胜；同层后声明的胜；字体缺失不覆盖。",
       rulesSlot,
     ],
-    ["合成设置", "网格比例、基线与宽度策略等合成参数将在后续版本开放。", null],
+    [
+      "合成设置",
+      "字重合并方式、中英文的基线对齐与中文字符宽度；每项的「?」给出实例对照表。",
+      settingsSlot,
+    ],
   ];
 
   let delay = 60;
@@ -65,5 +72,6 @@ export function mountRail(root: HTMLElement): { en: FontPicker; cjk: FontPicker 
   });
   mountPresetSection(presetSlot);
   mountRulesSection(rulesSlot);
+  mountSettings(settingsSlot);
   return { en, cjk };
 }
