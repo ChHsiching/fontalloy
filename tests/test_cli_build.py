@@ -13,7 +13,12 @@ from pathlib import Path
 import pytest
 from fontTools.ttLib import TTFont
 
-from conftest import BASE_CODEPOINTS, fontalloy_exe, run_cli  # noqa: F401
+from conftest import (  # noqa: F401
+    BASE_CODEPOINTS,
+    DONOR_CODEPOINTS,
+    fontalloy_exe,
+    run_cli,
+)
 
 pytest.register_assert_rewrite("conftest")
 
@@ -24,7 +29,11 @@ class TestCliBuild:
 
         assert result.returncode == 0, result.stderr
         output = recipe_file.parent / "recipe.ttf"
-        assert set(TTFont(output).getBestCmap()) == set(BASE_CODEPOINTS)
+        # Grafted output: the union of the effective table (base + donor).
+        assert set(TTFont(output).getBestCmap()) == {
+            *BASE_CODEPOINTS,
+            *DONOR_CODEPOINTS,
+        }
         report = json.loads(
             (recipe_file.parent / "recipe.report.json").read_text(encoding="utf-8")
         )
@@ -50,7 +59,9 @@ class TestCliBuild:
         report = json.loads(
             (recipe_file.parent / "merged-report.json").read_text(encoding="utf-8")
         )
-        assert report["summary"]["output_codepoints"] == len(BASE_CODEPOINTS)
+        assert report["summary"]["output_codepoints"] == len(
+            BASE_CODEPOINTS
+        ) + len(DONOR_CODEPOINTS)
         assert not (recipe_file.parent / "recipe.ttf").exists()
 
     def test_recipe_error_exits_nonzero_with_a_clear_message(

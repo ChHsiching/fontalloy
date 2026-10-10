@@ -66,9 +66,10 @@ class TestCollectionInput:
 
         result = build(recipe, tmp_path / "out.ttf")
 
-        # v0 passes the base through: the output IS the selected face.
+        # The output IS the selected face, with the donor's grafted
+        # coverage on top (issue #5 superseded the v0 pass-through).
         font = TTFont(result.font_path)
-        assert set(font.getBestCmap()) == {0x4E2D, 0x56FD}
+        assert set(font.getBestCmap()) == {0x4E2D, 0x4E60, 0x56FD}
         assert font["OS/2"].usWeightClass == 700
 
     def test_collection_donor_contributes_the_selected_faces_coverage(
@@ -179,7 +180,8 @@ class TestVariableInput:
         assert "fvar" not in font  # instantiated to static, not merged as variable
         assert "gvar" not in font
         assert font["OS/2"].usWeightClass == 400  # the axis default
-        assert set(font.getBestCmap()) == set(self.VAR_CODEPOINTS)
+        # The donor's coverage is grafted on top of the instantiated base.
+        assert set(font.getBestCmap()) == {*self.VAR_CODEPOINTS, 0x56FD}
 
     def test_recipe_pinned_instance_values_are_applied(
         self, tmp_path, variable_font
@@ -245,7 +247,11 @@ class TestVariableInput:
         report = _load_report(result.report_path)
         winners = {e["codepoint"]: e["winner"] for e in report["provenance"]}
         assert winners[0x4E2D] == "donor-0"  # instantiated donor still fills CJK
-        assert set(TTFont(result.font_path).getBestCmap()) == set(BASE_CODEPOINTS)
+        # ...and its glyphs are really in the output font (grafted).
+        assert set(TTFont(result.font_path).getBestCmap()) == {
+            *BASE_CODEPOINTS,
+            *self.VAR_CODEPOINTS,
+        }
 
     def test_pinning_an_axis_the_font_does_not_have_is_a_clear_error(
         self, tmp_path, base_font, variable_font
@@ -328,7 +334,13 @@ class TestWoff2Input:
 
         report = _load_report(result.report_path)
         assert report["summary"]["from_donors"] == 2
-        assert set(TTFont(result.font_path).getBestCmap()) == set(BASE_CODEPOINTS)
+        # "Contributes" is now literal: the decoded donor's glyphs are
+        # grafted into the output font, not just reported.
+        assert set(TTFont(result.font_path).getBestCmap()) == {
+            *BASE_CODEPOINTS,
+            0x4E2D,
+            0x56FD,
+        }
 
     def test_woff2_builds_are_byte_deterministic(self, tmp_path):
         woff2 = synth_woff2(
