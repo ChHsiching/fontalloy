@@ -155,6 +155,10 @@ test.describe("sidecar synthesize", () => {
       await expect(panel).toContainText("26");
       await expect(panel).toContainText("来自供体");
       await expect(panel).toContainText("30,000");
+      // v2 sections: coverage scope and before/after metrics render too.
+      await expect(panel).toContainText("覆盖范围");
+      await expect(panel).toContainText("度量对比");
+      await expect(panel).toContainText("行高未触动");
       await expect(panel).toContainText("fontalloy/verification-report");
 
       // An open-overlay screenshot of the completed build: the panel with

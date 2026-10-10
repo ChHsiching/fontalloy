@@ -60,7 +60,7 @@ export interface SubmitResult {
   href: string;
 }
 
-/** The machine form of the verification report (schema v1 fields used). */
+/** The machine form of the verification report (schema v2 fields used). */
 export interface ReportDocument {
   schema?: string;
   output?: { path?: string; sha256?: string; format?: string };
@@ -82,12 +82,35 @@ export interface ReportDocument {
     base_face?: number;
     borrows?: Array<{
       donor?: string;
+      family?: string;
       weight?: number;
       style?: string;
       via?: string;
       style_fallback?: boolean;
     }>;
   }>;
+  /** v2: the effective-table scope versus the built font's cmap. */
+  coverage?: {
+    overall?: {
+      requested?: number;
+      covered?: number;
+      missing_total?: number;
+      missing_truncated?: boolean;
+    };
+    rules?: unknown[];
+  };
+  /** v2: before/after metrics per output face. */
+  metrics?: {
+    faces?: Array<{
+      weight?: number;
+      style?: string;
+      upem?: { base?: number; output?: number };
+      latin_advance?: { base?: number; output?: number };
+      cjk_advance?: { base?: number; output?: number };
+      grid_ratio?: number;
+      line_height_untouched?: { hhea?: boolean; typo?: boolean };
+    }>;
+  };
   summary?: {
     codepoints_total?: number;
     from_base?: number;

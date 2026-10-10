@@ -50,8 +50,10 @@ function statusText(row: BuildRow): string {
   }
 }
 
-function fmt(value: number | undefined): string {
-  return value === undefined ? "—" : value.toLocaleString("en-US");
+/** Number rendering; null/missing fields render as an em dash (v2
+ *  omits or nulls metric fields it could not compute). */
+function fmt(value: number | null | undefined): string {
+  return typeof value === "number" ? value.toLocaleString("en-US") : "—";
 }
 
 function basename(path: string | undefined): string {
@@ -74,11 +76,14 @@ function fact(label: string, value: string): HTMLDivElement {
 }
 
 /**
- * Render the verification report — the machine JSON, structured. Every
- * section degrades to omission when the schema lacks it, so a report
- * from an older or newer core still renders what it carried (the human
- * rendering from issue #12 will replace the internals of this
- * function, not its contract).
+ * Render the verification report — the machine JSON (schema v2),
+ * structured. Every section degrades to omission when the schema lacks
+ * it, so a report from an older or newer core still renders what it
+ * carried. The core's human form (render_html, issue #12) is a
+ * core-side generator not exposed over the serve contract — the WebApp
+ * (#22) renders the machine JSON client-side too; when the contract
+ * ever serves the human form, it replaces the internals of this
+ * function, not its contract.
  */
 function renderReport(
   container: HTMLElement,
@@ -150,6 +155,53 @@ function renderReport(
     container.appendChild(section);
   }
 
+  // v2's coverage scope: the effective table versus the built cmap —
+  // the honest readback (a nonzero missing means the graft dropped
+  // something it had resolved).
+  const overall = report.coverage?.overall;
+  if (overall !== undefined) {
+    const section = document.createElement("div");
+    section.className = "report-section";
+    const title = document.createElement("div");
+    title.className = "report-section-title";
+    title.textContent = "覆盖范围";
+    section.appendChild(title);
+    section.append(fact("请求码位", fmt(overall.requested)));
+    section.append(fact("实际覆盖", fmt(overall.covered)));
+    section.append(fact("缺口", fmt(overall.missing_total)));
+    container.appendChild(section);
+  }
+
+  // v2's before/after metrics, face 0 (the flat sections describe it).
+  const face = report.metrics?.faces?.[0];
+  if (face !== undefined) {
+    const section = document.createElement("div");
+    section.className = "report-section";
+    const title = document.createElement("div");
+    title.className = "report-section-title";
+    title.textContent = "度量对比";
+    section.appendChild(title);
+    const pair = (
+      label: string,
+      p: { base?: number; output?: number } | undefined,
+    ): void => {
+      if (p?.base !== undefined || p?.output !== undefined) {
+        section.append(fact(label, `${fmt(p?.base)} → ${fmt(p?.output)}`));
+      }
+    };
+    pair("upem", face.upem);
+    pair("拉丁步进", face.latin_advance);
+    pair("中日韩步进", face.cjk_advance);
+    if (face.grid_ratio !== undefined) {
+      section.append(fact("网格比例", fmt(face.grid_ratio)));
+    }
+    const untouched = face.line_height_untouched;
+    if (untouched?.hhea || untouched?.typo) {
+      section.append(fact("行高未触动", "是（hhea/typo 继承基底）"));
+    }
+    container.appendChild(section);
+  }
+
   if (report.weights && report.weights.length > 0) {
     const section = document.createElement("div");
     section.className = "report-section";
@@ -161,7 +213,7 @@ function renderReport(
       const borrows = (slot.borrows ?? [])
         .map(
           (borrow) =>
-            `${borrow.donor ?? "?"} ← ${fmt(borrow.weight)}（${
+            `${borrow.family ?? borrow.donor ?? "?"} ← ${fmt(borrow.weight)}（${
               borrow.via ?? "?"
             }）`,
         )
