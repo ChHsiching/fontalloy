@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 from fontTools.fontBuilder import FontBuilder
+from fontTools.pens.t2CharStringPen import T2CharStringPen
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 
 #: Coverage of the default base fixture: two Latin codepoints.
@@ -63,6 +64,93 @@ def _box_glyph(x_min: int, y_min: int, x_max: int, y_max: int):
     pen.lineTo((x_min, y_max))
     pen.closePath()
     return pen.glyph()
+
+
+def _composite_glyph(component: str, dx: int, dy: int, glyph_set: dict):
+    pen = TTGlyphPen(glyph_set)
+    pen.addComponent(component, (1, 0, 0, 1, dx, dy))
+    return pen.glyph()
+
+
+def synth_composite_font(
+    path: Path | str,
+    *,
+    family: str,
+    upem: int = 1000,
+    advance: int = 600,
+) -> Path:
+    """Write a donor whose mapped glyph is a nested composite.
+
+    The mapped codepoint 0x4E09 draws as a composite over the unmapped
+    glyph ``uni4E8C``, itself a composite over the unmapped simple glyph
+    ``uni4E00`` — two closure levels that only the unmapped chain can
+    exercise. Offsets are distinct so re-pointing is observable.
+    """
+    glyph_names = [".notdef", "uni4E00", "uni4E8C", "uni4E09"]
+    glyphs: dict[str, object] = {
+        ".notdef": _box_glyph(0, 0, 500, 700),
+        "uni4E00": _box_glyph(0, 0, 400, 350),
+    }
+    # Composites are built over the growing glyph set (the pen validates
+    # component names against it), in dependency order.
+    glyphs["uni4E8C"] = _composite_glyph("uni4E00", 100, 50, glyphs)
+    glyphs["uni4E09"] = _composite_glyph("uni4E8C", -30, 20, glyphs)
+    builder = FontBuilder(unitsPerEm=upem, isTTF=True)
+    builder.setupGlyphOrder(glyph_names)
+    builder.setupCharacterMap({0x4E09: "uni4E09"})
+    builder.setupGlyf(glyphs)  # type: ignore[arg-type]
+    builder.setupHorizontalMetrics({name: (advance, 40) for name in glyph_names})
+    builder.setupHorizontalHeader(ascent=800, descent=-200)
+    builder.setupOS2(sTypoAscender=800, sTypoDescender=-200, usWeightClass=400)
+    builder.setupNameTable({"familyName": family, "styleName": "Regular"})
+    builder.setupPost()
+    builder.setupHead(created=FIXED_TIMESTAMP, modified=FIXED_TIMESTAMP)
+    builder.save(path)
+    return Path(path)
+
+
+def _t2_box_glyph(x_min: int, y_min: int, x_max: int, y_max: int, advance: int):
+    pen = T2CharStringPen(advance, None)
+    pen.moveTo((x_min, y_min))
+    pen.lineTo((x_max, y_min))
+    pen.lineTo((x_max, y_max))
+    pen.lineTo((x_min, y_max))
+    pen.closePath()
+    return pen.getCharString()
+
+
+def synth_cff_font(
+    path: Path | str,
+    *,
+    family: str,
+    upem: int = 1000,
+    advance: int = 600,
+) -> Path:
+    """Write a CFF (OTF) donor covering 0x4E2D and 0x56FD.
+
+    CFF charstrings are built with T2CharStringPen (plain TrueType
+    ``Glyph`` objects do not compile into CFF). Distinct ink heights per
+    codepoint keep glyphs traceable to the donor, like the TTF fixtures.
+    """
+    glyph_names = [".notdef", "uni4E2D", "uni56FD"]
+    glyphs = {
+        ".notdef": _t2_box_glyph(0, 0, 500, 700, advance),
+        "uni4E2D": _t2_box_glyph(40, 0, advance - 40, 400, advance),
+        "uni56FD": _t2_box_glyph(40, 0, advance - 40, 500, advance),
+    }
+
+    builder = FontBuilder(unitsPerEm=upem, isTTF=False)
+    builder.setupGlyphOrder(glyph_names)
+    builder.setupCharacterMap({0x4E2D: "uni4E2D", 0x56FD: "uni56FD"})
+    builder.setupCFF(family, {"FullName": family}, glyphs, {})
+    builder.setupHorizontalMetrics({name: (advance, 40) for name in glyph_names})
+    builder.setupHorizontalHeader(ascent=800, descent=-200)
+    builder.setupOS2(sTypoAscender=800, sTypoDescender=-200, usWeightClass=400)
+    builder.setupNameTable({"familyName": family, "styleName": "Regular"})
+    builder.setupPost()
+    builder.setupHead(created=FIXED_TIMESTAMP, modified=FIXED_TIMESTAMP)
+    builder.save(path)
+    return Path(path)
 
 
 @pytest.fixture
