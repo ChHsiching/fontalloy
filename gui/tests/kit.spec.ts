@@ -197,6 +197,13 @@ test.describe("kit demo page", () => {
       frameBox!.y + frameBox!.height + 1,
     );
 
+    // Containment at the clamped height: the card scrolls internally
+    // (the prototype's #wtpop discipline) — its closing paragraphs never
+    // paint past the rounded bottom edge onto the rail.
+    expect(
+      await pop.evaluate((el) => getComputedStyle(el).overflowY),
+    ).toBe("auto");
+
     await page.keyboard.press("Escape");
     await expect(pop).toBeHidden();
   });

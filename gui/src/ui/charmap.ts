@@ -219,14 +219,116 @@ function blockAssignment(block: UnicodeBlock): FontSide | "" {
   return "";
 }
 
-/** The side EVERY block of a group is assigned to ("" otherwise). */
-function groupAssignment(blocks: readonly UnicodeBlock[]): FontSide | "" {
+/* -------- default sides (active-chip prototype parity) -------------- */
+
+/**
+ * The side a block carries WITHOUT any rule — the prototype's static
+ * per-block default `d` (its chips read `S.bf[b.id] || b.d`), computed
+ * from the actual coverages instead: the side every COVERED codepoint of
+ * the block resolves to under the no-rules default (base keeps what it
+ * holds, the donor fills the rest). Codepoints neither pick covers are
+ * outside the merge and don't vote.
+ *
+ * Returns null for a NEUTRAL block (nothing covered — no vote in the
+ * group aggregate) and "" for a MIXED block (veto).
+ */
+function sweepDefaultSide(
+  block: UnicodeBlock,
+  base: readonly number[] | null,
+  donor: readonly number[] | null,
+): FontSide | "" | null {
+  if (base === null && donor === null) return null;
+  // Two pointers over the sorted coverages, swept along the block span.
+  let bi = lowerBound(base, block.start);
+  let di = lowerBound(donor, block.start);
+  let side: FontSide | "" | null = null;
+  for (let cp = block.start; cp <= block.end; cp++) {
+    if (bi >= (base?.length ?? 0) && di >= (donor?.length ?? 0)) break;
+    if (base) while (bi < base.length && base[bi]! < cp) bi++;
+    if (donor) while (di < donor.length && donor[di]! < cp) di++;
+    const hasBase = base !== null && base[bi] === cp;
+    const hasDonor = donor !== null && donor[di] === cp;
+    if (!hasBase && !hasDonor) continue;
+    const current: FontSide = hasBase ? "base" : "donor";
+    if (side === null) side = current;
+    else if (side !== current) return "";
+  }
+  return side;
+}
+
+/** First index of `sorted` whose value is >= `cp` (binary search). */
+function lowerBound(
+  sorted: readonly number[] | null,
+  cp: number,
+): number {
+  if (sorted === null) return 0;
+  let lo = 0;
+  let hi = sorted.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (sorted[mid]! < cp) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+let defaultSidesMemo: {
+  key: string;
+  sides: Map<string, FontSide | "" | null>;
+} | null = null;
+
+/** The default side per block id, memoized on the pick pair. */
+function defaultSideMap(picks: PickRefs): Map<string, FontSide | "" | null> {
+  const key = `${picks.base?.cssFamily ?? ""}|${picks.donor?.cssFamily ?? ""}`;
+  if (defaultSidesMemo && defaultSidesMemo.key === key) {
+    return defaultSidesMemo.sides;
+  }
+  const base = picks.base?.codepoints ?? null;
+  const donor = picks.donor?.codepoints ?? null;
+  const sides = new Map<string, FontSide | "" | null>();
+  for (const block of ALL_BLOCKS) {
+    sides.set(block.id, sweepDefaultSide(block, base, donor));
+  }
+  defaultSidesMemo = { key, sides };
+  return sides;
+}
+
+/**
+ * The side a block EFFECTIVELY carries: its explicit exact rule, else
+ * its no-rules default. This is what the segment chips render pressed
+ * (prototype parity — the prototype's default side shows bold too).
+ */
+function effectiveBlockSide(
+  block: UnicodeBlock,
+  picks: PickRefs,
+): FontSide | "" {
+  const explicit = blockAssignment(block);
+  if (explicit !== "") return explicit;
+  return defaultSideMap(picks).get(block.id) ?? "";
+}
+
+/**
+ * The side every non-neutral block of a group carries ("" when they
+ * disagree or any covered block is mixed; neutral blocks — nothing
+ * covered, no explicit rule — don't vote).
+ */
+function effectiveGroupSide(
+  blocks: readonly UnicodeBlock[],
+  picks: PickRefs,
+): FontSide | "" {
   let side: FontSide | "" = "";
   for (const block of blocks) {
-    const current = blockAssignment(block);
-    if (current === "") return "";
-    if (side === "") side = current;
-    else if (side !== current) return "";
+    const explicit = blockAssignment(block);
+    if (explicit !== "") {
+      if (side === "") side = explicit;
+      else if (side !== explicit) return "";
+      continue;
+    }
+    const def = defaultSideMap(picks).get(block.id);
+    if (def === null || def === undefined) continue;
+    if (def === "") return "";
+    if (side === "") side = def;
+    else if (side !== def) return "";
   }
   return side;
 }
@@ -234,7 +336,8 @@ function groupAssignment(blocks: readonly UnicodeBlock[]): FontSide | "" {
 /**
  * Assign one block to a side through the rule state: an exact range
  * rule with the side's ref as the only font. Assigning the side the
- * block already carries REVERTS it to default (prototype parity).
+ * block already carries (explicitly or by default) REVERTS it to the
+ * default (prototype parity).
  */
 function assignBlocks(
   blocks: readonly UnicodeBlock[],
@@ -250,7 +353,7 @@ function assignBlocks(
         .map((rule) => rule.id),
     ),
   );
-  const already = groupAssignment(blocks) === side;
+  const already = effectiveGroupSide(blocks, pickRefs()) === side;
   const rules = store.get().rules.filter((rule) => !exact.has(rule.id));
   if (!already) {
     for (const block of blocks) {
@@ -838,8 +941,8 @@ export function mountCharmap(root: HTMLElement): void {
         group !== undefined && effective
           ? {
               label: group.name,
-              allBase: groupAssignment(group.blocks) === "base",
-              allDonor: groupAssignment(group.blocks) === "donor",
+              allBase: effectiveGroupSide(group.blocks, picks) === "base",
+              allDonor: effectiveGroupSide(group.blocks, picks) === "donor",
               onAssign: (side) => assignBlocks(group.blocks, side),
             }
           : undefined,
@@ -849,7 +952,7 @@ export function mountCharmap(root: HTMLElement): void {
             ? {
                 label: block.name,
                 aggregate: false,
-                value: blockAssignment(block),
+                value: effectiveBlockSide(block, picks),
                 onAssign: (side) => assignBlocks([block], side),
               }
             : {

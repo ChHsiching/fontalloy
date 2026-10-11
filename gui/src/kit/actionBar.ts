@@ -308,7 +308,9 @@ export function mountActionBar(
       const input = document.createElement("input");
       input.placeholder = props.locatePlaceholder ?? "永 U+6C38";
       input.setAttribute("aria-label", "定位");
-      input.style.minWidth = "120px";
+      // Shrink floor for the one-row discipline (the sheet owns the
+      // resting width; inline 120px would block the shrink).
+      input.style.minWidth = "84px";
       input.dataset.role = "locate";
       input.addEventListener("keydown", (e) => {
         if (e.key === "Enter") props.onLocate!(input.value);

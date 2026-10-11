@@ -251,6 +251,13 @@
 
 /* ============ popover (pop) ============ */
 
+/*
+ * Containment (the prototype's #wtpop discipline): fitPopup clamps the
+ * card's maxHeight to the app frame — the card must then hold its own
+ * text. overflow-y:auto makes the clamped card scroll internally instead
+ * of letting the closing paragraphs paint past the rounded bottom edge
+ * onto the rail below.
+ */
 .kit-pop {
   position: fixed;
   z-index: 500;
@@ -260,6 +267,7 @@
   border-radius: 12px;
   box-shadow: var(--sh3);
   padding: 14px;
+  overflow-y: auto;
   visibility: hidden;
   opacity: 0;
   transform: scale(0.96) translateY(2px);
@@ -920,6 +928,16 @@
 
 /* ============ action bar (toolrow) ============ */
 
+/*
+ * One-row discipline: real block labels (CJK 统一表意文字, CJK 兼容表意
+ * 文字) run far wider than the prototype's short draft labels, and the
+ * prototype's flex-wrap:wrap then orphans 按编码指定 onto a second row at
+ * 1440px. The row never wraps; the fixed clusters are pinned (their text
+ * must not re-wrap internally), and the pressure is absorbed by the
+ * compressible ones — the pager cluster and the 永 locate box shrink
+ * (min-width floors + ellipsis on the page label) exactly like the
+ * prototype's single-row chrome at its own widths.
+ */
 .kit-toolrow {
   display: flex;
   gap: 6px;
@@ -927,13 +945,32 @@
   padding: 6px 14px;
   border-bottom: 1px solid var(--ln);
   flex: none;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 
 .kit-toolrow .kit-grow {
   flex: 1;
 }
 
+/* Fixed clusters: labels, segments, buttons, dividers, legend. */
+.kit-toolrow > .kit-lab,
+.kit-toolrow > .kit-mseg,
+.kit-toolrow > .kit-btn,
+.kit-toolrow > .kit-div,
+.kit-toolrow > .kit-legend,
+.kit-toolrow > .kit-cnt {
+  flex: none;
+}
+
+.kit-toolrow > .kit-lab {
+  white-space: nowrap;
+}
+
+.kit-toolrow > .kit-legend {
+  white-space: nowrap;
+}
+
+/* Compressible: the locate box shrinks below its resting width. */
 .kit-toolrow input {
   background: var(--sf);
   border: 1px solid var(--ln2);
@@ -941,6 +978,7 @@
   padding: 0 10px;
   min-height: 28px;
   font-size: 12px;
+  min-width: 84px;
 }
 
 .kit-toolrow input::placeholder {
@@ -977,12 +1015,22 @@
   background: var(--ac);
 }
 
+/* Compressible: the pager cluster keeps one line but yields width. */
 .kit-pgc {
   display: inline-flex;
   align-items: center;
   gap: 2px;
   color: var(--ink3);
   font-size: 11px;
+  min-width: 0;
+  flex: 0 1 auto;
+  white-space: nowrap;
+}
+
+.kit-pgc .kit-num {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .kit-pgc button {

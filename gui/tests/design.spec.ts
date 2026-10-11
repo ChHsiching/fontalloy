@@ -79,8 +79,10 @@ test.describe("action bar rule wiring", () => {
     const row = page.locator(".kit-toolrow").filter({ hasText: "基本拉丁" });
     const blockButton = (label: string) =>
       row.locator(".kit-mseg button", { hasText: new RegExp(`^${label}$`) });
-    // No explicit assignment yet: neither side pressed.
-    await expect(blockButton("用英文字体")).toHaveAttribute("aria-pressed", "false");
+    // No explicit assignment yet — but the DEFAULT side shows pressed
+    // (prototype parity: its chips read the block default too; here the
+    // base font keeps every covered codepoint of the block).
+    await expect(blockButton("用英文字体")).toHaveAttribute("aria-pressed", "true");
     await expect(blockButton("用中文字体")).toHaveAttribute("aria-pressed", "false");
 
     // Assign the whole block to the donor: one exact range rule.
@@ -105,6 +107,41 @@ test.describe("action bar rule wiring", () => {
     await expect(
       page.locator(".charmap-grid .kit-cell[data-cp='U+0041']"),
     ).toHaveAttribute("data-winner", "base");
+    // ...and the pressed state falls back to the DEFAULT side.
+    await expect(blockButton("用英文字体")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  test("the toolbar stays one row at 1440px with the longest real block label", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 940 });
+    const fonts = await makeLocalFixtures();
+    await openWithFonts(page, fonts);
+
+    // The CJK group + its unified-ideographs block: the widest real
+    // toolrow (group segment + long block label + block segment + pager
+    // + legend + locator + 按编码指定).
+    await pointerClick(page, page.locator(".kit-cat-g[data-group='cjk']"));
+    await pointerClick(
+      page,
+      page.locator(".kit-cat-s[data-block='cjk-unified']"),
+    );
+    const metrics = await page.evaluate(() => {
+      const row = document.querySelector(".kit-toolrow");
+      if (!row) throw new Error("no toolrow");
+      // Single row = the row's height is one cluster tall (the mseg tray
+      // is 32px + 12px padding + border; a wrap would double it) and
+      // nothing spills past the row's right edge.
+      const locate = row.querySelector<HTMLElement>("[data-role='locate']");
+      return {
+        height: row.offsetHeight,
+        overflow: row.scrollWidth - row.clientWidth,
+        locateWidth: locate ? locate.getBoundingClientRect().width : null,
+      };
+    });
+    // One row, nothing clipped: 按编码指定 never orphans onto line 2.
+    expect(metrics.height).toBeLessThanOrEqual(46);
+    expect(metrics.overflow).toBeLessThanOrEqual(1);
   });
 
   test("the group segment assigns every block of the group in one undo step", async ({
