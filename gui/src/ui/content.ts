@@ -1,44 +1,60 @@
 import { store, type ContentMode } from "../state";
+import { segmentedControl } from "../kit/actionBar";
 import { mountCharmap } from "./charmap";
 import { mountScenes } from "./scenes";
 
 /**
- * Right content area (ADR-0004): mode tabs (character map / real-world
- * scenes) and the stage. The scene previews (issue #19) render with the
- * same effective result as the grid; the scene tab itself lives in the
- * store, so mode round trips preserve it.
+ * Right content area (ADR-0004): the prototype's mode bar — the
+ * 字符表/实际场景 segmented control, then the 自定义预览文字 field
+ * (feeding the document scene) — and the stage. The scene previews
+ * (issue #19) render with the same effective result as the grid; the
+ * mode itself lives in the store, so mode round trips preserve it.
  *
  * The stage is rebuilt only on mode changes — the character map and the
  * scenes each manage their own re-renders so their containers survive
  * state updates. Mode switches never reset the merge state: rules,
  * picks, and settings live in the store, not in either stage.
  */
-export function mountContent(root: HTMLElement): void {
+export function mountContent(root: HTMLElement, fullscreenHost: HTMLElement): void {
   root.innerHTML = `
-    <div class="content-mode-tabs" role="tablist">
-      <button class="mode-tab" role="tab" data-mode="charmap" aria-selected="true">字符映射</button>
-      <button class="mode-tab" role="tab" data-mode="scene" aria-selected="false">实景预览</button>
-    </div>
+    <div class="kit-modebar"></div>
     <div class="content-stage"></div>
   `;
 
+  const modebar = root.querySelector<HTMLElement>(".kit-modebar")!;
   const stage = root.querySelector<HTMLElement>(".content-stage")!;
-  const tabs = [...root.querySelectorAll<HTMLButtonElement>(".mode-tab")];
 
-  for (const tab of tabs) {
-    tab.addEventListener("click", () => {
-      if (store.get().mode !== tab.dataset.mode) {
-        store.set({ mode: tab.dataset.mode as ContentMode });
+  const seg = segmentedControl({
+    options: [
+      { value: "charmap", label: "字符表" },
+      { value: "scene", label: "实际场景" },
+    ],
+    value: store.get().mode,
+    onSelect: (value) => {
+      if (store.get().mode !== value) {
+        store.set({ mode: value as ContentMode });
       }
-    });
-  }
+    },
+  });
+  modebar.appendChild(seg);
+
+  const previewInput = document.createElement("input");
+  previewInput.placeholder = "自定义预览文字";
+  previewInput.setAttribute("aria-label", "自定义预览文字");
+  previewInput.dataset.role = "preview-text";
+  previewInput.addEventListener("input", () => {
+    store.set({ customPreview: previewInput.value });
+  });
+  modebar.appendChild(previewInput);
 
   let lastMode: ContentMode | null = null;
   const render = (): void => {
-    const { mode } = store.get();
-    for (const tab of tabs) {
-      tab.setAttribute("aria-selected", String(tab.dataset.mode === mode));
+    const { mode, customPreview } = store.get();
+    for (const button of seg.querySelectorAll("button")) {
+      button.setAttribute("aria-pressed", String(button.dataset.value === mode));
     }
+    previewInput.style.display = mode === "scene" ? "" : "none";
+    if (previewInput.value !== customPreview) previewInput.value = customPreview;
     if (mode === lastMode) return;
     lastMode = mode;
     if (mode === "charmap") {
@@ -48,7 +64,7 @@ export function mountContent(root: HTMLElement): void {
     } else {
       stage.dataset.mode = "scene";
       stage.innerHTML = `<div class="scenes"></div>`;
-      mountScenes(stage.querySelector<HTMLElement>(".scenes")!);
+      mountScenes(stage.querySelector<HTMLElement>(".scenes")!, fullscreenHost);
     }
   };
   store.subscribe(render);
