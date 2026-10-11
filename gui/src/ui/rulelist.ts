@@ -84,7 +84,7 @@ function buildFontList(
     ] as const) {
       const button = document.createElement("button");
       button.type = "button";
-      button.className = "rule-font-move";
+      button.className = "rule-font-move kit-btn sm gh";
       button.dataset.role = `rule-font-${direction}-${rule.id}-${ref}`;
       button.textContent = delta < 0 ? "↑" : "↓";
       button.disabled = !checked;
@@ -189,7 +189,7 @@ function buildRuleRow(rule: EditorRule): HTMLElement {
 
   const remove = document.createElement("button");
   remove.type = "button";
-  remove.className = "rule-remove";
+  remove.className = "rule-remove kit-btn sm gh";
   remove.dataset.role = "remove-rule";
   remove.textContent = "移除";
   remove.addEventListener("click", () => removeRule(rule.id));
@@ -254,7 +254,7 @@ const PRESETS_BY_NAME = new Map(
 export function mountPresetSection(root: HTMLElement): void {
   const button = document.createElement("button");
   button.type = "button";
-  button.className = "add-rule-button";
+  button.className = "add-rule-button kit-btn sm";
   button.dataset.role = "add-preset";
   button.textContent = "添加语言预设…";
   root.appendChild(button);
@@ -270,7 +270,7 @@ export function mountRulesSection(root: HTMLElement): void {
   actions.className = "rule-actions";
   const addRange = document.createElement("button");
   addRange.type = "button";
-  addRange.className = "add-rule-button";
+  addRange.className = "add-rule-button kit-btn sm";
   addRange.dataset.role = "add-range-rule";
   addRange.textContent = "新增区间规则";
   addRange.addEventListener("click", () => {
@@ -283,7 +283,7 @@ export function mountRulesSection(root: HTMLElement): void {
   actions.appendChild(addRange);
   const addCp = document.createElement("button");
   addCp.type = "button";
-  addCp.className = "add-rule-button";
+  addCp.className = "add-rule-button kit-btn sm";
   addCp.dataset.role = "add-cp-rule";
   addCp.textContent = "新增码位规则";
   addCp.addEventListener("click", () => {
@@ -299,7 +299,7 @@ export function mountRulesSection(root: HTMLElement): void {
   // mutation — rail edits, cell applies, batch applies alike.
   const undo = document.createElement("button");
   undo.type = "button";
-  undo.className = "add-rule-button";
+  undo.className = "add-rule-button kit-btn sm";
   undo.dataset.role = "rules-undo";
   undo.textContent = "撤销规则";
   undo.disabled = !canUndoRules();

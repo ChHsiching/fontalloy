@@ -1,19 +1,21 @@
 /**
- * The language-preset picker (issue #18): an ADR-0004 popup listing the
+ * The language-preset picker (issue #18): an app-level popup on the
+ * kit's .kit-pop chrome (positioned with the kit's fitPop discipline —
+ * below first, flip above, cap, clamped to the app frame), listing the
  * fc-lang presets (featured five first, then every language), with
  * search. Picking one adds a preset rule with ALL sub-blocks enabled —
  * the preset's full union; the row's sub-block toggles then compose
  * partial unions (ticket #7 semantics).
  *
  * The popup node is created ONCE and appended to <body> (never inside
- * the rail); only rows rebuild. Positioning clamps to the app frame:
- * below first, flip above, cap with internal scroll.
+ * the rail); only rows rebuild.
  */
 
 import { store } from "../state";
 import { newRule } from "../precedence/model";
 import { pickRefs } from "../precedence/picks";
 import presetsData from "../data/presets.json";
+import { fitPopup } from "../kit/position";
 
 interface PresetRow {
   name: string;
@@ -36,22 +38,18 @@ const ROWS: PresetRow[] = (
 /** Wire the picker to its anchor button; the popup mounts on <body>. */
 export function mountPresetPicker(anchor: HTMLElement): void {
   const popup = document.createElement("div");
-  popup.className = "picker-popup preset-picker-popup";
+  popup.className = "kit-pop preset-pop";
   popup.dataset.pickerPopup = "preset-add";
   popup.setAttribute("role", "listbox");
   popup.setAttribute("aria-label", "语言预设列表");
   popup.innerHTML = `
-    <div class="popup-clip">
-      <div class="popup-search">
-        <input class="picker-search" type="search" placeholder="搜索语言预设…" aria-label="搜索语言预设" />
-      </div>
-      <div class="popup-scroll"><div class="popup-rows"></div></div>
-    </div>
+    <input class="kit-q" type="search" placeholder="搜索语言预设…" aria-label="搜索语言预设" />
+    <div class="preset-pop-scroll"><div class="popup-rows"></div></div>
   `;
   document.body.appendChild(popup);
 
   const rowsEl = popup.querySelector<HTMLElement>(".popup-rows")!;
-  const searchInput = popup.querySelector<HTMLInputElement>(".picker-search")!;
+  const searchInput = popup.querySelector<HTMLInputElement>(".kit-q")!;
 
   let open = false;
   let query = "";
@@ -61,48 +59,29 @@ export function mountPresetPicker(anchor: HTMLElement): void {
     open = next;
     anchor.setAttribute("aria-expanded", String(next));
     if (next) {
-      popup.dataset.open = "true";
+      popup.classList.add("open");
       position();
     } else {
-      delete popup.dataset.open;
+      popup.classList.remove("open");
     }
   };
 
   /** Clamp to the app frame: below first, flip above, then cap. */
   const position = (): void => {
-    const margin = 8;
-    const gap = 6;
-    const anchorRect = anchor.getBoundingClientRect();
-    const pw = popup.offsetWidth;
-    const ph = popup.offsetHeight;
-    const frameW = window.innerWidth;
-    const frameH = window.innerHeight;
-
-    let left = anchorRect.left;
-    if (left + pw > frameW - margin) left = frameW - pw - margin;
-    if (left < margin) left = margin;
-
-    let top = anchorRect.bottom + gap;
-    if (top + ph > frameH - margin) {
-      const above = anchorRect.top - ph - gap;
-      if (above >= margin) {
-        top = above;
-      } else {
-        top = margin;
-        popup.style.maxHeight = `${frameH - 2 * margin}px`;
-      }
-    }
-    popup.style.left = `${Math.round(left)}px`;
-    popup.style.top = `${Math.round(top)}px`;
+    fitPopup(popup, anchor.getBoundingClientRect());
   };
 
-  anchor.addEventListener("click", () => setOpen(!open));
+  anchor.addEventListener("click", () => {
+    if (!open) renderRows();
+    setOpen(!open);
+  });
   window.addEventListener("resize", () => {
     if (open) position();
   });
   document.addEventListener("pointerdown", (e) => {
     if (!open) return;
     const target = e.target as Node;
+    if (!target.isConnected) return;
     if (popup.contains(target) || anchor.contains(target)) return;
     setOpen(false);
   });
@@ -138,15 +117,16 @@ export function mountPresetPicker(anchor: HTMLElement): void {
       fragment.appendChild(label);
     };
     const append = (row: PresetRow): void => {
-      const el = document.createElement("div");
-      el.className = "picker-row preset-row";
+      const el = document.createElement("button");
+      el.type = "button";
+      el.className = "kit-fp preset-row";
       el.setAttribute("role", "option");
       const name = document.createElement("span");
-      name.className = "picker-row-name";
+      name.className = "kit-nm";
       name.textContent = row.name;
       el.appendChild(name);
       const count = document.createElement("span");
-      count.className = "picker-row-tag";
+      count.className = "kit-fp-note";
       count.textContent = `${row.codepoints.toLocaleString("en-US")} 码位`;
       el.appendChild(count);
       el.addEventListener("click", () => addPreset(row));
@@ -173,7 +153,7 @@ export function mountPresetPicker(anchor: HTMLElement): void {
     }
     if (fragment.childNodes.length === 0) {
       const empty = document.createElement("div");
-      empty.className = "picker-empty";
+      empty.className = "kit-gempty";
       empty.textContent = query
         ? `没有匹配“${searchInput.value.trim()}”的语言预设。`
         : "没有可选的语言预设。";
@@ -182,9 +162,4 @@ export function mountPresetPicker(anchor: HTMLElement): void {
     rowsEl.replaceChildren(fragment);
     if (open) position();
   };
-
-  // Opening rebuilds the rows (state may have changed since last open).
-  anchor.addEventListener("click", () => {
-    if (open) renderRows();
-  });
 }

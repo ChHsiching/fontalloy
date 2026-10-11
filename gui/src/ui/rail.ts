@@ -5,8 +5,9 @@ import { mountSettings } from "./settings";
 /**
  * The fixed 260px left column (ADR-0004): English font, CJK font,
  * character scope (language presets, issue #18), custom rules (issue
- * #18), synthesis settings (issue #19: weight merge mode, baseline
- * alignment, CJK width — each with a worked-example ?-popover).
+ * #18), synthesis settings (issue #19) — the prototype's five sections,
+ * in the prototype's order and wording, with its one explanatory note
+ * (under 文字范围 only; the audit's 1.6 finding).
  */
 export function mountRail(root: HTMLElement): { en: FontPicker; cjk: FontPicker } {
   const enSlot = document.createElement("div");
@@ -15,24 +16,12 @@ export function mountRail(root: HTMLElement): { en: FontPicker; cjk: FontPicker 
   const rulesSlot = document.createElement("div");
   const settingsSlot = document.createElement("div");
 
-  const sections: Array<[string, string | null, HTMLElement | null]> = [
-    ["英文字体", "基底：合成结果继承它的度量与身份", enSlot],
-    ["中文字体", "供体：为空缺码位提供中日韩字符", cjkSlot],
-    [
-      "字符范围",
-      "语言预设：按语言预先整理的码位集合，子块可独立开关。",
-      presetSlot,
-    ],
-    [
-      "自定义规则",
-      "码位/区间 → 有序字体列表。窄者胜；同层后声明的胜；字体缺失不覆盖。",
-      rulesSlot,
-    ],
-    [
-      "合成设置",
-      "字重合并方式、中英文的基线对齐与中文字符宽度；每项的「?」给出实例对照表。",
-      settingsSlot,
-    ],
+  const sections: Array<[string, string | null, HTMLElement]> = [
+    ["英文字体", null, enSlot],
+    ["中文字体", null, cjkSlot],
+    ["文字范围", "勾选的文字由中文字体提供，并入成品", presetSlot],
+    ["自定义规则", null, rulesSlot],
+    ["合成设置", null, settingsSlot],
   ];
 
   let delay = 60;
@@ -44,32 +33,19 @@ export function mountRail(root: HTMLElement): { en: FontPicker; cjk: FontPicker 
     h.className = "section-title";
     h.textContent = title;
     section.appendChild(h);
-    if (slot) {
-      if (note) {
-        const desc = document.createElement("div");
-        desc.className = "section-desc placeholder-note";
-        desc.textContent = note;
-        section.appendChild(desc);
-      }
-      section.appendChild(slot);
-    } else {
-      const body = document.createElement("div");
-      body.className = "section-body placeholder-note";
-      body.textContent = note;
-      section.appendChild(body);
+    if (note) {
+      const desc = document.createElement("div");
+      desc.className = "section-desc";
+      desc.textContent = note;
+      section.appendChild(desc);
     }
+    section.appendChild(slot);
     root.appendChild(section);
     delay += 40;
   }
 
-  const en = mountPicker(enSlot, {
-    role: "en",
-    emptyText: "尚未加载字体",
-  });
-  const cjk = mountPicker(cjkSlot, {
-    role: "cjk",
-    emptyText: "尚未加载字体",
-  });
+  const en = mountPicker(enSlot, { role: "en" });
+  const cjk = mountPicker(cjkSlot, { role: "cjk" });
   mountPresetSection(presetSlot);
   mountRulesSection(rulesSlot);
   mountSettings(settingsSlot);
