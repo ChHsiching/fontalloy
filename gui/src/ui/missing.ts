@@ -1,59 +1,56 @@
 /**
- * The missing-glyph scope (design-fidelity round 1): the 缺失 category.
+ * The missing-glyph scope (round 5, owner item 4): the 缺失 category.
  *
- * The prototype's 缺失 group counts (and views) the characters of the
- * donor-language scope that the current merge cannot render. The GUI's
- * honest equivalent: every codepoint of the DECLARED language-preset
- * scope (the 文字范围 rules' enabled sub-blocks) that the effective
- * precedence resolver says NO picked font covers. With no preset rules
- * there is no declared scope, so the count is 0 and the chip stays away.
+ * The prototype's 缺失 group counts (and views) the characters of its
+ * browsed scope that the current merge cannot render. The GUI's honest
+ * equivalent, made AUTOMATIC: every VISIBLE codepoint of the browsable
+ * universe (the chip taxonomy's blocks — the same scope the grid and
+ * the coverage percentage count) that NEITHER picked font covers.
+ *
+ * No preset is required and nothing accretes point by point: the set
+ * exists exactly when both picks exist and the coverages leave gaps,
+ * computed from the two cmaps alone. With fewer than both picks there
+ * is no merge to judge, so the set is empty and the chip stays away.
  */
 
 import { store } from "../state";
-import { currentResolver } from "../precedence/live";
 import { pickRefs } from "../precedence/picks";
-import { unionOfSets, type Interval } from "../precedence/sets";
+import { BROWSE_UNIVERSE } from "../unicode/universe";
+
+export { BROWSE_UNIVERSE, browseUniverseSize } from "../unicode/universe";
 
 /** The synthetic category id of the missing view (not a unicode block). */
 export const MISSING_CATEGORY_ID = "missing";
 
-/** The declared scope: the union of every preset rule's enabled blocks. */
-function scopeIntervals(): Interval[] {
-  const names: string[] = [];
-  for (const rule of store.get().rules) {
-    if (rule.target.kind !== "preset") continue;
-    names.push(...rule.target.blocks);
-  }
-  if (names.length === 0) return [];
-  return unionOfSets(names);
-}
-
-/** The memoized missing list (recomputed when fonts or rules change). */
+/** The memoized missing list (recomputed when the picks change). */
 let memo: { signature: string; missing: number[] } | null = null;
 
 /**
- * Every codepoint of the declared preset scope that no picked font
- * covers (ascending; empty with no preset rules or no picks).
+ * Every visible codepoint of the browsable universe that NEITHER picked
+ * font covers (ascending; empty until both picks exist).
  */
 export function missingCodepoints(): number[] {
   const state = store.get();
-  const signature = `${state.rules
-    .map((r) => `${r.id}:${JSON.stringify(r.target)}`)
-    .join("|")}:${state.fonts
+  const picks = pickRefs();
+  const signature = `${state.fonts
     .map((f) => `${f.cssFamily}:${f.codepoints.length}`)
     .join("|")}:${state.selected.en ?? ""}:${state.selected.cjk ?? ""}`;
   if (memo && memo.signature === signature) return memo.missing;
 
   const missing: number[] = [];
-  const picks = pickRefs();
-  const resolver = picks.refs.length > 0 ? currentResolver(picks) : null;
-  if (resolver !== null) {
-    for (const { start, end } of scopeIntervals()) {
-      // The surrogate gap is never renderable; the resolver would call
-      // every one of those "missing" and drown the real signal.
+  if (picks.base !== null && picks.donor !== null) {
+    const base = picks.base.codepoints;
+    const donor = picks.donor.codepoints;
+    let bi = 0;
+    let di = 0;
+    for (const [start, end] of BROWSE_UNIVERSE) {
+      while (bi < base.length && base[bi]! < start) bi++;
+      while (di < donor.length && donor[di]! < start) di++;
       for (let cp = start; cp <= end; cp++) {
-        if (cp >= 0xd800 && cp <= 0xdfff) continue;
-        if (resolver.resolve(cp) === null) missing.push(cp);
+        while (bi < base.length && base[bi]! < cp) bi++;
+        while (di < donor.length && donor[di]! < cp) di++;
+        if (base[bi] === cp || donor[di] === cp) continue;
+        missing.push(cp);
       }
     }
   }

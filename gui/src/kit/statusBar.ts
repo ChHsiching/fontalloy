@@ -6,6 +6,10 @@
  * dot), and the right-aligned 覆盖 percentage in the accent color.
  * Every number renders in tabular numerals; a changed value pops
  * (scale bounce) once.
+ *
+ * Round 5: the 覆盖 label carries a `?` HelpPopover anchor
+ * (`helpAnchor`) — the number's counting scope is explained in page
+ * text, never left as a hover-only mystery.
  */
 
 export interface StatusBarStats {
@@ -20,6 +24,8 @@ export interface StatusBarStats {
 
 export interface StatusBar {
   readonly el: HTMLElement;
+  /** The 覆盖 label element — the help-popover anchor mounts beside it. */
+  readonly coverageLabel: HTMLElement;
   render(stats: StatusBarStats): void;
 }
 
@@ -56,7 +62,10 @@ export function mountStatusBar(host: HTMLElement): StatusBar {
   const missing = counter("缺失", "missing", "var(--dgr)");
   const cov = document.createElement("span");
   cov.className = "kit-cov";
-  cov.append(document.createTextNode("覆盖 "));
+  const covLabel = document.createElement("span");
+  covLabel.className = "kit-cov-label";
+  covLabel.textContent = "覆盖 ";
+  cov.append(covLabel);
   const covValue = document.createElement("b");
   covValue.className = "kit-num";
   covValue.dataset.stat = "coverage";
@@ -96,5 +105,5 @@ export function mountStatusBar(host: HTMLElement): StatusBar {
     previous = values;
   };
 
-  return { el, render };
+  return { el, coverageLabel: covLabel, render };
 }

@@ -101,8 +101,10 @@ test.describe("multi-select, batch operations, undo", () => {
       page,
       page.locator(".kit-cat-s[data-block='cjk-unified']"),
     );
+    // Page count follows the LIVE page size (round 5: pages hold whole
+    // rows) — read the pager rather than pinning 1024-math constants.
     await expect(page.locator(".kit-toolrow [data-pager-label]")).toHaveText(
-      "第 1/21 页",
+      /第 1\/\d+ 页/,
     );
   }
 
@@ -395,17 +397,25 @@ test.describe("multi-select, batch operations, undo", () => {
     const fonts = await makeLocalFixtures();
     await openWithFonts(page, fonts);
 
-    // The whole-merge universe: the picks' union coverage (base A–Z =
-    // 26 winners; donor A–F ⊂ base + U+4E00..U+4E3F = 64 winners) plus
-    // the declared zh_cn scope's gaps (6,765 − the 44 the donor covers
-    // of it) — identical from every browsing category.
+    // Round 5: the whole-merge scope is the BROWSED UNIVERSE (the chip
+    // taxonomy's visible codepoints) — base A–Z = 26 英文 winners, the
+    // donor's hanzi run = 64 中文 winners, everything else of the
+    // universe 缺失 (the donor's A–F overlaps the base, no extra winners)
+    // — identical from every browsing category.
     await gotoCjkPage(page);
-    await expect(page.locator("[data-stat='total']")).toHaveText("6,811");
     await expect(page.locator("[data-stat='en']")).toHaveText("26");
     await expect(page.locator("[data-stat='cjk']")).toHaveText("64");
     await expect(page.locator("[data-stat='adjusted']")).toHaveText("0");
-    await expect(page.locator("[data-stat='missing']")).toHaveText("6,721");
-    await expect(page.locator("[data-stat='coverage']")).toHaveText("1.32");
+    const universe = await import("../src/unicode/universe").then((m) =>
+      m.browseUniverseSize(),
+    );
+    await expect(page.locator("[data-stat='total']")).toHaveText(
+      universe.toLocaleString("en-US"),
+    );
+    await expect(page.locator("[data-stat='missing']")).toHaveText(
+      (universe - 90).toLocaleString("en-US"),
+    );
+    await expect(page.locator("[data-stat='coverage']")).toHaveText("0.10");
 
     // Basic Latin: the SAME totals (the prototype's counters never
     // change with the browsing category).
@@ -417,8 +427,12 @@ test.describe("multi-select, batch operations, undo", () => {
       page,
       page.locator(".kit-cat-s[data-block='basic-latin']"),
     );
-    await expect(page.locator("[data-stat='total']")).toHaveText("6,811");
-    await expect(page.locator("[data-stat='missing']")).toHaveText("6,721");
+    await expect(page.locator("[data-stat='total']")).toHaveText(
+      universe.toLocaleString("en-US"),
+    );
+    await expect(page.locator("[data-stat='missing']")).toHaveText(
+      (universe - 90).toLocaleString("en-US"),
+    );
 
     // The toolbar's 撤销 is the rule undo's click entry point: the
     // 按编码指定 popup adds one rule, the undo reverts it.

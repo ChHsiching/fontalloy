@@ -9,15 +9,20 @@ import {
   pointerClick,
   waitForFontsReady,
 } from "./helpers";
+import { browseUniverseSize } from "../src/unicode/universe";
 
 /**
- * Design-fidelity round 1 — the missing-glyph scope: the 缺失 chip
- * (red-accented aggregate at the end of the category chips row whenever
- * the declared preset scope has uncovered codepoints), the missing view
- * it opens (dashed danger cells, the 无法指定来源 notice, all-缺失
- * stats), and the mode bar's 定位 field (jump + select from either
- * content mode).
+ * Round 5 — the missing-glyph scope made AUTOMATIC (owner item 4): the
+ * 缺失 chip appears the moment BOTH picks exist and the browsed
+ * universe holds codepoints neither font covers — computed from the two
+ * cmaps alone, no preset involved, nothing accreting per codepoint. The
+ * view it opens (dashed danger cells, the 无法指定来源 notice) pages its
+ * own list, the status bar's 缺失 counter agrees, and 覆盖 is the honest
+ * covered-by-either ÷ browsed-scope share (owner item 6). The mode
+ * bar's 定位 field (jump + select from either content mode) rides along.
  */
+
+const UNIVERSE = browseUniverseSize();
 
 test.describe("missing glyph scope", () => {
   const jsErrors: string[] = [];
@@ -28,10 +33,13 @@ test.describe("missing glyph scope", () => {
 
   test.afterEach(() => assertNoJsErrors(jsErrors));
 
-  /** Small fixture pair: base = A–Z, donor = a hanzi run. */
-  async function makeLocalFixtures(): Promise<{ base: string; donor: string }> {
+  /** Small fixture pair: base = A–Z, donor = a hanzi run (disjoint). */
+  async function makeLocalFixtures(donorGlyphs = 64): Promise<{
+    base: string;
+    donor: string;
+  }> {
     const dir = await mkdtemp(resolve(tmpdir(), "fontalloy-missing-"));
-    return generateFonts(dir, { donorGlyphs: 64 });
+    return generateFonts(dir, { donorGlyphs });
   }
 
   async function openWithFonts(
@@ -58,56 +66,53 @@ test.describe("missing glyph scope", () => {
     }
   }
 
-  test("the 缺失 chip counts the uncovered preset scope and opens the missing view", async ({
+  test("the 缺失 chip is automatic: coverage-driven, preset-independent", async ({
     page,
   }) => {
-    const fonts = await makeLocalFixtures();
-    await openWithFonts(page, fonts);
+    const fonts = await makeLocalFixtures(64);
+    collectJsErrors(page, jsErrors);
+    await page.goto("/");
+    await waitForFontsReady(page);
 
-    // The fresh state DECLARES the boot preset under 文字范围 (the
-    // pressed 简体中文 chip, prototype parity): the fixture pair covers
-    // only 44 of zh_cn's 6,765 codepoints, so the missing count is
-    // 6,721 from the first paint.
     const chip = page.locator(".kit-catbar .kit-cat-g[data-group='missing']");
+
+    // Before any pick there is nothing to judge: no chip.
+    await expect(chip).toHaveCount(0);
+
+    // ONE pick is still not a merge: no chip.
+    await pointerClick(page, page.locator('[data-role="picker-en"] .kit-hd'));
+    await page.locator("input[data-role='font-file']").setInputFiles(fonts.base);
+    await expect(page.locator('[data-picker-popup="en"]')).toBeHidden();
+    await expect(chip).toHaveCount(0);
+
+    // Both picks exist: 26 letters + 64 hanzi covered, everything else
+    // of the browsed universe missing — from the cmaps alone, no preset.
+    await pointerClick(page, page.locator('[data-role="picker-cjk"] .kit-hd'));
+    await page.locator("input[data-role='font-file']").setInputFiles(fonts.donor);
+    await expect(page.locator('[data-picker-popup="cjk"]')).toBeHidden();
+    const missing = UNIVERSE - 26 - 64;
     await expect(chip).toBeVisible();
     await expect(chip).toHaveClass(/miss/);
-    const zhCn = page.locator("[data-role='lang-chip'][data-preset='zh_cn']");
-    await expect(
-      Number(((await chip.locator(".n").textContent()) ?? "0").replace(/,/g, "")),
-    ).toBe(6721);
+    await expect(chip.locator(".n")).toHaveText(missing.toLocaleString("en-US"));
 
-    // The last-language guard: the chip refuses to come off.
-    await pointerClick(page, zhCn);
-    await expect(page.locator("[data-role='live']")).toHaveText("至少保留一种");
-    await expect(zhCn).toHaveAttribute("aria-pressed", "true");
-    await expect(chip).toBeVisible();
-
-    // Declaring more languages grows the declared scope (and its gap):
-    // zh_cn ∪ zh_tw = 15,445 codepoints, of which the pair covers 51
-    // (both scopes overlap the donor's han run) → 15,394 missing.
+    // No preset involved: the 文字范围 chips do not move the count at
+    // all (the earlier preset-scoped semantics are gone).
     await pointerClick(
       page,
       page.locator("[data-role='lang-chip'][data-preset='zh_tw']"),
     );
-    await expect(
-      chip.locator(".n"),
-    ).toHaveText("15,394");
-
-    // Removing 简体中文 leaves zh_tw's own scope: 13,063 − 33 = 13,030.
+    await expect(chip.locator(".n")).toHaveText(missing.toLocaleString("en-US"));
+    const zhCn = page.locator("[data-role='lang-chip'][data-preset='zh_cn']");
     await pointerClick(page, zhCn);
     await expect(zhCn).toHaveAttribute("aria-pressed", "false");
-    await expect(chip.locator(".n")).toHaveText("13,030");
+    await expect(chip.locator(".n")).toHaveText(missing.toLocaleString("en-US"));
 
-    // The 添加语言预设… picker declares beyond the four chips: zh_cn
-    // comes back through the deep flow (the chip presses again).
-    await pointerClick(page, page.locator("[data-role='add-preset']"));
-    const presetPop = page.locator("[data-picker-popup='preset-add']");
-    await expect(presetPop).toBeVisible();
+    // The last-language guard still holds (the rail's own rule).
     await pointerClick(
       page,
-      presetPop.locator(".preset-row", { hasText: "zh_cn" }),
+      page.locator("[data-role='lang-chip'][data-preset='zh_tw']"),
     );
-    await expect(zhCn).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("[data-role='live']")).toHaveText("至少保留一种");
 
     // The chip closes the row.
     expect(
@@ -117,31 +122,54 @@ test.describe("missing glyph scope", () => {
         return last instanceof HTMLElement && last.dataset.group === "missing";
       }),
     ).toBe(true);
+  });
 
-    // Opening it: the notice replaces the assignment segments, every
-    // cell is dashed-missing, and the stats line reads all-缺失.
-    await pointerClick(page, chip);
+  test("the missing view: dashed cells, its own pager, honest coverage", async ({
+    page,
+  }) => {
+    const fonts = await makeLocalFixtures(64);
+    await openWithFonts(page, fonts);
+    const missing = UNIVERSE - 26 - 64;
+
+    // The status bar agrees with the chip and covers honestly: 覆盖 is
+    // the covered share of the browsed universe — never 100% while
+    // missing cells exist (owner item 6), and the ? explains the scope.
+    await expect(page.locator("[data-stat='missing']")).toHaveText(
+      missing.toLocaleString("en-US"),
+    );
+    await expect(page.locator("[data-stat='total']")).toHaveText(
+      UNIVERSE.toLocaleString("en-US"),
+    );
+    const coverage = Number(
+      (await page.locator("[data-stat='coverage']").textContent()) ?? "0",
+    );
+    expect(coverage).toBeGreaterThan(0);
+    expect(coverage).toBeLessThan(100);
+    const help = page.locator("[data-role='help-coverage']");
+    await expect(help).toBeVisible();
+    await pointerClick(page, help);
+    await expect(page.locator("[data-help-popup='coverage']")).toBeVisible();
+    await expect(page.locator("[data-help-popup='coverage']")).toContainText(
+      "已覆盖码位 ÷ 浏览范围码位总数",
+    );
+
+    // Opening the chip: the notice replaces the assignment segments,
+    // every cell is dashed-missing, and the grid pages its own list.
+    await pointerClick(
+      page,
+      page.locator(".kit-cat-g[data-group='missing']"),
+    );
     await expect(page.locator(".kit-toolrow")).toContainText(
       "缺失字符无法指定来源",
     );
-    const missCells = page.locator(".kit-grid .kit-cell.miss");
-    const count = 15394;
-    expect(await missCells.count()).toBe(Math.min(1024, count));
-    // The status bar's 缺失 counter reports the WHOLE scope (the grid
-    // shows one page of it).
-    const statMissing = await page.evaluate(() =>
-      Number(
-        (document.querySelector("[data-stat='missing']")?.textContent ?? "0")
-          .replace(/,/g, "")
-          .trim(),
-      ),
+    const pageSize = await page.evaluate(
+      () => document.querySelectorAll(".kit-grid .kit-cell").length,
     );
-    expect(statMissing).toBe(15394);
-    const stats = (await page.locator(".statsbar").textContent()) ?? "";
-    expect(stats).toContain("缺失");
-    // The grid pages the missing list itself.
+    expect(pageSize).toBeGreaterThan(0);
+    expect(pageSize).toBeLessThanOrEqual(1024);
+    await expect(page.locator(".kit-grid .kit-cell.miss")).toHaveCount(pageSize);
     await expect(page.locator("[data-pager-label]")).toContainText(
-      `/${Math.ceil(count / 1024)} 页`,
+      `/${Math.ceil(missing / pageSize)} 页`,
     );
   });
 
