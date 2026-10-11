@@ -19,11 +19,37 @@ export const DEFAULT_FONT_NAME = "ChHsich";
 
 /* ---------- parts ---------- */
 
+/**
+ * The brand mark (round 4): a hand-drawn "A" built from 永-style brush
+ * strokes inside a rounded glyph cell — the product in one mark (a
+ * monospace Latin letterform whose strokes are CJK calligraphy). The
+ * 捺 press-stroke and the detached 点 dot carry the teal accent; the
+ * rest follows the text color, so the mark reads on dark and light
+ * alike. Drawn on a 24 grid with ≥2px strokes so it stays crisp at the
+ * 16px topbar size (and up to 24px+ elsewhere). The owner finalizes
+ * the concept later — today it must simply not be a placeholder block.
+ */
+const BRAND_MARK_SVG = `
+<svg class="kit-brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+  <rect x="2.75" y="2.75" width="18.5" height="18.5" rx="5"
+        fill="none" stroke="var(--ln2)" stroke-width="1.5"></rect>
+  <path d="M12.2 5.8C10.4 9.6 8.9 14 7.6 18.6"
+        fill="none" stroke="currentColor" stroke-width="2.2"
+        stroke-linecap="round"></path>
+  <path d="M12.2 5.8C13.9 9.8 15.6 14.1 17.2 18.6"
+        fill="none" stroke="var(--ac)" stroke-width="2.2"
+        stroke-linecap="round"></path>
+  <path d="M8.8 14.6H15.8"
+        fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round"></path>
+  <circle cx="17.7" cy="8.1" r="1.5" fill="var(--ac)"></circle>
+</svg>`;
+
 export function brandPart(): HTMLElement {
   const brand = document.createElement("div");
   brand.className = "kit-brand";
-  const mark = document.createElement("i");
-  brand.append(mark, document.createTextNode("FontAlloy"));
+  brand.innerHTML = BRAND_MARK_SVG;
+  brand.appendChild(document.createTextNode("FontAlloy"));
   return brand;
 }
 
