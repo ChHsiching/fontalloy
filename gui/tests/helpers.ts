@@ -11,11 +11,41 @@ import { resolve } from "node:path";
  * - font readiness (document.fonts.ready) awaited before asserting rendered text.
  */
 
+/**
+ * Expected-benign console-error classes. Since the round-2 unification
+ * every workspace page on the web target (this whole suite: the dev
+ * server pages are plain browser pages) probes the local merge service
+ * on load — `?serve=`, default http://127.0.0.1:7777 — and when
+ * nothing answers, the BROWSER ITSELF logs the refused/blocked fetch.
+ * The page handles the rejection by design (absence is a state); the
+ * browser's own console line is declared benign here so the
+ * zero-JS-errors gate keeps meaning "no page-emitted errors". Page
+ * errors (uncaught exceptions) are never excusable.
+ */
+const BROWSER_NOISE: Array<{ pattern: RegExp; reason: string }> = [
+  {
+    pattern:
+      /Failed to load resource.*net::ERR_(CONNECTION_REFUSED|FAILED|ABORTED|TIMED_OUT)/,
+    reason: "an intentional loopback probe was refused at network level",
+  },
+  {
+    pattern: /https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?/,
+    reason: "a network error on the intentional loopback probe target",
+  },
+  {
+    pattern: /has been blocked by CORS policy/,
+    reason: "a probe target answered without allowing this origin",
+  },
+];
+
 /** Collect every JS error the page reports into `sink`; assert later. */
 export function collectJsErrors(page: Page, sink: string[]): void {
   page.on("pageerror", (err) => sink.push(`pageerror: ${err.message}`));
   page.on("console", (msg) => {
-    if (msg.type() === "error") sink.push(`console.error: ${msg.text()}`);
+    if (msg.type() !== "error") return;
+    const text = `console.error: ${msg.text()}`;
+    if (BROWSER_NOISE.some((entry) => entry.pattern.test(text))) return;
+    sink.push(text);
   });
 }
 
