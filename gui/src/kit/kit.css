@@ -186,10 +186,9 @@
   white-space: nowrap;
 }
 
-.kit-tag.ac {
-  color: var(--ac);
-  border-color: color-mix(in srgb, var(--ac) 40%, var(--ln));
-}
+/* (.tag.ac — the accent tag variant — is deliberately NOT ported: its
+ * only prototype use is the dead font-specimen zoom (P2-9), which the
+ * prototype never invokes.) */
 
 /* Segmented control (mseg): tray + pressed pill. */
 .kit-mseg {

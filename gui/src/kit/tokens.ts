@@ -1,153 +1,20 @@
 /**
- * FontAlloy kit — design tokens (Stage 1 of the design-fidelity repair).
+ * FontAlloy kit — design tokens (typed data).
  *
  * Every value here is EXTRACTED FROM THE VALIDATED PROTOTYPE
  * (gui/prototype/index.html, accepted by the owner 2026-10). The prototype
  * is the design contract; this module is its typed form. Do not invent
  * values — change them only with a new owner decision.
  *
- * The names deliberately follow the prototype's token vocabulary so a
- * side-by-side comparison maps one-to-one:
- * page/sf/sf2 surfaces, ink text tiers, ln borders, ac accent, dgr danger.
+ * The base tokens — palettes, motion curves, radii, typography — live in
+ * tokens.css, where CSS consumes them; they are not duplicated here.
+ * This module carries only the token DATA TypeScript needs: the app
+ * theme names and the scene theme lists (labels for the AppSelect
+ * options, palettes for the locked-theme lookups).
  */
-
-/** One app palette — "teal on iron" in the dark case, off-white + teal in the light case. */
-export interface AppPalette {
-  /** Page (window) background. */
-  page: string;
-  /** Card / control surface. */
-  sf: string;
-  /** Recessed surface (hover fills, header fills, segment trays). */
-  sf2: string;
-  /** Primary text. */
-  ink: string;
-  /** Secondary text. */
-  ink2: string;
-  /** Tertiary text (hints, metadata). */
-  ink3: string;
-  /** Hairline border. */
-  ln: string;
-  /** Strong border. */
-  ln2: string;
-  /** De-emphasized glyph color (chevrons painted in SVG). */
-  fb: string;
-  /** Accent (teal: #0f766e light / #4ade9e dark). */
-  ac: string;
-  /** Accent hover mate. */
-  acs: string;
-  /** Accent tint fill (soft backgrounds). */
-  acsoft: string;
-  /** Text on accent. */
-  acink: string;
-  /** Danger (missing glyphs, destructive hover). */
-  dgr: string;
-  /** Danger tint fill. */
-  dgrsoft: string;
-  /** Elevation shadows, three steps. */
-  sh1: string;
-  sh2: string;
-  sh3: string;
-}
-
-/** The validated LIGHT theme: off-white page, white cards, teal #0f766e. */
-export const LIGHT_PALETTE: AppPalette = {
-  page: "#f7f8fa",
-  sf: "#ffffff",
-  sf2: "#eef0f3",
-  ink: "#131720",
-  ink2: "#4a5262",
-  ink3: "#5f6878",
-  ln: "#dfe3e8",
-  ln2: "#c0c7d0",
-  fb: "#7a8290",
-  ac: "#0f766e",
-  acs: "#0d5f58",
-  acsoft: "#e6f5f3",
-  acink: "#ffffff",
-  dgr: "#c53030",
-  dgrsoft: "#fef0f0",
-  sh1: "0 1px 2px rgba(16,20,26,.04)",
-  sh2: "0 4px 14px rgba(16,20,26,.08)",
-  sh3: "0 20px 50px rgba(16,20,26,.16)",
-};
-
-/** The validated DARK theme — the "teal on iron" signature: #0b0d0f / #14171a + #4ade9e. */
-export const DARK_PALETTE: AppPalette = {
-  page: "#0b0d0f",
-  sf: "#14171a",
-  sf2: "#1b1f23",
-  ink: "#e4e8ec",
-  ink2: "#9aa4b0",
-  ink3: "#737f8c",
-  ln: "#24282e",
-  ln2: "#3e454e",
-  fb: "#4a5460",
-  ac: "#4ade9e",
-  acs: "#34d399",
-  acsoft: "#0c2822",
-  acink: "#0b0d0f",
-  dgr: "#f87171",
-  dgrsoft: "#2a1414",
-  sh1: "0 1px 2px rgba(0,0,0,.4)",
-  sh2: "0 4px 16px rgba(0,0,0,.35)",
-  sh3: "0 24px 60px rgba(0,0,0,.65)",
-};
-
-export const PALETTES = { light: LIGHT_PALETTE, dark: DARK_PALETTE } as const;
 
 /** App theme names. The prototype ships BOTH; the kit always does. */
 export type AppTheme = "light" | "dark";
-
-/** Corner radii scale (px), as used across the prototype chrome. */
-export const RADIUS = {
-  /** App window. */
-  window: 14,
-  /** Cards, pickers, popovers, floating bars. */
-  card: 12,
-  /** Card header rounding (pairs with the card value). */
-  cardHead: 11,
-  /** Terminal / code wells, dropdown palettes. */
-  well: 9,
-  /** Inputs, cells, list rows, search fields. */
-  field: 8,
-  /** Buttons, chips, modebar inputs. */
-  button: 7,
-  /** Small buttons, rule rows, zoom buttons. */
-  small: 6,
-  /** Sub-chips, tags, pager buttons. */
-  chip: 5,
-} as const;
-
-/**
- * Typography scale (px). Base is 13px system UI; CJK copy ships in the
- * same stack ("Microsoft YaHei" on Windows hosts).
- */
-export const FONT = {
-  stack: 'system-ui,"Segoe UI","Microsoft YaHei",sans-serif',
-  monoBase: "Consolas,ui-monospace,monospace",
-  monoCjk: "'Microsoft YaHei',sans-serif",
-  /** Numbers that must align in columns — statusbar, counts, codepoints. */
-  numeric: "tabular-nums",
-  sizes: {
-    display: 15,
-    pickerName: 13.5,
-    body: 13,
-    emphasized: 12.5,
-    control: 12,
-    caption: 11.5,
-    label: 11,
-    micro: 10,
-  },
-} as const;
-
-/** Motion curves — Apple-style critically damped springs (prototype r30). */
-export const MOTION = {
-  spring: "cubic-bezier(.25,.1,.25,1)",
-  springOut: "cubic-bezier(.22,1,.36,1)",
-} as const;
-
-/** Page size of the character grid — uniform 1024 cells per page. */
-export const GRID_PAGE_SIZE = 1024;
 
 /* ------------------------------------------------------------------ */
 /* Scene themes — carried 1:1 from the prototype's theme system.       */

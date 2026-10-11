@@ -52,10 +52,6 @@ const LINEAR = {
 
 export type LinearIconName = keyof typeof LINEAR;
 
-export const LINEAR_ICON_NAMES: readonly LinearIconName[] = Object.keys(
-  LINEAR,
-) as LinearIconName[];
-
 /** Special glyphs outside the linear family. */
 const SPECIAL = {
   /** Close X, 16 viewBox, thin stroke — the prototype's rule delete. */

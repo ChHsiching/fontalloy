@@ -2,8 +2,11 @@
  * FontAlloy kit — design tokens as CSS custom properties.
  *
  * Every value extracted from the validated prototype (gui/prototype).
- * tokens.ts carries the same values in typed form; keep the two in sync
- * (the kit tests compare a sample of them).
+ * This sheet is the base tokens' single home (palettes, springs,
+ * radii-in-use, the .theming killer, scene-theme variable blocks); the
+ * scene-theme DATA also exists in typed form in tokens.ts
+ * (TERMINAL_THEMES / EDITOR_THEMES — the AppSelect option lists) — keep
+ * the two in sync.
  */
 
 :root {
