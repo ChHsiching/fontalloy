@@ -7,8 +7,15 @@
  *   is reserved for the selected state (border + 1px ring + tint);
  * - adjusted cells carry the corner dot (.ov, paired with the 已调整
  *   legend); missing cells are dashed danger with the codepoint shown;
- * - the codepoint row (编码 mode) is tabular-nums 8.5px under the
- *   glyph; with it the cell switches to a column layout.
+ *   - the codepoint row (编码 mode) is tabular-nums 8.5px under the
+ *   glyph; with it the cell switches to a column layout;
+ * - consumers with a separate details CURSOR (a keyboard/click focus
+ *   distinct from the multi-selection) render it as `.cur` — an inner
+ *   accent ring reading above the `.sel` selection tint.
+ *
+ * Data attributes: `cp` (codepoint label) and every entry of `attrs`
+ * land on the cell's dataset, so provenance (winner/via/kind) walks the
+ * DOM exactly like the prototype's grid.
  *
  * Selection MODELS (drag-paint, shift-range) are app state and stay
  * with the consumer — the kit renders the props it is given.
@@ -24,8 +31,17 @@ export interface GridCellData {
   /** Effective value differs from the default → the corner dot. */
   adjusted?: boolean;
   selected?: boolean;
+  /**
+   * The details CURSOR (a distinct accent-ring state consumers render on
+   * top of the multi-selection; "selected" stays the selection state).
+   */
+  cursor?: boolean;
   /** CSS font-family stack for the glyph (the effective font). */
   fontFamily?: string;
+  /** Codepoint label (e.g. "U+4E2D") exposed as data-cp for walkability. */
+  cp?: string;
+  /** Extra data attributes (e.g. winner/via/kind provenance). */
+  attrs?: Record<string, string>;
 }
 
 export interface GridCellProps {
@@ -48,11 +64,18 @@ export function gridCell(props: GridCellProps): HTMLElement {
   ) as HTMLElement;
   if (props.interactive) (cell as HTMLButtonElement).type = "button";
   cell.dataset.ch = data.ch;
+  if (data.cp) cell.dataset.cp = data.cp;
+  if (data.attrs) {
+    for (const [key, value] of Object.entries(data.attrs)) {
+      cell.dataset[key] = value;
+    }
+  }
   cell.className =
     "kit-cell" +
     (data.adjusted ? " ov" : "") +
     (data.state === "none" ? " miss" : "") +
-    (data.selected ? " sel" : "");
+    (data.selected ? " sel" : "") +
+    (data.cursor ? " cur" : "");
   if (data.state === "none") cell.setAttribute("aria-disabled", "true");
 
   const glyph = document.createElement("span");

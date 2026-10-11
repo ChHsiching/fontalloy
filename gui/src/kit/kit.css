@@ -611,6 +611,46 @@
   background: var(--sf2);
 }
 
+.kit-fp.off {
+  opacity: 0.62;
+}
+
+.kit-fp.off:hover {
+  background: none;
+}
+
+.kit-fp .kit-fp-note {
+  font-size: 10px;
+  color: var(--ink3);
+  line-height: 1.4;
+}
+
+.kit-fp.off .kit-fp-note {
+  color: var(--dgr);
+}
+
+/* Status note / error line above the footer — page text, never hover. */
+.kit-pkn {
+  flex: none;
+  padding: 6px 12px 0;
+  font-size: 10.5px;
+  color: var(--ink3);
+  line-height: 1.4;
+}
+
+.kit-pke {
+  flex: none;
+  margin: 6px 8px 0;
+  padding: 5px 8px;
+  border: 1px solid var(--dgr);
+  border-radius: 7px;
+  background: var(--dgrsoft);
+  color: var(--dgr);
+  font-size: 10.5px;
+  line-height: 1.4;
+  overflow-wrap: break-word;
+}
+
 .kit-fp[aria-pressed="true"] {
   background: var(--acsoft);
   color: var(--ink);
@@ -1002,6 +1042,21 @@
   border-color: var(--ac);
   box-shadow: 0 0 0 1px var(--ac);
   background: var(--acsoft);
+}
+
+/* Details cursor: the inner ring reads above the selection tint. */
+.kit-cell.cur {
+  box-shadow:
+    inset 0 0 0 2px var(--sf),
+    inset 0 0 0 3px var(--ac);
+}
+
+.kit-cell.sel.cur {
+  border-color: var(--ac);
+  box-shadow:
+    0 0 0 1px var(--ac),
+    inset 0 0 0 2px var(--sf),
+    inset 0 0 0 3px var(--ac);
 }
 
 .kit-cell.miss {

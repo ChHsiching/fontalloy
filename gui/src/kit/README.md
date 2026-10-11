@@ -25,15 +25,15 @@ re-renders, store pattern in `gui/src/state.ts`).
 | `icons.ts` | `icon(name)` — the prototype's linear icon family + specials (star, chevron, GitHub mark, theme sun) |
 | `appSelect.ts` | `mountAppSelect` — custom dropdown, glow, keyboard/Escape, allow-discrete open animation, exclusivity |
 | `metaLine.ts` | `metaLine(FontMeta)`, `formatStars` — the no-pills baseline row (accent stars, license, trait) |
-| `pickerPopup.ts` | `mountPickerPopup` — card + portaled popup: search header, inner scroll, footer OUTSIDE the scroll, self-rendering rows, node persistence, frame clamping |
+| `pickerPopup.ts` | `mountPickerPopup` — card + portaled popup: search header, inner scroll, footer OUTSIDE the scroll, self-rendering rows, node persistence, frame clamping. Stage-2 extensions: `note`/`error` status lines above the footer, and `PickerFont.disabled` + `note` render an unpickable row with its status tag (未下载 states) |
 | `helpPopover.ts` | `mountHelpPopover` (circular ? button + pop chrome), `workedTable` (`.kit-wtab` chrome verbatim), `helpNote` |
 | `settingsTopics.ts` | The three synthesis-settings topics with ADR-corrected table content (see below) |
 | `categoryChips.ts` | `mountCategoryChips` — two-level chips with counts, 全部/缺失 aggregates, danger styling |
 | `actionBar.ts` | `mountActionBar`, `segmentedControl`, `gridPager`, `undoAllButton` — per-group/per-block segments, 多选/编码/撤销, pager, 已调整 legend, 按编码指定, batch variant |
-| `grid.ts` | `gridCell`, `mountCharGrid`, `PAGE_SIZE` (1024) — hover neutral, accent selected, `.ov` corner dot, `.miss` dashed danger, codepoint row |
+| `grid.ts` | `gridCell`, `mountCharGrid`, `PAGE_SIZE` (1024) — hover neutral, accent selected, `.ov` corner dot, `.miss` dashed danger, `.cur` details-cursor inner ring, codepoint row. Stage-2 extensions: `cp` (data-cp label) + `attrs` (provenance data attributes) land on the cell dataset |
 | `statusBar.ts` | `mountStatusBar` — color-coded 字符/英文/中文/已调整/缺失/覆盖 counters, tabular-nums, change pop |
 | `sceneCard.ts` | `mountSceneCard` (stacked cards, theme AppSelect, 全屏查看), `mountFullscreenScene` |
-| `sceneContent.ts` | `buildTerminal` / `buildCode` / `buildDocument` — the prototype's sample content, per-char effective-font rendering, NBSP alignment, code tokenizer |
+| `sceneContent.ts` | `buildTerminal` / `buildCode` / `buildDocument` — the prototype's sample content, per-char effective-font rendering, NBSP alignment, code tokenizer. Stage-2 extension: `spanAttrs` puts consumer provenance (winner/via/kind) on every character span |
 | `topBar.ts` | `mountTopBar` + parts: `brandPart`, `fontPairTags`, `githubLink`, `themeToggle`, `fontNameInput` (default `ChHsich`), `synthesizeButton` |
 | `demo/` | The demo page (`gui/kit-demo.html`, dev-only): every component assembled with realistic data. Run `npm run dev` and open `/kit-demo.html`. This is the design-acceptance capture surface. |
 

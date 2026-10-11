@@ -43,6 +43,13 @@ export interface PickerFont {
   /** CSS family for self-rendering the name; omit for UI font. */
   family?: string;
   meta?: FontMeta;
+  /**
+   * Not pickable right now (a catalog family still downloading): the
+   * row renders `note` as its status tag and never fires onPick.
+   */
+  disabled?: boolean;
+  /** Inline status tag for a disabled row (e.g. 下载中…). */
+  note?: string;
 }
 
 export interface PickerPopupProps {
@@ -56,6 +63,13 @@ export interface PickerPopupProps {
   searchPlaceholder?: string;
   /** Empty-list note when no font matches. */
   emptyText?: string;
+  /**
+   * Catalog status note rendered above the footer (visible page text,
+   * never hover-only) — e.g. an offline or partial-download notice.
+   */
+  note?: string | null;
+  /** Inline error line above the footer (a failed local-file load). */
+  error?: string | null;
   /** Footer action (加载本地字体文件) — outside the scroll area. */
   footer?: { label: string; onClick(): void };
   onPick(id: string): void;
@@ -156,6 +170,21 @@ export function mountPickerPopup(
     scrollArea.className = "kit-pks";
     popup.appendChild(scrollArea);
 
+    // Status note + error line — siblings below the scroll, above the
+    // footer action (page text, never hover-only). Built once per open;
+    // renderStatus keeps their text in sync with the props.
+    const noteEl = document.createElement("div");
+    noteEl.className = "kit-pkn";
+    noteEl.dataset.pickerNote = "";
+    noteEl.hidden = true;
+    popup.appendChild(noteEl);
+    const errorEl = document.createElement("div");
+    errorEl.className = "kit-pke";
+    errorEl.setAttribute("role", "alert");
+    errorEl.dataset.pickerError = "";
+    errorEl.hidden = true;
+    popup.appendChild(errorEl);
+
     // Footer action — a sibling BELOW the scroll, never scrolling.
     if (props.footer) {
       const footer = document.createElement("button");
@@ -173,6 +202,21 @@ export function mountPickerPopup(
     document.body.appendChild(popup);
   };
 
+  /** Sync the note/error status lines with the current props. */
+  const renderStatus = (): void => {
+    if (!popup) return;
+    const noteEl = popup.querySelector<HTMLElement>("[data-picker-note]");
+    const errorEl = popup.querySelector<HTMLElement>("[data-picker-error]");
+    if (noteEl) {
+      noteEl.hidden = !props.note;
+      noteEl.textContent = props.note ?? "";
+    }
+    if (errorEl) {
+      errorEl.hidden = !props.error;
+      errorEl.textContent = props.error ?? "";
+    }
+  };
+
   const openPicker = (): void => {
     if (open) return;
     for (const other of [...openPickers]) other.close();
@@ -185,6 +229,7 @@ export function mountPickerPopup(
     el.classList.add("open");
     if (header) header.setAttribute("aria-expanded", "true");
     renderRows();
+    renderStatus();
     popup!.classList.add("open");
     position();
   };
@@ -202,10 +247,11 @@ export function mountPickerPopup(
     for (const font of matches) {
       const row = document.createElement("button");
       row.type = "button";
-      row.className = "kit-fp";
+      row.className = "kit-fp" + (font.disabled ? " off" : "");
       row.dataset.fontId = font.id;
       row.setAttribute("role", "option");
       row.setAttribute("aria-pressed", String(font.id === selectedId));
+      if (font.disabled) row.setAttribute("aria-disabled", "true");
       row.title = font.name;
       const name = document.createElement("span");
       name.className = "kit-nm";
@@ -216,6 +262,12 @@ export function mountPickerPopup(
       }
       row.appendChild(name);
       if (font.meta) row.appendChild(metaLine(font.meta));
+      if (font.note) {
+        const tag = document.createElement("span");
+        tag.className = "kit-fp-note";
+        tag.textContent = font.note;
+        row.appendChild(tag);
+      }
       if (font.id === selectedId) {
         const chk = document.createElement("span");
         chk.className = "kit-chk";
@@ -223,6 +275,7 @@ export function mountPickerPopup(
         row.appendChild(chk);
       }
       row.addEventListener("click", () => {
+        if (font.disabled) return;
         props.onPick(font.id);
         close();
       });
@@ -296,7 +349,10 @@ export function mountPickerPopup(
     render(next) {
       props = next;
       renderHeader();
-      if (open) renderRows();
+      if (open) {
+        renderRows();
+        renderStatus();
+      }
     },
     open: openPicker,
     close,

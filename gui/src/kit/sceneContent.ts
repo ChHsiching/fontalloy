@@ -19,9 +19,18 @@
 /** CSS font stack for one character (the effective merge preview). */
 export type FontResolver = (ch: string) => string;
 
+/** Extra data attributes for one character span (winner/via/kind...). */
+export type SpanAttrs = (ch: string) => Record<string, string> | undefined;
+
 export interface SceneContentProps {
   /** Resolve the font for each character; default: CJK vs base split. */
   resolveFont?: FontResolver;
+  /**
+   * Data attributes for each character span (e.g. the effective
+   * resolution provenance), so consumers' scenes walk the DOM exactly
+   * like their grids. Absent keys leave the attribute unset.
+   */
+  spanAttrs?: SpanAttrs;
   /** Full variant (fullscreen view) adds the extra sections. */
   full?: boolean;
   /** The document scene's custom preview text (自定义预览文字). */
@@ -91,11 +100,26 @@ export function buildTerminal(props: SceneContentProps = {}): HTMLElement {
       if (line.className) span.className = line.className;
       span.textContent = ch === " " ? "\u00A0" : ch;
       span.style.fontFamily = resolve(ch);
+      applySpanAttrs(span, ch, props.spanAttrs);
       term.appendChild(span);
     }
     term.appendChild(document.createElement("br"));
   }
   return term;
+}
+
+/** Dataset attributes from the consumer's spanAttrs (dataset = safe keys). */
+function applySpanAttrs(
+  span: HTMLElement,
+  ch: string,
+  spanAttrs: SpanAttrs | undefined,
+): void {
+  if (!spanAttrs) return;
+  const attrs = spanAttrs(ch);
+  if (!attrs) return;
+  for (const [key, value] of Object.entries(attrs)) {
+    span.dataset[key] = value;
+  }
 }
 
 /* ---------- code editor ---------- */
@@ -206,6 +230,7 @@ export function buildCode(props: SceneContentProps = {}): HTMLElement {
           if (cls) span.className = cls;
           span.textContent = ch === " " ? "\u00A0" : ch;
           span.style.fontFamily = resolve(ch);
+          applySpanAttrs(span, ch, props.spanAttrs);
           content.appendChild(span);
         }
       }
@@ -231,6 +256,7 @@ export function buildDocument(props: SceneContentProps = {}): HTMLElement {
       const span = document.createElement("span");
       span.textContent = ch === " " ? "\u00A0" : ch;
       span.style.fontFamily = resolve(ch);
+      applySpanAttrs(span, ch, props.spanAttrs);
       p.appendChild(span);
     }
     return p;

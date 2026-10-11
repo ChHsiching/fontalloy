@@ -5,6 +5,14 @@
  * `all` spans U+0020..U+10FFFF excluding the surrogate gap, so unassigned and
  * astral codepoints are browsable too — the grid renders whatever the loaded
  * fonts provide and falls back visually elsewhere.
+ *
+ * Since the design-fidelity repair the paradigm is the validated
+ * prototype's horizontal two-level chip bar: a category is one of
+ *
+ * - `all` — the full aggregate view,
+ * - a BLOCK id — one Unicode block,
+ * - `g:<group id>` — a GROUP AGGREGATE (the chip bar's "全部" of one
+ *   group), enumerated as the group's blocks in declaration order.
  */
 
 export interface UnicodeBlock {
@@ -92,13 +100,54 @@ export const BLOCK_GROUPS: BlockGroup[] = [
 export const ALL_BLOCKS: UnicodeBlock[] = BLOCK_GROUPS.flatMap((g) => g.blocks);
 
 const BLOCK_BY_ID = new Map(ALL_BLOCKS.map((b) => [b.id, b]));
+const GROUP_BY_ID = new Map(BLOCK_GROUPS.map((g) => [g.id, g]));
+
+export const GROUP_CATEGORY_PREFIX = "g:";
+
+/** The group-aggregate category id of a block group (`cjk` → `g:cjk`). */
+export function groupCategoryId(gid: string): string {
+  return GROUP_CATEGORY_PREFIX + gid;
+}
+
+/** The group of a group-aggregate category id, when there is one. */
+export function findGroupCategory(id: string): BlockGroup | undefined {
+  if (!id.startsWith(GROUP_CATEGORY_PREFIX)) return undefined;
+  return GROUP_BY_ID.get(id.slice(GROUP_CATEGORY_PREFIX.length));
+}
 
 export function findBlock(id: string): UnicodeBlock | undefined {
   return BLOCK_BY_ID.get(id);
 }
 
+/** The group a block belongs to (undefined for aggregate ids). */
+export function blockGroup(id: string): BlockGroup | undefined {
+  const block = BLOCK_BY_ID.get(id);
+  if (block) {
+    return BLOCK_GROUPS.find((g) => g.blocks.some((b) => b.id === id));
+  }
+  return findGroupCategory(id);
+}
+
+/** The codepoint intervals of a category, in enumeration order. */
+export function categoryIntervals(
+  id: string,
+): Array<{ start: number; end: number }> {
+  if (id === ALL_CATEGORY_ID) {
+    return [
+      { start: ALL_RANGE.start, end: 0xd7ff },
+      { start: 0xe000, end: ALL_RANGE.end },
+    ];
+  }
+  const group = findGroupCategory(id);
+  if (group) return group.blocks.map((b) => ({ start: b.start, end: b.end }));
+  const block = BLOCK_BY_ID.get(id);
+  return block ? [{ start: block.start, end: block.end }] : [];
+}
+
 export function categoryName(id: string): string {
   if (id === ALL_CATEGORY_ID) return "全部";
+  const group = findGroupCategory(id);
+  if (group) return group.name;
   return BLOCK_BY_ID.get(id)?.name ?? id;
 }
 
@@ -109,8 +158,11 @@ export function categorySize(id: string): number {
     const astral = ALL_RANGE.end - 0xe000 + 1;
     return bmp + astral;
   }
-  const b = BLOCK_BY_ID.get(id);
-  return b ? b.end - b.start + 1 : 0;
+  let total = 0;
+  for (const interval of categoryIntervals(id)) {
+    total += interval.end - interval.start + 1;
+  }
+  return total;
 }
 
 /** The nth codepoint (0-based) of a category, skipping the surrogate gap. */
@@ -120,9 +172,12 @@ export function nthCodepoint(id: string, n: number): number {
     if (n < bmpEnd - ALL_RANGE.start + 1) return ALL_RANGE.start + n;
     return 0xe000 + (n - (bmpEnd - ALL_RANGE.start + 1));
   }
-  const b = BLOCK_BY_ID.get(id);
-  if (!b) return ALL_RANGE.start;
-  return b.start + n;
+  for (const interval of categoryIntervals(id)) {
+    const size = interval.end - interval.start + 1;
+    if (n < size) return interval.start + n;
+    n -= size;
+  }
+  return ALL_RANGE.start;
 }
 
 /**
@@ -140,9 +195,14 @@ export function codepointIndex(id: string, cp: number): number | null {
       ? cp - ALL_RANGE.start
       : cp - 0xe000 + (bmpEnd - ALL_RANGE.start + 1);
   }
-  const b = BLOCK_BY_ID.get(id);
-  if (!b || cp < b.start || cp > b.end) return null;
-  return cp - b.start;
+  let index = 0;
+  for (const interval of categoryIntervals(id)) {
+    if (cp >= interval.start && cp <= interval.end) {
+      return index + (cp - interval.start);
+    }
+    index += interval.end - interval.start + 1;
+  }
+  return null;
 }
 
 export const CELLS_PER_PAGE = 1024;
