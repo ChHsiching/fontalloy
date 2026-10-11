@@ -18,8 +18,10 @@
  * catalog from GitHub. The Vite DEV server is the one exception: it
  * serves a small fixture catalog itself (host fonts), so `npm run dev`
  * boots a working catalog; the e2e web server opts out via
- * VITE_DEV_CATALOG=0. Only the Tauri shell (or an explicit injected
- * config) turns the real downloader on.
+ * VITE_DEV_CATALOG=0. `tauri dev` loads the frontend from that same
+ * dev server, so it boots the real dev catalog too (round 4) — only a
+ * PRODUCTION Tauri build (or an explicit injected config) turns the
+ * real GitHub downloader on.
  *
  * Issue #16 adds two more injectable seams on the same object:
  * - `serveUrl` — where the merge service answers (`http://127.0.0.1:<port>`).
@@ -127,10 +129,9 @@ export function serveProbeAddress(): string {
 export function readConfig(): FontalloyConfig {
   const injected =
     typeof window !== "undefined" ? window.__FONTALLOY_CONFIG__ : undefined;
-  const devDefault =
-    import.meta.env.DEV && import.meta.env.VITE_DEV_CATALOG !== "0"
-      ? DEV_CATALOG_URL
-      : null;
+  const devCatalog =
+    import.meta.env.DEV && import.meta.env.VITE_DEV_CATALOG !== "0";
+  const devDefault = devCatalog ? DEV_CATALOG_URL : null;
   // The static WebApp build (web/) ships the same dev-catalog bootstrap:
   // its vite config defines VITE_WEB_CATALOG=1 so `vite preview` of the
   // built site boots the real catalog too. Other plain-browser builds
@@ -141,7 +142,15 @@ export function readConfig(): FontalloyConfig {
     injected?.catalogBootstrapUrl !== undefined
       ? injected.catalogBootstrapUrl
       : isTauri()
-        ? githubBootstrapUrl()
+        ? // `tauri dev` loads the frontend FROM the vite dev server, so
+          // the same-origin dev catalog is exactly what it sees — the
+          // app boots with the real 81-family catalog while the GitHub
+          // release tag it would otherwise await does not exist yet.
+          // A production Tauri build (vite build → frontendDist) is DEV
+          // false and keeps the real release flow unchanged.
+          (devCatalog
+            ? DEV_CATALOG_URL
+            : githubBootstrapUrl())
         : (devDefault ?? webStaticDefault);
   return {
     catalogBootstrapUrl: bootstrap ?? null,
