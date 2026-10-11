@@ -3,9 +3,9 @@
  *
  * The stacked scene cards of the preview mode: caption, per-card theme
  * select (terminal / editor only — the document card has none), the
- * 全屏查看 expand button, and the scene body. Cards enter with a
- * staggered rise; the consumer gates replay with the no-in class
- * (content-only re-renders must not replay the entrance).
+ * 全屏查看 expand button, and the scene body. Cards render in place —
+ * no entrance choreography (round 4: the charmap has none; parallel
+ * surfaces behave alike).
  *
  * The fullscreen expand itself is a kit part too (mountFullscreenScene):
  * the same body builders at full size, with prev/next/close chrome.

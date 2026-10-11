@@ -23,9 +23,9 @@ import { formatCp } from "./charmap";
  * attributes (`data-winner` / `data-via` / `data-kind`), so the scenes
  * are walkable exactly like the grid.
  *
- * The card entrance plays once per mode switch; content-only
- * re-renders (a rule landed, a pick changed, the custom preview text
- * typed) render through the no-in gate (the prototype's r30 lesson).
+ * Cards render in place with no entrance choreography (round 4: the
+ * charmap has none; parallel surfaces behave alike). A signature guard
+ * still skips no-op re-renders.
  */
 
 const CAPTIONS: Record<SceneKind, string> = {
@@ -133,16 +133,7 @@ export function mountScenes(root: HTMLElement, fullscreenHost: HTMLElement): voi
     cards.set(kind, mountSceneCard(wrap, cardProps(kind)));
   }
 
-  let sceneEntrance = true;
   let lastSignature: string | null = null;
-
-  /** Re-render the card bodies (entrance only on a fresh mode entry). */
-  function renderScenes(withEntrance: boolean): void {
-    wrap.classList.toggle("no-in", !withEntrance);
-    for (const [kind, card] of cards) {
-      card.render(cardProps(kind));
-    }
-  }
 
   const render = (): void => {
     const { rules, customPreview } = store.get();
@@ -152,8 +143,9 @@ export function mountScenes(root: HTMLElement, fullscreenHost: HTMLElement): voi
       .join("|")}:${picks.base?.cssFamily ?? ""}:${picks.donor?.cssFamily ?? ""}:${customPreview}`;
     if (signature === lastSignature) return;
     lastSignature = signature;
-    renderScenes(sceneEntrance);
-    sceneEntrance = false;
+    for (const [kind, card] of cards) {
+      card.render(cardProps(kind));
+    }
   };
   store.subscribe(render);
   render();
