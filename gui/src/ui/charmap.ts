@@ -557,9 +557,19 @@ const BLOCK_ICONS: Record<string, IconName> = {
 let activeGrid: CharGrid | null = null;
 
 /**
+ * The live page size (round 5, owner item 5): a multiple of the grid's
+ * current column count, capped at CELLS_PER_PAGE, so every page is
+ * exactly full except the final partial one. Falls back to the nominal
+ * page until the first layout reports columns.
+ */
+let livePageSize = CELLS_PER_PAGE;
+
+/**
  * Locate a typed codepoint (hex form or a single character): jump to its
  * category page, set the details cursor on it, and scroll it into view.
- * An unparseable query is a silent no-op (prototype parity).
+ * An unparseable query — or a codepoint the browsable universe does not
+ * carry (an invisible one: a control/format/separator/unassigned scalar,
+ * which the grid never shows) — is a silent no-op (prototype parity).
  */
 export function locateQuery(raw: string): void {
   const text = raw.trim();
@@ -570,15 +580,10 @@ export function locateQuery(raw: string): void {
   const block = ALL_BLOCKS.find((b) => cp >= b.start && cp <= b.end);
   let categoryId = ALL_CATEGORY_ID;
   let page = 1;
-  if (block) {
-    categoryId = block.id;
-    page = Math.floor((cp - block.start) / CELLS_PER_PAGE) + 1;
-  } else if (cp >= 0x20) {
-    // The aggregate view: index within it, surrogate gap included.
-    const bmpEnd = 0xd7ff;
-    const index = cp <= bmpEnd ? cp - 0x20 : cp - 0xe000 + (bmpEnd - 0x20 + 1);
-    page = Math.floor(index / CELLS_PER_PAGE) + 1;
-  }
+  if (block) categoryId = block.id;
+  const index = codepointIndex(categoryId, cp);
+  if (index === null) return; // not browsable here — silent no-op
+  page = Math.floor(index / livePageSize) + 1;
   store.set({ categoryId, page, selectedCodepoint: cp });
   // Bring the cell into view (prototype parity: locate scrolls to it).
   window.setTimeout(() => {
@@ -637,6 +642,20 @@ export function mountCharmap(root: HTMLElement): void {
   const charPopup = mountCharPopup();
   const grid: CharGrid = mountCharGrid(gridHost);
   activeGrid = grid;
+
+  /**
+   * The page-fill discipline (round 5): pages hold as many full ROWS as
+   * fit in the nominal 1024 cells — a page size that is a multiple of
+   * the live column count. When the columns change (first layout, a
+   * window resize), the current page re-renders at the new boundaries.
+   */
+  const onGridColumns = (columns: number): void => {
+    if (columns <= 0) return;
+    const next = Math.max(columns, Math.floor(CELLS_PER_PAGE / columns) * columns);
+    if (next === livePageSize) return;
+    livePageSize = next;
+    render();
+  };
 
   /** Leave 多选 mode: the selection, its anchor, and its undo stack go. */
   const toggleMultiMode = (): void => {
@@ -761,8 +780,8 @@ export function mountCharmap(root: HTMLElement): void {
     const missing = missingCodepoints();
     const last =
       categoryId === MISSING_CATEGORY_ID
-        ? Math.max(1, Math.ceil(missing.length / CELLS_PER_PAGE))
-        : pageCountFor(categoryId);
+        ? Math.max(1, Math.ceil(missing.length / livePageSize))
+        : pageCountFor(categoryId, livePageSize);
     const safePage = Math.min(Math.max(page, 1), last);
 
     renderChips(categoryId);
@@ -799,7 +818,9 @@ export function mountCharmap(root: HTMLElement): void {
           icon: GROUP_ICONS[g.id],
         })),
         // The 缺失 aggregate closes the row (danger styling) whenever
-        // the declared preset scope has uncovered codepoints.
+        // both picks exist and the browsed universe has codepoints
+        // neither font covers — computed from the coverages alone, no
+        // preset involved (round 5, owner item 4).
         ...(missing.length > 0
           ? [
               {
@@ -825,7 +846,9 @@ export function mountCharmap(root: HTMLElement): void {
               ...group.blocks.map((b) => ({
                 id: b.id,
                 label: b.name,
-                count: b.end - b.start + 1,
+                // The block's VISIBLE codepoint count — the cells the
+                // grid actually pages through (round 5).
+                count: categorySize(b.id),
                 icon: BLOCK_ICONS[b.id],
               })),
             ],
@@ -984,8 +1007,8 @@ export function mountCharmap(root: HTMLElement): void {
       categoryId === MISSING_CATEGORY_ID
         ? missing.length
         : categorySize(categoryId);
-    const first = (page - 1) * CELLS_PER_PAGE;
-    const count = Math.min(CELLS_PER_PAGE, size - first);
+    const first = (page - 1) * livePageSize;
+    const count = Math.min(livePageSize, size - first);
     const picks = pickRefs();
     const effective = picks.base !== null && picks.donor !== null;
     const resolver = effective ? currentResolver(picks) : null;
@@ -1057,7 +1080,12 @@ export function mountCharmap(root: HTMLElement): void {
           : undefined,
       });
     }
-    grid.render({ cells, showCodepoints, cellSize: 40 });
+    grid.render({
+      cells,
+      showCodepoints,
+      cellSize: 40,
+      onColumns: onGridColumns,
+    });
   }
 
 }

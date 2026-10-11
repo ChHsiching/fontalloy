@@ -123,6 +123,14 @@ export interface CharGridProps {
   /** Cell size in px (the prototype default: 40). */
   cellSize?: number;
   onCellClick?(data: GridCellData, cell: HTMLElement): void;
+  /**
+   * The grid's live COLUMN count (PRODUCT-EXTENSION for the responsive
+   * page fill, round 5): reported after every render and on container
+   * resizes, so the consumer can page in full rows (a page size that is
+   * a multiple of the column count never leaves a partial last row on a
+   * non-final page).
+   */
+  onColumns?(columns: number): void;
 }
 
 export interface CharGrid {
@@ -132,7 +140,7 @@ export interface CharGrid {
   render(props: CharGridProps): void;
 }
 
-/** Page size — the uniform grid page (1024 cells). */
+/** Page size ceiling — the uniform grid page (1024 cells). */
 export const PAGE_SIZE = 1024;
 
 export function mountCharGrid(host: HTMLElement): CharGrid {
@@ -144,8 +152,24 @@ export function mountCharGrid(host: HTMLElement): CharGrid {
   host.appendChild(wrap);
 
   let cells = new Map<string, HTMLElement>();
+  let onColumns: ((columns: number) => void) | undefined;
+
+  /** Report the laid-out column count (0 when the grid has no tracks). */
+  const measureColumns = (): void => {
+    const tracks = getComputedStyle(grid).gridTemplateColumns;
+    const columns = tracks.trim() === "" || tracks === "none"
+      ? 0
+      : tracks.split(/\s+/).length;
+    if (columns > 0) onColumns?.(columns);
+  };
+
+  // A resize (window, rail collapse, zoom) reflows the tracks; the page
+  // fill must follow the new column count.
+  const observer = new ResizeObserver(() => measureColumns());
+  observer.observe(grid);
 
   const render = (props: CharGridProps): void => {
+    onColumns = props.onColumns;
     grid.style.setProperty("--cell", `${props.cellSize ?? 40}px`);
     grid.innerHTML = "";
     cells = new Map();
@@ -168,6 +192,8 @@ export function mountCharGrid(host: HTMLElement): CharGrid {
       fragment.appendChild(cell);
     }
     grid.appendChild(fragment);
+    // After the nodes land, the tracks exist and can be measured.
+    measureColumns();
   };
 
   return {

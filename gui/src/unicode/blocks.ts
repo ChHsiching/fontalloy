@@ -2,9 +2,9 @@
  * Curated Unicode block hierarchy for the character map.
  *
  * "Hierarchical categories and the 'all' aggregate view coexist" (ADR-0004):
- * `all` spans U+0020..U+10FFFF excluding the surrogate gap, so unassigned and
- * astral codepoints are browsable too — the grid renders whatever the loaded
- * fonts provide and falls back visually elsewhere.
+ * `all` spans the browsable scalar space; unassigned and astral codepoints
+ * are browsable too — the grid renders whatever the loaded fonts provide
+ * and falls back visually elsewhere.
  *
  * Since the design-fidelity repair the paradigm is the validated
  * prototype's horizontal two-level chip bar: a category is one of
@@ -13,7 +13,23 @@
  * - a BLOCK id — one Unicode block,
  * - `g:<group id>` — a GROUP AGGREGATE (the chip bar's "全部" of one
  *   group), enumerated as the group's blocks in declaration order.
+ *
+ * Round 5 (owner items 1 + 5):
+ *
+ * - **Visible-only enumeration.** Every category enumerates VISIBLE
+ *   codepoints only (see ./visible.ts): control, format, separator,
+ *   surrogate, and unassigned scalars never become cells — the
+ *   prototype's hand-curated blocks contain none, so a raw block range
+ *   would render meaningless blanks (U+0020, U+007F–U+00A0 & co). The
+ *   BLOCK BOUNDS stay raw: block rules target the full Unicode block,
+ *   exactly like a recipe written by hand.
+ * - **Responsive page size.** Pages hold `perPage` cells where
+ *   `perPage` is a multiple of the grid's live column count, so every
+ *   page is exactly full except the final partial one (the nominal
+ *   ceiling stays CELLS_PER_PAGE).
  */
+
+import { VISIBLE_INTERVALS } from "./visible";
 
 export interface UnicodeBlock {
   id: string;
@@ -128,7 +144,7 @@ export function blockGroup(id: string): BlockGroup | undefined {
   return findGroupCategory(id);
 }
 
-/** The codepoint intervals of a category, in enumeration order. */
+/** The RAW codepoint intervals of a category, in enumeration order. */
 export function categoryIntervals(
   id: string,
 ): Array<{ start: number; end: number }> {
@@ -151,62 +167,141 @@ export function categoryName(id: string): string {
   return BLOCK_BY_ID.get(id)?.name ?? id;
 }
 
-/** Codepoint count of a category (all = union minus the surrogate gap). */
-export function categorySize(id: string): number {
-  if (id === ALL_CATEGORY_ID) {
-    const bmp = 0xd7ff - ALL_RANGE.start + 1;
-    const astral = ALL_RANGE.end - 0xe000 + 1;
-    return bmp + astral;
-  }
-  let total = 0;
-  for (const interval of categoryIntervals(id)) {
-    total += interval.end - interval.start + 1;
-  }
-  return total;
+/* ---------------- visible-span enumeration (round 5) ------------------ */
+
+/**
+ * One browsable span: a visible interval of a category, with the count
+ * of visible codepoints BEFORE it (a prefix sum — nth/index math is a
+ * binary search over these).
+ */
+interface VisibleSpan {
+  start: number;
+  end: number;
+  /** Visible codepoints in the spans strictly before this one. */
+  before: number;
 }
 
-/** The nth codepoint (0-based) of a category, skipping the surrogate gap. */
-export function nthCodepoint(id: string, n: number): number {
-  if (id === ALL_CATEGORY_ID) {
-    const bmpEnd = 0xd7ff;
-    if (n < bmpEnd - ALL_RANGE.start + 1) return ALL_RANGE.start + n;
-    return 0xe000 + (n - (bmpEnd - ALL_RANGE.start + 1));
+const spanCache = new Map<string, VisibleSpan[]>();
+
+/** First index of VISIBLE_INTERVALS whose interval can overlap `from`. */
+function firstVisibleFrom(from: number): number {
+  let lo = 0;
+  let hi = VISIBLE_INTERVALS.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (VISIBLE_INTERVALS[mid]![1] < from) lo = mid + 1;
+    else hi = mid;
   }
-  for (const interval of categoryIntervals(id)) {
-    const size = interval.end - interval.start + 1;
-    if (n < size) return interval.start + n;
-    n -= size;
+  return lo;
+}
+
+function intersectVisible(
+  intervals: ReadonlyArray<{ start: number; end: number }>,
+): VisibleSpan[] {
+  // Blocks are declared in TAXONOMY order, not codepoint order (the CJK
+  // group lists the compatibility block before the unified one), so
+  // each interval finds its starting visible interval by search — a
+  // shared forward cursor would skip everything after a backwards step.
+  const raw: Array<{ start: number; end: number }> = [];
+  for (const interval of intervals) {
+    for (
+      let j = firstVisibleFrom(interval.start);
+      j < VISIBLE_INTERVALS.length;
+      j++
+    ) {
+      const [visStart, visEnd] = VISIBLE_INTERVALS[j]!;
+      if (visStart > interval.end) break;
+      const start = Math.max(visStart, interval.start);
+      const end = Math.min(visEnd, interval.end);
+      if (start <= end) raw.push({ start, end });
+    }
+  }
+  // Enumeration follows CODEPOINT order within a category (the spans
+  // carry prefix sums, so the binary searches need them sorted). The
+  // chip bar still lists blocks in taxonomy order; the GRID browsing a
+  // group aggregate walks its codepoints ascending.
+  raw.sort((a, b) => a.start - b.start);
+  const spans: VisibleSpan[] = [];
+  let before = 0;
+  for (const { start, end } of raw) {
+    spans.push({ start, end, before });
+    before += end - start + 1;
+  }
+  return spans;
+}
+
+/** The visible spans of a category (memoized; declaration order). */
+function visibleSpans(id: string): VisibleSpan[] {
+  let spans = spanCache.get(id);
+  if (spans === undefined) {
+    spans = intersectVisible(categoryIntervals(id));
+    spanCache.set(id, spans);
+  }
+  return spans;
+}
+
+/** True when `cp` renders real ink (see ./visible.ts). */
+export function isVisibleCodepoint(cp: number): boolean {
+  let lo = 0;
+  let hi = VISIBLE_INTERVALS.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    const [start, end] = VISIBLE_INTERVALS[mid]!;
+    if (cp < start) hi = mid;
+    else if (cp > end) lo = mid + 1;
+    else return true;
+  }
+  return false;
+}
+
+/** Visible codepoint count of a category. */
+export function categorySize(id: string): number {
+  const spans = visibleSpans(id);
+  const last = spans[spans.length - 1];
+  if (!last) return 0;
+  return last.before + (last.end - last.start + 1);
+}
+
+/** The nth (0-based) VISIBLE codepoint of a category. */
+export function nthCodepoint(id: string, n: number): number {
+  const spans = visibleSpans(id);
+  let lo = 0;
+  let hi = spans.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const span = spans[mid]!;
+    const size = span.end - span.start + 1;
+    if (n < span.before) hi = mid - 1;
+    else if (n >= span.before + size) lo = mid + 1;
+    else return span.start + (n - span.before);
   }
   return ALL_RANGE.start;
 }
 
 /**
- * The 0-based index of `cp` within a category's enumeration (the inverse
- * of nthCodepoint), or null when the codepoint is outside the category.
- * Shift-range selection (issue #20) maps its endpoints through this so the
- * aggregate view's surrogate gap is never selected through.
+ * The 0-based VISIBLE index of `cp` within a category (the inverse of
+ * nthCodepoint), or null when the codepoint is outside the category or
+ * itself invisible. Shift-range selection (issue #20) maps its endpoints
+ * through this so the aggregate view never selects a gap.
  */
 export function codepointIndex(id: string, cp: number): number | null {
-  if (id === ALL_CATEGORY_ID) {
-    if (cp < ALL_RANGE.start || cp > ALL_RANGE.end) return null;
-    if (cp >= 0xd800 && cp <= 0xdfff) return null;
-    const bmpEnd = 0xd7ff;
-    return cp <= bmpEnd
-      ? cp - ALL_RANGE.start
-      : cp - 0xe000 + (bmpEnd - ALL_RANGE.start + 1);
-  }
-  let index = 0;
-  for (const interval of categoryIntervals(id)) {
-    if (cp >= interval.start && cp <= interval.end) {
-      return index + (cp - interval.start);
-    }
-    index += interval.end - interval.start + 1;
+  const spans = visibleSpans(id);
+  let lo = 0;
+  let hi = spans.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const span = spans[mid]!;
+    if (cp < span.start) hi = mid - 1;
+    else if (cp > span.end) lo = mid + 1;
+    else return span.before + (cp - span.start);
   }
   return null;
 }
 
+/** The nominal grid page: 1024 cells (the live page may be smaller). */
 export const CELLS_PER_PAGE = 1024;
 
-export function pageCountFor(id: string): number {
-  return Math.max(1, Math.ceil(categorySize(id) / CELLS_PER_PAGE));
+/** Page count of a category at `perPage` cells per page. */
+export function pageCountFor(id: string, perPage = CELLS_PER_PAGE): number {
+  return Math.max(1, Math.ceil(categorySize(id) / perPage));
 }
