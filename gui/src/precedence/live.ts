@@ -37,3 +37,25 @@ export function liveResolver(): { picks: PickRefs; resolver: EffectiveResolver |
   const picks = pickRefs();
   return { picks, resolver: currentResolver(picks) };
 }
+
+let defaultMemo: { signature: string; resolver: EffectiveResolver | null } | null =
+  null;
+
+/**
+ * The NO-RULES resolver for the current picks — the baseline against
+ * which "adjusted" is defined (the effective winner differs from the
+ * default winner). Memoized on the picks alone.
+ */
+export function defaultResolver(picks: PickRefs): EffectiveResolver | null {
+  if (picks.refs.length === 0) return null;
+  const signature = `${picks.base?.cssFamily ?? ""}:${picks.donor?.cssFamily ?? ""}`;
+  if (defaultMemo && defaultMemo.signature === signature) {
+    return defaultMemo.resolver;
+  }
+  const coverages = new Map<string, Coverage | null>();
+  if (picks.base) coverages.set("base", arrayCoverage(picks.base.codepoints));
+  if (picks.donor) coverages.set("donor-0", arrayCoverage(picks.donor.codepoints));
+  const resolver = new EffectiveResolver([], coverages);
+  defaultMemo = { signature, resolver };
+  return resolver;
+}

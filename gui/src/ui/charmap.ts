@@ -4,14 +4,19 @@ import {
   ALL_BLOCKS,
   BLOCK_GROUPS,
   CELLS_PER_PAGE,
+  blockGroup,
+  categoryIntervals,
   categorySize,
   categoryName,
   codepointIndex,
+  findGroupCategory,
+  groupCategoryId,
   nthCodepoint,
   pageCountFor,
+  type UnicodeBlock,
 } from "../unicode/blocks";
 import { newRule, parseCodepointInput, type EditorRule } from "../precedence/model";
-import { currentResolver } from "../precedence/live";
+import { currentResolver, defaultResolver } from "../precedence/live";
 import { pickRefs, refFont, refLabel, type PickRefs } from "../precedence/picks";
 import {
   beginSelectionGesture,
@@ -19,28 +24,42 @@ import {
   extendSelection,
   mutateRules,
   undoSelection,
+  undoRules,
+  canUndoRules,
 } from "../history";
-import { cssFamily } from "./picker";
+import { cssFamily } from "../kit/pickerPopup";
+import { fitPopup } from "../kit/position";
+import { mountCategoryChips, type CategoryChips } from "../kit/categoryChips";
+import { mountActionBar, type ActionBar, type FontSide } from "../kit/actionBar";
+import { mountCharGrid, type CharGrid, type GridCellData } from "../kit/grid";
+import type { IconName } from "../kit/icons";
 
 /**
- * Character map (ADR-0004): hierarchical categories + the "all" aggregate
- * view, a uniform grid of 1024 cells per page, a pager with goto/page jump
- * and a typed-codepoint locator.
+ * Character map (ADR-0004), assembled from the kit: the horizontal
+ * two-level CategoryChips bar (group + block, with the 全部 aggregate
+ * and per-group aggregates), the ActionBar (per-group and per-block
+ * 用英文字体/用中文字体 segments, 多选/编码/撤销, the pager, the 已调整
+ * legend, the codepoint locator, and the 按编码指定 entry), and the
+ * effective grid.
  *
- * Since issue #18 the grid renders the EFFECTIVE merged result: each cell
- * is resolved through the client-side precedence mirror (same semantics
- * as the core resolver) against the coverage of the actually-loaded
- * fonts, rendered in the winning font's own face, and carries its
- * resolution as DOM attributes (`data-winner` / `data-via` /
- * `data-kind`) — the grid never lies, however complex the rules. Cells
- * no font of the build covers fall back to the plain preview stack and
- * state so in the details strip. Selecting a cell opens the
- * single-codepoint precedence editor; typing a codepoint locates it.
+ * Since issue #18 the grid renders the EFFECTIVE merged result: each
+ * cell is resolved through the client-side precedence mirror (same
+ * semantics as the core resolver) against the coverage of the
+ * actually-loaded fonts, rendered in the winning font's own face, and
+ * carries its resolution as DOM attributes (`data-winner` / `data-via`
+ * / `data-kind`) — the grid never lies, however complex the rules.
+ * Adjusted cells (the effective winner differing from the no-rule
+ * default) carry the kit's corner dot, paired with the 已调整 legend.
  *
- * Since issue #20 the grid is also multi-selectable: drag-paint,
- * Ctrl-drag-paint (additive runs), and shift-range from a click anchor.
- * A selection of two or more opens the batch precedence editor in the
- * details strip — one action applies a font list to the whole selection.
+ * The ActionBar's segments act through the EXISTING rule-state
+ * machinery (#18/#20): assigning a block or a group creates/updates
+ * exact range rules through `mutateRules` (one undo entry per action),
+ * and the batch variant applies to the multi-selection exactly like
+ * the details strip's batch editor (one range rule per contiguous run,
+ * per-codepoint rules otherwise). Selecting a cell opens the
+ * single-codepoint precedence editor; typing a codepoint locates it;
+ * drag-paint / Ctrl-drag-paint / shift-range build selections (issue
+ * #20), with the two separate undo stacks.
  */
 
 /** Whether `rule` targets exactly this codepoint. */
@@ -135,13 +154,13 @@ function selectionRuns(sorted: readonly number[]): SelectionRun[] {
  * The new rules append last, so within-layer last-declared-wins makes
  * them effective immediately.
  */
-function applyBatchRule(): void {
+function applyBatchRule(fonts: string[]): void {
   const { selection } = store.get();
-  if (selection.length === 0 || batchFonts.length === 0) return;
+  if (selection.length === 0 || fonts.length === 0) return;
   const sorted = [...selection].sort((a, b) => a - b);
   const runs = selectionRuns(sorted);
   const selectedSet = new Set(sorted);
-  const fonts = [...batchFonts];
+  const list = [...fonts];
   const singleRun = runs.length === 1 ? runs[0]! : null;
   const rules = store.get().rules.filter((rule) => {
     if (rule.target.kind === "codepoint") {
@@ -156,17 +175,93 @@ function applyBatchRule(): void {
   });
   if (singleRun !== null && sorted.length > 1) {
     rules.push(
-      newRule({ kind: "range", start: singleRun.start, end: singleRun.end }, fonts),
+      newRule({ kind: "range", start: singleRun.start, end: singleRun.end }, list),
     );
   } else {
     for (const cp of sorted) {
-      rules.push(newRule({ kind: "codepoint", cp }, fonts));
+      rules.push(newRule({ kind: "codepoint", cp }, list));
     }
   }
   mutateRules(rules);
 }
 
-/* ---------------------- shared font list ---------------------------- */
+/* -------------- block / group assignment (the segments) ------------- */
+
+/** The font ref of one side ("base" / the first donor). */
+function sideRef(side: FontSide): string | null {
+  const refs = pickRefs().refs;
+  const wanted = side === "base" ? "base" : "donor-0";
+  return refs.includes(wanted) ? wanted : null;
+}
+
+/** True when `rule` is a complete range rule over exactly `block`. */
+function isExactBlockRule(rule: EditorRule, block: UnicodeBlock): boolean {
+  if (rule.target.kind !== "range") return false;
+  const { start, end } = rule.target;
+  if (start === null || end === null) return false;
+  return (
+    Math.min(start, end) === block.start && Math.max(start, end) === block.end
+  );
+}
+
+/** The side a block is explicitly assigned to ("" = not assigned). */
+function blockAssignment(block: UnicodeBlock): FontSide | "" {
+  const rules = store.get().rules;
+  for (let i = rules.length - 1; i >= 0; i--) {
+    const rule = rules[i]!;
+    if (!isExactBlockRule(rule, block)) continue;
+    if (rule.fonts.length !== 1) continue;
+    const ref = rule.fonts[0]!;
+    if (ref === "base") return "base";
+    if (ref === "donor-0") return "donor";
+  }
+  return "";
+}
+
+/** The side EVERY block of a group is assigned to ("" otherwise). */
+function groupAssignment(blocks: readonly UnicodeBlock[]): FontSide | "" {
+  let side: FontSide | "" = "";
+  for (const block of blocks) {
+    const current = blockAssignment(block);
+    if (current === "") return "";
+    if (side === "") side = current;
+    else if (side !== current) return "";
+  }
+  return side;
+}
+
+/**
+ * Assign one block to a side through the rule state: an exact range
+ * rule with the side's ref as the only font. Assigning the side the
+ * block already carries REVERTS it to default (prototype parity).
+ */
+function assignBlocks(
+  blocks: readonly UnicodeBlock[],
+  side: FontSide,
+): void {
+  const ref = sideRef(side);
+  if (ref === null) return;
+  const exact = new Set(
+    blocks.flatMap((block) =>
+      store
+        .get()
+        .rules.filter((rule) => isExactBlockRule(rule, block))
+        .map((rule) => rule.id),
+    ),
+  );
+  const already = groupAssignment(blocks) === side;
+  const rules = store.get().rules.filter((rule) => !exact.has(rule.id));
+  if (!already) {
+    for (const block of blocks) {
+      rules.push(
+        newRule({ kind: "range", start: block.start, end: block.end }, [ref]),
+      );
+    }
+  }
+  mutateRules(rules);
+}
+
+/* ---------------- shared font list ---------------------------- */
 
 /**
  * The ordered font list editor shared by the single-codepoint and batch
@@ -214,7 +309,7 @@ function buildOrderedFontList(
     ] as const) {
       const button = document.createElement("button");
       button.type = "button";
-      button.className = "rule-font-move";
+      button.className = "rule-font-move kit-btn sm gh";
       button.dataset.role = `${rolePrefix}-font-${direction}-${ref}`;
       button.textContent = delta < 0 ? "↑" : "↓";
       button.disabled = !checked;
@@ -232,48 +327,204 @@ function buildOrderedFontList(
   return list;
 }
 
+/* ---------------- the 按编码指定 range popup ------------------------ */
+
+/**
+ * The range-specify popup (按编码指定): the kit's .kit-pop chrome with
+ * two codepoint inputs and the two side actions — one more entry to the
+ * SAME range-rule machinery the rail and the segments use.
+ */
+function mountRangePopup(anchor: HTMLElement): { open(): void } {
+  const popup = document.createElement("div");
+  popup.className = "kit-pop range-pop";
+  popup.dataset.rangePopup = "";
+  popup.setAttribute("role", "dialog");
+  popup.setAttribute("aria-label", "按编码指定");
+  const title = document.createElement("h5");
+  title.textContent = "按编码指定";
+  const hint = document.createElement("p");
+  hint.className = "kit-sub";
+  hint.textContent = "把一段码位整体指定给一侧字体（创建一条区间规则）。";
+  const startInput = document.createElement("input");
+  startInput.type = "search";
+  startInput.spellcheck = false;
+  startInput.dataset.role = "range-start";
+  startInput.placeholder = "起始（如 4E00）";
+  startInput.setAttribute("aria-label", "起始码位");
+  const endInput = document.createElement("input");
+  endInput.type = "search";
+  endInput.spellcheck = false;
+  endInput.dataset.role = "range-end";
+  endInput.placeholder = "结束（如 9FFF）";
+  endInput.setAttribute("aria-label", "结束码位");
+  const actions = document.createElement("div");
+  actions.className = "range-pop-actions";
+  const error = document.createElement("div");
+  error.className = "range-pop-error";
+  error.dataset.role = "range-error";
+  error.hidden = true;
+  const apply = (side: FontSide): void => {
+    const ref = sideRef(side);
+    const start = parseCodepointInput(startInput.value);
+    const end = parseCodepointInput(endInput.value);
+    if (ref === null || start === null || end === null) {
+      error.hidden = false;
+      error.textContent = "请输入两个有效的码位（如 4E00 与 9FFF）。";
+      return;
+    }
+    mutateRules([
+      ...store.get().rules,
+      newRule(
+        {
+          kind: "range",
+          start: Math.min(start, end),
+          end: Math.max(start, end),
+        },
+        [ref],
+      ),
+    ]);
+    close();
+  };
+  for (const [side, label] of [
+    ["base", "用英文字体"],
+    ["donor", "用中文字体"],
+  ] as const) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "kit-btn sm";
+    button.dataset.role = `range-${side}`;
+    button.textContent = label;
+    button.addEventListener("click", () => apply(side));
+    actions.appendChild(button);
+  }
+  popup.append(title, hint, startInput, endInput, error, actions);
+  document.body.appendChild(popup);
+
+  let open = false;
+  const position = (): void => {
+    fitPopup(popup, anchor.getBoundingClientRect());
+  };
+  const close = (): void => {
+    if (!open) return;
+    open = false;
+    error.hidden = true;
+    popup.classList.remove("open");
+  };
+  anchor.addEventListener("click", () => {
+    open = !open;
+    if (open) {
+      popup.classList.add("open");
+      position();
+    } else {
+      close();
+    }
+  });
+  popup.addEventListener("pointerdown", (e) => e.stopPropagation());
+  document.addEventListener("pointerdown", (e) => {
+    if (!open) return;
+    const target = e.target as Node;
+    if (!target.isConnected) return;
+    if (popup.contains(target) || anchor.contains(target)) return;
+    close();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && open) close();
+  });
+  window.addEventListener("resize", () => {
+    if (open) position();
+  });
+  return { open: () => {
+    if (!open) {
+      open = true;
+      popup.classList.add("open");
+      position();
+    }
+  } };
+}
+
+/* ---------------------- chip data ----------------------------------- */
+
+const GROUP_ICONS: Record<string, IconName> = {
+  "latin-europe": "type",
+  symbols: "shapes",
+  cjk: "lang",
+  "other-scripts": "globe",
+};
+
+const BLOCK_ICONS: Record<string, IconName> = {
+  "basic-latin": "type",
+  latin: "type",
+  greek: "sigma",
+  cyrillic: "lang",
+  arrows: "arrow",
+  math: "inf",
+  "box-drawing": "grid",
+  "geometric-shapes": "shapes",
+  "misc-symbols": "shapes",
+  hiragana: "lang",
+  katakana: "lang",
+  emoji: "shapes",
+  arabic: "lang",
+  hebrew: "lang",
+  thai: "lang",
+  devanagari: "lang",
+};
+
 /* ------------------------------ mount ------------------------------- */
 
 export function mountCharmap(root: HTMLElement): void {
   root.innerHTML = `
-    <nav class="charmap-categories" aria-label="字符分类"></nav>
+    <div class="charmap-categories" aria-label="字符分类"></div>
     <div class="charmap-main">
       <div class="charmap-details" data-details></div>
-      <div class="charmap-pager">
-        <button class="page-prev" disabled>‹ 上一页</button>
-        <span class="page-indicator"></span>
-        <button class="page-next">下一页 ›</button>
-        <span class="page-goto-box">
-          <input class="page-goto-input" type="number" min="1" inputmode="numeric"
-                 aria-label="跳转到页码" placeholder="页码" />
-          <button class="page-goto">跳转</button>
-        </span>
-        <span class="page-cp-box">
-          <input data-role="cp-locate-input" type="search" spellcheck="false"
-                 aria-label="定位码位" placeholder="码位（如 4E2D）" />
-          <button data-role="cp-locate" type="button">定位</button>
-        </span>
-      </div>
-      <div class="charmap-grid" role="grid"></div>
+      <div class="charmap-toolbar"></div>
+      <div class="charmap-grid"></div>
     </div>
   `;
 
   const categories = root.querySelector<HTMLElement>(".charmap-categories")!;
   const details = root.querySelector<HTMLElement>("[data-details]")!;
-  const grid = root.querySelector<HTMLElement>(".charmap-grid")!;
-  const indicator = root.querySelector<HTMLElement>(".page-indicator")!;
-  const prev = root.querySelector<HTMLButtonElement>(".page-prev")!;
-  const next = root.querySelector<HTMLButtonElement>(".page-next")!;
-  const gotoInput = root.querySelector<HTMLInputElement>(".page-goto-input")!;
-  const gotoBtn = root.querySelector<HTMLButtonElement>(".page-goto")!;
-  const locateInput = root.querySelector<HTMLInputElement>(
-    "[data-role='cp-locate-input']",
-  )!;
-  const locateBtn = root.querySelector<HTMLButtonElement>(
-    "[data-role='cp-locate']",
-  )!;
+  const toolbar = root.querySelector<HTMLElement>(".charmap-toolbar")!;
+  const gridHost = root.querySelector<HTMLElement>(".charmap-grid")!;
 
-  buildCategoryTree(categories);
+  /* 编码 mode: the per-cell codepoint row (view state of this stage). */
+  let showCodepoints = false;
+
+  const chips: CategoryChips = mountCategoryChips(categories, {
+    groups: [],
+    blocks: [],
+    activeGroupId: null,
+    activeBlockId: "all",
+    onGroup: () => undefined,
+    onBlock: () => undefined,
+  });
+  const actionBar: ActionBar = mountActionBar(toolbar, {
+    multi: false,
+    showCodepoints: false,
+    canUndo: false,
+    onUndo: () => undoRules(),
+    onToggleMulti: () => beginSelectionGesture([], null),
+    onToggleCodepoints: () => {
+      showCodepoints = !showCodepoints;
+      render();
+    },
+  });
+  const rangePopup = mountRangePopup(
+    toolbar // re-anchored on every action-bar render (see syncRangeAnchor)
+  );
+  const grid: CharGrid = mountCharGrid(gridHost);
+
+  /** The live 按编码指定 anchor inside the (rebuilt) action bar. */
+  const syncRangeAnchor = (): void => {
+    const anchor = toolbar.querySelector<HTMLButtonElement>(
+      "[data-role='range-specify']",
+    );
+    if (anchor && rangeAnchor !== anchor) {
+      rangeAnchor = anchor;
+      anchor.addEventListener("click", () => rangePopup.open());
+    }
+  };
+  let rangeAnchor: HTMLButtonElement | null = null;
 
   /* ---------------- multi-select gestures (issue #20) ---------------
    * All cell interaction happens at pointer-down: a plain click must
@@ -286,12 +537,12 @@ export function mountCharmap(root: HTMLElement): void {
 
   const cellCodepoint = (target: EventTarget | null): number | null => {
     if (!(target instanceof Element)) return null;
-    const cp = target.closest<HTMLElement>(".cell")?.dataset.cp;
+    const cp = target.closest<HTMLElement>(".kit-cell")?.dataset.cp;
     if (!cp) return null;
     return Number.parseInt(cp.slice(2), 16);
   };
 
-  grid.addEventListener("pointerdown", (event) => {
+  grid.el.addEventListener("pointerdown", (event) => {
     if (event.button !== 0) return;
     const cp = cellCodepoint(event.target);
     if (cp === null) return;
@@ -317,7 +568,7 @@ export function mountCharmap(root: HTMLElement): void {
     painting = true;
     beginSelectionGesture([cp], cp, cp);
   });
-  grid.addEventListener("pointermove", (event) => {
+  grid.el.addEventListener("pointermove", (event) => {
     if (!painting) return;
     event.preventDefault();
     const cp = cellCodepoint(event.target);
@@ -350,28 +601,13 @@ export function mountCharmap(root: HTMLElement): void {
     beginSelectionGesture(range, selectionAnchor, cp);
   }
 
-  prev.addEventListener("click", () => {
-    const { page } = store.get();
-    if (page > 1) store.set({ page: page - 1 });
-  });
-  next.addEventListener("click", () => {
-    const { page, categoryId } = store.get();
-    if (page < pageCountFor(categoryId)) store.set({ page: page + 1 });
-  });
-  const jumpTo = (raw: string): void => {
-    const target = Number.parseInt(raw, 10);
-    if (!Number.isFinite(target)) return;
-    const last = pageCountFor(store.get().categoryId);
-    store.set({ page: Math.min(Math.max(target, 1), last) });
-  };
-  gotoBtn.addEventListener("click", () => jumpTo(gotoInput.value));
-  gotoInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") jumpTo(gotoInput.value);
-  });
-
-  /** Locate a typed codepoint: jump to its block's page and select it. */
+  /** Locate a typed codepoint (hex form or a single character):
+   *  jump to its category page and select it. */
   const locate = (raw: string): void => {
-    const cp = parseCodepointInput(raw);
+    const text = raw.trim();
+    const cp =
+      parseCodepointInput(text) ??
+      ([...text].length === 1 ? text.codePointAt(0) ?? null : null);
     if (cp === null) return;
     const block = ALL_BLOCKS.find((b) => cp >= b.start && cp <= b.end);
     let categoryId = ALL_CATEGORY_ID;
@@ -386,16 +622,16 @@ export function mountCharmap(root: HTMLElement): void {
         cp <= bmpEnd ? cp - 0x20 : cp - 0xe000 + (bmpEnd - 0x20 + 1);
       page = Math.floor(index / CELLS_PER_PAGE) + 1;
     }
-    locateInput.value = "";
     store.set({ categoryId, page });
     // Locating is a selection gesture too: the codepoint becomes the
     // selection and the anchor, and the details cursor lands on it.
     beginSelectionGesture([cp], cp, cp);
+    // Bring the cell into view (prototype parity: locate scrolls to it).
+    window.setTimeout(() => {
+      const cell = grid.cellAt(String.fromCodePoint(cp));
+      if (cell) cell.scrollIntoView({ block: "center" });
+    }, 60);
   };
-  locateBtn.addEventListener("click", () => locate(locateInput.value));
-  locateInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") locate(locateInput.value);
-  });
 
   const render = (): void => {
     const {
@@ -405,31 +641,242 @@ export function mountCharmap(root: HTMLElement): void {
       selectedCodepoint,
       selection,
       fonts,
-      rules,
     } = store.get();
     const last = pageCountFor(categoryId);
     const safePage = Math.min(Math.max(page, 1), last);
 
-    indicator.textContent = `第 ${safePage} / ${last} 页`;
-    prev.disabled = safePage <= 1;
-    next.disabled = safePage >= last;
-
-    const picks = pickRefs();
-    renderDetails(details, selectedCodepoint, selection, fonts, selected, picks, rules);
+    renderChips(categoryId);
+    renderToolbar(categoryId, safePage, last, selection);
+    renderDetails(details, selectedCodepoint, selection, fonts, selected);
     renderGrid(
-      grid,
       categoryId,
       safePage,
       selected.en,
       selected.cjk,
       selectedCodepoint,
       selection,
-      picks,
     );
-    syncCategorySelection(categories, categoryId);
+    syncRangeAnchor();
   };
   store.subscribe(render);
   render();
+
+  /* ---------------- chip bar ---------------- */
+
+  function renderChips(categoryId: string): void {
+    const group = blockGroup(categoryId);
+    chips.render({
+      groups: [
+        {
+          id: "all",
+          label: "全部",
+          count: categorySize(ALL_CATEGORY_ID),
+          icon: "all",
+        },
+        ...BLOCK_GROUPS.map((g) => ({
+          id: g.id,
+          label: g.name,
+          count: categorySize(groupCategoryId(g.id)),
+          icon: GROUP_ICONS[g.id],
+        })),
+      ],
+      blocks:
+        group === undefined
+          ? []
+          : [
+              {
+                id: groupCategoryId(group.id),
+                label: "全部",
+                count: categorySize(groupCategoryId(group.id)),
+                icon: "all",
+              },
+              ...group.blocks.map((b) => ({
+                id: b.id,
+                label: b.name,
+                count: b.end - b.start + 1,
+                icon: BLOCK_ICONS[b.id],
+              })),
+            ],
+      activeGroupId: group?.id ?? null,
+      activeBlockId: categoryId,
+      onGroup: (id) => {
+        store.set({
+          categoryId:
+            id === null || id === "all"
+              ? ALL_CATEGORY_ID
+              : groupCategoryId(id),
+          page: 1,
+        });
+      },
+      onBlock: (id) => {
+        store.set({ categoryId: id, page: 1 });
+      },
+    });
+  }
+
+  /* ---------------- action bar ---------------- */
+
+  function renderToolbar(
+    categoryId: string,
+    safePage: number,
+    last: number,
+    selection: readonly number[],
+  ): void {
+    const group = blockGroup(categoryId);
+    const block =
+      findGroupCategory(categoryId) === undefined
+        ? ALL_BLOCKS.find((b) => b.id === categoryId)
+        : undefined;
+    const picks = pickRefs();
+    const effective = picks.base !== null && picks.donor !== null;
+
+    if (selection.length >= 2) {
+      actionBar.render({
+        multi: true,
+        showCodepoints,
+        canUndo: canUndoRules(),
+        onUndo: () => undoRules(),
+        onToggleMulti: () => beginSelectionGesture([], null),
+        onToggleCodepoints: () => {
+          showCodepoints = !showCodepoints;
+          render();
+        },
+        batch: {
+          count: selection.length,
+          canUndoPick: canUndoSelection(),
+          onApply: (side) => {
+            if (side === "clear") {
+              beginSelectionGesture([], null);
+              return;
+            }
+            const ref = sideRef(side);
+            if (ref !== null) applyBatchRule([ref]);
+          },
+          onUndoPick: () => undoSelection(),
+        },
+        onRangeSpecify: () => rangePopup.open(),
+      });
+      return;
+    }
+
+    actionBar.render({
+      group:
+        group !== undefined && effective
+          ? {
+              label: group.name,
+              allBase: groupAssignment(group.blocks) === "base",
+              allDonor: groupAssignment(group.blocks) === "donor",
+              onAssign: (side) => assignBlocks(group.blocks, side),
+            }
+          : undefined,
+      block:
+        block !== undefined
+          ? effective
+            ? {
+                label: block.name,
+                aggregate: false,
+                value: blockAssignment(block),
+                onAssign: (side) => assignBlocks([block], side),
+              }
+            : {
+                label: block.name,
+                aggregate: true,
+                count: block.end - block.start + 1,
+              }
+          : categoryId === ALL_CATEGORY_ID
+            ? { label: "全部", aggregate: true, count: categorySize(categoryId) }
+            : {
+                label: categoryName(categoryId),
+                aggregate: true,
+                count: categorySize(categoryId),
+              },
+      multi: selection.length > 0,
+      showCodepoints,
+      canUndo: canUndoRules(),
+      onUndo: () => undoRules(),
+      onToggleMulti: () => beginSelectionGesture([], null),
+      onToggleCodepoints: () => {
+        showCodepoints = !showCodepoints;
+        render();
+      },
+      page: { page: safePage - 1, count: last, onPage: (delta) => {
+        const { page: current } = store.get();
+        store.set({ page: Math.min(Math.max(current + delta, 1), last) });
+      } },
+      adjustedLegend: true,
+      onLocate: locate,
+      onRangeSpecify: () => rangePopup.open(),
+    });
+  }
+  /* ---------------- grid ---------------- */
+
+  /** The grid's cell data for the current page, resolved effectively. */
+  function renderGrid(
+    categoryId: string,
+    page: number,
+    enFamily: string | null,
+    cjkFamily: string | null,
+    selectedCodepoint: number | null,
+    selection: readonly number[],
+  ): void {
+    const size = categorySize(categoryId);
+    const first = (page - 1) * CELLS_PER_PAGE;
+    const count = Math.min(CELLS_PER_PAGE, size - first);
+    const picks = pickRefs();
+    const effective = picks.base !== null && picks.donor !== null;
+    const resolver = effective ? currentResolver(picks) : null;
+    const base = effective ? defaultResolver(picks) : null;
+    const selectionSet = new Set(selection);
+    // The plain preview stack for cells outside the effective preview
+    // (the picked pair first, then the system tail) — the same stack the
+    // pre-repair grid set as --font-preview.
+    const plainStack = [
+      enFamily ? cssFamily(enFamily) : "",
+      cjkFamily ? cssFamily(cjkFamily) : "",
+      '"Segoe UI"',
+      '"Microsoft YaHei"',
+      "monospace",
+    ]
+      .filter(Boolean)
+      .join(",");
+
+    const cells: GridCellData[] = [];
+    for (let i = 0; i < count; i++) {
+      const cp = nthCodepoint(categoryId, first + i);
+      const ch = String.fromCodePoint(cp);
+      // The effective merged result: resolve, expose, render in the
+      // winner's own face (the grid never lies — issue #18).
+      const entry = resolver ? resolver.resolve(cp) : null;
+      const baseEntry = base ? base.resolve(cp) : null;
+      const winnerFont = entry ? refFont(entry.winner, picks) : null;
+      cells.push({
+        ch,
+        state: entry
+          ? entry.winner === "base"
+            ? "base"
+            : "donor"
+          : effective
+            ? "none"
+            : "plain",
+        // Adjusted = the effective winner differs from the no-rule default.
+        adjusted:
+          entry !== null && baseEntry !== null
+            ? entry.winner !== baseEntry.winner
+            : false,
+        selected: selectionSet.has(cp),
+        cursor: cp === selectedCodepoint,
+        fontFamily: winnerFont
+          ? `${cssFamily(winnerFont.cssFamily)}, sans-serif`
+          : plainStack,
+        cp: formatCp(cp),
+        attrs: entry
+          ? { winner: entry.winner, via: entry.via, kind: entry.kind }
+          : undefined,
+      });
+    }
+    grid.render({ cells, showCodepoints, cellSize: 40 });
+  }
+
 }
 
 /**
@@ -445,12 +892,10 @@ function renderDetails(
   selection: readonly number[],
   fonts: ReturnType<typeof store.get>["fonts"],
   selected: { en: string | null; cjk: string | null },
-  picks: PickRefs,
-  rules: readonly EditorRule[],
 ): void {
   details.replaceChildren();
   if (selection.length >= 2) {
-    details.appendChild(buildBatchEditor(selection, picks));
+    details.appendChild(buildBatchEditor(selection));
     return;
   }
   if (codepoint === null) {
@@ -462,6 +907,7 @@ function renderDetails(
   }
   const head = document.createElement("div");
   const ch = String.fromCodePoint(codepoint);
+  const picks = pickRefs();
   const effective = picks.base !== null && picks.donor !== null;
   const resolver = effective ? currentResolver(picks) : null;
   const entry = resolver ? resolver.resolve(codepoint) : null;
@@ -492,7 +938,7 @@ function renderDetails(
   if (effective) {
     openEditor(codepoint, picks);
     details.appendChild(
-      buildCpRuleEditor(codepoint, picks, rules),
+      buildCpRuleEditor(codepoint, picks),
     );
   } else {
     editorFor = null;
@@ -508,7 +954,6 @@ function renderDetails(
 function buildCpRuleEditor(
   codepoint: number,
   picks: PickRefs,
-  rules: readonly EditorRule[],
 ): HTMLElement {
   const editor = document.createElement("div");
   editor.className = "cp-rule-editor";
@@ -527,33 +972,32 @@ function buildCpRuleEditor(
   actions.className = "cp-rule-actions";
   const apply = document.createElement("button");
   apply.type = "button";
+  apply.className = "kit-btn sm";
   apply.dataset.role = "cp-rule-apply";
-  apply.textContent = existingCpRule(codepoint, rules) ? "应用修改" : "设为规则";
+  apply.textContent = existingCpRule(codepoint) ? "应用修改" : "设为规则";
   apply.addEventListener("click", () => applyCodepointRule(codepoint));
   actions.appendChild(apply);
   const remove = document.createElement("button");
   remove.type = "button";
+  remove.className = "kit-btn sm gh";
   remove.dataset.role = "cp-rule-remove";
   remove.textContent = "移除规则";
-  remove.disabled = existingCpRule(codepoint, rules) === undefined;
+  remove.disabled = existingCpRule(codepoint) === undefined;
   remove.addEventListener("click", () => removeCodepointRule(codepoint));
   actions.appendChild(remove);
   editor.appendChild(actions);
 
   /** Rebuild the editor in place (the working list changed). */
   function renderCpLines(): void {
-    const fresh = buildCpRuleEditor(codepoint, picks, rules);
+    const fresh = buildCpRuleEditor(codepoint, picks);
     editor.replaceWith(fresh);
   }
   return editor;
 }
 
 /** The rule whose target is exactly this codepoint, when one exists. */
-function existingCpRule(
-  codepoint: number,
-  rules: readonly EditorRule[],
-): EditorRule | undefined {
-  return rules.find((rule) => targetsCodepoint(rule, codepoint));
+function existingCpRule(codepoint: number): EditorRule | undefined {
+  return store.get().rules.find((rule) => targetsCodepoint(rule, codepoint));
 }
 
 /**
@@ -562,10 +1006,8 @@ function existingCpRule(
  * text, never hover-only), the ordered font list, and the selection's
  * own controls (clear, undo).
  */
-function buildBatchEditor(
-  selection: readonly number[],
-  picks: PickRefs,
-): HTMLElement {
+function buildBatchEditor(selection: readonly number[]): HTMLElement {
+  const picks = pickRefs();
   const sorted = [...selection].sort((a, b) => a - b);
   const signature = sorted.join(",");
   if (signature !== batchSignature) {
@@ -602,9 +1044,10 @@ function buildBatchEditor(
   if (picks.refs.length > 0) {
     const apply = document.createElement("button");
     apply.type = "button";
+    apply.className = "kit-btn sm";
     apply.dataset.role = "batch-apply";
     apply.textContent = "批量应用";
-    apply.addEventListener("click", () => applyBatchRule());
+    apply.addEventListener("click", () => applyBatchRule(batchFonts));
     actions.appendChild(apply);
     editor.appendChild(
       buildOrderedFontList(picks, batchFonts, "batch", renderBatch),
@@ -612,6 +1055,7 @@ function buildBatchEditor(
   }
   const clear = document.createElement("button");
   clear.type = "button";
+  clear.className = "kit-btn sm gh";
   clear.dataset.role = "selection-clear";
   clear.textContent = "清除选择";
   clear.addEventListener("click", () =>
@@ -620,6 +1064,7 @@ function buildBatchEditor(
   actions.appendChild(clear);
   const undo = document.createElement("button");
   undo.type = "button";
+  undo.className = "kit-btn sm";
   undo.dataset.role = "selection-undo";
   undo.textContent = "撤销选择";
   undo.disabled = !canUndoSelection();
@@ -629,7 +1074,7 @@ function buildBatchEditor(
 
   /** Rebuild in place (the working font list changed). */
   function renderBatch(): void {
-    editor.replaceWith(buildBatchEditor(selection, picks));
+    editor.replaceWith(buildBatchEditor(selection));
   }
   return editor;
 }
@@ -647,145 +1092,8 @@ function coversCodepoint(font: { codepoints: number[] }, cp: number): boolean {
   return false;
 }
 
-function buildCategoryTree(root: HTMLElement): void {
-  // The aggregate view is a permanent first entry.
-  const all = document.createElement("button");
-  all.className = "block-button is-aggregate";
-  all.dataset.category = ALL_CATEGORY_ID;
-  all.innerHTML = `<span class="block-name"></span><span class="block-size"></span>`;
-  all.querySelector(".block-name")!.textContent = "全部";
-  all.querySelector(".block-size")!.textContent =
-    categorySize(ALL_CATEGORY_ID).toLocaleString("en-US");
-  all.addEventListener("click", () =>
-    store.set({ categoryId: ALL_CATEGORY_ID, page: 1 }),
-  );
-  root.appendChild(all);
-
-  for (const group of BLOCK_GROUPS) {
-    const details = document.createElement("div");
-    details.className = "category-group";
-    const toggle = document.createElement("button");
-    toggle.className = "group-toggle";
-    toggle.setAttribute("aria-expanded", "false");
-    toggle.innerHTML = `<span class="group-caret" aria-hidden="true">▸</span><span class="group-name"></span>`;
-    toggle.querySelector(".group-name")!.textContent = group.name;
-    const list = document.createElement("div");
-    list.className = "group-blocks";
-    list.hidden = true;
-
-    toggle.addEventListener("click", () => {
-      const open = list.hidden;
-      list.hidden = !open;
-      toggle.setAttribute("aria-expanded", String(open));
-    });
-
-    for (const b of group.blocks) {
-      const btn = document.createElement("button");
-      btn.className = "block-button";
-      btn.dataset.category = b.id;
-      btn.innerHTML = `<span class="block-name"></span><span class="block-size"></span>`;
-      btn.querySelector(".block-name")!.textContent = b.name;
-      btn.querySelector(".block-size")!.textContent = (
-        b.end -
-        b.start +
-        1
-      ).toLocaleString("en-US");
-      btn.addEventListener("click", () =>
-        store.set({ categoryId: b.id, page: 1 }),
-      );
-      list.appendChild(btn);
-    }
-
-    details.appendChild(toggle);
-    details.appendChild(list);
-    root.appendChild(details);
-  }
-}
-
-function syncCategorySelection(root: HTMLElement, categoryId: string): void {
-  for (const btn of root.querySelectorAll<HTMLButtonElement>(".block-button")) {
-    btn.classList.toggle(
-      "is-selected",
-      btn.dataset.category === categoryId,
-    );
-  }
-}
-
-function renderGrid(
-  grid: HTMLElement,
-  categoryId: string,
-  page: number,
-  enFamily: string | null,
-  cjkFamily: string | null,
-  selectedCodepoint: number | null,
-  selection: readonly number[],
-  picks: PickRefs,
-): void {
-  const size = categorySize(categoryId);
-  const first = (page - 1) * CELLS_PER_PAGE;
-  const count = Math.min(CELLS_PER_PAGE, size - first);
-  const effective = picks.base !== null && picks.donor !== null;
-  const resolver = effective ? currentResolver(picks) : null;
-  const selectionSet = new Set(selection);
-
-  // Rebuild the cells of the current page; keep the grid container node.
-  const fragment = document.createDocumentFragment();
-  for (let i = 0; i < count; i++) {
-    const cp = nthCodepoint(categoryId, first + i);
-    const cell = document.createElement("div");
-    cell.className = "cell";
-    cell.dataset.cp = formatCp(cp);
-    cell.setAttribute("role", "gridcell");
-    const ch = document.createElement("span");
-    ch.className = "cell-char";
-    ch.textContent = String.fromCodePoint(cp);
-    cell.appendChild(ch);
-    // Three cell states, never conflated (ADR-0004 color semantics):
-    // multi-selected and details-selected are accent-family selected
-    // states; hover stays neutral. The details cursor additionally
-    // carries an inner ring so it reads above the selection.
-    cell.classList.toggle("is-selected", cp === selectedCodepoint);
-    cell.classList.toggle("is-multi-selected", selectionSet.has(cp));
-
-    // The effective merged result: resolve, expose, render in the
-    // winner's own face (the grid never lies — issue #18).
-    const entry = resolver ? resolver.resolve(cp) : null;
-    if (entry) {
-      cell.dataset.winner = entry.winner;
-      cell.dataset.via = entry.via;
-      cell.dataset.kind = entry.kind;
-      cell.classList.add(`is-${entry.kind}`);
-      const font = refFont(entry.winner, picks);
-      if (font) {
-        ch.style.fontFamily = `${cssFamily(font.cssFamily)}, sans-serif`;
-      }
-    } else {
-      cell.classList.add("is-uncovered");
-    }
-
-    // Selection/cursor interaction is delegated to the grid container's
-    // pointer handlers (see mountCharmap) — no per-cell listeners.
-    fragment.appendChild(cell);
-  }
-  grid.replaceChildren(fragment);
-
-  // The plain preview stack stays set for uncovered cells (and the
-  // not-yet-effective single-pick preview); re-selecting fonts never
-  // rebuilds the grid around it.
-  const stack = [
-    enFamily ? `"${enFamily}"` : "",
-    cjkFamily ? `"${cjkFamily}"` : "",
-    `"Segoe UI"`,
-    `"Microsoft YaHei"`,
-    `monospace`,
-  ]
-    .filter(Boolean)
-    .join(",");
-  grid.style.setProperty("--font-preview", stack);
-}
-
 export function formatCp(cp: number): string {
   return "U+" + cp.toString(16).toUpperCase().padStart(4, "0");
 }
 
-export { pageCountFor, categoryName };
+export { pageCountFor, categoryName, categoryIntervals };
