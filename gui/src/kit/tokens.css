@@ -236,6 +236,27 @@ select {
   color: var(--ink);
 }
 
+/* The line gutter: number column right-aligned at 22px, separated from
+ * the code by the 12px flex gap (the prototype's .code-c .ln rules —
+ * without them the numbers flow inline against the code). */
+.kit-code .ln {
+  display: flex;
+  gap: 12px;
+}
+
+.kit-code .ln > span:first-child {
+  color: var(--ink3);
+  width: 22px;
+  text-align: right;
+  flex: none;
+  user-select: none;
+}
+
+.kit-code[data-ct] .ln > span:first-child {
+  color: inherit;
+  opacity: 0.55;
+}
+
 /* Follow-theme syntax tokens (app palette). */
 .kit-code .k { color: var(--syn-k, #7c3aad); }
 .kit-code .s { color: var(--syn-s, #3f7433); }

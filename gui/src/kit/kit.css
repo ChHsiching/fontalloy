@@ -56,6 +56,19 @@
   display: block;
 }
 
+/*
+ * Special glyphs (GitHub mark, theme-toggle sun, close, expand) carry
+ * their own markup WITHOUT the kit-ci class — without an explicit size
+ * they collapse to 0x0 inside flex buttons (the prototype sized every
+ * svg via svg.i / .ci). 15px is the prototype's svg.i size.
+ */
+.kit-btn > svg:not(.kit-ci) {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  display: block;
+}
+
 .kit-grow {
   flex: 1;
 }
@@ -309,8 +322,15 @@
   white-space: nowrap;
 }
 
+/*
+ * Containment: the corrected (ADR) cell copy runs far longer than the
+ * prototype's short rows — cells must WRAP inside the popover card
+ * instead of forcing the table ~165px past its right edge (headers may
+ * stay nowrap; `anywhere` also breaks long Latin identifiers).
+ */
 .kit-wtab td {
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 /* ============ custom dropdown (csel) ============ */
@@ -475,6 +495,11 @@
   color: var(--ink3);
   transition: transform 160ms var(--spring-out);
   flex: none;
+  /* The circular chevron disc: 15px glyph + 3px ring padding (the
+     prototype's svg.i sizing — without it the svg explodes to fill the
+     flex row and the "compact identity card" becomes a giant circle). */
+  width: 15px;
+  height: 15px;
   padding: 3px;
   border-radius: 50%;
   background: var(--sf2);
