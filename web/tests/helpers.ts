@@ -123,8 +123,9 @@ export async function pointerClick(page: Page, locator: Locator): Promise<void> 
 }
 
 /**
- * Open a listbox (catalog or preset picker) through a real pointer
- * click on its anchor and wait for the discrete open transition.
+ * Open a picker popup (the kit PickerPopup card for catalog slots, the
+ * .kit-pop preset popup for rules) through a real pointer click on its
+ * anchor/card and wait for the discrete open transition.
  */
 export async function openListbox(
   page: Page,
@@ -132,26 +133,46 @@ export async function openListbox(
   label: string,
 ): Promise<Locator> {
   await pointerClick(page, anchor);
-  const popup = page.locator(`.picker-popup[data-picker-popup="${label}"]`);
+  const popup = page.locator(`[data-picker-popup="${label}"]`);
   await expect(popup).toBeVisible();
   await expect
-    .poll(() =>
-      popup.evaluate((el) => getComputedStyle(el).visibility),
-    )
-    .toBe("visible");
+    .poll(() => popup.evaluate((el) => getComputedStyle(el).opacity))
+    .toBe("1");
   return popup;
 }
 
-/** Pick one option from an open listbox by its option id. */
+/**
+ * Pick one option from an open picker popup by its id. Catalog popups
+ * (kit PickerPopup) key rows by data-font-id; the preset popup keeps
+ * data-option-id — one helper accepts both.
+ */
 export async function pickOption(
   page: Page,
   popup: Locator,
   optionId: string,
 ): Promise<void> {
-  const row = popup.locator(`[data-option-id="${optionId}"]`);
+  const row = popup.locator(
+    `[data-font-id="${optionId}"], [data-option-id="${optionId}"]`,
+  );
   await expect(row).toBeVisible();
   await pointerClick(page, row);
   await expect(popup).not.toBeVisible();
+}
+
+/**
+ * Set one AppSelect by value: a real pointer click on the trigger, then
+ * on the option row (the kit dropdown; no native select exists).
+ */
+export async function pickSelectOption(
+  page: Page,
+  host: Locator,
+  value: string,
+): Promise<void> {
+  await pointerClick(page, host.locator(".kit-csel"));
+  const row = host.locator(`.kit-cso[data-value="${value}"]`);
+  await expect(row).toBeVisible();
+  await pointerClick(page, row);
+  await expect(host.locator(".kit-csel-pk")).toBeHidden();
 }
 
 /** The rendered recipe YAML (the builder's own preview of the file). */

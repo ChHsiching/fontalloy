@@ -155,7 +155,7 @@ export function mountLiveMerge(root: HTMLElement): void {
   actions.className = "wb-actions";
   const mergeButton = document.createElement("button");
   mergeButton.type = "button";
-  mergeButton.className = "synthesize";
+  mergeButton.className = "kit-btn pri";
   mergeButton.dataset.testid = "live-merge";
   mergeButton.textContent = "实时合成";
   actions.appendChild(mergeButton);
@@ -222,12 +222,12 @@ export function mountLiveMerge(root: HTMLElement): void {
     buttons.className = "wb-actions";
     const fontButton = document.createElement("button");
     fontButton.type = "button";
-    fontButton.className = "synthesize";
+    fontButton.className = "kit-btn pri";
     fontButton.dataset.testid = "download-font";
     fontButton.textContent = `下载字体（${font.filename}）`;
     const reportButton = document.createElement("button");
     reportButton.type = "button";
-    reportButton.className = "synthesize";
+    reportButton.className = "kit-btn pri";
     reportButton.dataset.testid = "download-report";
     reportButton.textContent = `下载验证报告（${doc.report?.filename ?? "report.json"}）`;
     buttons.append(fontButton, reportButton);

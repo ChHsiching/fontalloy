@@ -44,6 +44,12 @@ export interface PickerFont {
   family?: string;
   meta?: FontMeta;
   /**
+   * Extra search terms matched alongside name/id (Stage-3 webapp
+   * extension): catalog rows display "Family · Variant" but users type
+   * "Family Variant" — the separator would otherwise hide the row.
+   */
+  keywords?: string;
+  /**
    * Not pickable right now (a catalog family still downloading): the
    * row renders `note` as its status tag and never fires onPick.
    */
@@ -88,6 +94,15 @@ export interface PickerPopup {
   render(props: PickerPopupProps): void;
   open(): void;
   close(): void;
+  /**
+   * Tear the component down (Stage-3 webapp extension): close without
+   * waiting for the exit transition, detach the document/window
+   * listeners, and remove the card plus any popup node still on
+   * <body>. Call before rebuilding a region that owns the picker — a
+   * popup mid-close would otherwise linger under the same
+   * data-picker-popup key.
+   */
+  destroy(): void;
 }
 
 /** Open pickers — opening one closes the others. */
@@ -105,6 +120,11 @@ export function mountPickerPopup(
   el.className = "kit-fsel";
   el.dataset.role = `picker-${initial.role}`;
   host.appendChild(el);
+
+  // Stage-3 extension: document/window listeners ride one abort signal
+  // so destroy() detaches them all.
+  const listeners = new AbortController();
+  const { signal } = listeners;
 
   // --- card header (rebuilt on render; never contains the popup) ---
   let header: HTMLElement | null = null;
@@ -248,7 +268,8 @@ export function mountPickerPopup(
       (f) =>
         !query ||
         f.name.toLowerCase().includes(query) ||
-        f.id.toLowerCase().includes(query),
+        f.id.toLowerCase().includes(query) ||
+        (f.keywords?.toLowerCase().includes(query) ?? false),
     );
     for (const font of matches) {
       const row = document.createElement("button");
@@ -332,19 +353,31 @@ export function mountPickerPopup(
     header = next;
   };
 
-  document.addEventListener("pointerdown", (e) => {
-    if (!open) return;
-    const target = e.target as Node;
-    if (!target.isConnected) return;
-    if (el.contains(target) || popup?.contains(target)) return;
-    close();
-  });
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && open) close();
-  });
-  window.addEventListener("resize", () => {
-    if (open) position();
-  });
+  document.addEventListener(
+    "pointerdown",
+    (e) => {
+      if (!open) return;
+      const target = e.target as Node;
+      if (!target.isConnected) return;
+      if (el.contains(target) || popup?.contains(target)) return;
+      close();
+    },
+    { signal },
+  );
+  document.addEventListener(
+    "keydown",
+    (e) => {
+      if (e.key === "Escape" && open) close();
+    },
+    { signal },
+  );
+  window.addEventListener(
+    "resize",
+    () => {
+      if (open) position();
+    },
+    { signal },
+  );
 
   const handle: PickerPopupHandleInternal = { close };
 
@@ -362,5 +395,14 @@ export function mountPickerPopup(
     },
     open: openPicker,
     close,
+    destroy() {
+      open = false;
+      openPickers.delete(handle);
+      clearTimeout(removeTimer);
+      listeners.abort();
+      el.remove();
+      popup?.remove();
+      popup = null;
+    },
   };
 }

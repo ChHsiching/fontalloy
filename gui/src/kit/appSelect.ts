@@ -39,6 +39,13 @@ export interface AppSelect {
   setOptions(options: readonly AppSelectOption[], value?: string): void;
   open(): void;
   close(): void;
+  /**
+   * Tear the component down: close, remove the element, and detach the
+   * document-level listeners. Call before rebuilding a region that owns
+   * the select (Stage-3 webapp rule rows) — document listeners per
+   * instance would otherwise accumulate as inert leaks.
+   */
+  destroy(): void;
 }
 
 /** Every live select — opening one closes the others. */
@@ -47,6 +54,10 @@ const openSelects = new Set<HTMLElement>();
 export function mountAppSelect(props: AppSelectProps): AppSelect {
   const root = document.createElement("div");
   root.className = "kit-cselw";
+  // Stage-3 extension: every document/window listener rides one abort
+  // signal so destroy() detaches them all.
+  const listeners = new AbortController();
+  const { signal } = listeners;
 
   const trigger = document.createElement("button");
   trigger.type = "button";
@@ -157,15 +168,23 @@ export function mountAppSelect(props: AppSelectProps): AppSelect {
   // Cross-select coordination + outside close (pointerdown, with the
   // still-connected guard the prototype learned the hard way).
   root.addEventListener("kit-select-close", close);
-  document.addEventListener("pointerdown", (e) => {
-    if (!open) return;
-    const target = e.target as Node;
-    if (!target.isConnected || root.contains(target)) return;
-    close();
-  });
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && open) close();
-  });
+  document.addEventListener(
+    "pointerdown",
+    (e) => {
+      if (!open) return;
+      const target = e.target as Node;
+      if (!target.isConnected || root.contains(target)) return;
+      close();
+    },
+    { signal },
+  );
+  document.addEventListener(
+    "keydown",
+    (e) => {
+      if (e.key === "Escape" && open) close();
+    },
+    { signal },
+  );
 
   drawTrigger();
   drawRows();
@@ -194,5 +213,11 @@ export function mountAppSelect(props: AppSelectProps): AppSelect {
     },
     open: openList,
     close,
+    destroy() {
+      close();
+      openSelects.delete(root);
+      listeners.abort();
+      root.remove();
+    },
   };
 }

@@ -100,12 +100,12 @@ export function mountResult(root: HTMLElement): void {
   actions.className = "wb-actions";
   const copyButton = document.createElement("button");
   copyButton.type = "button";
-  copyButton.className = "synthesize";
+  copyButton.className = "kit-btn pri";
   copyButton.dataset.testid = "copy-command";
   copyButton.textContent = "复制 CLI 命令";
   const downloadButton = document.createElement("button");
   downloadButton.type = "button";
-  downloadButton.className = "synthesize";
+  downloadButton.className = "kit-btn pri";
   downloadButton.dataset.testid = "download-recipe";
   downloadButton.textContent = "下载配方文件";
   actions.append(copyButton, downloadButton);

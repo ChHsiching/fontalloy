@@ -6,6 +6,7 @@ import {
   collectJsErrors,
   openListbox,
   pickOption,
+  pickSelectOption,
   pointerClick,
   waitForFontsReady,
   yamlPreview,
@@ -112,11 +113,11 @@ test("absent service with an intercepted probe degrades identically", async ({
 test("base and donors select from the catalog through the real picker", async ({
   page,
 }) => {
-  const baseAnchor = page.locator('[data-role="base-catalog"]');
+  const baseAnchor = page.locator('[data-role="picker-base-catalog"]');
   await expect(baseAnchor).toContainText("从目录选择基底字体…");
 
   const popup = await openListbox(page, baseAnchor, "base-catalog");
-  const search = popup.locator(".wb-search-input");
+  const search = popup.locator(".kit-q");
   await search.fill("MapleMono NF-CN");
   await pickOption(page, popup, "MapleMono::NF-CN");
 
@@ -128,9 +129,9 @@ test("base and donors select from the catalog through the real picker", async ({
 
   // A donor picks through the same popup pattern.
   await pointerClick(page, page.locator('[data-role="add-donor"]'));
-  const donorAnchor = page.locator('[data-role="donor-catalog-0"]');
+  const donorAnchor = page.locator('[data-role="picker-donor-catalog-0"]');
   const donorPopup = await openListbox(page, donorAnchor, "donor-catalog-0");
-  await donorPopup.locator(".wb-search-input").fill("LXGWWenKai");
+  await donorPopup.locator(".kit-q").fill("LXGWWenKai");
   await pickOption(page, donorPopup, "LXGWWenKai::Regular");
   await expect(donorAnchor).toContainText("LXGWWenKai · Regular");
 });
@@ -237,10 +238,18 @@ test("normalization switches and weight slots cover the landed recipe schema", a
 
   // Normalization: optical mode reveals the ratio; defaults-omission
   // becomes an explicit non-default block.
-  await page.locator('[data-role="normalization-mode"]').selectOption("optical");
+  await pickSelectOption(
+    page,
+    page.locator('[data-role="normalization-mode"]'),
+    "optical",
+  );
   await expect(page.locator('[data-role="normalization-ratio"]')).toBeVisible();
   await page.locator('[data-role="normalization-ratio"]').fill("1.3");
-  await page.locator('[data-role="normalization-quote-dash"]').selectOption("fullwidth");
+  await pickSelectOption(
+    page,
+    page.locator('[data-role="normalization-quote-dash"]'),
+    "fullwidth",
+  );
 
   let recipe = YAMLmod.default.parse(await preview.textContent());
   expect(recipe.normalization).toEqual({
@@ -255,7 +264,11 @@ test("normalization switches and weight slots cover the landed recipe schema", a
   await pointerClick(page, page.locator('[data-role="add-weight-slot"]'));
   await page.locator('[data-role="weight-slot-weight-1"]').fill("400");
   await page.locator('[data-role="weight-slot-weight-2"]').fill("700");
-  await page.locator('[data-role="weight-slot-style-2"]').selectOption("italic");
+  await pickSelectOption(
+    page,
+    page.locator('[data-role="weight-slot-style-2"]'),
+    "italic",
+  );
   await page.locator('[data-role="weight-override-2-donor-0"]').fill("700");
 
   recipe = YAMLmod.default.parse(await preview.textContent());
@@ -266,7 +279,11 @@ test("normalization switches and weight slots cover the landed recipe schema", a
 
   // Back to grid mode: the mode/ratio collapse away, but the still
   // non-default fullwidth policy correctly remains written.
-  await page.locator('[data-role="normalization-mode"]').selectOption("grid");
+  await pickSelectOption(
+    page,
+    page.locator('[data-role="normalization-mode"]'),
+    "grid",
+  );
   recipe = YAMLmod.default.parse(await preview.textContent());
   expect(recipe.normalization).toEqual({ quote_dash_width: "fullwidth" });
   expect(recipe.weights).toBeDefined();

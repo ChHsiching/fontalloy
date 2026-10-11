@@ -4,9 +4,20 @@
  * output naming with the validation mirror, and the weight/normalization
  * extension points for the in-flight core tickets (#9, #8).
  *
+ * Since the design-fidelity repair the presentation is the kit's design
+ * language: catalog pickers are kit PickerPopups (card + seamless popup,
+ * self-rendering rows with the MetaLine), selects are kit AppSelects,
+ * the preset picker is an app-level popup on the kit's .kit-pop chrome
+ * (presetPopup.ts), and the two semantics-heavy sections carry kit
+ * HelpPopovers with worked-example tables. The webapp is a compact tool
+ * page: fields stay inline rows, not the workspace's rail sections.
+ *
  * Follows the shared-frontend region pattern: every section subscribes
  * to the builder store and re-renders itself from a signature, so text
- * inputs never lose focus on state updates.
+ * inputs never lose focus on state updates. Regions that rebuild rows
+ * (donors, rules, weight slots) destroy their mounted kit components
+ * first — the kit's destroy() detaches document listeners and removes
+ * body-level popup nodes.
  */
 
 import catalogJson from "../data/catalog.json";
@@ -22,7 +33,17 @@ import {
 } from "../recipe/model";
 import { parseHexScalar, validateFamilyName } from "../recipe/validate";
 import { builderStore, retargetRule, takeId, updateDraft, updateRule } from "./state";
-import { mountListbox, type Listbox } from "./listbox";
+import { mountAppSelect, type AppSelect } from "../kit/appSelect";
+import {
+  mountPickerPopup,
+  type PickerFont,
+  type PickerPopup,
+} from "../kit/pickerPopup";
+import { mountHelpPopover, workedTable, helpNote } from "../kit/helpPopover";
+import {
+  mountPresetPicker,
+  type PresetPicker,
+} from "./presetPopup";
 
 const CATALOG = catalogJson.families as CatalogEntry[];
 const PRESETS = presetsJson.presets as Preset[];
@@ -31,7 +52,28 @@ const STANDALONE_SETS = presetsJson.standalone_sets as string[];
 
 const count = new Intl.NumberFormat("en-US");
 
-/** One font slot editor: catalog picker + path + optional TTC face. */
+/** Catalog manifest provenance — the picker's always-visible note. */
+const CATALOG_NOTE =
+  "目录数据来自清单（assets/fonts.manifest.json）的静态快照。";
+
+/** One catalog entry as a kit picker row (license cleaned like the GUI). */
+function catalogRow(entry: CatalogEntry): PickerFont {
+  return {
+    id: `${entry.family}::${entry.variant}`,
+    name: `${entry.family} · ${entry.variant}`,
+    // Users type "Family Variant" — the display's middle dot would
+    // otherwise hide the row from the search.
+    keywords: `${entry.family} ${entry.variant}`,
+    meta: {
+      license: entry.license_spdx
+        .replace(/-1\.1$/, "")
+        .replace(/-(no-)?RFN$/, ""),
+      trait: entry.version,
+    },
+  };
+}
+
+/** One font slot editor: kit catalog PickerPopup + path + optional TTC face. */
 function mountSlotEditor(
   root: HTMLElement,
   opts: {
@@ -42,44 +84,23 @@ function mountSlotEditor(
     get: () => RecipeDraft["base"];
     set: (slot: RecipeDraft["base"]) => void;
   },
-): Listbox {
+): PickerPopup {
   root.className = "wb-slot";
 
-  const anchor = document.createElement("button");
-  anchor.className = "picker-anchor wb-catalog-anchor";
-  anchor.setAttribute("aria-haspopup", "listbox");
-  anchor.setAttribute("aria-expanded", "false");
-  anchor.dataset.role = opts.anchorRole;
-  const current = document.createElement("span");
-  current.className = "picker-current";
-  anchor.appendChild(current);
-  const caret = document.createElement("span");
-  caret.className = "picker-caret";
-  caret.setAttribute("aria-hidden", "true");
-  caret.textContent = "▾";
-  anchor.appendChild(caret);
-  root.appendChild(anchor);
-
-  const listbox = mountListbox(anchor, {
-    label: "目录字体列表",
+  const buildProps = () => ({
+    role: opts.anchorRole,
+    fonts: CATALOG.map(catalogRow),
+    selectedId: (() => {
+      const slot = opts.get();
+      return slot.catalog
+        ? `${slot.catalog.family}::${slot.catalog.variant}`
+        : null;
+    })(),
+    emptyLabel: opts.emptyText,
     searchPlaceholder: "搜索字体家族…",
-    options: (query) => {
-      const q = query.trim().toLowerCase();
-      const hits = CATALOG.filter(
-        (entry) =>
-          q === "" ||
-          `${entry.family} ${entry.variant}`.toLowerCase().includes(q),
-      );
-      return hits.map((entry) => ({
-        id: `${entry.family}::${entry.variant}`,
-        title: `${entry.family} · ${entry.variant}`,
-        subtitle: entry.version,
-        meta: entry.license_spdx,
-      }));
-    },
     emptyText: "目录中没有匹配的字体。",
-    footerNote: "目录数据来自清单（assets/fonts.manifest.json）的静态快照。",
-    onPick: (id) => {
+    note: CATALOG_NOTE,
+    onPick: (id: string) => {
       const [family, variant] = id.split("::");
       const entry =
         CATALOG.find((c) => c.family === family && c.variant === variant) ??
@@ -95,6 +116,8 @@ function mountSlotEditor(
       });
     },
   });
+
+  const popup = mountPickerPopup(root, buildProps());
 
   const pathBox = document.createElement("label");
   pathBox.className = "wb-field";
@@ -134,35 +157,49 @@ function mountSlotEditor(
   faceBox.append(faceLabel, faceInput);
   root.appendChild(faceBox);
 
-  // Only the anchor label re-renders; inputs are never rebuilt.
+  // Only the picker props re-render; inputs are never rebuilt.
   const render = (): void => {
     const slot = opts.get();
-    current.textContent = slot.catalog
-      ? `${slot.catalog.family} · ${slot.catalog.variant}（${slot.catalog.version}）`
-      : opts.emptyText;
+    popup.render(buildProps());
     if (pathInput.value !== slot.path && document.activeElement !== pathInput) {
       pathInput.value = slot.path;
     }
   };
   builderStore.subscribe(render);
   render();
-  return listbox;
+  return popup;
 }
 
 function section(
   root: HTMLElement,
   title: string,
   desc: string,
+  help?: { id: string; label: string; width: number; build(): HTMLElement },
 ): HTMLElement {
   const el = document.createElement("section");
-  el.className = "section wb-section";
+  el.className = "wb-section";
   const h = document.createElement("h3");
-  h.className = "section-title";
+  h.className = "wb-section-title";
   h.textContent = title;
+  if (help) {
+    const popover = mountHelpPopover({
+      id: help.id,
+      title: help.label,
+      buttonLabel: help.label,
+      width: help.width,
+      build: help.build,
+    });
+    const head = document.createElement("div");
+    head.className = "wb-section-head";
+    head.append(h, popover.anchor);
+    el.appendChild(head);
+  } else {
+    el.appendChild(h);
+  }
   const d = document.createElement("div");
-  d.className = "section-desc";
+  d.className = "wb-section-desc";
   d.textContent = desc;
-  el.append(h, d);
+  el.appendChild(d);
   root.appendChild(el);
   return el;
 }
@@ -194,7 +231,7 @@ function mountFonts(root: HTMLElement): void {
   donorList.className = "wb-donor-list";
   const addDonor = document.createElement("button");
   addDonor.type = "button";
-  addDonor.className = "wb-add-button";
+  addDonor.className = "kit-btn sm wb-add-button";
   addDonor.dataset.role = "add-donor";
   addDonor.textContent = "＋ 添加供体";
   addDonor.addEventListener("click", () => {
@@ -208,13 +245,13 @@ function mountFonts(root: HTMLElement): void {
   });
   donorSec.append(donorList, addDonor);
 
-  let mountedPickers: Listbox[] = [];
+  let mountedPickers: PickerPopup[] = [];
   const renderDonors = (): void => {
     const { donors } = builderStore.get().draft;
     const signature = donors.length.toString();
     if (donorList.dataset.signature === signature) return;
     donorList.dataset.signature = signature;
-    // Popups whose anchors are about to be replaced must be torn down,
+    // Pickers whose cards are about to be replaced must be torn down,
     // or duplicates with the same data-picker-popup accumulate on body.
     for (const picker of mountedPickers) picker.destroy();
     mountedPickers = [];
@@ -226,11 +263,11 @@ function mountFonts(root: HTMLElement): void {
       const head = document.createElement("div");
       head.className = "wb-donor-head";
       const tag = document.createElement("span");
-      tag.className = "wb-donor-tag";
+      tag.className = "wb-tag";
       tag.textContent = `供体 ${index + 1}（${donorRef(index)}）`;
       const remove = document.createElement("button");
       remove.type = "button";
-      remove.className = "wb-remove-button";
+      remove.className = "kit-btn gh sm wb-remove-button";
       remove.dataset.role = `remove-donor-${index}`;
       remove.setAttribute("aria-label", `移除供体 ${index + 1}`);
       remove.textContent = "移除";
@@ -263,22 +300,22 @@ function mountFonts(root: HTMLElement): void {
       donorList.appendChild(row);
       mountedPickers.push(
         mountSlotEditor(slotEditor, {
-        anchorRole: `donor-catalog-${index}`,
-        pathRole: `donor-path-${index}`,
-        faceRole: `donor-face-${index}`,
-        emptyText: "从目录选择供体字体…",
-        get: () => builderStore.get().draft.donors[index],
-        set: (slot) =>
-          updateDraft((draft) => ({
-            ...draft,
-            donors: draft.donors.map((d, i) => (i === index ? slot : d)),
-          })),
+          anchorRole: `donor-catalog-${index}`,
+          pathRole: `donor-path-${index}`,
+          faceRole: `donor-face-${index}`,
+          emptyText: "从目录选择供体字体…",
+          get: () => builderStore.get().draft.donors[index],
+          set: (slot) =>
+            updateDraft((draft) => ({
+              ...draft,
+              donors: draft.donors.map((d, i) => (i === index ? slot : d)),
+            })),
         }),
       );
     });
     if (donors.length === 0) {
       const empty = document.createElement("div");
-      empty.className = "placeholder-note";
+      empty.className = "wb-empty-note";
       empty.textContent = "尚未添加供体——纯基底（无合并）也是合法配方。";
       donorList.appendChild(empty);
     }
@@ -298,7 +335,7 @@ function mountRules(root: HTMLElement): void {
   ruleList.className = "wb-rule-list";
   const addRule = document.createElement("button");
   addRule.type = "button";
-  addRule.className = "wb-add-button";
+  addRule.className = "kit-btn sm wb-add-button";
   addRule.dataset.role = "add-rule";
   addRule.textContent = "＋ 添加规则";
   addRule.addEventListener("click", () => {
@@ -313,7 +350,29 @@ function mountRules(root: HTMLElement): void {
   });
   sec.append(ruleList, addRule);
 
-  let presetPickers: Listbox[] = [];
+  interface RuleWidgets {
+    kind: AppSelect;
+    preset: PresetPicker | null;
+  }
+  let widgets: RuleWidgets[] = [];
+  const teardown = (): void => {
+    for (const w of widgets) {
+      w.kind.destroy();
+      w.preset?.destroy();
+    }
+    widgets = [];
+  };
+
+  const presetLabel = (name: string): string => {
+    const preset = PRESETS.find((p) => p.name === name);
+    const standalone = STANDALONE_SETS.includes(name);
+    return preset
+      ? `${preset.name} · ${count.format(preset.codepoints)} 码位`
+      : standalone
+        ? `${name}（补充区块）`
+        : "选择语言预设…";
+  };
+
   const renderRules = (): void => {
     const draft = builderStore.get().draft;
     // Values typed into inputs are state, not structure: exclude them
@@ -330,13 +389,12 @@ function mountRules(root: HTMLElement): void {
     ]);
     if (ruleList.dataset.signature === signature) return;
     ruleList.dataset.signature = signature;
-    for (const picker of presetPickers) picker.destroy();
-    presetPickers = [];
+    teardown();
     ruleList.replaceChildren();
 
     if (draft.rules.length === 0) {
       const empty = document.createElement("div");
-      empty.className = "placeholder-note";
+      empty.className = "wb-empty-note";
       empty.textContent =
         "尚未声明规则——空缺码位将按默认优先级（基底优先，随后供体按加入顺序）填补。";
       ruleList.appendChild(empty);
@@ -351,11 +409,11 @@ function mountRules(root: HTMLElement): void {
       const head = document.createElement("div");
       head.className = "wb-rule-head";
       const tag = document.createElement("span");
-      tag.className = "wb-donor-tag";
+      tag.className = "wb-tag";
       tag.textContent = `规则 ${draft.rules.indexOf(rule) + 1}`;
       const remove = document.createElement("button");
       remove.type = "button";
-      remove.className = "wb-remove-button";
+      remove.className = "kit-btn gh sm wb-remove-button";
       remove.dataset.role = "remove-rule";
       remove.setAttribute("aria-label", "删除规则");
       remove.textContent = "删除";
@@ -370,62 +428,45 @@ function mountRules(root: HTMLElement): void {
 
       const kindRow = document.createElement("div");
       kindRow.className = "wb-rule-target";
-      const kind = document.createElement("select");
-      kind.className = "wb-input wb-select";
-      kind.dataset.role = `rule-kind-${rule.id}`;
-      for (const [value, label] of [
-        ["preset", "语言预设"],
-        ["range", "码位区间"],
-        ["codepoint", "单码位"],
-      ] as const) {
-        const option = document.createElement("option");
-        option.value = value;
-        option.textContent = label;
-        kind.appendChild(option);
-      }
-      kind.value = rule.target.kind;
-      kind.addEventListener("change", () => {
-        const next: RuleTarget =
-          kind.value === "preset"
-            ? { kind: "preset", name: "" }
-            : kind.value === "range"
-              ? { kind: "range", start: NaN, end: NaN }
-              : { kind: "codepoint", cp: NaN };
-        retargetRule(rule.id, next);
+
+      const KIND_OPTIONS = [
+        { value: "preset", label: "语言预设" },
+        { value: "range", label: "码位区间" },
+        { value: "codepoint", label: "单码位" },
+      ] as const;
+      const kind = mountAppSelect({
+        label: "规则目标类型",
+        value: rule.target.kind,
+        options: KIND_OPTIONS,
+        onChange: (value) => {
+          const next: RuleTarget =
+            value === "preset"
+              ? { kind: "preset", name: "" }
+              : value === "range"
+                ? { kind: "range", start: NaN, end: NaN }
+                : { kind: "codepoint", cp: NaN };
+          retargetRule(rule.id, next);
+        },
       });
-      kindRow.appendChild(kind);
+      kind.el.dataset.role = `rule-kind-${rule.id}`;
+      kindRow.appendChild(kind.el);
 
       const target = rule.target;
+      let presetPicker: PresetPicker | null = null;
       if (target.kind === "preset") {
-        const presetAnchor = document.createElement("button");
-        presetAnchor.type = "button";
-        presetAnchor.className = "picker-anchor wb-preset-anchor";
-        presetAnchor.dataset.role = `rule-preset-${rule.id}`;
-        presetAnchor.setAttribute("aria-haspopup", "listbox");
-        presetAnchor.setAttribute("aria-expanded", "false");
-        const presetCurrent = document.createElement("span");
-        presetCurrent.className = "picker-current";
-        const preset = PRESETS.find((p) => p.name === target.name);
-        const standalone = STANDALONE_SETS.includes(target.name);
-        presetCurrent.textContent = preset
-          ? `${preset.name} · ${count.format(preset.codepoints)} 码位`
-          : standalone
-            ? `${target.name}（补充区块）`
-            : "选择语言预设…";
-        presetAnchor.appendChild(presetCurrent);
-        const caret = document.createElement("span");
-        caret.className = "picker-caret";
-        caret.setAttribute("aria-hidden", "true");
-        caret.textContent = "▾";
-        presetAnchor.appendChild(caret);
-        kindRow.appendChild(presetAnchor);
-        presetPickers.push(
-          mountListbox(presetAnchor, {
-          label: "语言预设列表",
+        presetPicker = mountPresetPicker({
+          role: `rule-preset-${rule.id}`,
           searchPlaceholder: "搜索语言（fc-lang）…",
+          emptyText: "没有匹配的语言预设。",
+          footerNote: "预设为 fc-lang 语料（fontconfig）的静态快照。",
+          currentLabel: () => presetLabel(target.name),
           options: (query) => {
-            const q = query.trim().toLowerCase();
-            const all: Array<{ id: string; title: string; sub: string; featured: boolean }> = [];
+            const all: Array<{
+              id: string;
+              title: string;
+              sub: string;
+              featured: boolean;
+            }> = [];
             for (const preset of PRESETS) {
               const composition =
                 preset.sub_blocks.length > 1
@@ -448,30 +489,28 @@ function mountRules(root: HTMLElement): void {
                 featured: false,
               });
             }
-            const hits = all.filter((o) => q === "" || o.title.toLowerCase().includes(q));
+            const hits = all.filter((o) => query === "" || o.title.toLowerCase().includes(query));
             hits.sort((a, b) => {
               const fa = FEATURED.includes(a.id) ? 0 : 1;
               const fb = FEATURED.includes(b.id) ? 0 : 1;
               return fa !== fb ? fa - fb : a.title.localeCompare(b.title);
             });
-            return hits.map((o) => ({
-              id: o.id,
-              title: o.title,
-              subtitle: o.sub,
-              meta: o.featured ? "常用" : undefined,
-            }));
+            return hits;
           },
-          emptyText: "没有匹配的语言预设。",
-          footerNote: "预设为 fc-lang 语料（fontconfig）的静态快照。",
           onPick: (name) => {
             updateRule(rule.id, (r) => ({
               ...r,
               target: { kind: "preset", name },
             }));
           },
-        }),
-        );
-      } else if (target.kind === "range") {
+        });
+        kindRow.appendChild(presetPicker.anchor);
+        widgets.push({ kind, preset: presetPicker });
+      } else {
+        widgets.push({ kind, preset: null });
+      }
+
+      if (target.kind === "range") {
         const wrap = document.createElement("span");
         wrap.className = "wb-range-box";
         const error = document.createElement("span");
@@ -524,7 +563,7 @@ function mountRules(root: HTMLElement): void {
         dash.textContent = "–";
         wrap.append(start, dash, end, error);
         kindRow.appendChild(wrap);
-      } else {
+      } else if (target.kind === "codepoint") {
         const error = document.createElement("span");
         error.className = "wb-inline-error";
         error.dataset.role = `rule-cp-error-${rule.id}`;
@@ -589,7 +628,7 @@ function mountRules(root: HTMLElement): void {
           const rank = rule.fonts.indexOf(ref);
           const up = document.createElement("button");
           up.type = "button";
-          up.className = "wb-move-button";
+          up.className = "kit-btn sm wb-move-button";
           up.dataset.role = `rule-font-up-${rule.id}-${ref}`;
           up.setAttribute("aria-label", `${ref} 上移`);
           up.textContent = "↑";
@@ -604,7 +643,7 @@ function mountRules(root: HTMLElement): void {
           });
           const down = document.createElement("button");
           down.type = "button";
-          down.className = "wb-move-button";
+          down.className = "kit-btn sm wb-move-button";
           down.dataset.role = `rule-font-down-${rule.id}-${ref}`;
           down.setAttribute("aria-label", `${ref} 下移`);
           down.textContent = "↓";
@@ -677,32 +716,31 @@ function mountOutput(root: HTMLElement): void {
     familyFeedback.classList.toggle("is-error", !check.ok);
   }
 
-  const formatField = document.createElement("label");
+  const formatField = document.createElement("div");
   formatField.className = "wb-field wb-field-narrow";
   const formatLabel = document.createElement("span");
   formatLabel.className = "wb-field-label";
   formatLabel.textContent = "输出格式";
-  const formatSelect = document.createElement("select");
-  formatSelect.className = "wb-input wb-select";
-  formatSelect.dataset.role = "output-format";
-  for (const [value, label] of [
-    ["ttf", "TTF（必选档）"],
-    ["ttc", "TTC（集合）"],
-    ["woff2", "WOFF2（可选档）"],
-  ] as const) {
-    const option = document.createElement("option");
-    option.value = value;
-    option.textContent = label;
-    formatSelect.appendChild(option);
-  }
-  formatSelect.value = builderStore.get().draft.output.format;
-  formatSelect.addEventListener("change", () => {
-    updateDraft((draft) => ({
-      ...draft,
-      output: { ...draft.output, format: formatSelect.value as RecipeDraft["output"]["format"] },
-    }));
+  const formatSelect = mountAppSelect({
+    label: "输出格式",
+    value: builderStore.get().draft.output.format,
+    options: [
+      { value: "ttf", label: "TTF（必选档）" },
+      { value: "ttc", label: "TTC（集合）" },
+      { value: "woff2", label: "WOFF2（可选档）" },
+    ],
+    onChange: (value) => {
+      updateDraft((draft) => ({
+        ...draft,
+        output: {
+          ...draft.output,
+          format: value as RecipeDraft["output"]["format"],
+        },
+      }));
+    },
   });
-  formatField.append(formatLabel, formatSelect);
+  formatSelect.el.dataset.role = "output-format";
+  formatField.append(formatLabel, formatSelect.el);
   box.appendChild(formatField);
 }
 
@@ -716,39 +754,62 @@ function mountNormalization(root: HTMLElement): void {
     root,
     "规范化开关",
     "全部保持默认时配方不写该块（核心默认：网格 2:1、半角引号与破折号）；改动后仅写入非默认项。",
+    {
+      id: "normalization",
+      label: "网格与光学缩放",
+      width: 340,
+      build() {
+        const wrap = document.createElement("div");
+        wrap.append(
+          helpNote(
+            "中英文永远共用同一条基线，行高完全继承英文字体（ADR-0003 不变量）；这里选择的只是中文的缩放学派：",
+          ),
+          workedTable(["模式", "效果"], [
+            [
+              "网格（默认）",
+              "中文按 2:1 网格比例缩放，底边落在共享基线上，不额外缩小",
+            ],
+            [
+              "光学",
+              "中文按「汉字墨高 / 大写高度」比例略缩（默认 1.23）",
+            ],
+          ]),
+          helpNote(
+            "全角引号与破折号：半角 = 记一格（UAX #11 默认）；全角 = 占两格（中文排版习惯）。宽字符固定整 2 格，其他比例在本管线中不可表达。",
+          ),
+        );
+        return wrap;
+      },
+    },
   );
   const body = document.createElement("div");
   body.className = "wb-output-box";
   sec.appendChild(body);
 
-  const modeField = document.createElement("label");
-  modeField.className = "wb-field wb-field-narrow";
+  const modeBox = document.createElement("div");
+  modeBox.className = "wb-field wb-field-narrow";
   const modeLabel = document.createElement("span");
   modeLabel.className = "wb-field-label";
   modeLabel.textContent = "规范化模式";
-  const modeSelect = document.createElement("select");
-  modeSelect.className = "wb-input wb-select";
-  modeSelect.dataset.role = "normalization-mode";
-  for (const [value, label] of [
-    ["grid", "网格（2:1，默认）"],
-    ["optical", "光学（按比例）"],
-  ] as const) {
-    const option = document.createElement("option");
-    option.value = value;
-    option.textContent = label;
-    modeSelect.appendChild(option);
-  }
-  modeSelect.value = builderStore.get().draft.normalization.mode;
-  modeSelect.addEventListener("change", () => {
-    const mode = modeSelect.value as RecipeDraft["normalization"]["mode"];
-    updateDraft((draft) => ({
-      ...draft,
-      normalization: { ...draft.normalization, mode },
-    }));
-    renderRatioVisibility();
+  const modeSelect = mountAppSelect({
+    label: "规范化模式",
+    value: builderStore.get().draft.normalization.mode,
+    options: [
+      { value: "grid", label: "网格（2:1，默认）" },
+      { value: "optical", label: "光学（按比例）" },
+    ],
+    onChange: (value) => {
+      const mode = value as RecipeDraft["normalization"]["mode"];
+      updateDraft((draft) => ({
+        ...draft,
+        normalization: { ...draft.normalization, mode },
+      }));
+      renderRatioVisibility();
+    },
   });
-  modeField.append(modeLabel, modeSelect);
-  body.appendChild(modeField);
+  modeSelect.el.dataset.role = "normalization-mode";
+  modeBox.append(modeLabel, modeSelect.el);
+  body.appendChild(modeBox);
 
   const ratioBox = document.createElement("label");
   ratioBox.className = "wb-field wb-field-narrow";
@@ -778,35 +839,31 @@ function mountNormalization(root: HTMLElement): void {
   ratioBox.append(ratioLabel, ratioInput, ratioNote);
   body.appendChild(ratioBox);
 
-  const quoteField = document.createElement("label");
-  quoteField.className = "wb-field";
+  const quoteBox = document.createElement("div");
+  quoteBox.className = "wb-field";
   const quoteLabel = document.createElement("span");
   quoteLabel.className = "wb-field-label";
   quoteLabel.textContent = "全角引号与破折号";
-  const quoteSelect = document.createElement("select");
-  quoteSelect.className = "wb-input wb-select";
-  quoteSelect.dataset.role = "normalization-quote-dash";
-  for (const [value, label] of [
-    ["halfwidth", "半角（UAX #11 默认）"],
-    ["fullwidth", "全角（CJK 习惯）"],
-  ] as const) {
-    const option = document.createElement("option");
-    option.value = value;
-    option.textContent = label;
-    quoteSelect.appendChild(option);
-  }
-  quoteSelect.value = builderStore.get().draft.normalization.quoteDashWidth;
-  quoteSelect.addEventListener("change", () => {
-    updateDraft((draft) => ({
-      ...draft,
-      normalization: {
-        ...draft.normalization,
-        quoteDashWidth: quoteSelect.value as RecipeDraft["normalization"]["quoteDashWidth"],
-      },
-    }));
+  const quoteSelect = mountAppSelect({
+    label: "全角引号与破折号",
+    value: builderStore.get().draft.normalization.quoteDashWidth,
+    options: [
+      { value: "halfwidth", label: "半角（UAX #11 默认）" },
+      { value: "fullwidth", label: "全角（CJK 习惯）" },
+    ],
+    onChange: (value) => {
+      updateDraft((draft) => ({
+        ...draft,
+        normalization: {
+          ...draft.normalization,
+          quoteDashWidth: value as RecipeDraft["normalization"]["quoteDashWidth"],
+        },
+      }));
+    },
   });
-  quoteField.append(quoteLabel, quoteSelect);
-  body.appendChild(quoteField);
+  quoteSelect.el.dataset.role = "normalization-quote-dash";
+  quoteBox.append(quoteLabel, quoteSelect.el);
+  body.appendChild(quoteBox);
 
   const renderRatioVisibility = (): void => {
     const optical = builderStore.get().draft.normalization.mode === "optical";
@@ -827,12 +884,33 @@ function mountWeights(root: HTMLElement): void {
     root,
     "字重映射",
     "默认按 OS/2 usWeightClass 就近匹配（不写 weights 块）；声明槽位即按需求精确供体字重，每次借用都会在构建报告中明示。",
+    {
+      id: "recipe-weights",
+      label: "字重槽位与覆写",
+      width: 380,
+      build() {
+        const wrap = document.createElement("div");
+        wrap.append(
+          helpNote(
+            "每个槽位声明一个成品字重（usWeightClass）与样式；供体默认按最接近的字重并入。覆写是精确需求——管线不会悄悄换成最近字重，每笔借用都会写进构建报告（#9）。",
+          ),
+          workedTable(["成品槽位", "供体默认（就近）", "覆写后（精确）"], [
+            ["400 · 正体", "donor-0 → 400", "donor-0 → 700"],
+            ["700 · 斜体", "donor-0 → 700", "donor-0 → 400"],
+          ]),
+          helpNote(
+            "不声明槽位 = 基底每个字面一个输出，供体按 OS/2 usWeightClass 就近匹配；声明的档位集合只能来自基底已有的字面（ADR-0006）。",
+          ),
+        );
+        return wrap;
+      },
+    },
   );
   const slotList = document.createElement("div");
   slotList.className = "wb-rule-list";
   const addSlot = document.createElement("button");
   addSlot.type = "button";
-  addSlot.className = "wb-add-button";
+  addSlot.className = "kit-btn sm wb-add-button";
   addSlot.dataset.role = "add-weight-slot";
   addSlot.textContent = "＋ 添加字重槽位";
   addSlot.addEventListener("click", () => {
@@ -847,6 +925,7 @@ function mountWeights(root: HTMLElement): void {
   });
   sec.append(slotList, addSlot);
 
+  let styleSelects: AppSelect[] = [];
   const renderSlots = (): void => {
     const draft = builderStore.get().draft;
     // Inputs (weight numbers, overrides) are state, not structure.
@@ -858,11 +937,13 @@ function mountWeights(root: HTMLElement): void {
     ]);
     if (slotList.dataset.signature === signature) return;
     slotList.dataset.signature = signature;
+    for (const select of styleSelects) select.destroy();
+    styleSelects = [];
     slotList.replaceChildren();
 
     if (draft.weights.length === 0) {
       const empty = document.createElement("div");
-      empty.className = "placeholder-note";
+      empty.className = "wb-empty-note";
       empty.textContent =
         "未声明字重槽位——构建默认为基底每个字面一个输出，供体按就近字重匹配。";
       slotList.appendChild(empty);
@@ -877,11 +958,11 @@ function mountWeights(root: HTMLElement): void {
       const head = document.createElement("div");
       head.className = "wb-rule-head";
       const tag = document.createElement("span");
-      tag.className = "wb-donor-tag";
+      tag.className = "wb-tag";
       tag.textContent = `字重槽位 ${draft.weights.indexOf(slot) + 1}`;
       const remove = document.createElement("button");
       remove.type = "button";
-      remove.className = "wb-remove-button";
+      remove.className = "kit-btn gh sm wb-remove-button";
       remove.dataset.role = "remove-weight-slot";
       remove.setAttribute("aria-label", "删除字重槽位");
       remove.textContent = "删除";
@@ -923,38 +1004,35 @@ function mountWeights(root: HTMLElement): void {
       weightField.append(weightLabel, weightInput);
       controls.appendChild(weightField);
 
-      const styleField = document.createElement("label");
+      const styleField = document.createElement("div");
       styleField.className = "wb-field wb-field-narrow";
       const styleLabel = document.createElement("span");
       styleLabel.className = "wb-field-label";
       styleLabel.textContent = "样式";
-      const styleSelect = document.createElement("select");
-      styleSelect.className = "wb-input wb-select";
-      styleSelect.dataset.role = `weight-slot-style-${slot.id}`;
-      for (const [value, label] of [
-        ["upright", "正体（默认）"],
-        ["italic", "斜体"],
-      ] as const) {
-        const option = document.createElement("option");
-        option.value = value;
-        option.textContent = label;
-        styleSelect.appendChild(option);
-      }
-      styleSelect.value = slot.style;
-      styleSelect.addEventListener("change", () => {
-        updateDraft((d) => ({
-          ...d,
-          weights: d.weights.map((s) =>
-            s.id === slot.id
-              ? {
-                  ...s,
-                  style: styleSelect.value as RecipeDraft["weights"][number]["style"],
-                }
-              : s,
-          ),
-        }));
+      const styleSelect = mountAppSelect({
+        label: "槽位样式",
+        value: slot.style,
+        options: [
+          { value: "upright", label: "正体（默认）" },
+          { value: "italic", label: "斜体" },
+        ],
+        onChange: (value) => {
+          updateDraft((d) => ({
+            ...d,
+            weights: d.weights.map((s) =>
+              s.id === slot.id
+                ? {
+                    ...s,
+                    style: value as RecipeDraft["weights"][number]["style"],
+                  }
+                : s,
+            ),
+          }));
+        },
       });
-      styleField.append(styleLabel, styleSelect);
+      styleSelect.el.dataset.role = `weight-slot-style-${slot.id}`;
+      styleSelects.push(styleSelect);
+      styleField.append(styleLabel, styleSelect.el);
       controls.appendChild(styleField);
       row.appendChild(controls);
 

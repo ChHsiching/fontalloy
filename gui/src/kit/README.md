@@ -23,9 +23,9 @@ re-renders, store pattern in `gui/src/state.ts`).
 | `theme.ts` | `getAppTheme` / `applyAppTheme` / `toggleAppTheme` (with the two-frame `.theming` guard), `TERMINAL_THEME_OPTIONS` / `EDITOR_THEME_OPTIONS`, `applyTerminalTheme` / `applyEditorTheme` |
 | `position.ts` | `fitPopup` (the prototype's fitPop: below → flip above → cap, clamped to the `[data-kit-frame]` element or viewport), `attachPopupBelow` (picker-style seamless attach) |
 | `icons.ts` | `icon(name)` — the prototype's linear icon family + specials (star, chevron, GitHub mark, theme sun) |
-| `appSelect.ts` | `mountAppSelect` — custom dropdown, glow, keyboard/Escape, allow-discrete open animation, exclusivity |
+| `appSelect.ts` | `mountAppSelect` — custom dropdown, glow, keyboard/Escape, allow-discrete open animation, exclusivity. Stage-3 extension: `destroy()` (full teardown for regions that rebuild) |
 | `metaLine.ts` | `metaLine(FontMeta)`, `formatStars` — the no-pills baseline row (accent stars, license, trait) |
-| `pickerPopup.ts` | `mountPickerPopup` — card + portaled popup: search header, inner scroll, footer OUTSIDE the scroll, self-rendering rows, node persistence, frame clamping. Stage-2 extensions: `note`/`error` status lines above the footer, and `PickerFont.disabled` + `note` render an unpickable row with its status tag (未下载 states) |
+| `pickerPopup.ts` | `mountPickerPopup` — card + portaled popup: search header, inner scroll, footer OUTSIDE the scroll, self-rendering rows, node persistence, frame clamping. Stage-2 extensions: `note`/`error` status lines above the footer, and `PickerFont.disabled` + `note` render an unpickable row with its status tag (未下载 states). Stage-3 extensions: `PickerFont.keywords` (extra search terms) and `destroy()` (full teardown for regions that rebuild) |
 | `helpPopover.ts` | `mountHelpPopover` (circular ? button + pop chrome), `workedTable` (`.kit-wtab` chrome verbatim), `helpNote` |
 | `settingsTopics.ts` | The three synthesis-settings topics with ADR-corrected table content (see below) |
 | `categoryChips.ts` | `mountCategoryChips` — two-level chips with counts, 全部/缺失 aggregates, danger styling |

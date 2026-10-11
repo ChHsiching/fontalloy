@@ -1,5 +1,5 @@
 import { expect, type Page } from "@playwright/test";
-import { openListbox, pickOption, pointerClick } from "./helpers";
+import { openListbox, pickOption, pickSelectOption, pointerClick } from "./helpers";
 
 /**
  * Drive the builder to the fixture-equivalent state
@@ -11,9 +11,9 @@ import { openListbox, pickOption, pointerClick } from "./helpers";
  */
 export async function driveFixtureState(page: Page): Promise<void> {
   // Base: MapleMono NF-CN from the catalog, fixture path.
-  const baseAnchor = page.locator('[data-role="base-catalog"]');
+  const baseAnchor = page.locator('[data-role="picker-base-catalog"]');
   const basePopup = await openListbox(page, baseAnchor, "base-catalog");
-  await basePopup.locator(".wb-search-input").fill("MapleMono NF-CN");
+  await basePopup.locator(".kit-q").fill("MapleMono NF-CN");
   await pickOption(page, basePopup, "MapleMono::NF-CN");
   await page
     .locator('[data-role="base-path"]')
@@ -21,9 +21,9 @@ export async function driveFixtureState(page: Page): Promise<void> {
 
   // Donor 0: LXGW WenKai Regular.
   await pointerClick(page, page.locator('[data-role="add-donor"]'));
-  const d0Anchor = page.locator('[data-role="donor-catalog-0"]');
+  const d0Anchor = page.locator('[data-role="picker-donor-catalog-0"]');
   const d0Popup = await openListbox(page, d0Anchor, "donor-catalog-0");
-  await d0Popup.locator(".wb-search-input").fill("LXGWWenKai");
+  await d0Popup.locator(".kit-q").fill("LXGWWenKai");
   await pickOption(page, d0Popup, "LXGWWenKai::Regular");
   await page
     .locator('[data-role="donor-path-0"]')
@@ -40,14 +40,14 @@ export async function driveFixtureState(page: Page): Promise<void> {
   await pointerClick(page, page.locator('[data-role="add-rule"]'));
   const presetAnchor = page.locator('[data-role="rule-preset-1"]');
   const presetPopup = await openListbox(page, presetAnchor, "rule-preset-1");
-  await presetPopup.locator(".wb-search-input").fill("ja");
+  await presetPopup.locator(".kit-q").fill("ja");
   await pickOption(page, presetPopup, "ja");
   await expect(presetAnchor).toContainText("ja");
   await pointerClick(page, page.locator('[data-role="rule-font-1-donor-0"]'));
 
   // Rule 2: range 0x2100-0x214F -> [base, donor-1].
   await pointerClick(page, page.locator('[data-role="add-rule"]'));
-  await page.locator('[data-role="rule-kind-2"]').selectOption("range");
+  await pickSelectOption(page, page.locator('[data-role="rule-kind-2"]'), "range");
   await page.locator('[data-role="rule-range-start-2"]').fill("0x2100");
   await page.locator('[data-role="rule-range-end-2"]').fill("0x214F");
   await pointerClick(page, page.locator('[data-role="rule-font-2-base"]'));
@@ -55,7 +55,11 @@ export async function driveFixtureState(page: Page): Promise<void> {
 
   // Rule 3: codepoint 0x4E2D -> [donor-1].
   await pointerClick(page, page.locator('[data-role="add-rule"]'));
-  await page.locator('[data-role="rule-kind-3"]').selectOption("codepoint");
+  await pickSelectOption(
+    page,
+    page.locator('[data-role="rule-kind-3"]'),
+    "codepoint",
+  );
   await page.locator('[data-role="rule-codepoint-3"]').fill("0x4E2D");
   await pointerClick(page, page.locator('[data-role="rule-font-3-donor-1"]'));
 
