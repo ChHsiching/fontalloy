@@ -86,6 +86,25 @@ test.describe("scene previews and synthesis settings", () => {
     ).toBeVisible();
   }
 
+  /** Declare one codepoint to the donor side through the 按编码指定
+   *  popup (the charmap toolbar's affordance; 留空=单个). */
+  async function addDonorCpRule(page: Page, cp: string): Promise<void> {
+    await pointerClick(page, page.locator("[data-role='range-specify']"));
+    const popup = page.locator("[data-range-popup]");
+    await expect(popup).toBeVisible();
+    await popup.locator("[data-role='range-start']").fill(cp);
+    await pointerClick(
+      page,
+      popup.locator("[data-role='range-side'] .kit-csel"),
+    );
+    await pointerClick(
+      page,
+      popup.locator("[data-role='range-side'] .kit-cso[data-value='donor']"),
+    );
+    await pointerClick(page, popup.locator("[data-role='range-add']"));
+    await expect(popup).toBeHidden();
+  }
+
   /** The computed font family that renders one scene character. */
   function sceneCharFamily(
     page: Page,
@@ -231,17 +250,19 @@ test.describe("scene previews and synthesis settings", () => {
     await expect(a).toHaveAttribute("data-via", "default");
     expect(await sceneCharFamily(page, "document", "U+0041")).toBe("AlloyBase");
 
-    // A single-codepoint rule from the rail (the rail is shared with the
-    // scene mode): 0x41 -> [donor-0] only.
-    await pointerClick(page, page.locator("[data-role='add-cp-rule']"));
-    const row = page.locator("[data-role='custom-rule']").last();
-    const id = await row.getAttribute("data-rule-id");
-    await row.locator(`[data-role='rule-codepoint-${id}']`).fill("0x0041");
-    await row.locator(`[data-role='rule-font-${id}-base']`).uncheck();
+    // A rule through the 按编码指定 popup (the rule state is shared with
+    // the scene mode): 0x41 -> donor only, via the charmap's affordance.
+    await pointerClick(
+      page,
+      page.locator(".kit-modebar .kit-mseg button[data-value='charmap']"),
+    );
+    await addDonorCpRule(page, "0x41");
+    await gotoSceneMode(page);
 
-    // The scene re-renders in place: donor now renders the 'A', via the rule.
+    // The scene re-renders in place: donor now renders the 'A', via the rule
+    // (rule-1: the boot-seeded zh_cn preset is complete rule 0).
     await expect(a).toHaveAttribute("data-winner", "donor-0");
-    await expect(a).toHaveAttribute("data-via", "rule-0");
+    await expect(a).toHaveAttribute("data-via", "rule-1");
     await expect(a).toHaveAttribute("data-kind", "override");
     expect(await sceneCharFamily(page, "document", "U+0041")).toBe("AlloyDonor");
   });
@@ -250,18 +271,14 @@ test.describe("scene previews and synthesis settings", () => {
     const fonts = await makeLocalFixtures();
     await openWithFonts(page, fonts);
 
-    // Establish merge state: a rule.
-    await pointerClick(page, page.locator("[data-role='add-cp-rule']"));
-    const row = page.locator("[data-role='custom-rule']").last();
-    const id = await row.getAttribute("data-rule-id");
-    await row.locator(`[data-role='rule-codepoint-${id}']`).fill("0x0041");
-    await row.locator(`[data-role='rule-font-${id}-base']`).uncheck();
+    // Establish merge state: a rule through the 按编码指定 popup.
+    await addDonorCpRule(page, "0x41");
 
     // Scene and back: rules, picks, and the grid's effective result survive.
     await gotoSceneMode(page);
     await expect(
       page.locator(".kit-sc[data-scene='terminal'] span[data-cp='U+0041']").first(),
-    ).toHaveAttribute("data-via", "rule-0");
+    ).toHaveAttribute("data-via", "rule-1");
     await pointerClick(
       page,
       page.locator(".kit-modebar .kit-mseg button[data-value='charmap']"),
@@ -282,7 +299,7 @@ test.describe("scene previews and synthesis settings", () => {
     await expect(page.locator(".kit-sc[data-scene='code']")).toBeVisible();
     await expect(
       page.locator(".kit-sc[data-scene='terminal'] span[data-cp='U+0041']").first(),
-    ).toHaveAttribute("data-via", "rule-0");
+    ).toHaveAttribute("data-via", "rule-1");
   });
 
   /* --------------------------------------------------------------- */
@@ -369,9 +386,7 @@ test.describe("scene previews and synthesis settings", () => {
       "双方字重全部保留 · 推荐",
     );
     await expect(baseline.locator(".kit-csel")).toHaveText("自动 · 推荐");
-    await expect(width.locator(".kit-csel")).toHaveText(
-      "两倍英文宽 · 推荐（引号破折号半角）",
-    );
+    await expect(width.locator(".kit-csel")).toHaveText("两倍英文宽 · 推荐");
     await pointerClick(page, weight.locator(".kit-csel"));
     expect(await weight.locator(".kit-cso").allTextContents()).toEqual([
       "双方字重全部保留 · 推荐",
@@ -388,8 +403,9 @@ test.describe("scene previews and synthesis settings", () => {
     await page.keyboard.press("Escape");
     await pointerClick(page, width.locator(".kit-csel"));
     expect(await width.locator(".kit-cso").allTextContents()).toEqual([
-      "两倍英文宽 · 推荐（引号破折号半角）",
-      "两倍英文宽（引号破折号全角 · 中文习惯）",
+      "两倍英文宽 · 推荐",
+      "1.8 倍英文宽",
+      "1.5 倍英文宽",
     ]);
     await page.keyboard.press("Escape");
 
@@ -432,20 +448,33 @@ test.describe("scene previews and synthesis settings", () => {
     await page.keyboard.press("Escape");
     await expect(weightPop).toBeHidden();
 
-    // Baseline popover: the fixed em-box convention is stated.
+    // Baseline popover: verbatim prototype copy (inv. 29).
     await pointerClick(page, page.locator("[data-role='help-baseline']"));
     const baselinePop = page.locator("[data-help-popup='baseline']");
     await expect(baselinePop).toBeVisible();
     await expect(baselinePop.locator("table")).toContainText("底边一样高");
-    await expect(baselinePop).toContainText("共用同一条基线");
+    await expect(baselinePop.locator("table")).toContainText(
+      "中文的底边精确落在英文的底线上，不缩放",
+    );
+    await expect(baselinePop).toContainText(
+      "这个设置管的是竖直方向；中文字横向占多宽由“中文字符宽度”决定，两者不冲突。",
+    );
     await page.keyboard.press("Escape");
 
-    // CJK width popover: the honest ratio story (2:1 fixed, quotes knob).
+    // CJK width popover: verbatim prototype copy (inv. 30) — the 1.8x
+    // and 1.5x rows are the pipeline's width_factor knob.
     await pointerClick(page, page.locator("[data-role='help-cjkWidth']"));
     const widthPop = page.locator("[data-help-popup='cjk-width']");
     await expect(widthPop).toBeVisible();
-    await expect(widthPop.locator("table")).toContainText("全角");
-    await expect(widthPop).toContainText("1.8");
+    await expect(widthPop.locator("table")).toContainText(
+      "标准等宽，一个中文正好对齐两个英文",
+    );
+    await expect(widthPop.locator("table")).toContainText(
+      "1.8 倍英文宽",
+    );
+    await expect(widthPop.locator("table")).toContainText(
+      "很窄，一行能放更多中文",
+    );
 
     // Screenshots with popovers open (seam-3 rule) over the workspace.
     const { mkdirSync } = await import("node:fs");
@@ -551,9 +580,10 @@ test.describe("scene previews and synthesis settings", () => {
       expect(submissions[0]!).not.toHaveProperty("normalization");
       expect(submissions[0]!).not.toHaveProperty("weights");
 
-      // Optical baseline + fullwidth quotes: the normalization block.
+      // Optical baseline + the 1.8x width factor: the normalization
+      // block (the prototype's compacter width setting as a real knob).
       await pickSetting(page, "baseline", "中文字缩小一点更匀称");
-      await pickSetting(page, "cjkWidth", "两倍英文宽（引号破折号全角 · 中文习惯）");
+      await pickSetting(page, "cjkWidth", "1.8 倍英文宽");
       await pointerClick(page, synthesize);
       await expect(page.locator(".build-row").nth(1)).toBeVisible({
         timeout: 30_000,
@@ -561,7 +591,7 @@ test.describe("scene previews and synthesis settings", () => {
       expect(submissions.length).toBe(2);
       expect(submissions[1]!.normalization).toEqual({
         mode: "optical",
-        quote_dash_width: "fullwidth",
+        width_factor: 1.8,
       });
 
       // Weight mode "base only": an explicit slot per base-file face
@@ -574,7 +604,7 @@ test.describe("scene previews and synthesis settings", () => {
       expect(submissions.length).toBe(3);
       expect(submissions[2]!.normalization).toEqual({
         mode: "optical",
-        quote_dash_width: "fullwidth",
+        width_factor: 1.8,
       });
       expect(submissions[2]!.weights).toEqual([{ weight: 400 }]);
 

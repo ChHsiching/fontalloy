@@ -2,8 +2,7 @@ import { store, selectedCoverage, type AppState } from "../state";
 import { mountStatusBar, type StatusBar } from "../kit/statusBar";
 import { currentResolver, defaultResolver } from "../precedence/live";
 import { pickRefs, type PickRefs } from "../precedence/picks";
-import { categoryIntervals, categorySize } from "../unicode/blocks";
-import { MISSING_CATEGORY_ID, missingCodepoints } from "./missing";
+import { missingCodepoints } from "./missing";
 
 /**
  * Persistent bottom stats bar (ADR-0004), on the kit's StatusBar: the
@@ -12,12 +11,14 @@ import { MISSING_CATEGORY_ID, missingCodepoints } from "./missing";
  * rules, and the browsing context change. Every value is plain text —
  * nothing lives in hover-only tooltips.
  *
- * Scope: the ACTIVE category (the grid in view) — the same scope the
- * prototype's counters had over its curated catalog. Within it, every
- * codepoint covered by the pick pair resolves through the live
- * effective resolver: 英文 counts base winners, 中文 donor winners,
- * 已调整 counts effective winners that differ from the no-rule default,
- * and 缺失 is the category size minus the covered count.
+ * Scope: the WHOLE MERGE (prototype parity — its counters never change
+ * with the browsing category). The merge universe is every codepoint
+ * the picks cover (the output font's real content) plus every gap of
+ * the declared 文字范围 scope (the codepoints the merge owes but
+ * cannot render). Within it: 英文 counts base winners, 中文 donor
+ * winners, 已调整 counts effective winners that differ from the
+ * no-rule default, and 缺失 is the uncovered remainder. 覆盖 is the
+ * covered share of the universe.
  */
 
 interface LiveStats {
@@ -32,15 +33,8 @@ interface LiveStats {
 /** The computed six counters, memoized on their inputs. */
 let statsMemo: { signature: string; stats: LiveStats } | null = null;
 
-function inCategory(categoryId: string, cp: number): boolean {
-  for (const interval of categoryIntervals(categoryId)) {
-    if (cp >= interval.start && cp <= interval.end) return true;
-  }
-  return false;
-}
-
 function computeStats(state: AppState, picks: PickRefs): LiveStats {
-  const signature = `${state.categoryId}:${state.fonts.length}:${state.selected.en ?? ""}:${state.selected.cjk ?? ""}:${state.fonts
+  const signature = `${state.fonts.length}:${state.selected.en ?? ""}:${state.selected.cjk ?? ""}:${state.fonts
     .map((font) => `${font.cssFamily}:${font.codepoints.length}`)
     .join("|")}:${state.rules
     .map((r) => `${r.id}:${JSON.stringify(r.target)}:${r.fonts.join(",")}`)
@@ -49,26 +43,9 @@ function computeStats(state: AppState, picks: PickRefs): LiveStats {
     return statsMemo.stats;
   }
 
-  // The missing view IS its own stat line: every cell in it is uncovered
-  // by construction, so the counters read all-缺失 with 0.00 coverage.
-  if (state.categoryId === MISSING_CATEGORY_ID) {
-    const total = missingCodepoints().length;
-    const stats = {
-      total,
-      en: 0,
-      cjk: 0,
-      adjusted: 0,
-      missing: total,
-      coveragePct: "0.00",
-    };
-    statsMemo = { signature, stats };
-    return stats;
-  }
-
-  const total = categorySize(state.categoryId);
-  const union = selectedCoverage(state);
   // Any pick resolves (a lone base pick previews like the old 已选覆盖);
   // with no picks at all there is nothing to measure yet.
+  const union = selectedCoverage(state);
   const measurable = picks.refs.length > 0;
   const resolver = measurable ? currentResolver(picks) : null;
   const base = measurable ? defaultResolver(picks) : null;
@@ -76,11 +53,8 @@ function computeStats(state: AppState, picks: PickRefs): LiveStats {
   let en = 0;
   let cjk = 0;
   let adjusted = 0;
-  let covered = 0;
   if (resolver) {
     for (const cp of union) {
-      if (!inCategory(state.categoryId, cp)) continue;
-      covered++;
       const entry = resolver.resolve(cp);
       if (!entry) continue;
       if (entry.winner === "base") en++;
@@ -89,7 +63,11 @@ function computeStats(state: AppState, picks: PickRefs): LiveStats {
       if (baseEntry && baseEntry.winner !== entry.winner) adjusted++;
     }
   }
-  const missing = Math.max(0, total - covered);
+  // The declared-scope gaps no pick covers (whole-merge 缺失; the
+  // surrogate gap is never renderable and never counted).
+  const missing = missingCodepoints().length;
+  const covered = en + cjk;
+  const total = covered + missing;
   const pct = total > 0 ? ((100 * covered) / total).toFixed(2) : "0.00";
   const stats = { total, en, cjk, adjusted, missing, coveragePct: pct };
   statsMemo = { signature, stats };

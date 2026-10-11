@@ -12,18 +12,16 @@ import {
 } from "./helpers";
 
 /**
- * Design-fidelity repair: the ActionBar's rule-state wiring (the fourth
- * precedence granularity — per-block and per-group assignment as exact
- * range rules), the 按编码指定 range popup, the toolbar's batch variant,
- * the 编码 codepoint rows, and the single-character locator.
+ * Design-fidelity repair (prototype parity): the ActionBar's rule-state
+ * wiring (per-block and per-group assignment as exact range rules), the
+ * 按编码指定 range popup contract, the toolbar's batch variant (多选
+ * mode), the char popup at the cell, the 编码 codepoint rows, the
+ * missing-cell codepoint, and the single-character locator.
  */
 
-/** The count of COMPLETE rules, read from the rail's rule rows. */
-async function completeRuleCount(page: Page): Promise<number> {
-  return page.evaluate(
-    () =>
-      document.querySelectorAll("[data-rule-id][data-complete='true']").length,
-  );
+/** The count of human summary rows in the 自定义规则 section. */
+async function summaryRowCount(page: Page): Promise<number> {
+  return page.locator("[data-role='rule-row']").count();
 }
 
 test.describe("action bar rule wiring", () => {
@@ -101,12 +99,14 @@ test.describe("action bar rule wiring", () => {
     expect(blockCarried.color).toBe(blockAccent);
     expect(blockCarried.weight).toBe("600");
 
-    // Assign the whole block to the donor: one exact range rule.
+    // Assign the whole block to the donor: one exact range rule, one
+    // human summary sentence.
     await pointerClick(page, blockButton("用中文字体"));
-    await expect.poll(() => completeRuleCount(page)).toBe(1);
-    await expect(page.locator("[data-role='custom-rule']").first()).toContainText(
-      "0x20-0x7F",
+    await expect.poll(() => summaryRowCount(page)).toBe(1);
+    const blockRow = page.locator(
+      "[data-role='rule-row'][data-kind='block']",
     );
+    await expect(blockRow).toHaveText(/基本拉丁用中文字体/);
     // The donor holds A–F: those flip to the override winner.
     await expect(
       page.locator(".charmap-grid .kit-cell[data-cp='U+0041']"),
@@ -117,14 +117,45 @@ test.describe("action bar rule wiring", () => {
     // The pressed state follows the assignment.
     await expect(blockButton("用中文字体")).toHaveAttribute("aria-pressed", "true");
 
-    // Pressing the carried side again reverts to default (rule removed).
+    // Pressing the carried side again reverts to default (rule removed)
+    // — exactly what the row's own delete × does too.
     await pointerClick(page, blockButton("用中文字体"));
-    await expect.poll(() => completeRuleCount(page)).toBe(0);
+    await expect.poll(() => summaryRowCount(page)).toBe(0);
     await expect(
       page.locator(".charmap-grid .kit-cell[data-cp='U+0041']"),
     ).toHaveAttribute("data-winner", "base");
     // ...and the pressed state falls back to the DEFAULT side.
     await expect(blockButton("用英文字体")).toHaveAttribute("aria-pressed", "true");
+
+    // The row's delete × removes the assignment the same way.
+    await pointerClick(page, blockButton("用中文字体"));
+    await expect.poll(() => summaryRowCount(page)).toBe(1);
+    await pointerClick(page, page.locator("[data-role='remove-rule']").first());
+    await expect.poll(() => summaryRowCount(page)).toBe(0);
+  });
+
+  test("the block segment renders (unpressed) before both fonts are picked", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await waitForFontsReady(page);
+
+    // Prototype parity (inv. 34/35): the assignment segments exist from
+    // the first paint — the defaults drive them, and pre-pick nothing is
+    // pressed (no coverages to vote). The block view shows the segment,
+    // not the passive count note.
+    await pointerClick(page, page.locator(".kit-cat-g[data-group='latin-europe']"));
+    await pointerClick(page, page.locator(".kit-cat-s[data-block='basic-latin']"));
+    const row = page.locator(".kit-toolrow").filter({ hasText: "基本拉丁" });
+    await expect(
+      row.locator(".kit-mseg button").filter({ hasText: /^用英文字体$/ }),
+    ).toBeVisible();
+    await expect(
+      row.locator(".kit-mseg button").filter({ hasText: /^用英文字体$/ }),
+    ).toHaveAttribute("aria-pressed", "false");
+    await expect(
+      row.locator(".kit-mseg button").filter({ hasText: /^用中文字体$/ }),
+    ).toHaveAttribute("aria-pressed", "false");
   });
 
   test("the toolbar stays one row at 1440px with the longest real block label", async ({
@@ -202,11 +233,12 @@ test.describe("action bar rule wiring", () => {
     expect(carried.weight).toBe("600");
 
     await pointerClick(page, groupButton("全部用英文字体"));
-    // One exact range rule per block of the group, one mutateRules call.
-    const blocks = await page.evaluate(
-      () => document.querySelectorAll(".kit-cat-s[data-block]:not([data-block^='g:'])").length,
-    );
-    await expect.poll(() => completeRuleCount(page)).toBe(blocks);
+    // Every block of the group carries the same side — the summary
+    // list MERGES them into one parent sentence (prototype parity).
+    await expect.poll(() => summaryRowCount(page)).toBe(1);
+    await expect(
+      page.locator("[data-role='rule-row'][data-kind='group']"),
+    ).toHaveText(/所有中日韩文字字符用英文字体/);
     await expect(groupButton("全部用英文字体")).toHaveAttribute(
       "aria-pressed",
       "true",
@@ -214,12 +246,10 @@ test.describe("action bar rule wiring", () => {
 
     // One Ctrl+Z reverts the whole group assignment.
     await page.keyboard.press("Control+z");
-    await expect.poll(() => completeRuleCount(page)).toBe(0);
+    await expect.poll(() => summaryRowCount(page)).toBe(0);
   });
 
-  test("the 按编码指定 popup creates a range rule for the chosen side", async ({
-    page,
-  }) => {
+  test("the 按编码指定 popup follows the prototype contract", async ({ page }) => {
     const fonts = await makeLocalFixtures();
     await openWithFonts(page, fonts);
 
@@ -229,28 +259,80 @@ test.describe("action bar rule wiring", () => {
     );
     const popup = page.locator("[data-range-popup]");
     await expect(popup).toBeVisible();
-    await popup.locator("[data-role='range-start']").fill("0x0041");
-    await popup.locator("[data-role='range-end']").fill("0x0046");
-    await pointerClick(page, popup.locator("[data-role='range-donor']"));
-
-    await expect.poll(() => completeRuleCount(page)).toBe(1);
-    await expect(page.locator("[data-role='custom-rule']").first()).toContainText(
-      "0x41-0x46",
+    // The contract verbatim: title, hint, placeholders, side select,
+    // single primary 添加.
+    await expect(popup.locator("h5")).toHaveText("按编码指定");
+    await expect(popup).toContainText("输入编码或范围，窄范围优先于整类。");
+    await expect(popup.locator("[data-role='range-start']")).toHaveAttribute(
+      "placeholder",
+      "U+0030 或 0",
     );
+    await expect(popup.locator("[data-role='range-end']")).toHaveAttribute(
+      "placeholder",
+      "留空=单个",
+    );
+    await expect(popup.locator("[data-role='range-side']")).toContainText(
+      "用英文字体",
+    );
+
+    // A single codepoint (end left empty) applies the chosen side.
+    await popup.locator("[data-role='range-start']").fill("0x0041");
+    await pointerClick(
+      page,
+      popup.locator("[data-role='range-side'] .kit-csel"),
+    );
+    await pointerClick(
+      page,
+      popup.locator("[data-role='range-side'] .kit-cso[data-value='donor']"),
+    );
+    await pointerClick(page, popup.locator("[data-role='range-add']"));
+    await expect.poll(() => summaryRowCount(page)).toBe(1);
+    await expect(
+      page.locator("[data-role='rule-row'][data-kind='range'] .rule-line-suffix"),
+    ).toHaveText("U+0041");
     await expect(
       page.locator(".charmap-grid .kit-cell[data-cp='U+0041']"),
     ).toHaveAttribute("data-winner", "donor-0");
 
-    // Invalid input states so inline, never silently.
+    // A range for the other side, via Enter commit.
+    await pointerClick(
+      page,
+      page.locator(".kit-toolrow [data-role='range-specify']"),
+    );
+    await expect(popup).toBeVisible();
+    await popup.locator("[data-role='range-start']").fill("0x0043");
+    await popup.locator("[data-role='range-end']").fill("0x0046");
+    await popup.locator("[data-role='range-start']").press("Enter");
+    await expect.poll(() => summaryRowCount(page)).toBe(2);
+
+    // Invalid input paints the border danger-red and adds nothing.
+    const rulesNow = await summaryRowCount(page);
     await pointerClick(
       page,
       page.locator(".kit-toolrow [data-role='range-specify']"),
     );
     await expect(popup).toBeVisible();
     await popup.locator("[data-role='range-start']").fill("nope");
-    await pointerClick(page, popup.locator("[data-role='range-donor']"));
-    await expect(popup.locator("[data-role='range-error']")).toBeVisible();
+    await pointerClick(page, popup.locator("[data-role='range-add']"));
+    await expect(popup.locator("[data-role='range-start']")).toHaveCSS(
+      "border-color",
+      /rgb\(/,
+    );
+    const borderColor = await popup
+      .locator("[data-role='range-start']")
+      .evaluate((el) => getComputedStyle(el).borderColor);
+    const dangerColor = await page.evaluate(() => {
+      const probe = document.createElement("span");
+      probe.style.color = "var(--dgr)";
+      document.body.appendChild(probe);
+      const color = getComputedStyle(probe).color;
+      probe.remove();
+      return color;
+    });
+    expect(borderColor).toBe(dangerColor);
+    await expect.poll(() => summaryRowCount(page)).toBe(rulesNow);
     await page.keyboard.press("Escape");
+    await expect(popup).toBeHidden();
   });
 
   test("the toolbar's batch variant applies to the multi-selection", async ({
@@ -261,7 +343,8 @@ test.describe("action bar rule wiring", () => {
     await pointerClick(page, page.locator(".kit-cat-g[data-group='cjk']"));
     await pointerClick(page, page.locator(".kit-cat-s[data-block='cjk-unified']"));
 
-    // Drag-paint two cells; the toolbar switches to its batch variant.
+    // 多选 mode arms the drag; the toolbar switches to its batch variant.
+    await pointerClick(page, page.locator("[data-role='toggle-multi']"));
     const first = await hitTestCenter(
       page,
       page.locator(".charmap-grid .kit-cell[data-cp='U+4E10']"),
@@ -278,67 +361,170 @@ test.describe("action bar rule wiring", () => {
 
     // One toolbar action applies the donor to the whole selection.
     await pointerClick(page, page.locator("[data-role='batch-donor']"));
-    await expect.poll(() => completeRuleCount(page)).toBe(1);
+    await expect.poll(() => summaryRowCount(page)).toBe(1);
     for (const cp of ["U+4E10", "U+4E11"]) {
       await expect(
         page.locator(`.charmap-grid .kit-cell[data-cp='${cp}']`),
       ).toHaveAttribute("data-winner", "donor-0");
     }
-    // 取消 clears the selection without touching the rules (the apply
-    // deliberately keeps the selection — undo-friendly batch editing).
-    await pointerClick(page, page.locator("[data-role='batch-clear']"));
-    await expect(page.locator("[data-role='batch-count']")).toBeHidden();
-    await expect.poll(() => completeRuleCount(page)).toBe(1);
   });
 
-  test("the details dock collapses while no cell is selected and opens on a click", async ({
-    page,
-  }) => {
-    await page.goto("/");
-    await waitForFontsReady(page);
-
-    // Boot (nothing selected): the dock holds ZERO height — the
-    // prototype's unselected density (its frames have no strip between
-    // the chip bar and the toolbar).
-    const dock = page.locator(".charmap-details");
-    await expect(dock).toHaveAttribute("data-open", "false");
-    expect((await dock.boundingBox())?.height).toBe(0);
-
-    // Selecting a cell expands it back to the fixed band (the codepoint
-    // facts — and, with a pick pair, the precedence editor).
-    await pointerClick(
-      page,
-      page.locator(".charmap-grid .kit-cell[data-cp='U+0041']"),
-    );
-    await expect(dock).toHaveAttribute("data-open", "true");
-    await expect(dock).toContainText("U+0041");
-    await expect
-      .poll(async () => (await dock.boundingBox())?.height)
-      .toBeGreaterThanOrEqual(150);
-
-    // A fresh state (reload) collapses it again — the cursor is a store
-    // field, and nothing but a click ever sets it.
-    await page.reload();
-    await waitForFontsReady(page);
-    await expect(dock).toHaveAttribute("data-open", "false");
-    await expect
-      .poll(async () => (await dock.boundingBox())?.height)
-      .toBe(0);
-  });
-
-  test("the 编码 toggle shows codepoint rows; the locator takes a character", async ({
+  test("the char popup opens at the cell with the prototype contract", async ({
     page,
   }) => {
     const fonts = await makeLocalFixtures();
     await openWithFonts(page, fonts);
 
-    // 编码 mode: every cell gains the codepoint row.
-    const cell = page.locator(".charmap-grid .kit-cell[data-cp='U+0020']");
+    // A plain click (outside 多选) opens the popup AT the cell.
+    const cell = page.locator(".charmap-grid .kit-cell[data-cp='U+0041']");
+    await cell.waitFor({ state: "visible" });
+    await pointerClick(page, cell);
+    const popup = page.locator("[data-char-popup]");
+    await expect(popup).toBeVisible();
+    // The click re-rendered the grid; read the live cell's box for the
+    // anchoring check (same position, fresh node).
+    const cellBox = await cell.boundingBox();
+    const popBox = await popup.boundingBox();
+    expect(cellBox).not.toBeNull();
+    expect(popBox).not.toBeNull();
+    // AT the cell: anchored within a cell's width of the cell's box.
+    expect(Math.abs((popBox!.x ?? 0) - cellBox!.x)).toBeLessThan(60);
+
+    // The facts: glyph, code, 来源; the carried side's button hidden.
+    await expect(popup.locator("[data-role='char-glyph']")).toHaveText("A");
+    await expect(popup.locator("[data-role='char-code']")).toHaveText("U+0041");
+    await expect(popup.locator("[data-role='char-from']")).toContainText(
+      "来自 AlloyBase",
+    );
+    await expect(popup.locator("[data-role='char-base']")).toBeHidden();
+    await expect(popup.locator("[data-role='char-donor']")).toBeVisible();
+    await expect(popup.locator("[data-role='char-reset']")).toBeHidden();
+
+    // The popup anchors to another cell without closing in between.
+    // U+4E00 is donor-only: the donor carries it, the base button shows,
+    // and an override to the base side would be inert (absence never
+    // overrides) — so exercise the override on a codepoint BOTH hold.
+    await pointerClick(page, page.locator(".kit-cat-g[data-group='cjk']"));
+    await pointerClick(
+      page,
+      page.locator(".kit-cat-s[data-block='cjk-unified']"),
+    );
+    await pointerClick(
+      page,
+      page.locator(".charmap-grid .kit-cell[data-cp='U+4E00']"),
+    );
+    await expect(popup.locator("[data-role='char-code']")).toHaveText("U+4E00");
+    await expect(popup.locator("[data-role='char-from']")).toContainText(
+      "来自 AlloyDonor",
+    );
+    await expect(popup.locator("[data-role='char-donor']")).toBeHidden();
+    await expect(popup.locator("[data-role='char-base']")).toBeVisible();
+    await expect(popup.locator("[data-role='char-reset']")).toBeHidden();
+
+    // Back on the Latin view: 用中文字体 on the base-carried A — the
+    // override displaces the base glyph, and 恢复默认 appears.
+    await pointerClick(page, page.locator(".kit-cat-g[data-group='latin-europe']"));
+    await pointerClick(page, page.locator(".kit-cat-s[data-block='basic-latin']"));
+    await pointerClick(
+      page,
+      page.locator(".charmap-grid .kit-cell[data-cp='U+0041']"),
+    );
+    await expect(popup.locator("[data-role='char-code']")).toHaveText("U+0041");
+    await expect(popup.locator("[data-role='char-from']")).toContainText(
+      "来自 AlloyBase",
+    );
+    await pointerClick(page, popup.locator("[data-role='char-donor']"));
+    await expect(popup).toBeHidden();
+    await expect(
+      page.locator(".charmap-grid .kit-cell[data-cp='U+0041']"),
+    ).toHaveAttribute("data-winner", "donor-0");
+    await expect(
+      page.locator(".charmap-grid .kit-cell[data-cp='U+0041']"),
+    ).toHaveAttribute("data-kind", "override");
+
+    // The dashed single-character summary counts it.
+    await expect(page.locator("[data-role='rule-solo']")).toHaveText(/单个字符1/);
+
+    // 恢复默认 reverts to the deeper layers.
+    await pointerClick(
+      page,
+      page.locator(".charmap-grid .kit-cell[data-cp='U+0041']"),
+    );
+    await expect(popup.locator("[data-role='char-reset']")).toBeVisible();
+    await pointerClick(page, popup.locator("[data-role='char-reset']"));
+    await expect(popup).toBeHidden();
+    await expect(
+      page.locator(".charmap-grid .kit-cell[data-cp='U+0041']"),
+    ).toHaveAttribute("data-winner", "base");
+    await expect(
+      page.locator(".charmap-grid .kit-cell[data-cp='U+0041']"),
+    ).toHaveAttribute("data-via", "default");
+    await expect(page.locator("[data-role='rule-solo']")).toHaveCount(0);
+
+    // A missing glyph: the Nerd Font PUA sentence inside the popup.
+    await pointerClick(page, page.locator(".kit-cat-g[data-group='all']"));
+    await page
+      .locator(".kit-toolrow [data-role='locate']")
+      .fill("U+E0A0");
+    await page.keyboard.press("Enter");
+    await pointerClick(
+      page,
+      page.locator(".charmap-grid .kit-cell[data-cp='U+E0A0']"),
+    );
+    await expect(popup.locator("[data-role='char-from']")).toHaveText(
+      "这是一个 Nerd Font 图标字符，位于专用区编码。只有英文字体包含这类图标，合成时保留英文字体的图标。",
+    );
+    await expect(popup.locator("[data-role='char-base']")).toBeHidden();
+    await expect(popup.locator("[data-role='char-donor']")).toBeHidden();
+    // A non-PUA missing glyph reads the plain sentence.
+    await page
+      .locator(".kit-toolrow [data-role='locate']")
+      .fill("U+2603");
+    await page.keyboard.press("Enter");
+    await pointerClick(
+      page,
+      page.locator(".charmap-grid .kit-cell[data-cp='U+2603']"),
+    );
+    await expect(popup.locator("[data-role='char-from']")).toHaveText(
+      "两个字体均不含该字形",
+    );
+
+    // 全部恢复默认 clears the remaining customizations in one step.
+    await pointerClick(page, page.locator(".kit-cat-g[data-group='latin-europe']"));
+    await pointerClick(page, page.locator(".kit-cat-s[data-block='basic-latin']"));
+    await pointerClick(
+      page,
+      page.locator(".charmap-grid .kit-cell[data-cp='U+0043']"),
+    );
+    await pointerClick(page, popup.locator("[data-role='char-donor']"));
+    await expect(page.locator("[data-role='rule-solo']")).toHaveCount(1);
+    await pointerClick(page, page.locator("[data-role='undo-all']"));
+    await expect(page.locator(".rule-list-empty")).toHaveText("暂无自定义规则。");
+  });
+
+  test("the 编码 toggle shows codepoint rows; missing cells always show theirs", async ({
+    page,
+  }) => {
+    const fonts = await makeLocalFixtures();
+    await openWithFonts(page, fonts);
+
+    // 编码 mode: every cell gains the codepoint row (U+0041 is covered
+    // by the base, so it starts WITHOUT the row; a missing cell like
+    // U+0020 already shows it — see the assertion below).
+    const cell = page.locator(".charmap-grid .kit-cell[data-cp='U+0041']");
     await expect(cell.locator(".cp")).toHaveCount(0);
     await pointerClick(page, page.locator("[data-role='toggle-codepoints']"));
-    await expect(cell.locator(".cp")).toHaveText("0020");
+    await expect(cell.locator(".cp")).toHaveText("0041");
     await pointerClick(page, page.locator("[data-role='toggle-codepoints']"));
-    await expect(page.locator(".kit-grid .kit-cell.hascp")).toHaveCount(0);
+
+    // OFF again: only the MISSING cells keep their codepoint row — the
+    // dead condition in kit/grid.ts once hid it (P1-7).
+    const missing = await page.locator(".kit-grid .kit-cell.miss").count();
+    const withCp = await page.locator(".kit-grid .kit-cell.hascp").count();
+    expect(missing).toBeGreaterThan(0);
+    expect(withCp).toBe(missing);
+    const missingCell = page.locator(".kit-grid .kit-cell.miss").first();
+    await expect(missingCell.locator(".cp")).toBeVisible();
 
     // The locator also accepts a single character (永 = U+6C38).
     const locate = page.locator(".kit-toolrow [data-role='locate']");

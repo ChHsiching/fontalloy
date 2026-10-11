@@ -63,13 +63,42 @@ test.describe("missing glyph scope", () => {
     const fonts = await makeLocalFixtures();
     await openWithFonts(page, fonts);
 
-    // No declared scope yet: no chip.
+    // The fresh state DECLARES the boot preset under 文字范围 (the
+    // pressed 简体中文 chip, prototype parity): the fixture pair covers
+    // only 44 of zh_cn's 6,765 codepoints, so the missing count is
+    // 6,721 from the first paint.
+    const chip = page.locator(".kit-catbar .kit-cat-g[data-group='missing']");
+    await expect(chip).toBeVisible();
+    await expect(chip).toHaveClass(/miss/);
+    const zhCn = page.locator("[data-role='lang-chip'][data-preset='zh_cn']");
     await expect(
-      page.locator(".kit-catbar .kit-cat-g[data-group='missing']"),
-    ).toHaveCount(0);
+      Number(((await chip.locator(".n").textContent()) ?? "0").replace(/,/g, "")),
+    ).toBe(6721);
 
-    // Declare the zh_cn scope (文字范围): the fixture pair covers only a
-    // small hanzi run of it, so the missing count is large.
+    // The last-language guard: the chip refuses to come off.
+    await pointerClick(page, zhCn);
+    await expect(page.locator("[data-role='live']")).toHaveText("至少保留一种");
+    await expect(zhCn).toHaveAttribute("aria-pressed", "true");
+    await expect(chip).toBeVisible();
+
+    // Declaring more languages grows the declared scope (and its gap):
+    // zh_cn ∪ zh_tw = 15,445 codepoints, of which the pair covers 51
+    // (both scopes overlap the donor's han run) → 15,394 missing.
+    await pointerClick(
+      page,
+      page.locator("[data-role='lang-chip'][data-preset='zh_tw']"),
+    );
+    await expect(
+      chip.locator(".n"),
+    ).toHaveText("15,394");
+
+    // Removing 简体中文 leaves zh_tw's own scope: 13,063 − 33 = 13,030.
+    await pointerClick(page, zhCn);
+    await expect(zhCn).toHaveAttribute("aria-pressed", "false");
+    await expect(chip.locator(".n")).toHaveText("13,030");
+
+    // The 添加语言预设… picker declares beyond the four chips: zh_cn
+    // comes back through the deep flow (the chip presses again).
     await pointerClick(page, page.locator("[data-role='add-preset']"));
     const presetPop = page.locator("[data-picker-popup='preset-add']");
     await expect(presetPop).toBeVisible();
@@ -77,17 +106,8 @@ test.describe("missing glyph scope", () => {
       page,
       presetPop.locator(".preset-row", { hasText: "zh_cn" }),
     );
-    await expect(
-      page.locator("[data-role='preset-rule'][data-complete='true']"),
-    ).toHaveCount(1);
+    await expect(zhCn).toHaveAttribute("aria-pressed", "true");
 
-    const chip = page.locator(".kit-catbar .kit-cat-g[data-group='missing']");
-    await expect(chip).toBeVisible();
-    await expect(chip).toHaveClass(/miss/);
-    const count = Number(
-      ((await chip.locator(".n").textContent()) ?? "0").replace(/,/g, ""),
-    );
-    expect(count).toBeGreaterThan(6000);
     // The chip closes the row.
     expect(
       await page.evaluate(() => {
@@ -104,6 +124,7 @@ test.describe("missing glyph scope", () => {
       "缺失字符无法指定来源",
     );
     const missCells = page.locator(".kit-grid .kit-cell.miss");
+    const count = 15394;
     expect(await missCells.count()).toBe(Math.min(1024, count));
     // The status bar's 缺失 counter reports the WHOLE scope (the grid
     // shows one page of it).
@@ -114,23 +135,13 @@ test.describe("missing glyph scope", () => {
           .trim(),
       ),
     );
-    expect(statMissing).toBe(count);
+    expect(statMissing).toBe(15394);
     const stats = (await page.locator(".statsbar").textContent()) ?? "";
     expect(stats).toContain("缺失");
     // The grid pages the missing list itself.
     await expect(page.locator("[data-pager-label]")).toContainText(
       `/${Math.ceil(count / 1024)} 页`,
     );
-
-    // Removing the preset rule removes the declared scope — and the chip.
-    await pointerClick(
-      page,
-      page.locator("[data-role='preset-rule'] [data-role='remove-rule']"),
-    );
-    await expect(
-      page.locator(".kit-catbar .kit-cat-g[data-group='missing']"),
-    ).toHaveCount(0);
-
   });
 
   test("the mode bar's 定位 field jumps to the cell from scene mode", async ({

@@ -7,6 +7,8 @@
  */
 
 import type { EditorRule } from "./precedence/model";
+import { newRule } from "./precedence/model";
+import presetsData from "./data/presets.json";
 
 export type ContentMode = "charmap" | "scene";
 
@@ -29,11 +31,11 @@ export type WeightMergeMode = "nearest" | "base" | "donor";
 export type BaselineMode = "auto" | "grid" | "optical";
 
 /**
- * CJK character width — the advance policy. Wide CJK is fixed at two
- * Latin cells (UAX #11 / ADR-0003); the adjustable width item is the
- * fullwidth quotes and dashes convention (`quote_dash_width`).
+ * CJK character width — the wide-advance factor over the Latin cell
+ * (the prototype's 三档 setting: 2 / 1.8 / 1.5). A real pipeline knob
+ * (`normalization.width_factor`); 2 is the UAX #11 default.
  */
-export type CjkWidthMode = "halfwidth" | "fullwidth";
+export type CjkWidthMode = 2 | 1.8 | 1.5;
 
 export interface SynthesisSettings {
   weightMode: WeightMergeMode;
@@ -44,7 +46,7 @@ export interface SynthesisSettings {
 export const DEFAULT_SETTINGS: SynthesisSettings = {
   weightMode: "nearest",
   baseline: "auto",
-  cjkWidth: "halfwidth",
+  cjkWidth: 2,
 };
 
 /** How a font face entered the registry (local file vs catalog download). */
@@ -154,6 +156,39 @@ export interface Store<T> {
   subscribe(fn: Listener<T>): () => void;
 }
 
+/* ---------- the boot preset (prototype parity) ---------- */
+
+/** The preset a fresh state declares under 文字范围: fc-lang `zh_cn`. */
+const BOOT_PRESET = "zh_cn";
+
+/**
+ * The boot preset rule: the validated prototype's boot frame ships with
+ * the 简体中文 (zh_cn) scope declared under 文字范围, so a fresh state
+ * carries one zh_cn preset rule (all sub-blocks on, the union). Its
+ * font list is the join order `["base", "donor-0"]` — exactly what the
+ * 添加语言预设 flow declares with a full pair, and resolution-neutral
+ * under the default precedence (base keeps, donor fills).
+ *
+ * Seeded ONLY into the first-ever initial state: afterwards the rule is
+ * ordinary user state — removing or editing it is a plain rule
+ * mutation, and nothing ever re-seeds over the user's rules.
+ */
+function bootRules(): EditorRule[] {
+  const preset = (
+    presetsData.presets as Array<{
+      name: string;
+      sub_blocks: Array<{ name: string }>;
+    }>
+  ).find((entry) => entry.name === BOOT_PRESET);
+  if (!preset) return [];
+  return [
+    newRule(
+      { kind: "preset", name: preset.name, blocks: preset.sub_blocks.map((b) => b.name) },
+      ["base", "donor-0"],
+    ),
+  ];
+}
+
 /** Generic store factory: the GUI workspace and the web recipe builder
  *  (the absorbed CLI panel's cached draft) follow the same pattern. */
 export function createStore<T extends object>(initial: T): Store<T> {
@@ -183,7 +218,7 @@ export const store = createStore<AppState>({
   selectedCodepoint: null,
   selection: [],
   selectionAnchor: null,
-  rules: [],
+  rules: bootRules(),
   settings: { ...DEFAULT_SETTINGS },
   catalog: { status: "none", families: [], registered: {}, screen: false },
 });

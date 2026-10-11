@@ -55,6 +55,9 @@ test.describe("screenshots with open overlays", () => {
       page.locator(".kit-cat-s[data-block='cjk-unified']"),
     );
     await pointerClick(page, page.locator(".charmap-grid .kit-cell[data-cp='U+4E2D']"));
+    // The click opened the char popup at the cell — close it before the
+    // picker overlay shot (one overlay at a time, like a real user).
+    await page.keyboard.press("Escape");
 
     await pointerClick(page, page.locator('[data-role="picker-en"] .kit-hd'));
     await expect(popup).toBeVisible();

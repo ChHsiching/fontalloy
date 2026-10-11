@@ -195,11 +195,28 @@ test.describe("sidecar synthesize", () => {
 
       // The app stays usable while the build runs: browsing categories
       // and pages keeps working (the panel is inline, never a modal).
+      // The stats bar reports the WHOLE MERGE (covered + the declared
+      // scope's gaps), consistent across categories.
       await pointerClick(page, page.locator(".kit-cat-g[data-group='all']"));
-      await expect(page.locator("[data-stat='total']")).toHaveText("1,112,032");
+      const mergeTotals = await page.evaluate(() => ({
+        total: document.querySelector("[data-stat='total']")?.textContent ?? "",
+        en: document.querySelector("[data-stat='en']")?.textContent ?? "",
+        cjk: document.querySelector("[data-stat='cjk']")?.textContent ?? "",
+        missing: document.querySelector("[data-stat='missing']")?.textContent ?? "",
+      }));
+      const num = (t: string) => Number(t.replace(/,/g, ""));
+      expect(num(mergeTotals.total)).toBe(
+        num(mergeTotals.en) + num(mergeTotals.cjk) + num(mergeTotals.missing),
+      );
+      expect(num(mergeTotals.total)).toBeGreaterThan(0);
+      expect(num(mergeTotals.total)).toBeLessThan(1_112_032);
       const next = page.locator(".kit-toolrow .kit-pgc button[aria-label='下一页']");
       await pointerClick(page, next);
       await expect(page.locator("[data-pager-label]")).toHaveText("第 2/1086 页");
+      // The whole-merge counters did not move with the page.
+      await expect(page.locator("[data-stat='total']")).toHaveText(
+        mergeTotals.total,
+      );
 
       // Queue a second build while the first one runs.
       await pointerClick(page, synthesize);
@@ -239,9 +256,13 @@ test.describe("sidecar synthesize", () => {
       await expect(panel).toContainText(/无法定位/);
       expect(saved.length).toBe(0);
 
-      // No modal: the workspace underneath keeps responding.
+      // No modal: the workspace underneath keeps responding (the
+      // whole-merge counters, whatever they are for THIS pick pair).
       await pointerClick(page, page.locator(".kit-cat-g[data-group='all']"));
-      await expect(page.locator("[data-stat='total']")).toHaveText("1,112,032");
+      const totals = await page.evaluate(
+        () => document.querySelector("[data-stat='total']")?.textContent ?? "",
+      );
+      expect(Number(totals.replace(/,/g, ""))).toBeGreaterThan(0);
     } finally {
       await service.dispose();
     }

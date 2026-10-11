@@ -1,268 +1,111 @@
 /**
- * The rail's rule-editing sections (issue #18): language presets (with
- * sub-block toggles, union semantics per ticket #7) under 字符范围, and
- * the editable rule list (custom ranges, single codepoints, preset
- * rules — add / edit / reorder fonts / remove) under 自定义规则.
+ * The rail's two rule surfaces, both prototype-parity read-only
+ * summaries of the shared rule state in `store`:
  *
- * Every edit writes the shared rule state in `store` — the same state
- * the grid resolves and the synthesize flow serializes — through
- * `mutateRules`, which snapshots the prior state into the rule undo
- * stack (issue #20). Batch applies live in the charmap's selection
- * editor; 撤销规则 below is the rule undo stack's click entry point
- * (Ctrl+Z is the keyboard one).
- *
- * The preset picker follows the ADR-0004 popup pattern: one body-level
- * node created at mount, rows rebuild, positioning clamps to the frame.
+ * - 文字范围 (mountPresetSection): the four one-click language chips
+ *   plus the 添加语言预设… picker as the deep extension;
+ * - 自定义规则 (mountRulesSection): the human sentence list —
+ *   `{子类}用英文字体` block rows (merged to `所有{组}字符用…` when a
+ *   whole group agrees), `永 至 A 用英文字体` range rows with their dim
+ *   `U+… 至 U+…` suffix, the dashed `单个字符 N` summary, and the
+ *   全部恢复默认 reset. Editing happens through the workspace's own
+ *   affordances (the toolbar segments, the char popup, the 按编码指定
+ *   popup, the preset chips/picker) — every one of them writes the
+ *   same rule state through `mutateRules`, so one undo entry covers
+ *   each change and Ctrl+Z / the toolbar's 撤销 steps them back.
  */
 
 import { store } from "../state";
 import {
-  effectiveSetName,
   newRule,
-  parseCodepointInput,
-  targetLabel,
   type EditorRule,
 } from "../precedence/model";
-import { pickRefs, refLabel } from "../precedence/picks";
-import { canUndoRules, mutateRules, undoRules } from "../history";
+import { pickRefs } from "../precedence/picks";
+import { mutateRules } from "../history";
+import { undoAllButton } from "../kit/actionBar";
+import { icon, type IconName } from "../kit/icons";
+import { ALL_BLOCKS, BLOCK_GROUPS, type UnicodeBlock } from "../unicode/blocks";
 import presetsData from "../data/presets.json";
 import { mountPresetPicker } from "./presetpicker";
+import { liveNotice } from "./live";
 
 /* ------------------------- store patches ---------------------------- */
-
-function patchRule(id: number, patch: (rule: EditorRule) => EditorRule): void {
-  mutateRules(
-    store.get().rules.map((rule) => (rule.id === id ? patch(rule) : rule)),
-  );
-}
 
 function removeRule(id: number): void {
   mutateRules(store.get().rules.filter((rule) => rule.id !== id));
 }
 
-/* --------------------- shared font-list editor ----------------------- */
+/* ------------------- 文字范围 (the language chips) ------------------- */
 
 /**
- * The ordered font list of one rule: one line per ref (checked =
- * member, in precedence order), with move-up/down controls. The first
- * listed font holding a codepoint wins — absence never overrides.
+ * The prototype's one-click language set (rLangs): the four 文字范围
+ * chips, verbatim labels and counts — 简体中文 6,765 / 繁体中文
+ * 13,063 / 日文 2,314 / 韩文 2,442 (each the fc-lang orth's real
+ * codepoint count, comma-grouped). A chip is pressed when the
+ * language's preset rule is declared; clicking toggles the rule through
+ * `mutateRules` (one undo entry per toggle). The last declared language
+ * cannot be removed — the guard announces 至少保留一种 through the
+ * live region and keeps the rule. The 添加语言预设… picker stays as
+ * the extension for every other fc-lang preset (a chip-less preset
+ * rule rides along like a pressed language).
  */
-function buildFontList(
-  rule: EditorRule,
-  onChange: (fonts: string[]) => void,
-): HTMLElement {
-  const picks = pickRefs();
-  const list = document.createElement("div");
-  list.className = "rule-fonts";
-  const order = [
-    ...rule.fonts,
-    ...picks.refs.filter((ref) => !rule.fonts.includes(ref)),
-  ];
-  for (const ref of order) {
-    const checked = rule.fonts.includes(ref);
-    const line = document.createElement("div");
-    line.className = "rule-font-line";
-    line.dataset.fontRef = ref;
-    const label = document.createElement("label");
-    const box = document.createElement("input");
-    box.type = "checkbox";
-    box.dataset.role = `rule-font-${rule.id}-${ref}`;
-    box.checked = checked;
-    box.addEventListener("change", () => {
-      onChange(
-        box.checked
-          ? [...rule.fonts, ref]
-          : rule.fonts.filter((entry) => entry !== ref),
-      );
-    });
-    label.appendChild(box);
-    label.appendChild(document.createTextNode(` ${refLabel(ref, picks)}`));
-    line.appendChild(label);
-    for (const [direction, delta] of [
-      ["up", -1],
-      ["down", 1],
-    ] as const) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "rule-font-move kit-btn sm gh";
-      button.dataset.role = `rule-font-${direction}-${rule.id}-${ref}`;
-      button.textContent = delta < 0 ? "↑" : "↓";
-      button.disabled = !checked;
-      button.addEventListener("click", () => {
-        const from = rule.fonts.indexOf(ref);
-        const to = from + delta;
-        if (from < 0 || to < 0 || to >= rule.fonts.length) return;
-        const fonts = [...rule.fonts];
-        fonts.splice(to, 0, fonts.splice(from, 1)[0]!);
-        onChange(fonts);
-      });
-      line.appendChild(button);
-    }
-    list.appendChild(line);
-  }
-  return list;
-}
-
-/** One text input bound to a parse-and-patch handler (live editing). */
-function codepointInput(
-  value: number | null,
-  role: string,
-  onParsed: (cp: number | null) => void,
-): HTMLInputElement {
-  const input = document.createElement("input");
-  input.type = "search";
-  input.className = "rule-cp-input";
-  input.dataset.role = role;
-  input.placeholder = "如 0x4E2D";
-  input.value = value === null ? "" : `0x${value.toString(16).toUpperCase()}`;
-  input.addEventListener("input", () => {
-    const text = input.value.trim();
-    onParsed(text === "" ? null : parseCodepointInput(text));
-  });
-  return input;
-}
-
-/* --------------------------- rule rows ------------------------------ */
-
-/** Whether a rule's target is fully specified (resolvable, serializable). */
-function ruleComplete(rule: EditorRule): boolean {
-  const target = rule.target;
-  if (target.kind === "codepoint") return target.cp !== null;
-  if (target.kind === "range") return target.start !== null && target.end !== null;
-  return true;
-}
-
-function buildRuleRow(rule: EditorRule): HTMLElement {
-  const row = document.createElement("div");
-  row.className = "rule-row";
-  row.dataset.ruleId = String(rule.id);
-  // Test/a11y oracle: a half-typed row is not a rule yet (the complete
-  // count is what the recipe will declare).
-  row.dataset.complete = String(ruleComplete(rule));
-  row.setAttribute(
-    "data-role",
-    rule.target.kind === "preset" ? "preset-rule" : "custom-rule",
-  );
-
-  const head = document.createElement("div");
-  head.className = "rule-row-head";
-  const target = rule.target;
-
-  if (target.kind === "preset") {
-    row.classList.add("is-preset");
-    const name = document.createElement("span");
-    name.className = "rule-target-label";
-    name.textContent = target.name;
-    head.appendChild(name);
-    const effective = document.createElement("span");
-    effective.className = "rule-effective-set";
-    effective.textContent = `生效集合：${effectiveSetName(
-      PRESETS_BY_NAME.get(target.name),
-      target.blocks,
-    )}`;
-    head.appendChild(effective);
-  } else if (target.kind === "range") {
-    const label = document.createElement("span");
-    label.className = "rule-target-label";
-    label.textContent = targetLabel(rule);
-    head.appendChild(label);
-    const start = codepointInput(target.start, `rule-start-${rule.id}`, (cp) =>
-      patchRule(rule.id, (r) => ({
-        ...r,
-        target: { kind: "range", start: cp, end: r.target.kind === "range" ? r.target.end : null },
-      })),
-    );
-    start.classList.add("rule-range-input");
-    head.appendChild(start);
-    head.appendChild(document.createTextNode(" – "));
-    const end = codepointInput(target.end, `rule-end-${rule.id}`, (cp) =>
-      patchRule(rule.id, (r) => ({
-        ...r,
-        target: { kind: "range", start: r.target.kind === "range" ? r.target.start : null, end: cp },
-      })),
-    );
-    end.classList.add("rule-range-input");
-    head.appendChild(end);
-  } else {
-    const label = document.createElement("span");
-    label.className = "rule-target-label";
-    label.textContent = targetLabel(rule);
-    head.appendChild(label);
-    head.appendChild(
-      codepointInput(target.cp, `rule-codepoint-${rule.id}`, (cp) =>
-        patchRule(rule.id, (r) => ({
-          ...r,
-          target: { kind: "codepoint", cp },
-        })),
-      ),
-    );
-  }
-
-  const remove = document.createElement("button");
-  remove.type = "button";
-  remove.className = "rule-remove kit-btn sm gh";
-  remove.dataset.role = "remove-rule";
-  remove.textContent = "移除";
-  remove.addEventListener("click", () => removeRule(rule.id));
-  head.appendChild(remove);
-  row.appendChild(head);
-
-  // Preset rows carry their sub-block toggles (union semantics).
-  if (target.kind === "preset") {
-    const preset = PRESETS_BY_NAME.get(target.name);
-    if (preset && preset.sub_blocks.length > 1) {
-      const blocks = document.createElement("div");
-      blocks.className = "rule-subblocks";
-      for (const block of preset.sub_blocks) {
-        const label = document.createElement("label");
-        label.className = "rule-subblock";
-        const box = document.createElement("input");
-        box.type = "checkbox";
-        box.dataset.role = `subblock-${block.name}`;
-        box.checked = target.blocks.includes(block.name);
-        // The union must stay non-empty: the last enabled block holds.
-        box.disabled = target.blocks.length === 1 && box.checked;
-        box.addEventListener("change", () => {
-          patchRule(rule.id, (r) => ({
-            ...r,
-            target:
-              r.target.kind === "preset"
-                ? {
-                    kind: "preset",
-                    name: r.target.name,
-                    blocks: box.checked
-                      ? [...r.target.blocks, block.name]
-                      : r.target.blocks.filter((name) => name !== block.name),
-                  }
-                : r.target,
-          }));
-        });
-        label.appendChild(box);
-        label.appendChild(
-          document.createTextNode(` ${block.name} ${block.codepoints.toLocaleString("en-US")}`),
-        );
-        blocks.appendChild(label);
-      }
-      row.appendChild(blocks);
-    }
-  }
-
-  row.appendChild(
-    buildFontList(rule, (fonts) =>
-      patchRule(rule.id, (r) => ({ ...r, fonts })),
-    ),
-  );
-  return row;
-}
-
-/* --------------------------- sections ------------------------------- */
+const LANG_CHIPS: ReadonlyArray<{ preset: string; label: string }> = [
+  { preset: "zh_cn", label: "简体中文" },
+  { preset: "zh_tw", label: "繁体中文" },
+  { preset: "ja", label: "日文" },
+  { preset: "ko", label: "韩文" },
+];
 
 const PRESETS_BY_NAME = new Map(
   presetsData.presets.map((preset) => [preset.name, preset]),
 );
 
-/** The 语言预设 section: one button opening the preset picker. */
+/** The preset's total codepoint count (the chip's small dim number). */
+function presetCount(name: string): number {
+  const preset = PRESETS_BY_NAME.get(name);
+  if (!preset) return 0;
+  return preset.sub_blocks.reduce((sum, block) => sum + block.codepoints, 0);
+}
+
+/** Every preset rule currently declared (the pressed languages). */
+function presetRules(rules: readonly EditorRule[]): EditorRule[] {
+  return rules.filter((rule) => rule.target.kind === "preset");
+}
+
+/** Toggle one of the four languages through the rule state. */
+function toggleLanguage(name: string): void {
+  const rules = store.get().rules;
+  const declared = presetRules(rules);
+  const existing = declared.find(
+    (rule) => rule.target.kind === "preset" && rule.target.name === name,
+  );
+  if (existing) {
+    if (declared.length === 1) {
+      liveNotice("至少保留一种");
+      return;
+    }
+    mutateRules(rules.filter((rule) => rule.id !== existing.id));
+    return;
+  }
+  const preset = PRESETS_BY_NAME.get(name);
+  if (!preset) return;
+  const refs = pickRefs().refs;
+  mutateRules([
+    ...rules,
+    newRule(
+      { kind: "preset", name, blocks: preset.sub_blocks.map((b) => b.name) },
+      refs.length > 0 ? refs : ["base", "donor-0"],
+    ),
+  ]);
+}
+
+/** The 文字范围 section: the four language chips + the deep picker. */
 export function mountPresetSection(root: HTMLElement): void {
+  const chips = document.createElement("div");
+  chips.className = "lang-chips";
+  chips.dataset.role = "lang-chips";
+  root.appendChild(chips);
+
   const button = document.createElement("button");
   button.type = "button";
   button.className = "add-rule-button kit-btn sm";
@@ -270,95 +113,255 @@ export function mountPresetSection(root: HTMLElement): void {
   button.textContent = "添加语言预设…";
   root.appendChild(button);
   mountPresetPicker(button);
+
+  const render = (): void => {
+    const declared = new Set(
+      presetRules(store.get().rules).map((rule) => {
+        if (rule.target.kind !== "preset") return "";
+        return rule.target.name;
+      }),
+    );
+    const fragment = document.createDocumentFragment();
+    for (const { preset, label } of LANG_CHIPS) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "kit-lchip lang-chip";
+      chip.dataset.role = "lang-chip";
+      chip.dataset.preset = preset;
+      chip.setAttribute("aria-pressed", String(declared.has(preset)));
+      chip.appendChild(document.createTextNode(label));
+      const count = document.createElement("span");
+      count.className = "n kit-num";
+      count.textContent = presetCount(preset).toLocaleString("en-US");
+      chip.appendChild(count);
+      chip.addEventListener("click", () => toggleLanguage(preset));
+      fragment.appendChild(chip);
+    }
+    chips.replaceChildren(fragment);
+  };
+  store.subscribe(render);
+  render();
+}
+
+/* ------------------ 自定义规则 (the summary list) -------------------- */
+
+/** The side a single-font rule carries ("" when it carries none). */
+function ruleSide(rule: EditorRule): "base" | "donor" | "" {
+  if (rule.fonts.length !== 1) return "";
+  const ref = rule.fonts[0]!;
+  if (ref === "base") return "base";
+  if (ref === "donor-0") return "donor";
+  return "";
+}
+
+/** True when `rule` is a complete range rule over exactly `block`. */
+function isExactBlockRule(rule: EditorRule, block: UnicodeBlock): boolean {
+  if (rule.target.kind !== "range") return false;
+  const { start, end } = rule.target;
+  if (start === null || end === null) return false;
+  return (
+    Math.min(start, end) === block.start && Math.max(start, end) === block.end
+  );
+}
+
+const sideLabel = (side: "base" | "donor"): string =>
+  side === "base" ? "英文" : "中文";
+
+/** One summary line: icon + sentence (+ dim suffix) + the delete ×. */
+function summaryRow(options: {
+  kind: string;
+  icon: IconName;
+  text: string;
+  suffix?: string;
+  title?: string;
+  onRemove?: () => void;
+}): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "rule-line";
+  row.dataset.role = "rule-row";
+  row.dataset.kind = options.kind;
+  row.setAttribute(
+    "title",
+    `${options.text}${options.suffix ? ` ${options.suffix}` : ""}`,
+  );
+  const ic = document.createElement("span");
+  ic.className = "rule-line-ic";
+  ic.innerHTML = icon(options.icon);
+  row.appendChild(ic);
+  const text = document.createElement("span");
+  text.className = "rule-line-text";
+  text.textContent = options.text;
+  row.appendChild(text);
+  if (options.suffix !== undefined) {
+    const suffix = document.createElement("span");
+    suffix.className = "rule-line-suffix kit-num";
+    suffix.textContent = options.suffix;
+    row.appendChild(suffix);
+  }
+  if (options.onRemove) {
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "rule-line-del";
+    del.dataset.role = "remove-rule";
+    del.setAttribute("aria-label", "删除规则");
+    del.innerHTML = icon("close");
+    del.addEventListener("click", options.onRemove);
+    row.appendChild(del);
+  }
+  return row;
 }
 
 /**
- * The 自定义规则 section: add buttons + the rule list (every rule in
- * declaration order — preset rules included — each editable in place).
+ * The block-assignment summaries: per group, the blocks explicitly
+ * assigned (exact single-font range rules). A group whose every block
+ * carries the same side merges into one `所有{组}字符用…` sentence
+ * (prototype parity); a partially-assigned group lists its blocks.
+ */
+function blockSummaryRows(rules: readonly EditorRule[]): HTMLElement[] {
+  const rows: HTMLElement[] = [];
+  for (const group of BLOCK_GROUPS) {
+    const assigned = new Map<string, { side: "base" | "donor"; rule: EditorRule }>();
+    for (const block of group.blocks) {
+      for (const rule of rules) {
+        if (!isExactBlockRule(rule, block)) continue;
+        const side = ruleSide(rule);
+        if (side === "") continue;
+        assigned.set(block.id, { side, rule });
+      }
+    }
+    if (assigned.size === 0) continue;
+    const sides = new Set([...assigned.values()].map((entry) => entry.side));
+    if (assigned.size === group.blocks.length && sides.size === 1) {
+      const side = [...sides][0]!;
+      rows.push(
+        summaryRow({
+          kind: "group",
+          icon: "layers",
+          text: `所有${group.name}字符用${sideLabel(side)}字体`,
+          onRemove: () =>
+            mutateRules(
+              rules.filter(
+                (rule) =>
+                  !group.blocks.some((block) => isExactBlockRule(rule, block)),
+              ),
+            ),
+        }),
+      );
+      continue;
+    }
+    for (const block of group.blocks) {
+      const entry = assigned.get(block.id);
+      if (!entry) continue;
+      rows.push(
+        summaryRow({
+          kind: "block",
+          icon: "tag",
+          text: `${block.name}用${sideLabel(entry.side)}字体`,
+          onRemove: () => removeRule(entry.rule.id),
+        }),
+      );
+    }
+  }
+  return rows;
+}
+
+/**
+ * The 自定义规则 section: the summary sentence list (block
+ * assignments, custom ranges, the dashed single-character summary) and
+ * the 全部恢复默认 reset — one mutation each, all through the shared
+ * rule state. Empty: 暂无自定义规则。 (preset rules live in the 文字范围
+ * chips, not here).
  */
 export function mountRulesSection(root: HTMLElement): void {
-  const actions = document.createElement("div");
-  actions.className = "rule-actions";
-  const addRange = document.createElement("button");
-  addRange.type = "button";
-  addRange.className = "add-rule-button kit-btn sm";
-  addRange.dataset.role = "add-range-rule";
-  addRange.textContent = "新增区间规则";
-  addRange.addEventListener("click", () => {
-    const refs = pickRefs().refs;
-    mutateRules([
-      ...store.get().rules,
-      newRule({ kind: "range", start: null, end: null }, refs),
-    ]);
-  });
-  actions.appendChild(addRange);
-  const addCp = document.createElement("button");
-  addCp.type = "button";
-  addCp.className = "add-rule-button kit-btn sm";
-  addCp.dataset.role = "add-cp-rule";
-  addCp.textContent = "新增码位规则";
-  addCp.addEventListener("click", () => {
-    const refs = pickRefs().refs;
-    mutateRules([
-      ...store.get().rules,
-      newRule({ kind: "codepoint", cp: null }, refs),
-    ]);
-  });
-  actions.appendChild(addCp);
-  // Rule undo's click entry point (Ctrl+Z is the keyboard one): every
-  // rules write went through mutateRules, so one click steps back one
-  // mutation — rail edits, cell applies, batch applies alike.
-  const undo = document.createElement("button");
-  undo.type = "button";
-  undo.className = "add-rule-button kit-btn sm";
-  undo.dataset.role = "rules-undo";
-  undo.textContent = "撤销规则";
-  undo.disabled = !canUndoRules();
-  undo.addEventListener("click", () => undoRules());
-  actions.appendChild(undo);
-  root.appendChild(actions);
-
   const list = document.createElement("div");
   list.className = "rule-list";
   root.appendChild(list);
 
   const render = (): void => {
-    // The undo affordance follows the stack, even when the list itself
-    // is being kept alive for a focused text input (see below).
-    undo.disabled = !canUndoRules();
-    // While a rule's text input is being typed into, keep the node (a
-    // rebuild would drop focus); the grid still updates live — regions
-    // re-render independently. focusout triggers the catch-up rebuild.
-    const active = document.activeElement;
-    if (
-      active instanceof HTMLInputElement &&
-      active.type !== "checkbox" &&
-      root.contains(active)
-    ) {
-      // The node stays (a rebuild would drop focus) — but its
-      // completeness oracle follows the store, not the stale node.
-      for (const rowEl of list.querySelectorAll<HTMLElement>("[data-rule-id]")) {
-        const rule = store.get().rules.find((r) => String(r.id) === rowEl.dataset.ruleId);
-        if (rule) rowEl.dataset.complete = String(ruleComplete(rule));
-      }
-      return;
-    }
     const { rules } = store.get();
+    const blockRows = blockSummaryRows(rules);
+    const rangeRules = rules.filter(
+      (rule) =>
+        rule.target.kind === "range" &&
+        !ALL_BLOCKS.some((block) => isExactBlockRule(rule, block)) &&
+        rule.target.start !== null &&
+        rule.target.end !== null,
+    );
+    const codepointRules = rules.filter(
+      (rule) => rule.target.kind === "codepoint" && rule.target.cp !== null,
+    );
+
+    const items = [...blockRows];
+    for (const rule of rangeRules) {
+      const target = rule.target as {
+        kind: "range";
+        start: number;
+        end: number;
+      };
+      const side = ruleSide(rule);
+      if (side === "") continue; // not a side rule the UI can state
+      const c1 = String.fromCodePoint(target.start);
+      const c2 = String.fromCodePoint(target.end);
+      const chars = target.start === target.end ? c1 : `${c1} 至 ${c2}`;
+      const lo = Math.min(target.start, target.end);
+      const hi = Math.max(target.start, target.end);
+      const suffix =
+        lo === hi
+          ? `U+${lo.toString(16).toUpperCase().padStart(4, "0")}`
+          : `U+${lo.toString(16).toUpperCase().padStart(4, "0")} 至 U+${hi
+              .toString(16)
+              .toUpperCase()
+              .padStart(4, "0")}`;
+      items.push(
+        summaryRow({
+          kind: "range",
+          icon: "range",
+          text: `${chars} 用${sideLabel(side)}字体`,
+          suffix,
+          onRemove: () => removeRule(rule.id),
+        }),
+      );
+    }
+
     const fragment = document.createDocumentFragment();
-    if (rules.length === 0) {
+    if (items.length === 0 && codepointRules.length === 0) {
       const empty = document.createElement("div");
       empty.className = "rule-list-empty";
-      empty.textContent = "尚未声明规则 —— 空缺码位由默认优先级填充。";
+      empty.textContent = "暂无自定义规则。";
       fragment.appendChild(empty);
-    } else {
-      for (const rule of rules) fragment.appendChild(buildRuleRow(rule));
+      list.replaceChildren(fragment);
+      return;
     }
+    for (const row of items) fragment.appendChild(row);
+    if (codepointRules.length > 0) {
+      const solo = document.createElement("div");
+      solo.className = "rule-line dashed";
+      solo.dataset.role = "rule-solo";
+      const pen = document.createElement("span");
+      pen.className = "rule-line-ic";
+      pen.innerHTML = icon("pen");
+      solo.appendChild(pen);
+      const text = document.createElement("span");
+      text.className = "rule-line-text";
+      text.style.flex = "1";
+      text.textContent = "单个字符";
+      solo.appendChild(text);
+      const count = document.createElement("span");
+      count.className = "rule-line-suffix kit-num";
+      count.textContent = String(codepointRules.length);
+      solo.appendChild(count);
+      fragment.appendChild(solo);
+    }
+    // 全部恢复默认: clears block assignments, custom ranges, and
+    // single-character overrides in ONE undoable mutation (the preset
+    // scope under 文字范围 is the universe, not a customization).
+    fragment.appendChild(
+      undoAllButton(() => {
+        mutateRules(rules.filter((rule) => rule.target.kind === "preset"));
+      }),
+    );
     list.replaceChildren(fragment);
   };
-  root.addEventListener("focusout", () => {
-    // A microtask later: let the change/patch land, then rebuild.
-    setTimeout(render, 0);
-  });
   store.subscribe(render);
   render();
 }

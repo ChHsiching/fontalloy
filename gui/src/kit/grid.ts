@@ -90,8 +90,10 @@ export function gridCell(props: GridCellProps): HTMLElement {
   glyph.textContent = data.ch;
   cell.appendChild(glyph);
 
-  const showCp =
-    props.showCodepoint || (data.state === "none" && data.cp === undefined);
+  // The codepoint row: 编码 mode shows it on every cell, and a missing
+  // glyph ALWAYS shows it (prototype: `if(S.showCP||w==='none')`) — the
+  // dashed cell is unrenderable ink, the codepoint is its only content.
+  const showCp = props.showCodepoint || data.state === "none";
   if (showCp) {
     const cp = document.createElement("span");
     cp.className = "cp";

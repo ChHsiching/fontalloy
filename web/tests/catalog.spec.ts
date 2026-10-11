@@ -131,27 +131,33 @@ test("the real catalog drives the panel end to end (YAML, download, copy)", asyn
   expect(inView.scrollTop).toBeGreaterThan(0);
   await page.keyboard.press("Escape");
 
-  // Rail rules land in the recipe: a language preset for the donor, a
-  // custom range for the base, a single codepoint override.
+  // Rules land in the recipe through the workspace's affordances: a
+  // fresh state already declares zh_cn under 文字范围 (the pressed chip);
+  // the deep picker adds ja (a chip-less preset), the 按编码指定 popup
+  // adds a custom range and a single codepoint (留空=单个).
   await pointerClick(page, page.locator('[data-role="add-preset"]'));
   const presetPopup = page.locator('[data-picker-popup="preset-add"]');
   await expect(presetPopup).toBeVisible();
   await pointerClick(
     page,
-    presetPopup.locator(".preset-row", { hasText: "zh_cn" }),
+    presetPopup.locator(".preset-row", { hasText: "ja" }),
   );
-  await expect(page.locator('[data-role="preset-rule"]').first()).toBeVisible();
 
-  await pointerClick(page, page.locator('[data-role="add-range-rule"]'));
-  const rangeRow = page.locator('[data-role="custom-rule"]').first();
-  await rangeRow.locator('[data-role^="rule-start-"]').fill("0x2100");
-  await rangeRow.locator('[data-role^="rule-end-"]').fill("0x214F");
+  await pointerClick(page, page.locator("[data-role='range-specify']"));
+  const rangePopup = page.locator("[data-range-popup]");
+  await expect(rangePopup).toBeVisible();
+  await rangePopup.locator("[data-role='range-start']").fill("0x2100");
+  await rangePopup.locator("[data-role='range-end']").fill("0x214F");
+  await pointerClick(page, rangePopup.locator("[data-role='range-add']"));
 
-  await pointerClick(page, page.locator('[data-role="add-cp-rule"]'));
-  const cpRow = page.locator('[data-role="custom-rule"]').nth(1);
-  await cpRow.locator('[data-role^="rule-codepoint-"]').fill("0x4E2D");
+  await pointerClick(page, page.locator("[data-role='range-specify']"));
+  await expect(rangePopup).toBeVisible();
+  await rangePopup.locator("[data-role='range-start']").fill("0x4E2D");
+  await rangePopup.locator("[data-role='range-end']").fill("");
+  await pointerClick(page, rangePopup.locator("[data-role='range-add']"));
 
-  // Settings land in the recipe's normalization block.
+  // Settings land in the recipe's normalization block (the 1.5x width
+  // factor is the prototype's compacter CJK width setting).
   await pickSelectOption(
     page,
     page.locator('[data-role="select-baseline"]'),
@@ -160,7 +166,7 @@ test("the real catalog drives the panel end to end (YAML, download, copy)", asyn
   await pickSelectOption(
     page,
     page.locator('[data-role="select-cjkWidth"]'),
-    "fullwidth",
+    "1.5",
   );
 
   const panel = await openCliPanel(page);
@@ -183,14 +189,19 @@ test("the real catalog drives the panel end to end (YAML, download, copy)", asyn
   expect(recipe.donors).toEqual([
     "fonts/MapleMono-NF/MapleMonoCN-Regular.ttf",
   ]);
+  // The boot-seeded zh_cn preset (the declared 文字范围 scope) first,
+  // then the picker's ja preset, then the 按编码指定 rules (the range
+  // and the single codepoint).
   expect(recipe.rules).toEqual([
     { set: "zh_cn", fonts: ["base", "donor-0"] },
-    { range: "0x2100-0x214F", fonts: ["base", "donor-0"] },
-    { codepoint: 0x4e2d, fonts: ["base", "donor-0"] },
+    { set: "ja", fonts: ["base", "donor-0"] },
+    { range: "0x2100-0x214F", fonts: ["base"] },
+    // 留空=单个: a one-codepoint range (the popup's single form).
+    { range: "0x4E2D-0x4E2D", fonts: ["base"] },
   ]);
   expect(recipe.normalization).toEqual({
     mode: "optical",
-    quote_dash_width: "fullwidth",
+    width_factor: 1.5,
   });
   expect(recipe.output).toEqual({ format: "ttf", family: "ChHsich" });
 

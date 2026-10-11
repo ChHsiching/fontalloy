@@ -94,6 +94,9 @@ export function recipeYaml(draft: RecipeDraft): string {
   if (draft.normalization.quoteDashWidth !== "halfwidth") {
     normalization.push(`  quote_dash_width: ${draft.normalization.quoteDashWidth}`);
   }
+  if (draft.normalization.widthFactor !== 2) {
+    normalization.push(`  width_factor: ${number(draft.normalization.widthFactor)}`);
+  }
   if (normalization.length > 0) {
     lines.push("normalization:\n" + normalization.join("\n"));
   }

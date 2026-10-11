@@ -5,10 +5,11 @@
  * kit (kit/tokens.css + kit/kit.css — the validated prototype's design
  * language as CSS custom properties). What remains here is the shell
  * (top bar host / rail / content / stats bar), the app-specific strips
- * the prototype does not model (the details editors, the rail's rule
- * list, the build panel, the catalog screen, the synthesize notice),
- * and the app-level popups built on the kit's .kit-pop primitive.
- * Colors, radii, shadows, and motion reference the kit variables only.
+ * the prototype does not model (the build panel, the catalog screen,
+ * the synthesize notice), and the app-level popups (the char popup at
+ * the cell, the 按编码指定 range popup) built on the kit's .kit-pop
+ * primitive. Colors, radii, shadows, and motion reference the kit
+ * variables only.
  */
 
 body {
@@ -110,43 +111,6 @@ body {
   flex-direction: column;
 }
 
-.charmap-details {
-  flex: none;
-  /* Collapsed while nothing is selected (prototype density: zero-height
-     band between the chip bar and the toolbar; the transition is the
-     collapse/expand animation). While OPEN the geometry is fixed
-     (issue #20): drag-paint re-renders this strip while the pointer is
-     held — if its height changed with its content, the grid would shift
-     under the pointer and the drag would paint the wrong cells. The
-     editors fit; reserve their height always. */
-  min-height: 0;
-  padding: 0 14px;
-  border-bottom: 0 solid var(--ln);
-  overflow: hidden;
-  font-size: 12.5px;
-  color: var(--ink2);
-  font-variant-numeric: tabular-nums;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  transition: min-height 180ms var(--spring-out),
-    padding-top 180ms var(--spring-out),
-    padding-bottom 180ms var(--spring-out),
-    border-bottom-width 180ms var(--spring-out);
-}
-
-.charmap-details[data-open="true"] {
-  min-height: 150px;
-  padding: 8px 14px;
-  border-bottom-width: 1px;
-}
-
-.charmap-details > div:first-child {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .charmap-toolbar {
   flex: none;
 }
@@ -212,92 +176,56 @@ body {
   color: var(--ink);
 }
 
-/* ---------- the details strip editors (issues #18 / #20) ---------- */
+/* ---------- the char popup (at the cell, prototype #charpop) ------- */
 
-.cp-rule-editor {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-width: 560px;
-  padding: 8px 10px;
-  border: 1px solid var(--ln2);
-  border-radius: 9px;
-  background: var(--sf);
+.char-pop {
+  width: 240px;
 }
 
-.cp-rule-title {
-  color: var(--ink3);
-  font-size: 11.5px;
+.char-pop-glyph {
+  font-size: 44px;
+  line-height: 1.2;
+  text-align: center;
+  padding: 4px 0 8px;
+  border-bottom: 1px solid var(--ln);
+  margin-bottom: 8px;
 }
 
-.cp-rule-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.batch-editor {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-width: 560px;
-  padding: 8px 10px;
-  border: 1px solid var(--ac);
-  border-radius: 9px;
-  background: var(--sf);
-}
-
-.batch-summary {
+.char-pop-code {
   color: var(--ac);
   font-size: 12.5px;
-  font-variant-numeric: tabular-nums;
+  margin-bottom: 2px;
 }
 
-.batch-plan {
+.char-pop-from {
   color: var(--ink2);
-  font-size: 11.5px;
-  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  line-height: 1.6;
+  margin-bottom: 8px;
 }
 
-/* Ordered font lists: shared by the cell editor and the rail rows. */
-
-/*
- * Checkboxes paint with the kit accent (teal light / mint dark) — the
- * native checkbox blue is off-palette in the light theme. One rule for
- * every app checkbox (the details strip's editors and the rail's rule
- * rows and sub-block toggles stay consistent), themed by --ac.
- */
-input[type="checkbox"] {
-  accent-color: var(--ac);
-}
-
-.rule-fonts {
+.char-pop-btns {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  gap: 8px;
+  margin-bottom: 6px;
 }
 
-.rule-font-line {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12.5px;
-  color: var(--ink);
-}
-
-.rule-font-line label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.char-pop-btns .kit-btn {
   flex: 1;
-  min-width: 0;
 }
 
-/* ---------- the rail's rule list ---------- */
+.char-pop-rest {
+  width: 100%;
+}
 
-.rule-actions {
+/* ---------- the rail's rule summary list (prototype rRules) -------- */
+
+/* The 文字范围 chip row (the prototype's .lang-r): four fixed
+   language chips (kit-lchip), always visible, pressed = declared. */
+.lang-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
   margin-bottom: 8px;
 }
 
@@ -313,82 +241,64 @@ input[type="checkbox"] {
   line-height: 1.6;
 }
 
-.rule-row {
+/* One summary line: category icon + the sentence (+ the dim tabular
+   U+… suffix) + the delete × (danger on hover), like .rl. */
+.rule-line {
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 6px;
-  padding: 8px;
+  padding: 6px 8px;
   border: 1px solid var(--ln);
   border-radius: 9px;
   background: var(--sf);
-}
-
-.rule-row.is-preset {
-  border-color: var(--ln2);
-}
-
-.rule-row-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.rule-target-label {
+  font-size: 12.5px;
   color: var(--ink);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
 }
 
-.rule-effective-set {
-  color: var(--ac);
-  font-size: 11.5px;
+.rule-line.dashed {
+  border-style: dashed;
 }
 
-.rule-cp-input,
-.rule-range-input {
-  width: 96px;
-  padding: 3px 8px;
-  border-radius: 6px;
-  border: 1px solid var(--ln2);
-  background: var(--sf2);
-  color: var(--ink);
-  font: inherit;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
+.rule-line-ic {
+  display: inline-flex;
+  color: var(--ink3);
+  flex: none;
 }
 
-.rule-cp-input:focus,
-.rule-range-input:focus {
-  outline: none;
-  border-color: var(--ac);
+.rule-line-ic svg {
+  width: 14px;
+  height: 14px;
 }
 
-.rule-remove {
-  margin-left: auto;
+.rule-line-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.rule-remove:hover {
+.rule-line-suffix {
+  flex: none;
+  color: var(--ink3);
+  font-size: 11px;
+}
+
+.rule-line-del {
+  flex: none;
+  display: inline-flex;
+  color: var(--ink3);
+  padding: 2px;
+  border-radius: 5px;
+}
+
+.rule-line-del:hover {
   color: var(--dgr);
 }
 
-.rule-subblocks {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  font-size: 11.5px;
-  color: var(--ink2);
-}
-
-.rule-subblock {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-variant-numeric: tabular-nums;
-}
-
-.rule-subblock input:disabled {
-  opacity: 0.45;
+.rule-line-del svg {
+  width: 13px;
+  height: 13px;
 }
 
 /* ---------- synthesis settings rows ---------- */
@@ -452,19 +362,29 @@ input[type="checkbox"] {
   align-items: baseline;
 }
 
-/* The 按编码指定 range popup. */
+/* The 按编码指定 range popup (prototype #rangepop). */
 
 .range-pop {
-  width: 300px;
+  width: 320px;
 }
 
 .range-pop h5 {
   margin: 0 0 2px;
 }
 
-.range-pop input {
-  width: 100%;
+.range-pop .kit-sub {
+  margin: 0 0 8px;
+}
+
+.range-pop-row {
+  display: flex;
+  gap: 8px;
   margin-bottom: 6px;
+}
+
+.range-pop-row input {
+  flex: 1;
+  min-width: 0;
   background: var(--page);
   border: 1px solid var(--ln2);
   border-radius: 7px;
@@ -473,25 +393,15 @@ input[type="checkbox"] {
   font-variant-numeric: tabular-nums;
 }
 
-.range-pop input:focus {
+.range-pop-row input:focus {
   outline: none;
   border-color: var(--ac);
 }
 
 .range-pop-actions {
-  display: flex;
-  gap: 8px;
+  align-items: center;
   margin-top: 4px;
-}
-
-.range-pop-error {
-  margin-top: 6px;
-  color: var(--dgr);
-  font-size: 11px;
-}
-
-.range-pop-error[hidden] {
-  display: none;
+  margin-bottom: 0;
 }
 
 /* ---------- first-run catalog screen (issue #17) ---------- */

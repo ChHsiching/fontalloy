@@ -95,15 +95,25 @@ export function mountPresetPicker(anchor: HTMLElement): void {
   });
 
   const addPreset = (row: PresetRow): void => {
-    store.set({
-      rules: [
-        ...store.get().rules,
-        newRule(
-          { kind: "preset", name: row.name, blocks: [...row.subBlocks] },
-          pickRefs().refs,
-        ),
-      ],
-    });
+    // A pressed language is already declared (the 文字范围 chips show
+    // it): picking it again would declare a duplicate rule — a no-op.
+    const declared = store
+      .get()
+      .rules.some(
+        (rule) => rule.target.kind === "preset" && rule.target.name === row.name,
+      );
+    if (!declared) {
+      const refs = pickRefs().refs;
+      store.set({
+        rules: [
+          ...store.get().rules,
+          newRule(
+            { kind: "preset", name: row.name, blocks: [...row.subBlocks] },
+            refs.length > 0 ? refs : ["base", "donor-0"],
+          ),
+        ],
+      });
+    }
     setOpen(false);
   };
 

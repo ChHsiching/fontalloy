@@ -148,6 +148,9 @@ function toggleButton(
   btn.type = "button";
   btn.className = `kit-btn sm${active ? " pri" : ""}`;
   btn.textContent = text;
+  // Mode toggles are pressed-state buttons: the active styling is
+  // primary AND announced as aria-pressed (chips use the same contract).
+  btn.setAttribute("aria-pressed", String(active));
   if (extraData) btn.dataset.role = extraData;
   btn.addEventListener("click", onClick);
   return btn;
@@ -348,6 +351,7 @@ export function undoAllButton(onClick: () => void): HTMLButtonElement {
   btn.type = "button";
   btn.className = "kit-btn sm gh";
   btn.style.width = "100%";
+  btn.dataset.role = "undo-all";
   btn.innerHTML = icon("undo");
   btn.appendChild(document.createTextNode("全部恢复默认"));
   btn.addEventListener("click", onClick);

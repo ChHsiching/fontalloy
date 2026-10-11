@@ -134,6 +134,15 @@ export function undoSelection(): boolean {
   return true;
 }
 
+/**
+ * Drop the whole selection-undo stack (prototype parity: leaving 多选
+ * mode clears the picks AND their undo history — `PICKU = []` — so a
+ * later 撤销 can never resurrect a selection from a previous mode).
+ */
+export function clearSelectionUndo(): void {
+  selectionHistory = [];
+}
+
 /* --------------------- keyboard entry point ------------------- */
 
 /**

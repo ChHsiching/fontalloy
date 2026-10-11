@@ -67,7 +67,9 @@ function expectedBody(base: string, donors: string[]): Record<string, unknown> {
   return {
     base,
     donors,
-    rules: [],
+    // The boot-seeded zh_cn preset rule (文字范围 ships it; see
+    // gui/src/state.ts) rides along in every fresh-state recipe.
+    rules: [{ set: "zh_cn", fonts: ["base", "donor-0"] }],
     output: { format: "ttf", family: "ChHsich" },
   };
 }

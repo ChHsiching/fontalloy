@@ -12,33 +12,41 @@ import {
 } from "./helpers";
 
 /**
- * Issue #20: multi-select, batch operations, undo, and the live stats bar.
+ * Issue #20 (prototype parity): 多选 mode, batch operations, undo, and
+ * the whole-merge stats bar.
  *
- * - Drag-paint (real pointer drag over cells) and shift-range (anchor +
- *   shift-click extends) build a multi-selection, visually distinct from
- *   hover (neutral) and from the details cursor (accent ring).
- * - One batch apply commits a precedence choice for the WHOLE selection:
- *   a contiguous selection becomes one range rule; anything else becomes
- *   per-codepoint rules (the plan is stated in plain text before apply).
- * - Two undo stacks with separate entry points: 撤销选择 (selection) and
- *   撤销规则 / Ctrl+Z (rules).
- * - The centerpiece: a bulk edit followed by undo returns the app to the
- *   prior state EXACTLY — rules state, grid winners, stats.
+ * - Drag-paint and shift-range arm ONLY inside 多选 (the explicit mode
+ *   toggle); a plain click opens the char popup instead.
+ * - One batch apply commits one side for the WHOLE selection: a
+ *   contiguous selection becomes one range rule; anything else becomes
+ *   per-codepoint rules. The gesture ends prototype-style (selection
+ *   cleared, 批量调整完成 announced).
+ * - Two undo stacks with separate entry points: the batch row's 撤销
+ *   (selection) and the toolbar's 撤销 / Ctrl+Z (rules).
+ * - The centerpiece: a bulk edit followed by undo returns the app to
+ *   the prior state EXACTLY — rules state, grid winners, stats.
  */
 
 /** The multi-selection cell class (kit vocabulary; the cursor is `cur`). */
 const SEL = /(?:^|\s)sel(?:\s|$)/;
 
-/** The count of COMPLETE rules, read from the rail's rule rows. */
-async function completeRuleCount(page: Page): Promise<number> {
-  return page.evaluate(
-    () => document.querySelectorAll("[data-rule-id][data-complete='true']").length,
-  );
+/** The count of human summary rows in the 自定义规则 section. */
+async function summaryRowCount(page: Page): Promise<number> {
+  return page.locator("[data-role='rule-row']").count();
 }
 
 /** The number of multi-selected cells on the current grid page. */
 async function selectionCount(page: Page): Promise<number> {
   return page.locator(".charmap-grid .kit-cell.sel").count();
+}
+
+/** Enter 多选 mode (the explicit toggle in the toolbar). */
+async function enterMultiMode(page: Page): Promise<void> {
+  await pointerClick(page, page.locator("[data-role='toggle-multi']"));
+  await expect(page.locator("[data-role='toggle-multi']")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
 }
 
 test.describe("multi-select, batch operations, undo", () => {
@@ -99,37 +107,26 @@ test.describe("multi-select, batch operations, undo", () => {
   }
 
   /**
-   * Real-pointer drag-paint across the named cells: hit-test-guarded mouse
-   * down on the first, moves over the rest, up on the last. Each point is
-   * computed lazily — the drag's own store patches re-render the details
-   * strip (hint → editor), which shifts the grid, so precomputed boxes
-   * would go stale mid-gesture. With `additive`, Ctrl is held so the run
-   * joins the existing selection.
+   * Real-pointer drag-paint across the named cells (多选 mode armed
+   * first): hit-test-guarded mouse down on the first, moves over the
+   * rest, up on the last. A run starting on an unselected cell ADDS to
+   * the selection (toggle-paint), so consecutive calls accumulate.
    */
-  async function paintDrag(
-    page: Page,
-    cps: string[],
-    additive = false,
-  ): Promise<void> {
-    if (additive) await page.keyboard.down("Control");
-    try {
-      const first = await hitTestCenter(
+  async function paintDrag(page: Page, cps: string[]): Promise<void> {
+    const first = await hitTestCenter(
+      page,
+      page.locator(`.charmap-grid .kit-cell[data-cp='${cps[0]}']`),
+    );
+    await page.mouse.move(first.x, first.y);
+    await page.mouse.down();
+    for (let i = 1; i < cps.length; i++) {
+      const point = await hitTestCenter(
         page,
-        page.locator(`.charmap-grid .kit-cell[data-cp='${cps[0]}']`),
+        page.locator(`.charmap-grid .kit-cell[data-cp='${cps[i]}']`),
       );
-      await page.mouse.move(first.x, first.y);
-      await page.mouse.down();
-      for (let i = 1; i < cps.length; i++) {
-        const point = await hitTestCenter(
-          page,
-          page.locator(`.charmap-grid .kit-cell[data-cp='${cps[i]}']`),
-        );
-        await page.mouse.move(point.x, point.y, { steps: 3 });
-      }
-      await page.mouse.up();
-    } finally {
-      if (additive) await page.keyboard.up("Control");
+      await page.mouse.move(point.x, point.y, { steps: 3 });
     }
+    await page.mouse.up();
   }
 
   /** The grid's effective table on the current page, from cell attributes. */
@@ -161,8 +158,24 @@ test.describe("multi-select, batch operations, undo", () => {
     const fonts = await makeLocalFixtures();
     await openWithFonts(page, fonts);
     await gotoCjkPage(page);
-    await expect.poll(() => completeRuleCount(page)).toBe(0);
-    await expect(page.locator(".rule-list-empty")).toBeVisible();
+
+    // A plain click opens the char popup at the cell — no selection.
+    await pointerClick(
+      page,
+      page.locator(".charmap-grid .kit-cell[data-cp='U+4E10']"),
+    );
+    const popup = page.locator("[data-char-popup]");
+    await expect(popup).toBeVisible();
+    await expect(popup.locator("[data-role='char-code']")).toHaveText("U+4E10");
+    await expect(popup.locator("[data-role='char-from']")).toContainText(
+      "来自",
+    );
+    await expect.poll(() => selectionCount(page)).toBe(0);
+
+    // 多选 mode arms painting; the boot preset is the 文字范围 state,
+    // so the 自定义规则 summary list starts empty.
+    await enterMultiMode(page);
+    await expect(page.locator(".rule-list-empty")).toHaveText("暂无自定义规则。");
 
     // Drag-paint a contiguous run of four cells.
     const run = ["U+4E10", "U+4E11", "U+4E12", "U+4E13"];
@@ -186,37 +199,40 @@ test.describe("multi-select, batch operations, undo", () => {
     const gridBefore = await collectGrid(page);
     const statsBefore = (await page.locator(".statsbar").textContent()) ?? "";
 
-    // The batch editor states the plan in plain text (no hover-only info).
-    const editor = page.locator("[data-role='batch-editor']");
-    await expect(editor).toBeVisible();
-    await expect(editor).toContainText("已选 4 码位");
-    await expect(editor.locator("[data-role='batch-plan']")).toHaveText(
-      "将创建 1 条区间规则（0x4E10-0x4E13）",
+    // One action applies the donor side to the whole selection.
+    await pointerClick(page, page.locator("[data-role='batch-donor']"));
+
+    // The live region announces the batch completion (prototype parity).
+    await expect(page.locator("[data-role='live']")).toHaveText("批量调整完成");
+
+    // One range summary row; every selected cell resolves through the
+    // new rule (rule-1 — the boot-seeded zh_cn preset is complete
+    // rule 0).
+    await expect.poll(() => summaryRowCount(page)).toBe(1);
+    const row = page.locator("[data-role='rule-row'][data-kind='range']");
+    await expect(row).toContainText("用中文字体");
+    await expect(row.locator(".rule-line-suffix")).toHaveText(
+      "U+4E10 至 U+4E13",
     );
-
-    // Donor-only precedence for the whole selection, in ONE action.
-    await editor.locator("[data-role='batch-font-base']").uncheck();
-    await pointerClick(page, editor.locator("[data-role='batch-apply']"));
-
-    // One range rule in the rail; every selected cell resolves through it.
-    const row = page.locator("[data-role='custom-rule']").first();
-    await expect(row).toContainText("0x4E10-0x4E13");
-    await expect.poll(() => completeRuleCount(page)).toBe(1);
     for (const cp of run) {
       const cell = page.locator(`.charmap-grid .kit-cell[data-cp='${cp}']`);
       await expect(cell).toHaveAttribute("data-winner", "donor-0");
-      await expect(cell).toHaveAttribute("data-via", "rule-0");
+      await expect(cell).toHaveAttribute("data-via", "rule-1");
       await expect(cell).toHaveAttribute("data-kind", "fill");
     }
     expect(await collectGrid(page)).not.toEqual(gridBefore);
 
-    // A record of the feature: the painted selection + batch editor.
+    // The gesture ended prototype-style: the selection cleared.
+    await expect.poll(() => selectionCount(page)).toBe(0);
+    await expect(page.locator("[data-role='batch-count']")).toBeHidden();
+
+    // A record of the feature: the summary rows + the reset button.
     const { mkdirSync } = await import("node:fs");
     const { join } = await import("node:path");
     const dir = join(process.cwd(), "test-results", "screenshots");
     mkdirSync(dir, { recursive: true });
     await page.screenshot({
-      path: join(dir, "bulk-batch-editor.png"),
+      path: join(dir, "bulk-batch-apply.png"),
       animations: "disabled",
     });
 
@@ -224,20 +240,8 @@ test.describe("multi-select, batch operations, undo", () => {
     await page.keyboard.press("Control+z");
     expect(await collectGrid(page)).toEqual(gridBefore);
     expect(await page.locator(".statsbar").textContent()).toBe(statsBefore);
-    await expect.poll(() => completeRuleCount(page)).toBe(0);
-    await expect(page.locator(".rule-list-empty")).toBeVisible();
-    // Rule undo never touches the selection itself.
-    await expect(page.locator("[data-role='batch-count']")).toHaveText("已选 4 个");
-    for (const cp of run) {
-      await expect(
-        page.locator(`.charmap-grid .kit-cell[data-cp='${cp}']`),
-      ).toHaveClass(SEL);
-    }
-
-    // Selection undo is the OTHER stack, with its own click entry point.
-    await pointerClick(page, page.locator("[data-role='selection-undo']"));
-    await expect.poll(() => selectionCount(page)).toBe(0);
-    await expect(page.locator("[data-role='batch-editor']")).toBeHidden();
+    await expect.poll(() => summaryRowCount(page)).toBe(0);
+    await expect(page.locator(".rule-list-empty")).toHaveText("暂无自定义规则。");
   });
 
   /* --------------------------------------------------------------- */
@@ -250,6 +254,7 @@ test.describe("multi-select, batch operations, undo", () => {
     const fonts = await makeLocalFixtures();
     await openWithFonts(page, fonts);
     await gotoCjkPage(page);
+    await enterMultiMode(page);
 
     // Click the anchor, then shift-click to extend to U+4E25.
     await pointerClick(
@@ -279,31 +284,20 @@ test.describe("multi-select, batch operations, undo", () => {
       ).toHaveClass(SEL);
     }
 
-    // The plan names the one range rule the apply will create.
-    const editor = page.locator("[data-role='batch-editor']");
-    await expect(editor.locator("[data-role='batch-plan']")).toHaveText(
-      "将创建 1 条区间规则（0x4E20-0x4E28）",
-    );
-
-    // Apply with the default list [base, donor-0]: the base holds no CJK,
-    // so the donor fills every selected codepoint via the new rule.
-    await pointerClick(page, editor.locator("[data-role='batch-apply']"));
-    await expect.poll(() => completeRuleCount(page)).toBe(1);
+    // Apply the donor side: one range rule covers the selection.
+    await pointerClick(page, page.locator("[data-role='batch-donor']"));
+    await expect.poll(() => summaryRowCount(page)).toBe(1);
     for (const cp of ["U+4E20", "U+4E24", "U+4E28"]) {
       const cell = page.locator(`.charmap-grid .kit-cell[data-cp='${cp}']`);
       await expect(cell).toHaveAttribute("data-winner", "donor-0");
-      await expect(cell).toHaveAttribute("data-via", "rule-0");
+      await expect(cell).toHaveAttribute("data-via", "rule-1");
       await expect(cell).toHaveAttribute("data-kind", "fill");
     }
-    // Outside the selection nothing changed.
+    // Outside the selection nothing changed (the seeded zh_cn preset —
+    // complete rule 0 — supplies its scope's codepoints, donor-filled).
     await expect(
       page.locator(".charmap-grid .kit-cell[data-cp='U+4E30']"),
-    ).toHaveAttribute("data-via", "default");
-
-    // Clearing the selection is one click and leaves the rules alone.
-    await pointerClick(page, editor.locator("[data-role='selection-clear']"));
-    await expect.poll(() => selectionCount(page)).toBe(0);
-    await expect.poll(() => completeRuleCount(page)).toBe(1);
+    ).toHaveAttribute("data-via", "rule-0");
   });
 
   /* --------------------------------------------------------------- */
@@ -314,32 +308,26 @@ test.describe("multi-select, batch operations, undo", () => {
     const fonts = await makeLocalFixtures();
     await openWithFonts(page, fonts);
     await gotoCjkPage(page);
+    await enterMultiMode(page);
 
     const gridBefore = await collectGrid(page);
 
-    // Two separate painted runs (the second joins with Ctrl held).
+    // Two separate painted runs; the second starts on an unselected
+    // cell, so toggle-paint ADDS it to the selection.
     await paintDrag(page, ["U+4E10", "U+4E11"]);
-    await paintDrag(page, ["U+4E15", "U+4E16"], true);
+    await paintDrag(page, ["U+4E15", "U+4E16"]);
     await expect(page.locator("[data-role='batch-count']")).toHaveText("已选 4 个");
 
-    // The whole selection is non-contiguous: per-codepoint entries.
-    const editor = page.locator("[data-role='batch-editor']");
-    await expect(editor).toContainText("已选 4 码位");
-    await expect(editor.locator("[data-role='batch-plan']")).toHaveText(
-      "将创建 4 条码位规则",
-    );
+    // The whole selection is non-contiguous: per-codepoint rules.
+    await pointerClick(page, page.locator("[data-role='batch-donor']"));
 
-    // Donor-only, one action.
-    await editor.locator("[data-role='batch-font-base']").uncheck();
-    await pointerClick(page, editor.locator("[data-role='batch-apply']"));
-
-    // Four codepoint rules, numbered in ascending declaration order.
-    await expect.poll(() => completeRuleCount(page)).toBe(4);
+    // Four codepoint rules, numbered in ascending declaration order
+    // (after the boot-seeded zh_cn preset, complete rule 0).
     const expectedVia: Record<string, string> = {
-      "U+4E10": "rule-0",
-      "U+4E11": "rule-1",
-      "U+4E15": "rule-2",
-      "U+4E16": "rule-3",
+      "U+4E10": "rule-1",
+      "U+4E11": "rule-2",
+      "U+4E15": "rule-3",
+      "U+4E16": "rule-4",
     };
     for (const [cp, via] of Object.entries(expectedVia)) {
       const cell = page.locator(`.charmap-grid .kit-cell[data-cp='${cp}']`);
@@ -347,11 +335,13 @@ test.describe("multi-select, batch operations, undo", () => {
       await expect(cell).toHaveAttribute("data-via", via);
       await expect(cell).toHaveAttribute("data-kind", "fill");
     }
+    // The dashed summary counts the four single-character overrides.
+    await expect(page.locator("[data-role='rule-solo']")).toHaveText(/单个字符4/);
 
     // And the same Ctrl+Z round-trip: the grid returns exactly.
     await page.keyboard.press("Control+z");
     expect(await collectGrid(page)).toEqual(gridBefore);
-    await expect.poll(() => completeRuleCount(page)).toBe(0);
+    await expect(page.locator("[data-role='rule-solo']")).toHaveCount(0);
   });
 
   /* --------------------------------------------------------------- */
@@ -362,6 +352,7 @@ test.describe("multi-select, batch operations, undo", () => {
     const fonts = await makeLocalFixtures();
     await openWithFonts(page, fonts);
     await gotoCjkPage(page);
+    await enterMultiMode(page);
 
     // Gesture 1: a painted run of three.
     await paintDrag(page, ["U+4E10", "U+4E11", "U+4E12"]);
@@ -377,7 +368,7 @@ test.describe("multi-select, batch operations, undo", () => {
     await expect(page.locator("[data-role='batch-count']")).toHaveText("已选 17 个");
 
     // One undo reverts the extension, not the paint.
-    await pointerClick(page, page.locator("[data-role='selection-undo']"));
+    await pointerClick(page, page.locator("[data-role='undo-pick']"));
     await expect(page.locator("[data-role='batch-count']")).toHaveText("已选 3 个");
     for (const cp of ["U+4E10", "U+4E12"]) {
       await expect(
@@ -389,30 +380,35 @@ test.describe("multi-select, batch operations, undo", () => {
     ).not.toHaveClass(SEL);
 
     // A second undo reverts the paint itself.
-    await pointerClick(page, page.locator("[data-role='selection-undo']"));
+    await pointerClick(page, page.locator("[data-role='undo-pick']"));
     await expect.poll(() => selectionCount(page)).toBe(0);
-    await expect(page.locator("[data-role='batch-editor']")).toBeHidden();
+    await expect(page.locator("[data-role='batch-count']")).toBeHidden();
   });
 
   /* --------------------------------------------------------------- */
-  /* The live stats bar.                                               */
+  /* The whole-merge stats bar.                                        */
   /* --------------------------------------------------------------- */
 
-  test("the stats bar shows live per-category coverage and selection counts", async ({
+  test("the stats bar reports whole-merge totals that never follow the category", async ({
     page,
   }) => {
     const fonts = await makeLocalFixtures();
     await openWithFonts(page, fonts);
 
-    // CJK unified ideographs: only the donor covers them (64 codepoints)
-    // — the six counters scope to the active category.
+    // The whole-merge universe: the picks' union coverage (base A–Z =
+    // 26 winners; donor A–F ⊂ base + U+4E00..U+4E3F = 64 winners) plus
+    // the declared zh_cn scope's gaps (6,765 − the 44 the donor covers
+    // of it) — identical from every browsing category.
     await gotoCjkPage(page);
-    await expect(page.locator("[data-stat='total']")).toHaveText("20,992");
+    await expect(page.locator("[data-stat='total']")).toHaveText("6,811");
+    await expect(page.locator("[data-stat='en']")).toHaveText("26");
     await expect(page.locator("[data-stat='cjk']")).toHaveText("64");
-    await expect(page.locator("[data-stat='missing']")).toHaveText("20,928");
-    await expect(page.locator("[data-stat='coverage']")).toHaveText("0.30");
+    await expect(page.locator("[data-stat='adjusted']")).toHaveText("0");
+    await expect(page.locator("[data-stat='missing']")).toHaveText("6,721");
+    await expect(page.locator("[data-stat='coverage']")).toHaveText("1.32");
 
-    // Basic Latin: the base covers A–Z (26); the donor's A–F is a subset.
+    // Basic Latin: the SAME totals (the prototype's counters never
+    // change with the browsing category).
     await pointerClick(
       page,
       page.locator(".kit-cat-g[data-group='latin-europe']"),
@@ -421,85 +417,65 @@ test.describe("multi-select, batch operations, undo", () => {
       page,
       page.locator(".kit-cat-s[data-block='basic-latin']"),
     );
-    await expect(page.locator("[data-stat='total']")).toHaveText("96");
-    await expect(page.locator("[data-stat='en']")).toHaveText("26");
-    await expect(page.locator("[data-stat='missing']")).toHaveText("70");
+    await expect(page.locator("[data-stat='total']")).toHaveText("6,811");
+    await expect(page.locator("[data-stat='missing']")).toHaveText("6,721");
 
-    // The selection is live through paint and clear (已选 in the toolbar).
-    await paintDrag(page, ["U+0041", "U+0042"]);
-    await expect(page.locator("[data-role='batch-count']")).toHaveText("已选 2 个");
-    await pointerClick(
-      page,
-      page.locator("[data-role='selection-clear']"),
-    );
-    await expect.poll(() => selectionCount(page)).toBe(0);
-
-    // The rule count is live as rules land and revert.
-    await pointerClick(page, page.locator("[data-role='add-range-rule']"));
-    const row = page.locator("[data-role='custom-rule']").first();
-    const id = await row.getAttribute("data-rule-id");
-    await row.locator(`[data-role='rule-start-${id}']`).fill("0x0041");
-    await row.locator(`[data-role='rule-end-${id}']`).fill("0x0046");
-    await expect.poll(() => completeRuleCount(page)).toBe(1);
-    await page.keyboard.press("Control+z");
-    await expect.poll(() => completeRuleCount(page)).toBe(0);
+    // The toolbar's 撤销 is the rule undo's click entry point: the
+    // 按编码指定 popup adds one rule, the undo reverts it.
+    await expect(page.locator("[data-role='undo']")).toBeDisabled();
+    await pointerClick(page, page.locator("[data-role='range-specify']"));
+    const rangePop = page.locator("[data-range-popup]");
+    await expect(rangePop).toBeVisible();
+    await rangePop.locator("[data-role='range-start']").fill("0x41");
+    await rangePop.locator("[data-role='range-end']").fill("");
+    await pointerClick(page, rangePop.locator("[data-role='range-add']"));
+    await expect.poll(() => summaryRowCount(page)).toBe(1);
+    await expect(page.locator("[data-role='undo']")).toBeEnabled();
+    await pointerClick(page, page.locator("[data-role='undo']"));
+    await expect.poll(() => summaryRowCount(page)).toBe(0);
+    await expect(page.locator("[data-role='undo']")).toBeDisabled();
   });
 
   /* --------------------------------------------------------------- */
-  /* Rule undo's click entry point covers every kind of rule edit.     */
+  /* Leaving 多选 mode clears the selection and its undo stack.        */
   /* --------------------------------------------------------------- */
 
-  test("rule undo is click-reachable in the rail and reverts rule edits", async ({
+  test("leaving 多选 mode clears the selection; the popup returns", async ({
     page,
   }) => {
     const fonts = await makeLocalFixtures();
     await openWithFonts(page, fonts);
+    await gotoCjkPage(page);
+    await enterMultiMode(page);
 
-    // A rail range rule reverts step by step with the rail button.
-    await pointerClick(page, page.locator("[data-role='add-range-rule']"));
-    const row = page.locator("[data-role='custom-rule']").first();
-    const id = await row.getAttribute("data-rule-id");
-    await row.locator(`[data-role='rule-start-${id}']`).fill("0x0041");
-    await row.locator(`[data-role='rule-end-${id}']`).fill("0x0046");
-    await expect(page.locator(".charmap-grid .kit-cell[data-cp='U+0041']")).toHaveAttribute(
-      "data-via",
-      "rule-0",
+    await paintDrag(page, ["U+4E10", "U+4E11"]);
+    await expect(page.locator("[data-role='batch-count']")).toHaveText("已选 2 个");
+
+    // While the selection exists the toolbar shows the batch variant
+    // (no 多选 button) — 取消 clears the picks first, then the toggle
+    // (still pressed) exits the mode, clearing the undo history too.
+    await pointerClick(page, page.locator("[data-role='batch-clear']"));
+    await expect.poll(() => selectionCount(page)).toBe(0);
+    await expect(page.locator("[data-role='toggle-multi']")).toHaveAttribute(
+      "aria-pressed",
+      "true",
     );
-
-    // Undo walks back one mutation at a time: the end fill, then the
-    // start fill, then the add itself.
-    await pointerClick(page, page.locator("[data-role='rules-undo']"));
-    await expect.poll(() => completeRuleCount(page)).toBe(0);
-    await expect(page.locator("[data-role='custom-rule']")).toBeVisible();
-    await pointerClick(page, page.locator("[data-role='rules-undo']"));
-    await expect(page.locator("[data-role='custom-rule']")).toBeVisible();
-    await pointerClick(page, page.locator("[data-role='rules-undo']"));
-    await expect(page.locator(".rule-list-empty")).toBeVisible();
-    await expect(page.locator(".charmap-grid .kit-cell[data-cp='U+0041']")).toHaveAttribute(
-      "data-via",
-      "default",
+    await pointerClick(page, page.locator("[data-role='toggle-multi']"));
+    await expect(page.locator("[data-role='toggle-multi']")).toHaveAttribute(
+      "aria-pressed",
+      "false",
     );
+    await expect.poll(() => selectionCount(page)).toBe(0);
+    await expect(page.locator("[data-role='batch-count']")).toBeHidden();
 
-    // The single-cell editor's applies undo through the same stack.
+    // Outside the mode a plain click opens the char popup again, and
+    // drag gestures no longer paint.
     await pointerClick(
       page,
-      page.locator(".charmap-grid .kit-cell[data-cp='U+0041']"),
+      page.locator(".charmap-grid .kit-cell[data-cp='U+4E10']"),
     );
-    const editor = page.locator("[data-role='cp-rule-editor']");
-    await editor.locator("[data-role='cp-font-base']").uncheck();
-    await pointerClick(page, editor.locator("[data-role='cp-rule-apply']"));
-    await expect(page.locator(".charmap-grid .kit-cell[data-cp='U+0041']")).toHaveAttribute(
-      "data-winner",
-      "donor-0",
-    );
-    await pointerClick(page, page.locator("[data-role='rules-undo']"));
-    await expect(page.locator(".charmap-grid .kit-cell[data-cp='U+0041']")).toHaveAttribute(
-      "data-winner",
-      "base",
-    );
-    await expect(page.locator(".charmap-grid .kit-cell[data-cp='U+0041']")).toHaveAttribute(
-      "data-via",
-      "default",
-    );
+    await expect(page.locator("[data-char-popup]")).toBeVisible();
+    await paintDrag(page, ["U+4E12", "U+4E13"]);
+    await expect.poll(() => selectionCount(page)).toBe(0);
   });
 });

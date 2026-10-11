@@ -1,4 +1,4 @@
-import { test, expect, type Page, type Locator } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
@@ -11,25 +11,25 @@ import {
 } from "./helpers";
 
 /**
- * Issue #18: precedence editing and the effective preview grid.
+ * Issue #18 (prototype parity): precedence and the effective preview
+ * grid.
  *
- * The grid must render the EFFECTIVE merged result (each codepoint in its
- * winning font per the resolver semantics) and the user sets precedence by
- * clicking a cell or typing a codepoint, with rules at every granularity
- * including language presets with sub-block toggles.
+ * The grid must render the EFFECTIVE merged result (each codepoint in
+ * its winning font per the resolver semantics); the user sets
+ * precedence through the workspace's own affordances — the 文字范围
+ * language chips, the 按编码指定 popup, the char popup at the cell, and
+ * the toolbar's block/group segments — with the rail's 自定义规则 list
+ * as the read-only human summary of the same rule state.
  *
  * The fixtures are synthetic (e2e_fonts.py): a base covering the ASCII
- * letters, a donor covering a CJK run plus — with `--donor-ascii N` — the
- * first N ASCII letters so override cases exist (the two coverages are
- * otherwise disjoint and "override" could never be observed).
+ * letters, a donor covering a CJK run plus — with `--donor-ascii N` —
+ * the first N ASCII letters so override cases exist (the two coverages
+ * are otherwise disjoint and "override" could never be observed).
  */
 
-/** The count of COMPLETE rules, read from the rail (incomplete rows show
- *  an ellipsis placeholder as their target label). */
-async function completeRuleCount(page: Page): Promise<number> {
-  return page.evaluate(
-    () => document.querySelectorAll("[data-rule-id][data-complete='true']").length,
-  );
+/** The count of human summary rows in the 自定义规则 section. */
+async function summaryRowCount(page: Page): Promise<number> {
+  return page.locator("[data-role='rule-row']").count();
 }
 
 test.describe("precedence editing", () => {
@@ -117,6 +117,135 @@ test.describe("precedence editing", () => {
     );
   }
 
+  /** Apply one side to a range through the 按编码指定 popup. */
+  async function addRangeRule(
+    page: Page,
+    start: string,
+    end: string,
+    side: "base" | "donor",
+  ): Promise<void> {
+    await pointerClick(page, page.locator("[data-role='range-specify']"));
+    const popup = page.locator("[data-range-popup]");
+    await expect(popup).toBeVisible();
+    await popup.locator("[data-role='range-start']").fill(start);
+    await popup.locator("[data-role='range-end']").fill(end);
+    if (side === "donor") {
+      await pointerClick(
+        page,
+        popup.locator("[data-role='range-side'] .kit-csel"),
+      );
+      await pointerClick(
+        page,
+        popup.locator("[data-role='range-side'] .kit-cso[data-value='donor']"),
+      );
+    }
+    await pointerClick(page, popup.locator("[data-role='range-add']"));
+    await expect(popup).toBeHidden();
+  }
+
+  /** Apply one side to a single codepoint through the char popup. */
+  async function setCodepointSide(
+    page: Page,
+    cp: string,
+    side: "base" | "donor",
+  ): Promise<void> {
+    await pointerClick(
+      page,
+      page.locator(`.charmap-grid .kit-cell[data-cp='${cp}']`),
+    );
+    const popup = page.locator("[data-char-popup]");
+    await expect(popup).toBeVisible();
+    await pointerClick(
+      page,
+      popup.locator(`[data-role='char-${side === "base" ? "base" : "donor"}']`),
+    );
+    await expect(popup).toBeHidden();
+  }
+
+  /* --------------------------------------------------------------- */
+  /* The 文字范围 language chips (the prototype's four fixed chips).   */
+  /* --------------------------------------------------------------- */
+
+  test("the 文字范围 chips: verbatim labels/counts, pressed states, guard", async ({
+    page,
+  }) => {
+    const fonts = await makeLocalFixtures();
+    await openWithFonts(page, fonts);
+
+    // Four fixed chips, always visible, verbatim labels + counts; a
+    // fresh state declares 简体中文 (the prototype boots langs=zh_cn).
+    const chips = page.locator("[data-role='lang-chip']");
+    await expect(chips).toHaveCount(4);
+    await expect(chips.nth(0)).toHaveText("简体中文6,765");
+    await expect(chips.nth(1)).toHaveText("繁体中文13,063");
+    await expect(chips.nth(2)).toHaveText("日文2,314");
+    await expect(chips.nth(3)).toHaveText("韩文2,442");
+    await expect(chips.nth(0)).toHaveAttribute("aria-pressed", "true");
+    await expect(chips.nth(1)).toHaveAttribute("aria-pressed", "false");
+
+    // The last language cannot be removed: the guard announces
+    // 至少保留一种 and the rule stays.
+    await pointerClick(page, chips.nth(0));
+    await expect(page.locator("[data-role='live']")).toHaveText("至少保留一种");
+    await expect(chips.nth(0)).toHaveAttribute("aria-pressed", "true");
+
+    // Adding a language declares its preset rule; the chip presses.
+    await pointerClick(page, chips.nth(1));
+    await expect(chips.nth(1)).toHaveAttribute("aria-pressed", "true");
+    // Now zh_cn CAN come off (another language holds the floor).
+    await pointerClick(page, chips.nth(0));
+    await expect(chips.nth(0)).toHaveAttribute("aria-pressed", "false");
+
+    // Toggling back on re-declares it, one undo entry per toggle.
+    await pointerClick(page, chips.nth(0));
+    await expect(chips.nth(0)).toHaveAttribute("aria-pressed", "true");
+    await page.keyboard.press("Control+z");
+    await expect(chips.nth(0)).toHaveAttribute("aria-pressed", "false");
+    await page.keyboard.press("Control+z");
+    await expect(chips.nth(0)).toHaveAttribute("aria-pressed", "true");
+
+    // The declared scope feeds the 缺失 aggregate (the fixture pair
+    // covers only a slice of zh_cn) and the whole-merge 缺失 counter.
+    const missingChip = page.locator(".kit-catbar .kit-cat-g[data-group='missing']");
+    await expect(missingChip).toBeVisible();
+    expect(
+      Number(((await missingChip.locator(".n").textContent()) ?? "0").replace(/,/g, "")),
+    ).toBeGreaterThan(6000);
+
+    // The 添加语言预设… picker remains the deep extension (zh_hk).
+    await pointerClick(page, page.locator("[data-role='add-preset']"));
+    const popup = page.locator('[data-picker-popup="preset-add"]');
+    await expect(popup).toBeVisible();
+    await pointerClick(
+      page,
+      popup.locator(".kit-fp", { hasText: /^zh_hk/ }).first(),
+    );
+    await expect(popup).toBeHidden();
+    // zh_hk (declared last) supplies U+4E00: the donor fills it via the
+    // rule (rule-N — after zh_cn, zh_tw, and any other preset rules).
+    await gotoCjkPage(page);
+    await expect(
+      page.locator(".charmap-grid .kit-cell[data-cp='U+4E00']"),
+    ).toHaveAttribute("data-winner", "donor-0");
+    await expect(
+      page.locator(".charmap-grid .kit-cell[data-cp='U+4E00']"),
+    ).toHaveAttribute("data-kind", "fill");
+
+    // An open-overlay screenshot of this feature: the preset picker
+    // popup open over the workspace (seam-3 rule).
+    await pointerClick(page, page.locator("[data-role='add-preset']"));
+    await expect(popup).toBeVisible();
+    const { mkdirSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const dir = join(process.cwd(), "test-results", "screenshots");
+    mkdirSync(dir, { recursive: true });
+    await page.screenshot({
+      path: join(dir, "precedence-preset-picker.png"),
+      animations: "disabled",
+    });
+    await page.keyboard.press("Escape");
+  });
+
   /* --------------------------------------------------------------- */
   /* The hard gate: consistency with the resolver through real serve. */
   /* --------------------------------------------------------------- */
@@ -171,16 +300,17 @@ test.describe("precedence editing", () => {
       await loadIntoPicker(page, "en", service.baseFont);
       await loadIntoPicker(page, "cjk", service.donorFont);
 
-      // Rule set exercising all four granularities, declared in order:
-      //   rule-0 set zh_cn -> [donor-0]           (override intent)
-      //   rule-1 range 4E00-4E0F -> [base]        (absence: base lacks CJK)
-      //   rule-2 codepoint 0x41 -> [donor-0]      (override)
-      //   rule-3 codepoint 0x4E08 -> [base, donor-0] (cp beats range)
-      await addPresetRule(page, "zh_cn", ["donor-0"]);
-      await addRangeRule(page, "0x4E00", "0x4E0F", ["base"]);
-      await addCodepointRuleViaRail(page, "0x41", ["donor-0"]);
-      await addCodepointRuleViaRail(page, "0x4E08", ["base", "donor-0"]);
-      await expect.poll(() => completeRuleCount(page)).toBe(4);
+      // Rule set exercising every granularity through the real UI, in
+      // declaration order (the boot-seeded zh_cn preset — [base,
+      // donor-0], resolution-neutral — is complete rule 0 before these):
+      //   rule-1 range 0x41-0x46 -> [base]     (both hold: rule supplies base)
+      //   rule-2 codepoint 0x42 -> [donor-0]   (cp beats the range: override)
+      //   rule-3 range 0x4E00-0x4E0F -> [base] (absence: base lacks CJK)
+      await addRangeRule(page, "0x41", "0x46", "base");
+      await setCodepointSide(page, "U+0042", "donor");
+      await addRangeRule(page, "0x4E00", "0x4E0F", "base");
+      await expect.poll(() => summaryRowCount(page)).toBe(2);
+      await expect(page.locator("[data-role='rule-solo']")).toHaveCount(1);
 
       // Collect the client-side resolution over the whole coverage union
       // (base A–Z on page 1 of "all"; donor 4E00–4E3F on CJK page 1).
@@ -224,21 +354,22 @@ test.describe("precedence editing", () => {
         }>;
       };
 
-      // The recipe the GUI submitted echoes the serialized rule list.
+      // The recipe the GUI submitted echoes the serialized rule list
+      // (the boot-seeded zh_cn preset first, then the UI-declared rules).
       expect(report.rules).toEqual([
-        { id: "rule-0", granularity: "set", target: "zh_cn", fonts: ["donor-0"] },
+        { id: "rule-0", granularity: "set", target: "zh_cn", fonts: ["base", "donor-0"] },
         {
           id: "rule-1",
           granularity: "range",
-          target: "0x4E00-0x4E0F",
+          target: "0x41-0x46",
           fonts: ["base"],
         },
-        { id: "rule-2", granularity: "codepoint", target: "0x41", fonts: ["donor-0"] },
+        { id: "rule-2", granularity: "codepoint", target: "0x42", fonts: ["donor-0"] },
         {
           id: "rule-3",
-          granularity: "codepoint",
-          target: "0x4E08",
-          fonts: ["base", "donor-0"],
+          granularity: "range",
+          target: "0x4E00-0x4E0F",
+          fonts: ["base"],
         },
       ]);
 
@@ -277,7 +408,7 @@ test.describe("precedence editing", () => {
     await openWithFonts(page, fonts);
 
     // Rule "0x0041-0x005A -> [donor-0]": override intent over all ASCII.
-    await addRangeRule(page, "0x0041", "0x005A", ["donor-0"]);
+    await addRangeRule(page, "0x0041", "0x005A", "donor");
 
     // A–F: the donor holds them, so the rule overrides the base.
     await expect(page.locator(".charmap-grid .kit-cell[data-cp='U+0041']")).toHaveAttribute(
@@ -301,19 +432,20 @@ test.describe("precedence editing", () => {
     );
     expect(await cellRenderFamily(page, "U+005A")).toBe("AlloyBase");
 
-    // The details strip states the fallback in plain text.
+    // The popup states the source in plain text.
     await pointerClick(page, page.locator(".charmap-grid .kit-cell[data-cp='U+005A']"));
-    const details = page.locator(".charmap-details");
-    await expect(details).toContainText("U+005A");
-    await expect(details).toContainText("英文字体 AlloyBase");
-    await expect(details).toContainText("默认");
+    const popup = page.locator("[data-char-popup]");
+    await expect(popup.locator("[data-role='char-code']")).toHaveText("U+005A");
+    await expect(popup.locator("[data-role='char-from']")).toContainText(
+      "来自 AlloyBase",
+    );
   });
 
   /* --------------------------------------------------------------- */
-  /* Cell click and codepoint entry set single-codepoint rules.        */
+  /* Cell click sets single-codepoint precedence through the popup.    */
   /* --------------------------------------------------------------- */
 
-  test("clicking a cell sets single-codepoint precedence (ordered font list)", async ({
+  test("clicking a cell sets single-codepoint precedence through the popup", async ({
     page,
   }) => {
     const fonts = await makeLocalFixtures();
@@ -329,34 +461,35 @@ test.describe("precedence editing", () => {
       "default",
     );
 
-    // Click the cell; the details strip opens the precedence editor.
+    // Click the cell; the popup offers the two one-click sides.
     await pointerClick(page, page.locator(".charmap-grid .kit-cell[data-cp='U+0041']"));
-    const editor = page.locator("[data-role='cp-rule-editor']");
-    await expect(editor).toBeVisible();
+    const popup = page.locator("[data-char-popup]");
+    await expect(popup).toBeVisible();
+    await expect(popup.locator("[data-role='char-base']")).toBeHidden();
+    await expect(popup.locator("[data-role='char-donor']")).toBeVisible();
 
-    // Include donor-0 and move it above base: [donor-0, base].
-    await editor.locator("[data-role='cp-font-donor-0']").check();
-    await pointerClick(page, editor.locator("[data-role='cp-font-up-donor-0']"));
-    await pointerClick(page, editor.locator("[data-role='cp-rule-apply']"));
-
-    // The grid updates in place: override by rule, donor renders it.
+    // 用中文字体: the override displaces the base glyph.
+    await pointerClick(page, popup.locator("[data-role='char-donor']"));
     const cell = page.locator(".charmap-grid .kit-cell[data-cp='U+0041']");
     await expect(cell).toHaveAttribute("data-winner", "donor-0");
-    await expect(cell).toHaveAttribute("data-via", "rule-0");
+    await expect(cell).toHaveAttribute("data-via", "rule-1");
     await expect(cell).toHaveAttribute("data-kind", "override");
     expect(await cellRenderFamily(page, "U+0041")).toBe("AlloyDonor");
-    await expect.poll(() => completeRuleCount(page)).toBe(1);
 
-    // The editor reflects the existing rule; removing it restores default.
-    await expect(editor.locator("[data-role='cp-font-donor-0']")).toBeChecked();
-    await pointerClick(page, editor.locator("[data-role='cp-rule-remove']"));
+    // Pressing the popup's carried side again (from the popup of the
+    // same cell) reverts to the deeper layers — and 恢复默认 appears
+    // while the override exists and changes the outcome.
+    await pointerClick(page, cell);
+    await expect(popup.locator("[data-role='char-donor']")).toBeHidden();
+    await expect(popup.locator("[data-role='char-base']")).toBeVisible();
+    await expect(popup.locator("[data-role='char-reset']")).toBeVisible();
+    await pointerClick(page, popup.locator("[data-role='char-reset']"));
     await expect(cell).toHaveAttribute("data-winner", "base");
     await expect(cell).toHaveAttribute("data-via", "default");
     expect(await cellRenderFamily(page, "U+0041")).toBe("AlloyBase");
-    await expect.poll(() => completeRuleCount(page)).toBe(0);
   });
 
-  test("typing a codepoint locates it and sets precedence; updates are live", async ({
+  test("typing a codepoint locates it; the popup applies; updates are live", async ({
     page,
   }) => {
     const fonts = await makeLocalFixtures();
@@ -367,26 +500,43 @@ test.describe("precedence editing", () => {
     await locate.fill("4E2D");
     await locate.press("Enter");
 
-    // The grid jumped to the codepoint's page and selected the cell.
+    // The grid jumped to the codepoint's page and set the cursor.
     await expect(
       page.locator(".charmap-grid .kit-cell[data-cp='U+4E2D']"),
     ).toHaveClass(/cur/);
-    const details = page.locator(".charmap-details");
-    await expect(details).toContainText("U+4E2D");
-    await expect(details).toContainText("中文字体 AlloyDonor");
-    await expect(details).toContainText("默认");
+    await expect(page.locator(".kit-toolrow [data-pager-label]")).toHaveText(
+      "第 1/21 页",
+    );
 
-    // Set its precedence to donor-only through the editor.
-    const editor = page.locator("[data-role='cp-rule-editor']");
-    await editor.locator("[data-role='cp-font-base']").uncheck();
-    await pointerClick(page, editor.locator("[data-role='cp-rule-apply']"));
+    // The popup states the effective source: U+4E2D sits in the
+    // boot-seeded zh_cn scope, so the preset rule (base keeps, donor
+    // fills) supplies it.
+    await pointerClick(
+      page,
+      page.locator(".charmap-grid .kit-cell[data-cp='U+4E2D']"),
+    );
+    const popup = page.locator("[data-char-popup]");
+    await expect(popup.locator("[data-role='char-code']")).toHaveText("U+4E2D");
+    await expect(popup.locator("[data-role='char-from']")).toContainText(
+      "来自 AlloyDonor",
+    );
+    await expect(
+      page.locator(".charmap-grid .kit-cell[data-cp='U+4E2D']"),
+    ).toHaveAttribute("data-via", "rule-0");
 
+    // The char is donor-carried: the donor side's button hides, and
+    // 用英文字体 declares an override the base CANNOT supply (absence
+    // never overrides) — the default keeps rendering it, via "default".
+    await expect(popup.locator("[data-role='char-donor']")).toBeHidden();
+    await expect(popup.locator("[data-role='char-base']")).toBeVisible();
+    await pointerClick(page, popup.locator("[data-role='char-base']"));
     const cell = page.locator(".charmap-grid .kit-cell[data-cp='U+4E2D']");
     await expect(cell).toHaveAttribute("data-winner", "donor-0");
-    await expect(cell).toHaveAttribute("data-via", "rule-0");
-    await expect(cell).toHaveAttribute("data-kind", "fill");
+    await expect(cell).toHaveAttribute("data-via", "default");
 
-    // Live update, no reload: same pager state, sibling cell untouched.
+    // Live update, no reload: same pager state, sibling cell untouched
+    // (丮 U+4E2E is a rare han OUTSIDE the seeded zh_cn scope — it keeps
+    // the default precedence, no rule supplying it).
     await expect(page.locator(".kit-toolrow [data-pager-label]")).toHaveText(
       "第 1/21 页",
     );
@@ -394,241 +544,65 @@ test.describe("precedence editing", () => {
       page.locator(".charmap-grid .kit-cell[data-cp='U+4E2E']"),
     ).toHaveAttribute("data-via", "default");
 
-    // The rule is visible and editable in the rail's custom rule list.
-    const row = page.locator("[data-role='custom-rule']").first();
-    await expect(row).toContainText("0x4E2D");
+    // The dashed summary counts the single-character override, and its
+    // removal (the popup's 恢复默认) clears it.
+    await expect(page.locator("[data-role='rule-solo']")).toHaveText(/单个字符1/);
+    await pointerClick(page, cell);
+    await expect(popup.locator("[data-role='char-reset']")).toBeVisible();
+    await pointerClick(page, popup.locator("[data-role='char-reset']"));
+    await expect(cell).toHaveAttribute("data-via", "rule-0");
+    await expect(page.locator("[data-role='rule-solo']")).toHaveCount(0);
   });
 
   /* --------------------------------------------------------------- */
-  /* Language presets with sub-block toggles.                          */
+  /* The summary list: sentences, delete, merged groups, reset.        */
   /* --------------------------------------------------------------- */
 
-  test("language presets select with sub-block toggles (union semantics)", async ({
+  test("the 自定义规则 summaries read as sentences and remove cleanly", async ({
     page,
   }) => {
     const fonts = await makeLocalFixtures();
     await openWithFonts(page, fonts);
 
-    await addPresetRule(page, "zh_hk", ["base", "donor-0"]);
+    // Empty state (the 文字范围 chips own the preset scope).
+    await expect(page.locator(".rule-list-empty")).toHaveText("暂无自定义规则。");
 
-    // The preset row shows both sub-blocks on: the union is zh_hk.
-    const row = page.locator("[data-role='preset-rule']").first();
-    await expect(row).toContainText("zh_hk");
-    await expect(row).toContainText("生效集合：zh_hk");
-    await expect(row.locator("[data-role='subblock-zh_tw']")).toBeChecked();
-    await expect(row.locator("[data-role='subblock-zh_hk_supplement']")).toBeChecked();
-
-    // 一 (U+4E00) is in zh_tw (hence zh_hk) — the rule supplies it:
-    // base lacks it, so the donor wins via the rule.
-    await gotoCjkPage(page);
-    await expect(page.locator(".charmap-grid .kit-cell[data-cp='U+4E00']")).toHaveAttribute(
-      "data-via",
-      "rule-0",
-    );
-
-    // Toggle zh_tw off: U+4E00 is NOT in the supplement alone, so the
-    // rule no longer covers it — the default precedence takes over.
-    await row.locator("[data-role='subblock-zh_tw']").uncheck();
-    await expect(row).toContainText("生效集合：zh_hk_supplement");
-    await expect(page.locator(".charmap-grid .kit-cell[data-cp='U+4E00']")).toHaveAttribute(
-      "data-via",
-      "default",
-    );
-
-    // Toggle back on: the union covers it again.
-    await row.locator("[data-role='subblock-zh_tw']").check();
-    await expect(page.locator(".charmap-grid .kit-cell[data-cp='U+4E00']")).toHaveAttribute(
-      "data-via",
-      "rule-0",
-    );
-
-    // An open-overlay screenshot of this feature: the preset picker
-    // popup open over the workspace (seam-3 rule).
-    await pointerClick(page, page.locator("[data-role='add-preset']"));
-    const popup = page.locator('[data-picker-popup="preset-add"]');
-    await expect(popup).toBeVisible();
-    const { mkdirSync } = await import("node:fs");
-    const { join } = await import("node:path");
-    const dir = join(process.cwd(), "test-results", "screenshots");
-    mkdirSync(dir, { recursive: true });
-    await page.screenshot({
-      path: join(dir, "precedence-preset-picker.png"),
-      animations: "disabled",
-    });
-    await page.keyboard.press("Escape");
-  });
-
-  /* --------------------------------------------------------------- */
-  /* The rule list: viewable and editable in the left column.          */
-  /* --------------------------------------------------------------- */
-
-  test("custom ranges are editable in the left column; fonts reorder; rules remove", async ({
-    page,
-  }) => {
-    const fonts = await makeLocalFixtures();
-    await openWithFonts(page, fonts);
-
-    // New range rule over the overlap; default order [base, donor-0].
-    await pointerClick(page, page.locator("[data-role='add-range-rule']"));
-    const row = page.locator("[data-role='custom-rule']").first();
-    const id = await row.getAttribute("data-rule-id");
-    await row.locator(`[data-role='rule-start-${id}']`).fill("0x0041");
-    await row.locator(`[data-role='rule-end-${id}']`).fill("0x0046");
-
-    // base is first and holds A–F: base wins via the rule.
-    await expect(page.locator(".charmap-grid .kit-cell[data-cp='U+0041']")).toHaveAttribute(
-      "data-winner",
-      "base",
-    );
-    await expect(page.locator(".charmap-grid .kit-cell[data-cp='U+0041']")).toHaveAttribute(
-      "data-via",
-      "rule-0",
-    );
-
-    // Reorder within the rule: donor-0 above base flips the winner.
-    await pointerClick(page, row.locator(`[data-role='rule-font-up-${id}-donor-0']`));
-    await expect(page.locator(".charmap-grid .kit-cell[data-cp='U+0041']")).toHaveAttribute(
-      "data-winner",
-      "donor-0",
-    );
-    expect(await cellRenderFamily(page, "U+0041")).toBe("AlloyDonor");
-
-    // Removing the rule restores the default precedence, live.
-    await expect.poll(() => completeRuleCount(page)).toBe(1);
-    await pointerClick(page, row.locator("[data-role='remove-rule']"));
-    await expect.poll(() => completeRuleCount(page)).toBe(0);
-    await expect(page.locator(".charmap-grid .kit-cell[data-cp='U+0041']")).toHaveAttribute(
-      "data-winner",
-      "base",
-    );
-    await expect(page.locator(".charmap-grid .kit-cell[data-cp='U+0041']")).toHaveAttribute(
-      "data-via",
-      "default",
-    );
-
-    // A codepoint rule added from the rail list is editable there too.
-    await pointerClick(page, page.locator("[data-role='add-cp-rule']"));
-    const cpRow = page.locator("[data-role='custom-rule']").first();
-    const cpId = await cpRow.getAttribute("data-rule-id");
-    await cpRow.locator(`[data-role='rule-codepoint-${cpId}']`).fill("0x4E10");
-    await cpRow.locator(`[data-role='rule-font-${cpId}-base']`).uncheck();
-    await gotoCjkPage(page);
-    await expect(page.locator(".charmap-grid .kit-cell[data-cp='U+4E10']")).toHaveAttribute(
-      "data-via",
-      "rule-0",
-    );
-    await expect(
-      page.locator(".charmap-grid .kit-cell[data-cp='U+4E10']"),
-    ).toHaveAttribute("data-winner", "donor-0");
-  });
-
-  /* --------------------------------------------------------------- */
-  /* Helpers driving the rail rule editors through the real UI.        */
-  /* --------------------------------------------------------------- */
-
-  /** Add a preset rule through the preset picker; set fonts order. */
-  async function addPresetRule(
-    page: Page,
-    preset: string,
-    fonts: string[],
-  ): Promise<void> {
-    await pointerClick(page, page.locator("[data-role='add-preset']"));
-    const popup = page.locator('[data-picker-popup="preset-add"]');
-    await expect(popup).toBeVisible();
+    // A block assignment reads as its sentence.
+    await pointerClick(page, page.locator(".kit-cat-g[data-group='latin-europe']"));
+    await pointerClick(page, page.locator(".kit-cat-s[data-block='basic-latin']"));
+    const row = page.locator(".kit-toolrow").filter({ hasText: "基本拉丁" });
     await pointerClick(
       page,
-      popup.locator(".kit-fp", { hasText: new RegExp(`^${preset}`) }).first(),
+      row.locator(".kit-mseg button").filter({ hasText: /^用中文字体$/ }),
     );
-    await expect(popup).toBeHidden();
+    const blockRow = page.locator("[data-role='rule-row'][data-kind='block']");
+    await expect(blockRow).toHaveText(/基本拉丁用中文字体/);
 
-    const row = page.locator("[data-role='preset-rule']").last();
-    await expect(row).toContainText(preset);
-    await setRuleFonts(page, row, fonts);
-  }
+    // A custom range reads with the character sentence + dim U+ suffix.
+    await addRangeRule(page, "0x4E10", "0x4E13", "donor");
+    const rangeRow = page.locator("[data-role='rule-row'][data-kind='range']");
+    await expect(rangeRow).toHaveText(/用中文字体/);
+    await expect(rangeRow.locator(".rule-line-suffix")).toHaveText(
+      "U+4E10 至 U+4E13",
+    );
 
-  /** Add a range rule and fill start/end; set fonts order. */
-  async function addRangeRule(
-    page: Page,
-    start: string,
-    end: string,
-    fonts: string[],
-  ): Promise<void> {
-    await pointerClick(page, page.locator("[data-role='add-range-rule']"));
-    const row = page.locator("[data-role='custom-rule']").last();
-    const id = await row.getAttribute("data-rule-id");
-    await row.locator(`[data-role='rule-start-${id}']`).fill(start);
-    await row.locator(`[data-role='rule-end-${id}']`).fill(end);
-    await setRuleFonts(page, row, fonts);
-  }
+    // A single-codepoint rule collapses into the dashed summary row.
+    await gotoCjkPage(page);
+    await setCodepointSide(page, "U+4E20", "base");
+    await expect(page.locator("[data-role='rule-solo']")).toHaveText(/单个字符1/);
 
-  /** Add a codepoint rule through the rail add button; set fonts order. */
-  async function addCodepointRuleViaRail(
-    page: Page,
-    cp: string,
-    fonts: string[],
-  ): Promise<void> {
-    await pointerClick(page, page.locator("[data-role='add-cp-rule']"));
-    const row = page.locator("[data-role='custom-rule']").last();
-    const id = await row.getAttribute("data-rule-id");
-    await row.locator(`[data-role='rule-codepoint-${id}']`).fill(cp);
-    await setRuleFonts(page, row, fonts);
-  }
+    // The range row's delete × removes exactly that rule.
+    await pointerClick(page, rangeRow.locator("[data-role='remove-rule']"));
+    await expect(rangeRow).toHaveCount(0);
+    await expect(blockRow).toHaveCount(1);
 
-  /**
-   * Set a rule row's font list to exactly `fonts` (in order). New rules
-   * default to [base, donor-0]; this unchecks the unwanted and moves the
-   * wanted into position with the row's up/down controls.
-   */
-  async function setRuleFonts(
-    page: Page,
-    row: Locator,
-    fonts: string[],
-  ): Promise<void> {
-    const id = await row.getAttribute("data-rule-id");
-    // Ensure every wanted font is checked and every unwanted unchecked.
-    for (const ref of ["base", "donor-0"]) {
-      const box = row.locator(`[data-role='rule-font-${id}-${ref}']`);
-      const wanted = fonts.includes(ref);
-      if (wanted) {
-        if (!(await box.isChecked())) await box.check();
-      } else if (await box.isChecked()) {
-        await box.uncheck();
-      }
-    }
-    // Bubble each font (in order) to the front using its up button.
-    for (let i = fonts.length - 1; i >= 0; i--) {
-      const ref = fonts[i]!;
-      for (;;) {
-        const list = await ruleFontOrder(page, row);
-        if (list[0] === ref) break;
-        const current = list.indexOf(ref);
-        if (current <= 0) break;
-        await pointerClick(
-          page,
-          row.locator(`[data-role='rule-font-up-${id}-${ref}']`),
-        );
-      }
-    }
-    // Verify the final order.
-    expect(await ruleFontOrder(page, row)).toEqual(fonts);
-  }
-
-  /** The checked fonts of a rule row, in display (precedence) order. */
-  async function ruleFontOrder(
-    page: Page,
-    row: Locator,
-  ): Promise<string[]> {
-    return row.evaluate((el) => {
-      const out: string[] = [];
-      for (const line of el.querySelectorAll("[data-font-ref]")) {
-        const box = line.querySelector("input[type=checkbox]");
-        if (box instanceof HTMLInputElement && box.checked) {
-          out.push(line.getAttribute("data-font-ref")!);
-        }
-      }
-      return out;
-    });
-  }
+    // 全部恢复默认 clears every customization in one undoable step.
+    await pointerClick(page, page.locator("[data-role='undo-all']"));
+    await expect(page.locator(".rule-list-empty")).toHaveText("暂无自定义规则。");
+    await page.keyboard.press("Control+z");
+    await expect(blockRow).toHaveCount(1);
+    await expect(page.locator("[data-role='rule-solo']")).toHaveCount(1);
+  });
 });
 
 /** JSON GET over the serve contract (the same seam the app speaks). */

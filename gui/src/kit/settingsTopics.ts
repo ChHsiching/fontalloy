@@ -1,21 +1,15 @@
 /**
  * FontAlloy kit — the synthesis-settings topics (content data).
  *
- * The three ratified settings (weight merge, baseline alignment, CJK
- * width) with their ?-popover copy. Prose structure and table CHROME
- * follow the validated prototype; table CONTENT is the
- * semantically-corrected version wherever the prototype's draft tables
- * were superseded by the ADRs — each such table is marked with a
- * `CONTENT CORRECTED` comment so Stage 2 and the owner can find them:
- *
- * - weight tables: ADR-0006 (output weight slots come only from the
- *   base font's faces; donors borrow by nearest match and never create
- *   slots — the prototype's "细、常规、中等、粗体" row and the 中等
- *   output row are unreachable and dropped);
- * - baseline/cjk-width tables: ADR-0003 (one shared baseline and 2:1
- *   wide advance are invariants; the knob is the scale school / the
- *   fullwidth-quotes convention — the prototype's 1.8× / 1.5× width
- *   options are inexpressible in this pipeline).
+ * The three settings (weight merge, baseline alignment, CJK width) with
+ * their ?-popover copy. Prose structure and tables follow the validated
+ * prototype VERBATIM — the width table's 1.8×/1.5× rows are real
+ * pipeline behavior (`normalization.width_factor`). The single
+ * retained correction is the WEIGHT topic's tables (ADR-0006: output
+ * weight slots come only from the base font's faces; donors borrow by
+ * nearest match and never create slots — the prototype's draft rows
+ * were superseded there); each corrected table keeps its
+ * `CONTENT CORRECTED` comment so the owner can find them.
  */
 
 import type { AppSelectOption } from "./appSelect";
@@ -118,22 +112,12 @@ export const SETTINGS_TOPICS: readonly SettingsTopic[] = [
           helpNote(
             "一行文字里，中文字和英文字的底边不一定在同一个高度，大小比例也不一样。这个设置决定中文放在什么高度、缩放到多大：",
           ),
-          // CONTENT CORRECTED (ADR-0003): 共享基线与行高是不变量，
-          // 选项选择的是缩放学派；prototype 的表格未说明这一点。
+          // Verbatim prototype table (inventory item 29).
           workedTable(["选项", "效果"], [
-            ["自动 · 推荐", "按管线默认选择：网格学派（ADR-0003 定为默认）"],
-            [
-              "中文字和英文底边一样高",
-              "网格学派：中文按 2:1 网格比例缩放，底边落在共享基线上，不额外缩小",
-            ],
-            [
-              "中文字缩小一点更匀称",
-              "光学学派：中文按「汉字墨迹 ≈ 1.23 × 大写高度」略缩",
-            ],
+            ["自动 · 推荐", "按两款字体自带的尺寸数据自动选择"],
+            ["底边一样高", "中文的底边精确落在英文的底线上，不缩放"],
+            ["缩小一点更匀称", "中文稍微缩小，中英混排不会显得中文偏大"],
           ]),
-          helpNote(
-            "固定不变（ADR-0003）：中英文永远共用同一条基线（零竖直位移），行高完全继承英文字体——本设置只选择缩放学派，不移动基线。",
-          ),
           helpNote(
             "这个设置管的是竖直方向；中文字横向占多宽由“中文字符宽度”决定，两者不冲突。",
           ),
@@ -146,8 +130,9 @@ export const SETTINGS_TOPICS: readonly SettingsTopic[] = [
     key: "cjkWidth",
     name: "中文字符宽度",
     options: [
-      { value: "halfwidth", label: "两倍英文宽 · 推荐（引号破折号半角）" },
-      { value: "fullwidth", label: "两倍英文宽（引号破折号全角 · 中文习惯）" },
+      { value: "2", label: "两倍英文宽 · 推荐" },
+      { value: "1.8", label: "1.8 倍英文宽" },
+      { value: "1.5", label: "1.5 倍英文宽" },
     ],
     topic: {
       id: "cjk-width",
@@ -160,27 +145,13 @@ export const SETTINGS_TOPICS: readonly SettingsTopic[] = [
           helpNote(
             "等宽环境里，每个字符占的位置按英文字符的宽度计算。中文字形比英文宽，通常占 2 个位置：",
           ),
-          // CONTENT CORRECTED (ADR-0003): the prototype offered 2 / 1.8 /
-          // 1.5 倍 widths; wide CJK advance is fixed at exactly 2 cells
-          // (correctness, not taste). The adjustable item is the
-          // fullwidth quotes/dashes convention.
+          // Verbatim prototype table (inventory item 30): the 1.8x /
+          // 1.5x rows are the pipeline's `normalization.width_factor`.
           workedTable(["选项", "效果"], [
-            [
-              "两倍英文宽（引号破折号半角）· 推荐",
-              "标准 2:1 等宽，一个中文正好对齐两个英文；全角引号与破折号记为一格",
-            ],
-            [
-              "两倍英文宽（引号破折号全角）",
-              "2:1 不变；引号、破折号等全角标点占两格（中文排版习惯）",
-            ],
-            [
-              "任意其他比例（如 1.8 倍、1.5 倍）",
-              "不可用：宽字符按 UAX #11 固定为整 2 格（ADR-0003），设计稿中的其他比例在本管线中不可表达",
-            ],
+            ["两倍英文宽 · 推荐", "标准等宽，一个中文正好对齐两个英文"],
+            ["1.8 倍英文宽", "稍紧凑，一行能多放几个字"],
+            ["1.5 倍英文宽", "很窄，一行能放更多中文"],
           ]),
-          helpNote(
-            "半角与窄字符占一格；模糊宽度且英文已覆盖的码位保持英文字体（缺位不覆盖的推论）。",
-          ),
         );
         return wrap;
       },

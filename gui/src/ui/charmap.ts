@@ -5,7 +5,6 @@ import {
   BLOCK_GROUPS,
   CELLS_PER_PAGE,
   blockGroup,
-  categoryIntervals,
   categorySize,
   categoryName,
   codepointIndex,
@@ -17,10 +16,16 @@ import {
 } from "../unicode/blocks";
 import { newRule, parseCodepointInput, type EditorRule } from "../precedence/model";
 import { currentResolver, defaultResolver } from "../precedence/live";
-import { pickRefs, refFont, refLabel, type PickRefs } from "../precedence/picks";
+import {
+  arrayCoverage,
+  EffectiveResolver,
+  type Coverage,
+} from "../precedence/resolve";
+import { pickRefs, refFont, type PickRefs } from "../precedence/picks";
 import {
   beginSelectionGesture,
   canUndoSelection,
+  clearSelectionUndo,
   extendSelection,
   mutateRules,
   undoSelection,
@@ -29,38 +34,50 @@ import {
 } from "../history";
 import { cssFamily } from "../kit/pickerPopup";
 import { fitPopup } from "../kit/position";
+import { mountAppSelect, type AppSelect } from "../kit/appSelect";
 import { mountCategoryChips, type CategoryChips } from "../kit/categoryChips";
 import { mountActionBar, type ActionBar, type FontSide } from "../kit/actionBar";
 import { mountCharGrid, type CharGrid, type GridCellData } from "../kit/grid";
 import type { IconName } from "../kit/icons";
 import { MISSING_CATEGORY_ID, missingCodepoints } from "./missing";
+import { liveNotice } from "./live";
 
 /**
  * Character map (ADR-0004), assembled from the kit: the horizontal
  * two-level CategoryChips bar (group + block, with the 全部 aggregate
  * and per-group aggregates), the ActionBar (per-group and per-block
- * 用英文字体/用中文字体 segments, 多选/编码/撤销, the pager, the 已调整
- * legend, the codepoint locator, and the 按编码指定 entry), and the
- * effective grid.
+ * 用英文字体/用中文字体 segments — rendered whether or not both fonts
+ * are picked, the defaults driving the pressed state like the
+ * prototype — plus 多选/编码/撤销, the pager, the 已调整 legend, the
+ * codepoint locator, and the 按编码指定 entry), and the effective grid.
  *
- * Since issue #18 the grid renders the EFFECTIVE merged result: each
- * cell is resolved through the client-side precedence mirror (same
- * semantics as the core resolver) against the coverage of the
- * actually-loaded fonts, rendered in the winning font's own face, and
- * carries its resolution as DOM attributes (`data-winner` / `data-via`
- * / `data-kind`) — the grid never lies, however complex the rules.
- * Adjusted cells (the effective winner differing from the no-rule
- * default) carry the kit's corner dot, paired with the 已调整 legend.
+ * The grid renders the EFFECTIVE merged result: each cell resolves
+ * through the client-side precedence mirror (same semantics as the core
+ * resolver) against the coverage of the actually-loaded fonts, rendered
+ * in the winning font's own face, and carries its resolution as DOM
+ * attributes (`data-winner` / `data-via` / `data-kind`) — the grid never
+ * lies, however complex the rules. Adjusted cells (the effective winner
+ * differing from the no-rule default) carry the kit's corner dot,
+ * paired with the 已调整 legend.
  *
- * The ActionBar's segments act through the EXISTING rule-state
- * machinery (#18/#20): assigning a block or a group creates/updates
- * exact range rules through `mutateRules` (one undo entry per action),
- * and the batch variant applies to the multi-selection exactly like
- * the details strip's batch editor (one range rule per contiguous run,
- * per-codepoint rules otherwise). Selecting a cell opens the
- * single-codepoint precedence editor; typing a codepoint locates it;
- * drag-paint / Ctrl-drag-paint / shift-range build selections (issue
- * #20), with the two separate undo stacks.
+ * Interaction surfaces (prototype parity, restored):
+ *
+ * - **the char popup** — a plain click opens the character's popup AT
+ *   the cell: the 44px glyph in the winning font, `U+XXXX`, `来自 X`,
+ *   one-click 用英文字体/用中文字体 (the carried side hidden), 恢复默认
+ *   when an override exists, and the missing-glyph copy (两个字体均不
+ *   含该字形 / the Nerd Font PUA sentence);
+ * - **多选 mode** — the explicit multi-select mode: drag-paint and
+ *   Shift-range arm ONLY inside it; the toolbar's batch variant applies
+ *   one side to the whole selection and announces 批量调整完成;
+ * - **the 按编码指定 popup** — the range-specify contract verbatim.
+ *
+ * The ActionBar's segments act through the rule state: assigning a
+ * block or a group creates/updates exact range rules through
+ * `mutateRules` (one undo entry per action), the batch variant applies
+ * to the selection exactly like the popup (one range rule per
+ * contiguous run, per-codepoint rules otherwise), and typing a
+ * codepoint locates it.
  */
 
 /** Whether `rule` targets exactly this codepoint. */
@@ -73,43 +90,54 @@ function codepointRule(cp: number): EditorRule | undefined {
   return store.get().rules.find((rule) => targetsCodepoint(rule, cp));
 }
 
-/* ---------- the single-codepoint precedence editor (issue #18) ------- */
-
-/** The editor's working state; survives re-renders, resets on move. */
-let editorFor: number | null = null;
-let editorFonts: string[] = [];
-
-function openEditor(cp: number, picks: PickRefs): void {
-  if (editorFor === cp) return;
-  editorFor = cp;
-  const existing = codepointRule(cp);
-  editorFonts = existing ? [...existing.fonts] : [...picks.refs];
-}
-
-/** Patch the rule state: upsert the editor's list as a codepoint rule. */
-function applyCodepointRule(cp: number): void {
-  const rules = [...store.get().rules];
-  const index = rules.findIndex((rule) => targetsCodepoint(rule, cp));
-  if (index >= 0) {
-    rules[index] = { ...rules[index]!, fonts: [...editorFonts] };
-  } else {
-    rules.push(newRule({ kind: "codepoint", cp }, editorFonts));
+/** Upsert a single-font codepoint rule (the popup's side buttons). */
+function applyCodepointSide(cp: number, side: FontSide): void {
+  const picks = pickRefs();
+  const wanted = side === "base" ? "base" : "donor-0";
+  if (!picks.refs.includes(wanted)) return;
+  // Prototype semantics (setOv): pressing the side the character
+  // already carries WITHOUT its own override reverts the override —
+  // the deeper layers (defaults, ranges) show through again.
+  const withoutOwn = store
+    .get()
+    .rules.filter((rule) => !targetsCodepoint(rule, cp));
+  if (deeperWinner(withoutOwn, picks, cp) === wanted) {
+    mutateRules(withoutOwn);
+    return;
   }
-  mutateRules(rules);
+  upsertCodepointRule(cp, wanted);
 }
 
-/** Patch the rule state: drop the codepoint rule targeting `cp`. */
+/**
+ * The winner of `cp` when its OWN codepoint rule is stripped — the
+ * prototype's `layC` layer (block assignments and custom ranges
+ * included, the per-character override excluded). Null when nothing
+ * resolves it.
+ */
+function deeperWinner(
+  rulesWithoutOwn: readonly EditorRule[],
+  picks: PickRefs,
+  cp: number,
+): string | null {
+  if (picks.refs.length === 0) return null;
+  const coverages = new Map<string, Coverage>();
+  if (picks.base) coverages.set("base", arrayCoverage(picks.base.codepoints));
+  if (picks.donor) {
+    coverages.set("donor-0", arrayCoverage(picks.donor.codepoints));
+  }
+  const resolver = new EffectiveResolver(rulesWithoutOwn, coverages);
+  const entry = resolver.resolve(cp);
+  return entry ? entry.winner : null;
+}
+
+/** Drop the codepoint rule targeting `cp` (the popup's 恢复默认). */
 function removeCodepointRule(cp: number): void {
   mutateRules(
     store.get().rules.filter((rule) => !targetsCodepoint(rule, cp)),
   );
 }
 
-/* ---------------- the batch precedence editor (issue #20) ----------- */
-
-/** The batch editor's working state; resets when the selection changes. */
-let batchSignature = "";
-let batchFonts: string[] = [];
+/* ---------------- the batch apply (multi mode) ---------------------- */
 
 /** One maximal adjacent run of a sorted selection (gap-aware). */
 interface SelectionRun {
@@ -141,19 +169,19 @@ function selectionRuns(sorted: readonly number[]): SelectionRun[] {
 }
 
 /**
- * Batch apply: one action commits the chosen font list for the WHOLE
- * selection, aggregated per #18's rule-state shape:
+ * Batch apply: one action commits the chosen side for the WHOLE
+ * selection, aggregated per the rule-state shape:
  *
  * - a contiguous selection becomes ONE range rule;
  * - anything else becomes one codepoint rule per selected codepoint,
- *   declared in ascending order (the plan line in the editor states
- *   which, before the user commits).
+ *   declared in ascending order.
  *
  * Existing codepoint rules over the selection drop first — a stale
  * narrower rule would outrank the batch forever — and an existing range
  * rule with the exact same bounds is replaced rather than duplicated.
  * The new rules append last, so within-layer last-declared-wins makes
- * them effective immediately.
+ * them effective immediately. The gesture ends prototype-style: the
+ * selection clears and the live region announces 批量调整完成.
  */
 function applyBatchRule(fonts: string[]): void {
   const { selection } = store.get();
@@ -184,6 +212,8 @@ function applyBatchRule(fonts: string[]): void {
     }
   }
   mutateRules(rules);
+  beginSelectionGesture([], null);
+  liveNotice("批量调整完成");
 }
 
 /* -------------- block / group assignment (the segments) ------------- */
@@ -369,80 +399,203 @@ function assignBlocks(
   mutateRules(rules);
 }
 
-/* ---------------- shared font list ---------------------------- */
+/* ---------------- the char popup (at the cell) ---------------------- */
 
 /**
- * The ordered font list editor shared by the single-codepoint and batch
- * editors: one line per ref (checkbox + order controls). `working` is
- * mutated in place (the module-level editor state); `rebuild` re-renders
- * the owning editor.
+ * The character popup (`#charpop` ported): opens AT the clicked cell —
+ * the 44px glyph in the winning font, the `U+XXXX` code in accent
+ * mono, `来自 {字体名}`, one-click side buttons (the carried side
+ * hidden), and 恢复默认 when the character carries its own override.
+ * Missing glyphs read 两个字体均不含该字形 — or, in the Nerd Font
+ * private-use area, the prototype's PUA explanation sentence.
  */
-function buildOrderedFontList(
-  picks: PickRefs,
-  working: string[],
-  rolePrefix: string,
-  rebuild: () => void,
-): HTMLElement {
-  const list = document.createElement("div");
-  list.className = "rule-fonts";
-  const order = [
-    ...working,
-    ...picks.refs.filter((ref) => !working.includes(ref)),
-  ];
-  for (const ref of order) {
-    const checked = working.includes(ref);
-    const line = document.createElement("div");
-    line.className = "rule-font-line";
-    line.dataset.fontRef = ref;
-    const label = document.createElement("label");
-    const box = document.createElement("input");
-    box.type = "checkbox";
-    box.dataset.role = `${rolePrefix}-font-${ref}`;
-    box.checked = checked;
-    box.addEventListener("change", () => {
-      if (box.checked) {
-        working.push(ref);
+interface CharPopup {
+  openAt(cell: HTMLElement, cp: number): void;
+  close(): void;
+}
+
+function mountCharPopup(): CharPopup {
+  const popup = document.createElement("div");
+  popup.className = "kit-pop char-pop";
+  popup.dataset.charPopup = "";
+  popup.setAttribute("role", "dialog");
+  popup.setAttribute("aria-label", "字符详情");
+
+  const glyph = document.createElement("div");
+  glyph.className = "char-pop-glyph";
+  glyph.dataset.role = "char-glyph";
+
+  const code = document.createElement("div");
+  code.className = "char-pop-code kit-num";
+  code.dataset.role = "char-code";
+
+  const from = document.createElement("div");
+  from.className = "char-pop-from";
+  from.dataset.role = "char-from";
+
+  const btns = document.createElement("div");
+  btns.className = "char-pop-btns";
+  const baseBtn = document.createElement("button");
+  baseBtn.type = "button";
+  baseBtn.className = "kit-btn sm";
+  baseBtn.dataset.role = "char-base";
+  baseBtn.textContent = "用英文字体";
+  const donorBtn = document.createElement("button");
+  donorBtn.type = "button";
+  donorBtn.className = "kit-btn sm";
+  donorBtn.dataset.role = "char-donor";
+  donorBtn.textContent = "用中文字体";
+  btns.append(baseBtn, donorBtn);
+
+  const reset = document.createElement("button");
+  reset.type = "button";
+  reset.className = "char-pop-rest kit-btn sm gh";
+  reset.dataset.role = "char-reset";
+  reset.textContent = "恢复默认";
+
+  popup.append(glyph, code, from, btns, reset);
+  document.body.appendChild(popup);
+
+  let anchorCell: HTMLElement | null = null;
+  let openCp: number | null = null;
+
+  const close = (): void => {
+    if (openCp === null) return;
+    openCp = null;
+    anchorCell = null;
+    popup.classList.remove("open");
+  };
+
+  const renderAt = (cp: number): void => {
+    const ch = String.fromCodePoint(cp);
+    const picks = pickRefs();
+    const effective = picks.refs.length > 0;
+    const resolver = effective ? currentResolver(picks) : null;
+    const entry = resolver ? resolver.resolve(cp) : null;
+
+    glyph.textContent = ch;
+    code.textContent = formatCp(cp);
+
+    // Missing (or pre-pick) copy and side buttons.
+    const missingCopy =
+      cp >= 0xe000 && cp <= 0xf8ff
+        ? "这是一个 Nerd Font 图标字符，位于专用区编码。只有英文字体包含这类图标，合成时保留英文字体的图标。"
+        : "两个字体均不含该字形";
+    if (entry === null) {
+      glyph.style.fontFamily = "'Microsoft YaHei',serif";
+      glyph.style.color = "var(--ink3)";
+      if (effective) {
+        from.textContent = missingCopy;
       } else {
-        const at = working.indexOf(ref);
-        if (at >= 0) working.splice(at, 1);
+        from.textContent = "";
       }
-      rebuild();
-    });
-    label.appendChild(box);
-    label.appendChild(document.createTextNode(` ${refLabel(ref, picks)}`));
-    line.appendChild(label);
-    for (const [direction, delta] of [
-      ["up", -1],
-      ["down", 1],
-    ] as const) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "rule-font-move kit-btn sm gh";
-      button.dataset.role = `${rolePrefix}-font-${direction}-${ref}`;
-      button.textContent = delta < 0 ? "↑" : "↓";
-      button.disabled = !checked;
-      button.addEventListener("click", () => {
-        const from = working.indexOf(ref);
-        const to = from + delta;
-        if (from < 0 || to < 0 || to >= working.length) return;
-        working.splice(to, 0, working.splice(from, 1)[0]!);
-        rebuild();
-      });
-      line.appendChild(button);
+      baseBtn.style.display = "none";
+      donorBtn.style.display = "none";
+      reset.style.display = "none";
+      return;
     }
-    list.appendChild(line);
-  }
-  return list;
+    const winnerFont = refFont(entry.winner, picks);
+    glyph.style.fontFamily = winnerFont
+      ? `${cssFamily(winnerFont.cssFamily)}, sans-serif`
+      : "";
+    glyph.style.color = "";
+    from.textContent = `来自 ${winnerFont?.family ?? ""}`;
+    // The carried side hides; so does a side whose font is not picked
+    // (an unpickable button would be a lie). `winner` is the REF
+    // (`base` / `donor-0`), compared in that vocabulary.
+    baseBtn.style.display =
+      entry.winner === "base" || !picks.refs.includes("base") ? "none" : "";
+    donorBtn.style.display =
+      entry.winner === "donor-0" || !picks.refs.includes("donor-0")
+        ? "none"
+        : "";
+
+    // 恢复默认 shows only when the character carries its own override
+    // AND that override changes the outcome (prototype: S.ov[ch] &&
+    // S.ov[ch] !== layC(ch,b)).
+    const own = codepointRule(cp);
+    if (own === undefined) {
+      reset.style.display = "none";
+      return;
+    }
+    const ownRef = own.fonts[0] ?? null;
+    const deeper = deeperWinner(
+      store.get().rules.filter((rule) => !targetsCodepoint(rule, cp)),
+      picks,
+      cp,
+    );
+    reset.style.display =
+      ownRef !== null && ownRef !== deeper ? "" : "none";
+  };
+
+  const openAt = (cell: HTMLElement, cp: number): void => {
+    if (openCp !== null && openCp !== cp) close();
+    anchorCell = cell;
+    openCp = cp;
+    renderAt(cp);
+    popup.classList.add("open");
+    fitPopup(popup, cell.getBoundingClientRect());
+  };
+
+  baseBtn.addEventListener("click", () => {
+    if (openCp !== null) applyCodepointSide(openCp, "base");
+    close();
+  });
+  donorBtn.addEventListener("click", () => {
+    if (openCp !== null) applyCodepointSide(openCp, "donor");
+    close();
+  });
+  reset.addEventListener("click", () => {
+    if (openCp !== null) removeCodepointRule(openCp);
+    close();
+  });
+
+  popup.addEventListener("pointerdown", (e) => e.stopPropagation());
+  document.addEventListener("pointerdown", (e) => {
+    if (openCp === null) return;
+    const target = e.target as Node;
+    if (!target.isConnected) return;
+    // A click on any cell (re-opens at that cell) or inside the popup
+    // keeps it; everything else closes it.
+    if (popup.contains(target) || target instanceof Element && target.closest(".kit-cell")) {
+      return;
+    }
+    close();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && openCp !== null) close();
+  });
+  window.addEventListener("resize", () => {
+    if (openCp !== null && anchorCell !== null && anchorCell.isConnected) {
+      fitPopup(popup, anchorCell.getBoundingClientRect());
+    }
+  });
+
+  return { openAt, close };
+}
+
+/** Upsert the codepoint rule as the side's single-font override. */
+function upsertCodepointRule(cp: number, ref: string): void {
+  const rules = [...store.get().rules];
+  const existing = rules.findIndex((rule) => targetsCodepoint(rule, cp));
+  const rule = newRule({ kind: "codepoint", cp }, [ref]);
+  if (existing >= 0) rules.splice(existing, 1, rule);
+  else rules.push(rule);
+  mutateRules(rules);
 }
 
 /* ---------------- the 按编码指定 range popup ------------------------ */
 
 /**
- * The range-specify popup (按编码指定): the kit's .kit-pop chrome with
- * two codepoint inputs and the two side actions — one more entry to the
- * SAME range-rule machinery the rail and the segments use.
+ * The range-specify popup, the prototype's `#rangepop` contract
+ * verbatim: title 按编码指定, the hint 输入编码或范围，窄范围优先于整类。,
+ * the `U+0030 或 0` / `留空=单个` inputs (an empty end means a single
+ * codepoint), the side select, and the primary 添加 — invalid input
+ * paints the input border danger-red and adds nothing.
  */
-function mountRangePopup(anchor: HTMLElement): { open(): void } {
+function mountRangePopup(
+  anchor: HTMLElement,
+): { open(): void; toggle(): void; close(): void } {
   const popup = document.createElement("div");
   popup.className = "kit-pop range-pop";
   popup.dataset.rangePopup = "";
@@ -452,60 +605,42 @@ function mountRangePopup(anchor: HTMLElement): { open(): void } {
   title.textContent = "按编码指定";
   const hint = document.createElement("p");
   hint.className = "kit-sub";
-  hint.textContent = "把一段码位整体指定给一侧字体（创建一条区间规则）。";
+  hint.textContent = "输入编码或范围，窄范围优先于整类。";
+  const row = document.createElement("div");
+  row.className = "range-pop-row";
   const startInput = document.createElement("input");
   startInput.type = "search";
   startInput.spellcheck = false;
   startInput.dataset.role = "range-start";
-  startInput.placeholder = "起始（如 4E00）";
+  startInput.placeholder = "U+0030 或 0";
   startInput.setAttribute("aria-label", "起始码位");
   const endInput = document.createElement("input");
   endInput.type = "search";
   endInput.spellcheck = false;
   endInput.dataset.role = "range-end";
-  endInput.placeholder = "结束（如 9FFF）";
+  endInput.placeholder = "留空=单个";
   endInput.setAttribute("aria-label", "结束码位");
+  row.append(startInput, endInput);
+
   const actions = document.createElement("div");
-  actions.className = "range-pop-actions";
-  const error = document.createElement("div");
-  error.className = "range-pop-error";
-  error.dataset.role = "range-error";
-  error.hidden = true;
-  const apply = (side: FontSide): void => {
-    const ref = sideRef(side);
-    const start = parseCodepointInput(startInput.value);
-    const end = parseCodepointInput(endInput.value);
-    if (ref === null || start === null || end === null) {
-      error.hidden = false;
-      error.textContent = "请输入两个有效的码位（如 4E00 与 9FFF）。";
-      return;
-    }
-    mutateRules([
-      ...store.get().rules,
-      newRule(
-        {
-          kind: "range",
-          start: Math.min(start, end),
-          end: Math.max(start, end),
-        },
-        [ref],
-      ),
-    ]);
-    close();
-  };
-  for (const [side, label] of [
-    ["base", "用英文字体"],
-    ["donor", "用中文字体"],
-  ] as const) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "kit-btn sm";
-    button.dataset.role = `range-${side}`;
-    button.textContent = label;
-    button.addEventListener("click", () => apply(side));
-    actions.appendChild(button);
-  }
-  popup.append(title, hint, startInput, endInput, error, actions);
+  actions.className = "range-pop-row range-pop-actions";
+  const sideSelect: AppSelect = mountAppSelect({
+    label: "指定字体",
+    value: "base",
+    options: [
+      { value: "base", label: "用英文字体" },
+      { value: "donor", label: "用中文字体" },
+    ],
+  });
+  sideSelect.el.dataset.role = "range-side";
+  sideSelect.el.style.flex = "1";
+  const add = document.createElement("button");
+  add.type = "button";
+  add.className = "kit-btn sm pri";
+  add.dataset.role = "range-add";
+  add.textContent = "添加";
+  actions.append(sideSelect.el, add);
+  popup.append(title, hint, row, actions);
   document.body.appendChild(popup);
 
   let open = false;
@@ -515,24 +650,77 @@ function mountRangePopup(anchor: HTMLElement): { open(): void } {
   const close = (): void => {
     if (!open) return;
     open = false;
-    error.hidden = true;
+    startInput.style.borderColor = "";
+    endInput.style.borderColor = "";
     popup.classList.remove("open");
   };
-  anchor.addEventListener("click", () => {
-    open = !open;
-    if (open) {
-      popup.classList.add("open");
-      position();
-    } else {
+  const openUp = (): void => {
+    if (open) return;
+    open = true;
+    popup.classList.add("open");
+    position();
+    startInput.focus();
+  };
+  const toggle = (): void => {
+    if (open) close();
+    else openUp();
+  };
+  const markInvalid = (): void => {
+    startInput.style.borderColor = "var(--dgr)";
+    endInput.style.borderColor = "var(--dgr)";
+  };
+
+  add.addEventListener("click", () => {
+    const start = parseCodepointInput(startInput.value);
+    const endRaw = endInput.value.trim();
+    const end = endRaw === "" ? start : parseCodepointInput(endRaw);
+    const ref = sideRef(sideSelect.value === "base" ? "base" : "donor");
+    if (start === null || end === null || end < start || ref === null) {
+      markInvalid();
+      return;
+    }
+    mutateRules([
+      ...store.get().rules,
+      newRule({ kind: "range", start, end }, [ref]),
+    ]);
+    close();
+  });
+  for (const input of [startInput, endInput]) {
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        add.click();
+      }
+    });
+    input.addEventListener("input", () => {
+      input.style.borderColor = "";
+    });
+  }
+  // Escape with focus inside the popup (a search input may consume the
+  // document-level rung): close here, before anything else.
+  popup.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && open) {
+      e.stopPropagation();
       close();
     }
   });
+
+  // The popup's anchor element is only used for POSITIONING here; the
+  // caller owns the click wiring (the toolbar's 按编码指定 buttons are
+  // recreated on every action-bar render and reach toggle() through
+  // ActionBarProps.onRangeSpecify — one owner of the open state).
   popup.addEventListener("pointerdown", (e) => e.stopPropagation());
   document.addEventListener("pointerdown", (e) => {
     if (!open) return;
     const target = e.target as Node;
     if (!target.isConnected) return;
-    if (popup.contains(target) || anchor.contains(target)) return;
+    if (
+      popup.contains(target) ||
+      (target instanceof Element &&
+        (target.closest(".kit-cselw") || target.closest("[data-role='range-specify']")))
+    ) {
+      return;
+    }
     close();
   });
   document.addEventListener("keydown", (e) => {
@@ -541,13 +729,11 @@ function mountRangePopup(anchor: HTMLElement): { open(): void } {
   window.addEventListener("resize", () => {
     if (open) position();
   });
-  return { open: () => {
-    if (!open) {
-      open = true;
-      popup.classList.add("open");
-      position();
-    }
-  } };
+  return {
+    open: openUp,
+    toggle,
+    close,
+  };
 }
 
 /* ---------------------- chip data ----------------------------------- */
@@ -589,7 +775,8 @@ let activeGrid: CharGrid | null = null;
 
 /**
  * Locate a typed codepoint (hex form or a single character): jump to its
- * category page, select it, and scroll it into view.
+ * category page, set the details cursor on it, and scroll it into view.
+ * An unparseable query is a silent no-op (prototype parity).
  */
 export function locateQuery(raw: string): void {
   const text = raw.trim();
@@ -609,10 +796,7 @@ export function locateQuery(raw: string): void {
     const index = cp <= bmpEnd ? cp - 0x20 : cp - 0xe000 + (bmpEnd - 0x20 + 1);
     page = Math.floor(index / CELLS_PER_PAGE) + 1;
   }
-  store.set({ categoryId, page });
-  // Locating is a selection gesture too: the codepoint becomes the
-  // selection and the anchor, and the details cursor lands on it.
-  beginSelectionGesture([cp], cp, cp);
+  store.set({ categoryId, page, selectedCodepoint: cp });
   // Bring the cell into view (prototype parity: locate scrolls to it).
   window.setTimeout(() => {
     const cell = activeGrid?.cellAt(String.fromCodePoint(cp));
@@ -623,22 +807,30 @@ export function locateQuery(raw: string): void {
 /* ------------------------------ mount ------------------------------- */
 
 export function mountCharmap(root: HTMLElement): void {
+  // A previous stage mount (mode switches rebuild the stage) leaves its
+  // body-level popup nodes orphaned; this mount replaces them.
+  for (const stale of document.body.querySelectorAll(
+    "[data-char-popup], [data-range-popup]",
+  )) {
+    stale.remove();
+  }
   root.innerHTML = `
     <div class="charmap-categories" aria-label="字符分类"></div>
     <div class="charmap-main">
-      <div class="charmap-details" data-details></div>
       <div class="charmap-toolbar"></div>
       <div class="charmap-grid"></div>
     </div>
   `;
 
   const categories = root.querySelector<HTMLElement>(".charmap-categories")!;
-  const details = root.querySelector<HTMLElement>("[data-details]")!;
   const toolbar = root.querySelector<HTMLElement>(".charmap-toolbar")!;
   const gridHost = root.querySelector<HTMLElement>(".charmap-grid")!;
 
-  /* 编码 mode: the per-cell codepoint row (view state of this stage). */
+  /* View state of this stage: 编码 mode (the per-cell codepoint row)
+   * and the explicit 多选 mode (prototype parity: drag-paint and
+   * Shift-range arm ONLY inside it; a plain click opens the popup). */
   let showCodepoints = false;
+  let multiMode = false;
 
   const chips: CategoryChips = mountCategoryChips(categories, {
     groups: [],
@@ -653,37 +845,32 @@ export function mountCharmap(root: HTMLElement): void {
     showCodepoints: false,
     canUndo: false,
     onUndo: () => undoRules(),
-    onToggleMulti: () => beginSelectionGesture([], null),
-    onToggleCodepoints: () => {
-      showCodepoints = !showCodepoints;
-      render();
-    },
+    onToggleMulti: () => undefined,
+    onToggleCodepoints: () => undefined,
   });
-  const rangePopup = mountRangePopup(
-    toolbar // re-anchored on every action-bar render (see syncRangeAnchor)
-  );
+  const rangePopup = mountRangePopup(toolbar);
+  const charPopup = mountCharPopup();
   const grid: CharGrid = mountCharGrid(gridHost);
   activeGrid = grid;
 
-  /** The live 按编码指定 anchor inside the (rebuilt) action bar. */
-  const syncRangeAnchor = (): void => {
-    const anchor = toolbar.querySelector<HTMLButtonElement>(
-      "[data-role='range-specify']",
-    );
-    if (anchor && rangeAnchor !== anchor) {
-      rangeAnchor = anchor;
-      anchor.addEventListener("click", () => rangePopup.open());
-    }
+  /** Leave 多选 mode: the selection, its anchor, and its undo stack go. */
+  const toggleMultiMode = (): void => {
+    multiMode = !multiMode;
+    store.set({ selection: [], selectionAnchor: null });
+    clearSelectionUndo();
+    render();
   };
-  let rangeAnchor: HTMLButtonElement | null = null;
 
-  /* ---------------- multi-select gestures (issue #20) ---------------
-   * All cell interaction happens at pointer-down: a plain click must
-   * patch the store synchronously, and a synchronous patch re-renders
-   * the grid (replacing the cell node) BEFORE the compatibility click
-   * event lands — a click-time handler would never fire. Drag-paint and
-   * Ctrl-drag-paint (additive) start here; shift extends from the
-   * anchor instead of starting a paint. */
+  /* ---------------- multi-select gestures (issue #20) ----------------
+   * Painting arms ONLY in 多选 mode (prototype parity). In that mode a
+   * pointer-down toggles the cell into the selection (the drag paints
+   * in the toggled direction — additive when the cell was unselected,
+   * subtractive otherwise); shift extends from the anchor instead.
+   * Missing cells never join a selection. Outside the mode a plain
+   * pointer-down sets the cursor and opens the char popup AT the cell —
+   * a synchronous store patch re-renders the grid (replacing the cell
+   * node) before the compatibility click lands, so the popup opens at
+   * pointer-down time, not click time. */
   let painting = false;
 
   const cellCodepoint = (target: EventTarget | null): number | null => {
@@ -692,38 +879,54 @@ export function mountCharmap(root: HTMLElement): void {
     if (!cp) return null;
     return Number.parseInt(cp.slice(2), 16);
   };
+  const cellMissing = (target: EventTarget | null): boolean => {
+    if (!(target instanceof Element)) return false;
+    return target.closest(".kit-cell")?.classList.contains("miss") ?? false;
+  };
 
   grid.el.addEventListener("pointerdown", (event) => {
     if (event.button !== 0) return;
+    const cellEl = event.target instanceof Element
+      ? event.target.closest<HTMLElement>(".kit-cell")
+      : null;
     const cp = cellCodepoint(event.target);
-    if (cp === null) return;
-    // NOTE: no preventDefault here — canceling pointerdown makes the
-    // browser drop the held-button state and swallow the drag's pointer
-    // moves (observed in Chromium); user-select: none on the grid
-    // already keeps the drag from selecting text.
-    if (event.shiftKey) {
-      extendFromAnchor(cp);
+    if (cp === null || cellEl === null) return;
+    // NOTE: no preventDefault on the popup path — canceling pointerdown
+    // makes the browser drop the held-button state; in 多选 mode the
+    // prototype does preventDefault and we follow it there.
+    if (!multiMode) {
+      // Position the popup against the LIVE cell first — the store
+      // patch below re-renders the grid synchronously and would detach
+      // the node (its rect then reads as zero).
+      charPopup.openAt(cellEl, cp);
+      store.set({ selectedCodepoint: cp });
       return;
     }
-    if (event.ctrlKey || event.metaKey) {
-      // Additive paint: one gesture — one undo entry covers the run the
-      // drag is about to paint plus this cell.
-      const { selection, selectionAnchor } = store.get();
-      beginSelectionGesture(
-        [...new Set([...selection, cp])].sort((a, b) => a - b),
-        selectionAnchor,
-      );
+    if (cellMissing(event.target)) return;
+    event.preventDefault();
+    if (event.shiftKey) {
+      extendFromAnchor(cp);
       painting = true;
       return;
     }
-    painting = true;
-    beginSelectionGesture([cp], cp, cp);
+    const { selection } = store.get();
+    const had = selection.includes(cp);
+    const next = had
+      ? selection.filter((entry) => entry !== cp)
+      : [...selection, cp].sort((a, b) => a - b);
+    painting = !had;
+    beginSelectionGesture(next, cp);
   });
   grid.el.addEventListener("pointermove", (event) => {
-    if (!painting) return;
+    if (!painting || !multiMode) return;
     event.preventDefault();
     const cp = cellCodepoint(event.target);
-    if (cp !== null) extendSelection([cp]);
+    if (cp === null || cellMissing(event.target)) return;
+    const { selection } = store.get();
+    if (painting && !selection.includes(cp)) extendSelection([cp]);
+    if (!painting && selection.includes(cp)) {
+      store.set({ selection: selection.filter((entry) => entry !== cp) });
+    }
   });
   const stopPaint = (): void => {
     if (!painting) return;
@@ -748,25 +951,24 @@ export function mountCharmap(root: HTMLElement): void {
         : null;
     const cpIndex = codepointIndex(categoryId, cp);
     if (selectionAnchor === null || anchorIndex === null || cpIndex === null) {
-      beginSelectionGesture([cp], cp, cp);
+      beginSelectionGesture([cp], cp);
       return;
     }
     const lo = Math.min(anchorIndex, cpIndex);
     const hi = Math.max(anchorIndex, cpIndex);
     const range: number[] = [];
     for (let n = lo; n <= hi; n++) range.push(nthCodepoint(categoryId, n));
-    beginSelectionGesture(range, selectionAnchor, cp);
+    beginSelectionGesture(range, selectionAnchor);
   }
 
   /** Locate a typed codepoint (hex form or a single character):
-   *  jump to its category page and select it. */
+   *  jump to its category page and set the cursor. */
   const locate = locateQuery;
 
   const render = (): void => {
     const {
       categoryId,
       page,
-      selected,
       selectedCodepoint,
       selection,
       fonts,
@@ -780,24 +982,14 @@ export function mountCharmap(root: HTMLElement): void {
 
     renderChips(categoryId);
     renderToolbar(categoryId, safePage, last, selection);
-    renderDetails(
-      details,
-      selectedCodepoint,
-      selection,
-      fonts,
-      selected,
-      painting,
-    );
     renderGrid(
       categoryId,
       safePage,
-      selected.en,
-      selected.cjk,
       selectedCodepoint,
       selection,
+      fonts,
       missing,
     );
-    syncRangeAnchor();
   };
   store.subscribe(render);
   render();
@@ -886,11 +1078,11 @@ export function mountCharmap(root: HTMLElement): void {
     if (categoryId === MISSING_CATEGORY_ID) {
       actionBar.render({
         missingView: true,
-        multi: selection.length > 0,
+        multi: multiMode,
         showCodepoints,
         canUndo: canUndoRules(),
         onUndo: () => undoRules(),
-        onToggleMulti: () => beginSelectionGesture([], null),
+        onToggleMulti: toggleMultiMode,
         onToggleCodepoints: () => {
           showCodepoints = !showCodepoints;
           render();
@@ -916,15 +1108,14 @@ export function mountCharmap(root: HTMLElement): void {
         ? ALL_BLOCKS.find((b) => b.id === categoryId)
         : undefined;
     const picks = pickRefs();
-    const effective = picks.base !== null && picks.donor !== null;
 
-    if (selection.length >= 2 && !painting) {
+    if (multiMode && selection.length > 0 && !painting) {
       actionBar.render({
-        multi: true,
+        multi: multiMode,
         showCodepoints,
         canUndo: canUndoRules(),
         onUndo: () => undoRules(),
-        onToggleMulti: () => beginSelectionGesture([], null),
+        onToggleMulti: toggleMultiMode,
         onToggleCodepoints: () => {
           showCodepoints = !showCodepoints;
           render();
@@ -948,8 +1139,11 @@ export function mountCharmap(root: HTMLElement): void {
     }
 
     actionBar.render({
+      // The segments render whether or not the pair is complete — the
+      // prototype always shows them, the defaults (or nothing) driving
+      // the pressed state; acting without the side's pick is a no-op.
       group:
-        group !== undefined && effective
+        group !== undefined
           ? {
               label: group.name,
               allBase: effectiveGroupSide(group.blocks, picks) === "base",
@@ -959,18 +1153,12 @@ export function mountCharmap(root: HTMLElement): void {
           : undefined,
       block:
         block !== undefined
-          ? effective
-            ? {
-                label: block.name,
-                aggregate: false,
-                value: effectiveBlockSide(block, picks),
-                onAssign: (side) => assignBlocks([block], side),
-              }
-            : {
-                label: block.name,
-                aggregate: true,
-                count: block.end - block.start + 1,
-              }
+          ? {
+              label: block.name,
+              aggregate: false,
+              value: effectiveBlockSide(block, picks),
+              onAssign: (side) => assignBlocks([block], side),
+            }
           : categoryId === ALL_CATEGORY_ID
             ? { label: "全部", aggregate: true, count: categorySize(categoryId) }
             : {
@@ -978,11 +1166,11 @@ export function mountCharmap(root: HTMLElement): void {
                 aggregate: true,
                 count: categorySize(categoryId),
               },
-      multi: selection.length > 0,
+      multi: multiMode,
       showCodepoints,
       canUndo: canUndoRules(),
       onUndo: () => undoRules(),
-      onToggleMulti: () => beginSelectionGesture([], null),
+      onToggleMulti: toggleMultiMode,
       onToggleCodepoints: () => {
         showCodepoints = !showCodepoints;
         render();
@@ -993,7 +1181,7 @@ export function mountCharmap(root: HTMLElement): void {
       } },
       adjustedLegend: true,
       onLocate: locate,
-      onRangeSpecify: () => rangePopup.open(),
+      onRangeSpecify: () => rangePopup.toggle(),
     });
   }
   /* ---------------- grid ---------------- */
@@ -1002,10 +1190,9 @@ export function mountCharmap(root: HTMLElement): void {
   function renderGrid(
     categoryId: string,
     page: number,
-    enFamily: string | null,
-    cjkFamily: string | null,
     selectedCodepoint: number | null,
     selection: readonly number[],
+    fonts: ReturnType<typeof store.get>["fonts"],
     missing: readonly number[] = missingCodepoints(),
   ): void {
     const size =
@@ -1022,6 +1209,12 @@ export function mountCharmap(root: HTMLElement): void {
     // The plain preview stack for cells outside the effective preview
     // (the picked pair first, then the system tail) — the same stack the
     // pre-repair grid set as --font-preview.
+    const enFamily = fonts.find(
+      (f) => f.cssFamily === store.get().selected.en,
+    )?.cssFamily ?? null;
+    const cjkFamily = fonts.find(
+      (f) => f.cssFamily === store.get().selected.cjk,
+    )?.cssFamily ?? null;
     const plainStack = [
       enFamily ? cssFamily(enFamily) : "",
       cjkFamily ? cssFamily(cjkFamily) : "",
@@ -1084,227 +1277,8 @@ export function mountCharmap(root: HTMLElement): void {
 
 }
 
-/**
- * Click-reachable cell information (ADR-0004: no hover-only info): the
- * codepoint, the character, and — with a full pick pair — the effective
- * result (winning font, via, kind). Below the facts sits the
- * single-codepoint precedence editor — or, when a multi-selection is
- * active, the batch precedence editor for the whole selection.
- *
- * The dock COLLAPSES to zero height while nothing is selected (prototype
- * density: its unselected frames have no strip between the chip bar and
- * the toolbar). It expands the moment a cursor or selection exists — but
- * never mid-drag: `painting` holds the collapsed/open state steady while
- * the pointer is held, the same fixed-geometry discipline issue #20
- * forced on this strip (an expansion at drag start would shift the grid
- * under the pointer and paint the wrong cells). Paint end is the moment
- * the strip may re-open.
- */
-function renderDetails(
-  details: HTMLElement,
-  codepoint: number | null,
-  selection: readonly number[],
-  fonts: ReturnType<typeof store.get>["fonts"],
-  selected: { en: string | null; cjk: string | null },
-  painting: boolean,
-): void {
-  const open = !painting && (codepoint !== null || selection.length >= 2);
-  details.dataset.open = String(open);
-  details.replaceChildren();
-  if (!open) return;
-  if (selection.length >= 2) {
-    details.appendChild(buildBatchEditor(selection));
-    return;
-  }
-  const head = document.createElement("div");
-  const ch = String.fromCodePoint(codepoint);
-  const picks = pickRefs();
-  const effective = picks.base !== null && picks.donor !== null;
-  const resolver = effective ? currentResolver(picks) : null;
-  const entry = resolver ? resolver.resolve(codepoint) : null;
-  if (entry) {
-    const via =
-      entry.via === "default" ? "默认" : `规则 ${entry.via}`;
-    const kind =
-      entry.kind === "base" ? "保留" : entry.kind === "fill" ? "填充" : "覆盖";
-    head.textContent =
-      `码位 ${formatCp(codepoint)} · 字符 “${ch}” · ` +
-      `生效：${refLabel(entry.winner, picks)} · 来源：${via} · 方式：${kind}`;
-  } else if (effective) {
-    head.textContent = `码位 ${formatCp(codepoint)} · 字符 “${ch}” · 未被所选字体覆盖`;
-  } else {
-    const covers = (key: string | null, label: string): string => {
-      const font = fonts.find((f) => f.cssFamily === key);
-      if (!font) return "";
-      return coversCodepoint(font, codepoint) ? ` ${label} ${font.family}` : "";
-    };
-    const hits =
-      covers(selected.en, "英文字体") + covers(selected.cjk, "中文字体");
-    head.textContent =
-      `码位 ${formatCp(codepoint)} · 字符 “${ch}” · ` +
-      (hits.trim() ? `覆盖：${hits.trim()}` : "未被所选字体覆盖");
-  }
-  details.appendChild(head);
-
-  if (effective) {
-    openEditor(codepoint, picks);
-    details.appendChild(
-      buildCpRuleEditor(codepoint, picks),
-    );
-  } else {
-    editorFor = null;
-  }
-}
-
-/**
- * The precedence editor of the selected codepoint: one row per font ref
- * (checkbox + order controls) plus apply/remove. Edits a working list;
- * 应用 commits it as (or onto) the codepoint's rule — the grid updates
- * in place, never by reload.
- */
-function buildCpRuleEditor(
-  codepoint: number,
-  picks: PickRefs,
-): HTMLElement {
-  const editor = document.createElement("div");
-  editor.className = "cp-rule-editor";
-  editor.dataset.role = "cp-rule-editor";
-
-  const title = document.createElement("div");
-  title.className = "cp-rule-title";
-  title.textContent = "该码位的优先级（列表顺序，首个持有者生效）";
-  editor.appendChild(title);
-
-  editor.appendChild(
-    buildOrderedFontList(picks, editorFonts, "cp", renderCpLines),
-  );
-
-  const actions = document.createElement("div");
-  actions.className = "cp-rule-actions";
-  const apply = document.createElement("button");
-  apply.type = "button";
-  apply.className = "kit-btn sm";
-  apply.dataset.role = "cp-rule-apply";
-  apply.textContent = existingCpRule(codepoint) ? "应用修改" : "设为规则";
-  apply.addEventListener("click", () => applyCodepointRule(codepoint));
-  actions.appendChild(apply);
-  const remove = document.createElement("button");
-  remove.type = "button";
-  remove.className = "kit-btn sm gh";
-  remove.dataset.role = "cp-rule-remove";
-  remove.textContent = "移除规则";
-  remove.disabled = existingCpRule(codepoint) === undefined;
-  remove.addEventListener("click", () => removeCodepointRule(codepoint));
-  actions.appendChild(remove);
-  editor.appendChild(actions);
-
-  /** Rebuild the editor in place (the working list changed). */
-  function renderCpLines(): void {
-    const fresh = buildCpRuleEditor(codepoint, picks);
-    editor.replaceWith(fresh);
-  }
-  return editor;
-}
-
-/** The rule whose target is exactly this codepoint, when one exists. */
-function existingCpRule(codepoint: number): EditorRule | undefined {
-  return store.get().rules.find((rule) => targetsCodepoint(rule, codepoint));
-}
-
-/**
- * The batch precedence editor of the multi-selection: the selection
- * summary, the plan (what one 批量应用 will create — stated in plain
- * text, never hover-only), the ordered font list, and the selection's
- * own controls (clear, undo).
- */
-function buildBatchEditor(selection: readonly number[]): HTMLElement {
-  const picks = pickRefs();
-  const sorted = [...selection].sort((a, b) => a - b);
-  const signature = sorted.join(",");
-  if (signature !== batchSignature) {
-    batchSignature = signature;
-    batchFonts = [...picks.refs];
-  }
-  const runs = selectionRuns(sorted);
-  const contiguous = runs.length === 1;
-  const lo = sorted[0]!;
-  const hi = sorted[sorted.length - 1]!;
-
-  const editor = document.createElement("div");
-  editor.className = "batch-editor";
-  editor.dataset.role = "batch-editor";
-
-  const summary = document.createElement("div");
-  summary.className = "batch-summary";
-  summary.textContent = contiguous
-    ? `已选 ${sorted.length} 码位 · 连续区间 ${formatCp(lo)}–${formatCp(hi)}`
-    : `已选 ${sorted.length} 码位 · 不连续（${runs.length} 段）`;
-  editor.appendChild(summary);
-
-  const plan = document.createElement("div");
-  plan.className = "batch-plan";
-  plan.dataset.role = "batch-plan";
-  plan.textContent =
-    contiguous && sorted.length > 1
-      ? `将创建 1 条区间规则（0x${lo.toString(16).toUpperCase()}-0x${hi.toString(16).toUpperCase()}）`
-      : `将创建 ${sorted.length} 条码位规则`;
-  editor.appendChild(plan);
-
-  const actions = document.createElement("div");
-  actions.className = "cp-rule-actions";
-  if (picks.refs.length > 0) {
-    const apply = document.createElement("button");
-    apply.type = "button";
-    apply.className = "kit-btn sm";
-    apply.dataset.role = "batch-apply";
-    apply.textContent = "批量应用";
-    apply.addEventListener("click", () => applyBatchRule(batchFonts));
-    actions.appendChild(apply);
-    editor.appendChild(
-      buildOrderedFontList(picks, batchFonts, "batch", renderBatch),
-    );
-  }
-  const clear = document.createElement("button");
-  clear.type = "button";
-  clear.className = "kit-btn sm gh";
-  clear.dataset.role = "selection-clear";
-  clear.textContent = "清除选择";
-  clear.addEventListener("click", () =>
-    beginSelectionGesture([], null),
-  );
-  actions.appendChild(clear);
-  const undo = document.createElement("button");
-  undo.type = "button";
-  undo.className = "kit-btn sm";
-  undo.dataset.role = "selection-undo";
-  undo.textContent = "撤销选择";
-  undo.disabled = !canUndoSelection();
-  undo.addEventListener("click", () => undoSelection());
-  actions.appendChild(undo);
-  editor.appendChild(actions);
-
-  /** Rebuild in place (the working font list changed). */
-  function renderBatch(): void {
-    editor.replaceWith(buildBatchEditor(selection));
-  }
-  return editor;
-}
-
-function coversCodepoint(font: { codepoints: number[] }, cp: number): boolean {
-  const arr = font.codepoints;
-  let lo = 0;
-  let hi = arr.length - 1;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    if (arr[mid] === cp) return true;
-    if (arr[mid] < cp) lo = mid + 1;
-    else hi = mid - 1;
-  }
-  return false;
-}
-
 export function formatCp(cp: number): string {
   return "U+" + cp.toString(16).toUpperCase().padStart(4, "0");
 }
 
-export { pageCountFor, categoryName, categoryIntervals };
+export { pageCountFor, categoryName };

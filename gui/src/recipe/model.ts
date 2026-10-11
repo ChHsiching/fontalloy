@@ -64,12 +64,18 @@ export type OutputFormat = "ttf" | "ttc" | "woff2";
 
 /** Normalization switches (ADR-0003 / issue #8 recipe schema). */
 export interface NormalizationDraft {
-  /** `grid` (the terminal 2:1 default) or `optical`. */
+  /** `grid` (the terminal-grid default) or `optical`. */
   mode: "grid" | "optical";
   /** Han ink to cap-height ratio; only meaningful in optical mode. */
   opticalRatio: number | null;
   /** Fullwidth quotes/dashes (CJK convention) or halfwidth (UAX #11). */
   quoteDashWidth: "halfwidth" | "fullwidth";
+  /**
+   * The grid school's CJK advance as a multiple of the Latin advance
+   * (the prototype's 两倍/1.8 倍/1.5 倍 English-width setting; 2 is the
+   * UAX #11 two-cell default the writers omit).
+   */
+  widthFactor: number;
 }
 
 /** One weight/style matrix slot (issue #9 recipe schema). */
@@ -100,6 +106,7 @@ export interface RecipeDraft {
 
 /** The core's defaults — the writer omits an all-defaults block. */
 export const DEFAULT_OPTICAL_RATIO = 1.23;
+export const DEFAULT_WIDTH_FACTOR = 2;
 
 /** The recipe font-reference string: `path` or the compact `path#face`. */
 export function fontRef(slot: FontSlot): string {
@@ -121,6 +128,7 @@ export function defaultDraft(): RecipeDraft {
       mode: "grid",
       opticalRatio: DEFAULT_OPTICAL_RATIO,
       quoteDashWidth: "halfwidth",
+      widthFactor: DEFAULT_WIDTH_FACTOR,
     },
     weights: [],
     // The fixed brand default (spec: never derived from source names).

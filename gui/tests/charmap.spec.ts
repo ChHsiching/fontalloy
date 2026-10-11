@@ -87,8 +87,10 @@ test.describe("character map", () => {
       "U+4E00",
     );
 
-    // The stats bar follows the category in plain text (its scope).
-    await expect(page.locator("[data-stat='total']")).toHaveText("20,992");
+    // The stats bar reports the WHOLE MERGE (prototype parity): its
+    // counters never follow the browsing category — without picks the
+    // universe is empty in every view.
+    await expect(page.locator("[data-stat='total']")).toHaveText("0");
 
     // The 全部 chip is one click away and resets the page.
     await pointerClick(

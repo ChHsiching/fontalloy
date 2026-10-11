@@ -12,7 +12,12 @@
  * builder state (`web/tests/fixtures/sample-recipe.json`).
  */
 
-import { DEFAULT_OPTICAL_RATIO, fontRef, type RecipeDraft } from "./model";
+import {
+  DEFAULT_OPTICAL_RATIO,
+  DEFAULT_WIDTH_FACTOR,
+  fontRef,
+  type RecipeDraft,
+} from "./model";
 import { normalizeFamilyName } from "./validate";
 
 /** Uppercase `0x`-prefixed hex (the interval string syntax). */
@@ -60,6 +65,9 @@ export function recipeJson(draft: RecipeDraft): Record<string, unknown> {
   }
   if (draft.normalization.quoteDashWidth !== "halfwidth") {
     normalization.quote_dash_width = draft.normalization.quoteDashWidth;
+  }
+  if (draft.normalization.widthFactor !== DEFAULT_WIDTH_FACTOR) {
+    normalization.width_factor = draft.normalization.widthFactor;
   }
   if (Object.keys(normalization).length > 0) {
     out.normalization = normalization;

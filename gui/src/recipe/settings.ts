@@ -6,8 +6,10 @@
  * - baseline alignment → `normalization.mode` (auto/grid are the grid
  *   default, optical is the optical school; the shared baseline and
  *   em box are ADR-0003 invariants, not knobs);
- * - CJK width → `normalization.quote_dash_width` (the advance itself
- *   is fixed 2:1 by UAX #11; the quotes/dashes policy is the knob);
+ * - CJK width → `normalization.width_factor` (the prototype's 两倍 /
+ *   1.8 倍 / 1.5 倍 English-width setting — a real pipeline knob; the
+ *   halfwidth/fullwidth quotes-dashes convention stays a recipe-level
+ *   default the GUI does not expose);
  * - weight merge mode → the `weights` selection (ADR-0006: output
  *   slots can only be the base file's faces):
  *     nearest → no selection (the default: every base face, donors
@@ -79,8 +81,8 @@ export function applySettingsToDraft(
   draft.normalization.mode =
     settings.baseline === "optical" ? "optical" : "grid";
 
-  // CJK width: the fullwidth quotes/dashes convention.
-  draft.normalization.quoteDashWidth = settings.cjkWidth;
+  // CJK width: the grid school's advance factor (2 / 1.8 / 1.5).
+  draft.normalization.widthFactor = settings.cjkWidth;
 
   // Weight merge mode: the weights selection (see the module docstring).
   if (settings.weightMode === "base" && baseFaces.length > 0) {

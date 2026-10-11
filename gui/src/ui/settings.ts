@@ -49,11 +49,19 @@ export function mountSettings(root: HTMLElement): void {
 
     const select = mountAppSelect({
       label: topic.name,
-      value: store.get().settings[key],
+      // The cjkWidth topic's values are the numeric width factor's
+      // string form (2 / 1.8 / 1.5); the store keeps the number.
+      value:
+        key === "cjkWidth"
+          ? String(store.get().settings[key])
+          : store.get().settings[key],
       options: topic.options,
       onChange: (value) => {
         store.set({
-          settings: { ...store.get().settings, [key]: value },
+          settings: {
+            ...store.get().settings,
+            [key]: key === "cjkWidth" ? Number(value) : value,
+          },
         });
       },
     });
@@ -67,7 +75,10 @@ export function mountSettings(root: HTMLElement): void {
   const render = (): void => {
     const { settings } = store.get();
     for (const [key, select] of Object.entries(selects)) {
-      if (select) select.value = settings[key as keyof SynthesisSettings];
+      if (!select) continue;
+      const value = settings[key as keyof SynthesisSettings];
+      select.value =
+        key === "cjkWidth" ? String(value) : (value as string);
     }
   };
   store.subscribe(render);
