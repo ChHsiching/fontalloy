@@ -44,16 +44,16 @@ Inventory numbers cite the 62-item prototype inventory in
 
 | Module | Prototype origin |
 | --- | --- |
-| `topBar.ts` | Top bar (inv. 1–7): brand mark (round 4: the hand-drawn A×永 SVG mark, teal accent, replacing the solid placeholder), font-pair tags, GitHub ghost link (verbatim repo + aria), theme toggle (`切换明暗`), font-name input (`ChHsich`), `合成字体` shimmer button. |
+| `topBar.ts` | Top bar (inv. 1–7): brand mark (round 4: the hand-drawn A×永 SVG mark, teal accent, replacing the solid placeholder), font-pair tags, GitHub ghost link (verbatim repo + aria; round 5: `onNavigate` lets the Tauri shell route the click to the system browser), theme toggle (`切换明暗`; round 5: the 3-state 自动/浅色/深色 cycle with the effective icon + 自动 badge), font-name input (`ChHsich`), `合成字体` shimmer button. |
 | `metaLine.ts` | The picker MetaLine (inv. 12–13): `X.Xk` stars in accent, license without `-1.1`, trait tag. |
 | `pickerPopup.ts` | The 英文字体/中文字体 card + popup (inv. 11–17): round 4 presents the popup in the SAME anchor-fused dropdown-list form as AppSelect — a persistent CHILD of the card (top:100%, left/right −1px, no top border, class-driven display transitions with allow-discrete + @starting-style; no portal, no deferred removal). Self-rendering rows, `搜索字体` 120 ms debounce, footer `加载本地字体文件` outside the scroll, check on selected. |
 | `helpPopover.ts` | The circular `?` buttons + popovers (inv. 28–30 chrome): widths 380/340, `.kit-wtab` worked-table chrome verbatim. |
 | `settingsTopics.ts` | The three 合成设置 topics (inv. 25–27) — labels, option lists, popover copy — plus `mountSettingRow` (the `.set` row: label + `?` + AppSelect, extracted this pass from duplicated app/demo glue). See the correction note below. |
 | `categoryChips.ts` | The two-level chip bar (inv. 31–33) — see the taxonomy deviation below. |
 | `actionBar.ts` | The tool row (inv. 34–43): `所有{组}字符` group segment, block segment, `{名} · {n} 字符` note, `缺失字符无法指定来源`, `多选`/`编码`/`撤销`, pager `‹ 第 n/m 页 ›`, `已调整` legend, `按编码指定`, the batch variant (`已选 {n} 个`, hint, 取消/撤销), `undoAllButton` (`全部恢复默认`, inv. 23), `segmentedControl`. |
-| `grid.ts` | The 40 px cell vocabulary (inv. 44–46): hover neutral, `.ov` dot, `.sel` ring, dashed-danger missing (codepoint always shown), `.cur` cursor ring, codepoint row, 1024/page. |
-| `statusBar.ts` | The status counters (inv. 58): 字符/英文/中文/已调整/缺失/覆盖 %, tabular numerals, change pop. |
-| `sceneCard.ts` | Scene cards + fullscreen (inv. 50, 53, 57): captions 终端/代码编辑器/文档, theme selects, `全屏查看`, `上一项/下一项/关闭`. |
+| `grid.ts` | The 40 px cell vocabulary (inv. 44–46): hover neutral, `.ov` dot, `.sel` ring, dashed-danger missing (codepoint always shown), `.cur` cursor ring, codepoint row, 1024/page; round 5 reports the live COLUMN count (`onColumns`) so the consumer pages in whole rows. |
+| `statusBar.ts` | The status counters (inv. 58): 字符/英文/中文/已调整/缺失/覆盖 %, tabular numerals, change pop; round 5 adds the 覆盖 `?` anchor (the counting-scope popover mounts beside the label). |
+| `sceneCard.ts` | Scene cards + fullscreen (inv. 50, 53, 57): captions 终端/代码编辑器/文档, theme selects, `全屏查看`, `上一项/下一项/关闭`; round 5: the fullscreen bar carries the theme select and `render()` swaps the content in place (no close/reopen choreography). |
 | `sceneContent.ts` | The sample content (inv. 54–56): terminal/code/document listings verbatim, per-char effective font, code tokenizer. |
 | `charPopup.ts` | `#charpop` (inv. 48, P0-2): opens AT the clicked cell, 44 px glyph in the winning font, `U+XXXX` in accent mono, `来自 X`, one-click `用英文字体`/`用中文字体` (carried side hidden), underlined `恢复默认`, missing copy incl. the Nerd Font PUA sentence. Extracted from `ui/charmap.ts` (this pass). |
 | `rangePopup.ts` | `#rangepop` (inv. 49, P1-2): title `按编码指定`, hint `输入编码或范围，窄范围优先于整类。`, `U+0030 或 0` / `留空=单个` inputs (empty end = single codepoint), side select, primary `添加`, invalid → danger border. Extracted from `ui/charmap.ts` (this pass). |
@@ -77,28 +77,54 @@ App-level PRODUCT-EXTENSION surfaces (NOT kit — they live in `gui/src/ui` /
 `gui/src/catalog` with chrome in `app.css`, and must stay marked): the build
 panel (`ui/buildpanel.ts`), the no-service CLI panel (`ui/noservice.ts`),
 the first-run catalog screen (`catalog/screen.ts`), the synthesize notice strip
-(`ui/topbar.ts`), the language-preset picker popup + `添加语言预设…` entry
-(`ui/presetpicker.ts`, `ui/rulelist.ts`), and the custom window controls
+(`ui/topbar.ts`), the live GitHub stars fetch (`catalog/stars.ts`, round 5:
+once per launch from the manifest's pinned repos, cached to storage, curated
+values as the offline seed), and the custom window controls
 (`ui/wincontrols.ts`, round 4: minimize/maximize/close + drag region for the
-undecorated Tauri window — never mounted in the web target). Layout glue
+undecorated Tauri window — never mounted in the web target). The
+language-preset picker popup left the extension group in round 5 (owner
+ruling: the 文字范围 rail surfaces only the four prototype chips; the
+341-language fc-lang presets remain recipe/core territory). Layout glue
 (workspace split, rail sections, charmap layout) is neither component chrome
 nor extension — it is assembly, and it stays in `app.css`.
 
-## Table-content policy — the ONE retained correction
+## Round-5 owner rulings that deviate from the prototype's chrome
 
-Help-popover tables carry the prototype's CHROME verbatim (`.kit-wtab`).
-Exactly one content correction is retained, each affected table marked with a
-`CONTENT CORRECTED` comment in `settingsTopics.ts`:
+Recorded here so the invariant rule stays auditable (each is an owner
+instruction from the hands-on review, not a silent drift):
 
-- **weight tables (ADR-0006)**: output weight slots come only from the base
-  font's faces — `仅保留中文字体提供的字重 → 常规（仅保留两种字体共有的档位）`;
-  the prototype's `中等` output row is dropped, the nearest-match paragraph
-  follows. The superseded draft rows stay in the prototype until the owner
-  back-ports the correction there.
+- **Picker footer alignment** — `加载本地字体文件` is LEFT-aligned with the
+  rows (the prototype centers it); the owner ruled the list reads as one
+  column that way.
+- **Theme toggle** — a THREE-STATE cycle 自动 → 浅色 → 深色 with the
+  effective-theme icon (sun/moon), a tiny 自动 badge, and persistence
+  (the prototype has a two-state sun toggle).
+- **Scene fullscreen** — bounded BELOW the top bar (the custom window
+  controls stay clickable), zoomed type at 16/14px (the prototype's 19px
+  reads as a wall of text), the scene theme select available in the
+  fullscreen bar, and prev/next swap content in place.
+- **Picker catalogs per slot** — the EN slot lists the Nerd Fonts coding
+  families, the CJK slot the CJK families (the prototype's BA/DA wiring;
+  `data/curated-meta.json` `slots.cjk` names the CJK families). Local
+  files stay available in both.
+- **Grid page fill** — pages hold a whole number of rows (a multiple of
+  the live column count, capped at 1024) so no non-final page ends on a
+  partial row. The browsable universe is the VISIBLE codepoints only
+  (`unicode/visible.ts`, generated): control/format/separator/unassigned
+  scalars never render as blank cells.
 
-Everything else is verbatim — including the cjk-width options `1.8 倍英文宽`
-/ `1.5 倍英文宽` (real pipeline behavior, `normalization.width_factor`).
-The baseline/cjk-width copy is the prototype's own.
+## Table-content policy — help content is the prototype's text
+
+Help-popover tables and prose carry the prototype's content VERBATIM
+(round 5, owner ruling: "help content is the prototype's text, no
+engineering notes in user-facing popovers"). The round-3/4 ADR-0006
+correction of the weight tables was REVERTED to the prototype's exact
+rows (including the 中等 output row); the engineering rationale lives
+in `docs/adr/0006-*` and the pipeline, never in a user-facing popover.
+The only sanctioned additions beyond the prototype's help texts are
+content for surfaces the prototype never had — e.g. the 覆盖 scope
+popover on the status bar (`statusBar.ts` + `ui/statsbar.ts`), which
+explains exactly what that number counts.
 
 ## The owner-endorsed taxonomy deviation
 
