@@ -224,6 +224,7 @@ export function mountActionBar(
         el.appendChild(labelSpan(`所有${props.group.label}字符`));
         el.appendChild(
           segmentedControl({
+            className: "kit-assign",
             options: [
               { value: "base", label: "全部用英文字体" },
               { value: "donor", label: "全部用中文字体" },
@@ -252,6 +253,7 @@ export function mountActionBar(
           el.appendChild(labelSpan(props.block.label));
           el.appendChild(
             segmentedControl({
+              className: "kit-assign",
               options: [
                 { value: "base", label: "用英文字体" },
                 { value: "donor", label: "用中文字体" },

@@ -84,6 +84,22 @@ test.describe("action bar rule wiring", () => {
     // base font keeps every covered codepoint of the block).
     await expect(blockButton("用英文字体")).toHaveAttribute("aria-pressed", "true");
     await expect(blockButton("用中文字体")).toHaveAttribute("aria-pressed", "false");
+    // The pressed block chip carries the SAME carried-side treatment as
+    // the group chips: bold + the accent token.
+    const blockCarried = await blockButton("用英文字体").evaluate((el) => ({
+      color: getComputedStyle(el).color,
+      weight: getComputedStyle(el).fontWeight,
+    }));
+    const blockAccent = await page.evaluate(() => {
+      const probe = document.createElement("span");
+      probe.style.color = "var(--ac)";
+      document.body.appendChild(probe);
+      const color = getComputedStyle(probe).color;
+      probe.remove();
+      return color;
+    });
+    expect(blockCarried.color).toBe(blockAccent);
+    expect(blockCarried.weight).toBe("600");
 
     // Assign the whole block to the donor: one exact range rule.
     await pointerClick(page, blockButton("用中文字体"));
@@ -158,6 +174,32 @@ test.describe("action bar rule wiring", () => {
     await expect(groupRow).toBeVisible();
     const groupButton = (label: string) =>
       groupRow.locator(".kit-mseg button", { hasText: new RegExp(`^${label}$`) });
+
+    // The DEFAULT side renders pressed (the donor alone covers the CJK
+    // blocks) — with the carried-side treatment: bold + accent, the
+    // block chips' own pressed look (the boot/workspace-frame parity).
+    await expect(groupButton("全部用中文字体")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await expect(groupButton("全部用英文字体")).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    const accent = await page.evaluate(() => {
+      const probe = document.createElement("span");
+      probe.style.color = "var(--ac)";
+      document.body.appendChild(probe);
+      const color = getComputedStyle(probe).color;
+      probe.remove();
+      return color;
+    });
+    const carried = await groupButton("全部用中文字体").evaluate((el) => ({
+      color: getComputedStyle(el).color,
+      weight: getComputedStyle(el).fontWeight,
+    }));
+    expect(carried.color).toBe(accent);
+    expect(carried.weight).toBe("600");
 
     await pointerClick(page, groupButton("全部用英文字体"));
     // One exact range rule per block of the group, one mutateRules call.

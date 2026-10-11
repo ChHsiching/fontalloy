@@ -217,6 +217,17 @@
   box-shadow: var(--sh1);
 }
 
+/*
+ * Assignment segments (the 用英文字体/用中文字体 pairs of the toolrow):
+ * the pressed side carries the carried-side treatment — bold (the tray's
+ * own pressed rule above) plus the accent color, so the group and block
+ * chips read identically in every frame where the side is uniform by
+ * default or by rule. The mode bar's neutral pressed pill is untouched.
+ */
+.kit-mseg.kit-assign button[aria-pressed="true"] {
+  color: var(--ac);
+}
+
 .kit-mseg button:not([aria-pressed="true"]):hover {
   color: var(--ink);
 }

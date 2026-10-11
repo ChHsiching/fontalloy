@@ -308,9 +308,14 @@ function effectiveBlockSide(
 }
 
 /**
- * The side every non-neutral block of a group carries ("" when they
- * disagree or any covered block is mixed; neutral blocks — nothing
- * covered, no explicit rule — don't vote).
+ * The side every block of a group with a clear default carries ("" when
+ * they disagree). Prototype parity for the boot frames: its per-block
+ * static defaults made every group render a pressed 全部用… chip
+ * whenever its blocks agreed — so a MIXED block (both fonts hold parts
+ * of it; no single default side) abstains rather than vetoing the
+ * whole group, exactly like a neutral block (nothing covered). Explicit
+ * assignments still vote, and two blocks explicitly assigned to
+ * opposite sides keep the group unpressed.
  */
 function effectiveGroupSide(
   blocks: readonly UnicodeBlock[],
@@ -325,8 +330,7 @@ function effectiveGroupSide(
       continue;
     }
     const def = defaultSideMap(picks).get(block.id);
-    if (def === null || def === undefined) continue;
-    if (def === "") return "";
+    if (def === null || def === undefined || def === "") continue;
     if (side === "") side = def;
     else if (side !== def) return "";
   }
