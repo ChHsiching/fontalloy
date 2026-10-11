@@ -34,7 +34,7 @@ export interface CategoryChipsProps {
   blocks: readonly CategoryBlock[];
   /** Active group id, or null when the unfiltered view is on. */
   activeGroupId: string | null;
-  /** Active block id (a block, or `g:<gid>` for the group aggregate). */
+  /** Active block id (a block, `g:<gid>` for the group aggregate, or `all`). */
   activeBlockId: string;
   /** Group click; null means the 全部 aggregate was picked. */
   onGroup(id: string | null): void;

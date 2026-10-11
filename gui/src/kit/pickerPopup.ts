@@ -59,6 +59,12 @@ export interface PickerPopupProps {
   fonts: readonly PickerFont[];
   /** Currently selected font id. */
   selectedId: string | null;
+  /**
+   * Header label while nothing is selected. Without it the header falls
+   * back to the first font's name (the prototype's preselected demo);
+   * consumers without a preselection pass their empty-state text.
+   */
+  emptyLabel?: string;
   /** Search field placeholder (搜索字体). */
   searchPlaceholder?: string;
   /** Empty-list note when no font matches. */
@@ -292,8 +298,8 @@ export function mountPickerPopup(
   };
 
   const renderHeader = (): void => {
-    const selected =
-      props.fonts.find((f) => f.id === props.selectedId) ?? props.fonts[0];
+    const selected = props.fonts.find((f) => f.id === props.selectedId);
+    const fallback = props.emptyLabel ?? props.fonts[0]?.name ?? "—";
     const next = document.createElement("div");
     next.className = "kit-hd";
     next.setAttribute("role", "button");
@@ -302,7 +308,7 @@ export function mountPickerPopup(
     const hdc = document.createElement("span");
     hdc.className = "kit-hdc";
     const name = document.createElement("b");
-    name.textContent = selected ? selected.name : "—";
+    name.textContent = selected ? selected.name : fallback;
     if (selected?.family) {
       name.style.fontFamily = `${cssFamily(selected.family)},sans-serif`;
     }

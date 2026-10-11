@@ -21,7 +21,14 @@
  * with the consumer — the kit renders the props it is given.
  */
 
-export type CellState = "base" | "donor" | "none";
+/**
+ * The cell's effective-source vocabulary. `base` / `donor` render in
+ * the winning font; `none` is a glyph the build lacks (dashed danger,
+ * codepoint shown); `plain` is OUTSIDE the effective preview (no pick
+ * pair yet) — a neutral cell in the plain preview stack, no miss chrome
+ * (the grid cannot judge coverage before the build's fonts are known).
+ */
+export type CellState = "base" | "donor" | "none" | "plain";
 
 export interface GridCellData {
   /** The character (single codepoint). */
@@ -83,11 +90,12 @@ export function gridCell(props: GridCellProps): HTMLElement {
   glyph.textContent = data.ch;
   cell.appendChild(glyph);
 
-  const showCp = props.showCodepoint || data.state === "none";
+  const showCp =
+    props.showCodepoint || (data.state === "none" && data.cp === undefined);
   if (showCp) {
     const cp = document.createElement("span");
     cp.className = "cp";
-    cp.textContent = formatCodepoint(data.ch);
+    cp.textContent = data.cp ?? formatCodepoint(data.ch);
     cell.classList.add("hascp");
     cell.appendChild(cp);
   }

@@ -91,7 +91,8 @@ export interface ActionBarProps {
     | {
         label: string;
         aggregate?: false;
-        value: FontSide;
+        /** "" = neither side pressed (no explicit assignment). */
+        value: FontSide | "";
         onAssign(side: FontSide): void;
       }
     | {
