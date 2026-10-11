@@ -131,10 +131,11 @@ async function resolveFontPathWithRefresh(
 /**
  * The recipe draft for the current selection: the EN pick is the base
  * (the output inherits its metrics and identity), the CJK pick the one
- * donor filling the empty slots. The output name is the fixed brand
- * default — never derived from the source fonts (spec naming rule).
- * Built through the shared recipe modules (issue #21's model), then
- * serialized by recipeJson for POST /builds.
+ * donor filling the empty slots. The output name is the top bar's
+ * font-name field (default the fixed brand default, never derived from
+ * the source fonts — spec naming rule). Built through the shared recipe
+ * modules (issue #21's model), then serialized by recipeJson for POST
+ * /builds.
  */
 
 function newBuildRow(family: string): BuildRow {
@@ -163,10 +164,10 @@ export async function synthesize(): Promise<void> {
   const { service } = synthStore.get();
   if (service.status !== "connected" || service.client === null) return;
 
-  const { fonts, selected } = store.get();
+  const { fonts, selected, outputFamily } = store.get();
   const en = fonts.find((f) => f.cssFamily === selected.en);
   const cjk = fonts.find((f) => f.cssFamily === selected.cjk);
-  const row = newBuildRow("ChHsich");
+  const row = newBuildRow(outputFamily || "ChHsich");
   addBuild(row);
 
   const fail = (message: string): void => {
@@ -195,6 +196,8 @@ export async function synthesize(): Promise<void> {
   const draft = defaultDraft();
   draft.base = { catalog: null, path: enPath, face: null };
   draft.donors = [{ catalog: null, path: cjkPath, face: null }];
+  // The top bar's font-name field is the recipe's output family.
+  draft.output.family = outputFamily || "ChHsich";
   // The SAME rule state the preview grid resolves (issue #18): the
   // build and the preview can never drift apart.
   applyRulesToDraft(draft, store.get().rules);

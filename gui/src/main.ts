@@ -1,3 +1,5 @@
+import "./kit/tokens.css";
+import "./kit/kit.css";
 import "./app.css";
 import { mountTopbar } from "./ui/topbar";
 import { mountRail } from "./ui/rail";
@@ -15,6 +17,10 @@ import { store } from "./state";
 const app = document.getElementById("app");
 if (!app) throw new Error("#app root missing in index.html");
 
+// The kit frame: every kit popup/select/help popover clamps to this
+// element instead of the viewport (the app window IS the frame here).
+app.dataset.kitFrame = "";
+
 app.innerHTML = `
   <header class="topbar"></header>
   <div class="workspace">
@@ -22,11 +28,15 @@ app.innerHTML = `
     <main class="workspace-content"></main>
   </div>
   <footer class="statsbar enter" style="animation-delay: 120ms"></footer>
+  <div class="zoom-host"></div>
 `;
 
 mountTopbar(app.querySelector<HTMLElement>(".topbar")!);
 mountRail(app.querySelector<HTMLElement>(".workspace-rail")!);
-mountContent(app.querySelector<HTMLElement>(".workspace-content")!);
+mountContent(
+  app.querySelector<HTMLElement>(".workspace-content")!,
+  app.querySelector<HTMLElement>(".zoom-host")!,
+);
 mountStatsbar(app.querySelector<HTMLElement>(".statsbar")!);
 
 // Ctrl+Z / Cmd+Z triggers rule undo (issue #20); the selection undo

@@ -10,9 +10,6 @@ import type { EditorRule } from "./precedence/model";
 
 export type ContentMode = "charmap" | "scene";
 
-/** Which real-world scene the scene mode shows (issue #19). */
-export type SceneId = "terminal" | "code" | "document";
-
 /* ---------- synthesis settings (issue #19) ---------- */
 
 /**
@@ -116,8 +113,13 @@ export interface AppState {
   /** Selected cssFamily keys for the base (en) and donor (cjk) pickers. */
   selected: { en: string | null; cjk: string | null };
   mode: ContentMode;
-  /** The active real-world scene while in scene mode (issue #19). */
-  sceneId: SceneId;
+  /** The scene mode's custom preview text (自定义预览文字). */
+  customPreview: string;
+  /**
+   * The output font name (the top bar's field, feeding the recipe's
+   * output.family — ADR-0005: never derived from the source fonts).
+   */
+  outputFamily: string;
   /** Active unicode block id ("all" = the aggregate view). */
   categoryId: string;
   /** 1-based page within the active category. */
@@ -174,7 +176,8 @@ export const store = createStore<AppState>({
   fonts: [],
   selected: { en: null, cjk: null },
   mode: "charmap",
-  sceneId: "terminal",
+  customPreview: "",
+  outputFamily: "ChHsich",
   categoryId: "all",
   page: 1,
   selectedCodepoint: null,

@@ -1,30 +1,19 @@
 import { store } from "../state";
 import { synthStore } from "../service/state";
 import { synthesize, synthesizeReady } from "../service/synthesize";
+import { mountTopBar, type TopBar } from "../kit/topBar";
+import { applyAppTheme, type AppTheme } from "../kit/theme";
 
 /**
- * Top bar: brand, font-pair tags, the service state, and the primary
- * synthesize action (issue #16: it drives real merges over the serve
- * contract once a service is connected and both fonts are picked).
+ * Top bar (ADR-0004 + the validated prototype's chrome): the brand, the
+ * current font pair as text tags, the GitHub repo link, the light/dark
+ * theme toggle, the output font-name field (default ChHsich, feeding the
+ * recipe's output.family — ADR-0005), and the primary 合成字体 action —
+ * assembled from the kit's TopBar parts, wired to the app's stores.
  *
  * The explanation for a disabled action is click-reachable page text,
- * never a hover-only tooltip (ADR-0004); the service state is always
- * visible as plain text next to the action.
+ * never a hover-only tooltip (ADR-0004).
  */
-
-/** The service chip's text for each connection state. */
-function serviceText(status: string, error?: string): string {
-  switch (status) {
-    case "connected":
-      return "本地服务：已连接";
-    case "connecting":
-      return "本地服务：连接中";
-    case "unavailable":
-      return error === undefined ? "本地服务：未连接" : `本地服务：未连接（${error}）`;
-    default:
-      return "本地服务：未连接";
-  }
-}
 
 /** Why the synthesize action cannot run right now (null when it can). */
 function disabledReason(): string | null {
@@ -52,25 +41,31 @@ function disabledReason(): string | null {
   return null;
 }
 
-export function mountTopbar(root: HTMLElement): void {
-  root.innerHTML = `
-    <div class="brand enter" style="animation-delay: 0ms">
-      <span class="brand-mark" aria-hidden="true">Fa</span>
-      <span class="brand-name">FontAlloy</span>
-    </div>
-    <div class="font-pair-tags enter" style="animation-delay: 40ms">
-      <span class="pair-tag" data-role="pair-en"></span>
-      <span class="pair-x" aria-hidden="true">×</span>
-      <span class="pair-tag" data-role="pair-cjk"></span>
-    </div>
-    <span class="service-state" data-role="service-state">本地服务：未连接</span>
-    <button class="synthesize enter" style="animation-delay: 80ms" aria-disabled="true">合成</button>
-  `;
+/** The boot theme: the OS preference (the demo page's convention). */
+function initialTheme(): AppTheme {
+  return window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light";
+}
 
-  const pairEn = root.querySelector<HTMLElement>('[data-role="pair-en"]')!;
-  const pairCjk = root.querySelector<HTMLElement>('[data-role="pair-cjk"]')!;
-  const serviceEl = root.querySelector<HTMLElement>('[data-role="service-state"]')!;
-  const synthesizeButton = root.querySelector<HTMLButtonElement>(".synthesize")!;
+export function mountTopbar(root: HTMLElement): TopBar {
+  applyAppTheme(initialTheme());
+
+  const topBar = mountTopBar(root, {
+    base: "—",
+    donor: "—",
+    fontName: store.get().outputFamily,
+    onFontName: (value) => store.set({ outputFamily: value.trim() }),
+    onSynthesize: () => {
+      const reason = disabledReason();
+      if (reason !== null) {
+        notice.querySelector<HTMLElement>(".notice-text")!.textContent = reason;
+        notice.hidden = false;
+        return;
+      }
+      void synthesize();
+    },
+  });
 
   // The notice lives in the document (not inside the button) so the text is
   // real page content reachable by a click.
@@ -82,39 +77,28 @@ export function mountTopbar(root: HTMLElement): void {
     <span class="notice-text"></span>
   `;
   document.body.appendChild(notice);
-
-  synthesizeButton.addEventListener("click", () => {
-    const reason = disabledReason();
-    if (reason !== null) {
-      notice.querySelector<HTMLElement>(".notice-text")!.textContent = reason;
-      notice.hidden = false;
-      return;
-    }
-    void synthesize();
-  });
   notice
     .querySelector<HTMLButtonElement>(".notice-close")!
     .addEventListener("click", () => {
       notice.hidden = true;
     });
 
+  const synthesizeEl = topBar.el.querySelector<HTMLButtonElement>(
+    "[data-role='synthesize']",
+  )!;
+
   const render = (): void => {
     const { fonts, selected } = store.get();
-    const label = (key: string | null, prefix: string): string => {
+    const label = (key: string | null): string => {
       const font = fonts.find((f) => f.cssFamily === key);
-      return font ? `${prefix} ${font.family}` : `${prefix} 未选择`;
+      return font ? font.family : "—";
     };
-    pairEn.textContent = label(selected.en, "EN");
-    pairCjk.textContent = label(selected.cjk, "CJK");
-    pairEn.classList.toggle("is-set", selected.en !== null);
-    pairCjk.classList.toggle("is-set", selected.cjk !== null);
-
-    const { service } = synthStore.get();
-    serviceEl.textContent = serviceText(service.status, service.error);
-    const ready = synthesizeReady();
-    synthesizeButton.setAttribute("aria-disabled", String(!ready));
+    topBar.setPair(label(selected.en), label(selected.cjk));
+    // The service state and the pick pair both feed the enablement.
+    synthesizeEl.setAttribute("aria-disabled", String(!synthesizeReady()));
   };
   store.subscribe(render);
   synthStore.subscribe(render);
   render();
+  return topBar;
 }
