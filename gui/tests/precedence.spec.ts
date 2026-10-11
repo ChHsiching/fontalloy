@@ -202,46 +202,25 @@ test.describe("precedence editing", () => {
     await page.keyboard.press("Control+z");
     await expect(chips.nth(0)).toHaveAttribute("aria-pressed", "true");
 
-    // The declared scope feeds the 缺失 aggregate (the fixture pair
-    // covers only a slice of zh_cn) and the whole-merge 缺失 counter.
+    // The 缺失 aggregate is coverage-driven (round 5): the fixture
+    // pair covers only a slice of the browsed universe, and toggling
+    // the language chips does not move the count.
     const missingChip = page.locator(".kit-catbar .kit-cat-g[data-group='missing']");
     await expect(missingChip).toBeVisible();
-    expect(
-      Number(((await missingChip.locator(".n").textContent()) ?? "0").replace(/,/g, "")),
-    ).toBeGreaterThan(6000);
-
-    // The 添加语言预设… picker remains the deep extension (zh_hk).
-    await pointerClick(page, page.locator("[data-role='add-preset']"));
-    const popup = page.locator('[data-picker-popup="preset-add"]');
-    await expect(popup).toBeVisible();
-    await pointerClick(
-      page,
-      popup.locator(".kit-fp", { hasText: /^zh_hk/ }).first(),
+    const missingCount = Number(
+      ((await missingChip.locator(".n").textContent()) ?? "0").replace(/,/g, ""),
     );
-    await expect(popup).toBeHidden();
-    // zh_hk (declared last) supplies U+4E00: the donor fills it via the
-    // rule (rule-N — after zh_cn, zh_tw, and any other preset rules).
-    await gotoCjkPage(page);
-    await expect(
-      page.locator(".charmap-grid .kit-cell[data-cp='U+4E00']"),
-    ).toHaveAttribute("data-winner", "donor-0");
-    await expect(
-      page.locator(".charmap-grid .kit-cell[data-cp='U+4E00']"),
-    ).toHaveAttribute("data-kind", "fill");
+    expect(missingCount).toBeGreaterThan(6_000);
+    await pointerClick(page, chips.nth(3));
+    await expect(missingChip.locator(".n")).toHaveText(
+      missingCount.toLocaleString("en-US"),
+    );
 
-    // An open-overlay screenshot of this feature: the preset picker
-    // popup open over the workspace (seam-3 rule).
-    await pointerClick(page, page.locator("[data-role='add-preset']"));
-    await expect(popup).toBeVisible();
-    const { mkdirSync } = await import("node:fs");
-    const { join } = await import("node:path");
-    const dir = join(process.cwd(), "test-results", "screenshots");
-    mkdirSync(dir, { recursive: true });
-    await page.screenshot({
-      path: join(dir, "precedence-preset-picker.png"),
-      animations: "disabled",
-    });
-    await page.keyboard.press("Escape");
+    // The 341-language fc-lang extension left the UI with round 5 (the
+    // four chips are all the rail surfaces); recipes and the core keep
+    // the deep presets.
+    await expect(page.locator("[data-role='add-preset']")).toHaveCount(0);
+    await expect(page.locator("[data-picker-popup='preset-add']")).toHaveCount(0);
   });
 
   /* --------------------------------------------------------------- */

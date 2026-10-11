@@ -166,14 +166,13 @@ const BOOT_PRESET = "zh_cn";
  * the 简体中文 (zh_cn) scope declared under 文字范围, so a fresh state
  * carries one zh_cn preset rule (all sub-blocks on, the union). Its
  * font list is the join order `["base", "donor-0"]` — exactly what the
- * 添加语言预设 flow declares with a full pair, and resolution-neutral
+ * 文字范围 chips declare with a full pair, and resolution-neutral
  * under the default precedence (base keeps, donor fills).
  *
  * Seeded ONLY into the first-ever initial state: afterwards the rule is
  * ordinary user state — removing or editing it is a plain rule
  * mutation, and nothing ever re-seeds over the user's rules.
- */
-function bootRules(): EditorRule[] {
+ */function bootRules(): EditorRule[] {
   const preset = (
     presetsData.presets as Array<{
       name: string;

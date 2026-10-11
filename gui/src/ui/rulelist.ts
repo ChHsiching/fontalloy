@@ -2,17 +2,19 @@
  * The rail's two rule surfaces, both prototype-parity read-only
  * summaries of the shared rule state in `store`:
  *
- * - 文字范围 (mountPresetSection): the four one-click language chips
- *   plus the 添加语言预设… picker as the deep extension;
+ * - 文字范围 (mountPresetSection): the four one-click language chips —
+ *   简体中文 / 繁体中文 / 日文 / 韩文, nothing else surfaced (round 5,
+ *   owner item 3: the 341-language fc-lang extension lives on in the
+ *   recipe/core only, never in this UI);
  * - 自定义规则 (mountRulesSection): the human sentence list —
  *   `{子类}用英文字体` block rows (merged to `所有{组}字符用…` when a
  *   whole group agrees), `永 至 A 用英文字体` range rows with their dim
  *   `U+… 至 U+…` suffix, the dashed `单个字符 N` summary, and the
  *   全部恢复默认 reset. Editing happens through the workspace's own
  *   affordances (the toolbar segments, the char popup, the 按编码指定
- *   popup, the preset chips/picker) — every one of them writes the
- *   same rule state through `mutateRules`, so one undo entry covers
- *   each change and Ctrl+Z / the toolbar's 撤销 steps them back.
+ *   popup, the preset chips) — every one of them writes the same rule
+ *   state through `mutateRules`, so one undo entry covers each change
+ *   and Ctrl+Z / the toolbar's 撤销 steps them back.
  */
 
 import { store } from "../state";
@@ -27,7 +29,6 @@ import { mountLangChips, type LangChips } from "../kit/langChips";
 import { ruleEmptyState, ruleRow, ruleSoloRow } from "../kit/ruleRows";
 import { ALL_BLOCKS, BLOCK_GROUPS, type UnicodeBlock } from "../unicode/blocks";
 import presetsData from "../data/presets.json";
-import { mountPresetPicker } from "./presetpicker";
 import { liveNotice } from "./live";
 
 /* ------------------------- store patches ---------------------------- */
@@ -46,9 +47,7 @@ function removeRule(id: number): void {
  * language's preset rule is declared; clicking toggles the rule through
  * `mutateRules` (one undo entry per toggle). The last declared language
  * cannot be removed — the guard announces 至少保留一种 through the
- * live region and keeps the rule. The 添加语言预设… picker stays as
- * the extension for every other fc-lang preset (a chip-less preset
- * rule rides along like a pressed language).
+ * live region and keeps the rule.
  */
 const LANG_CHIPS: ReadonlyArray<{ preset: string; label: string }> = [
   { preset: "zh_cn", label: "简体中文" },
@@ -100,7 +99,7 @@ function toggleLanguage(name: string): void {
   ]);
 }
 
-/** The 文字范围 section: the four language chips + the deep picker. */
+/** The 文字范围 section: the four language chips, nothing else. */
 export function mountPresetSection(root: HTMLElement): void {
   const chips: LangChips = mountLangChips(root, {
     chips: LANG_CHIPS.map(({ preset, label }) => ({
@@ -111,14 +110,6 @@ export function mountPresetSection(root: HTMLElement): void {
     isPressed: () => false,
     onToggle: toggleLanguage,
   });
-
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "kit-btn sm";
-  button.dataset.role = "add-preset";
-  button.textContent = "添加语言预设…";
-  root.appendChild(button);
-  mountPresetPicker(button);
 
   const render = (): void => {
     const declared = new Set(

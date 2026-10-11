@@ -187,11 +187,18 @@ body {
   color: #fff;
 }
 
-/* The fullscreen scene overlay host (positioned against #app). */
+/* The fullscreen scene overlay host (positioned against #app). Round 5
+ * (owner item 9): the host starts BELOW the top bar — the custom window
+ * chrome stays clickable while a scene is zoomed. `top` tracks the
+ * live bar height (set from main.ts via ResizeObserver); the fallback
+ * covers the first paint before JS runs. */
 
 .zoom-host {
   position: absolute;
-  inset: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: var(--topbar-height, 51px);
   z-index: 400;
   pointer-events: none;
 }
@@ -237,55 +244,7 @@ body {
 /* ---------- the rail's rule surfaces (prototype rRules) -------------
  * Both sections assemble kit parts: the 文字范围 chips (kit/langChips)
  * and the 自定义规则 summary rows (kit/ruleRows + the kit's
- * undoAllButton). Only the 添加语言预设… entry button (the extension
- * surface) and section spacing live here. */
-
-/* ---------- app-level extension popups ------------------------------
- * The 按编码指定 range popup and the cell's char popup are KIT parts
- * (kit/rangePopup.ts, kit/charPopup.ts — prototype #rangepop /
- * #charpop chrome in kit.css). What stays here is the one extension
- * popup the prototype never modeled: the language-preset picker
- * (ui/presetpicker.ts), assembled on the kit's .kit-pop chrome. */
-
-.preset-pop {
-  width: 300px;
-  display: flex;
-  flex-direction: column;
-}
-
-.preset-pop .kit-q {
-  width: 100%;
-  margin: 0 0 6px;
-  background: var(--page);
-  border: 1px solid var(--ln2);
-  border-radius: 8px;
-  padding: 6px 10px;
-  font-size: 12px;
-}
-
-.preset-pop .kit-q:focus {
-  outline: none;
-  border-color: var(--ac);
-}
-
-.preset-pop-scroll {
-  max-height: 300px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 0 2px 4px 0;
-}
-
-.picker-group-label {
-  padding: 6px 8px 2px;
-  font-size: 10.5px;
-  color: var(--ink3);
-}
-
-.preset-pop .preset-row {
-  flex-direction: row;
-  justify-content: space-between;
-  align-items: baseline;
-}
+ * undoAllButton). Only section spacing lives here. */
 
 /* ---------- first-run catalog screen (issue #17) ---------- */
 
