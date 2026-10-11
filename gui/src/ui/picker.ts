@@ -15,6 +15,7 @@ import {
 } from "../kit/pickerPopup";
 import type { FontMeta } from "../kit/metaLine";
 import catalogManifest from "../data/catalog.json";
+import devCatalogManifest from "../data/dev-catalog.json";
 
 export type PickerRole = "en" | "cjk";
 
@@ -86,10 +87,15 @@ function catalogNote(catalog: CatalogState): string | null {
 /**
  * Display metadata for a catalog family: license + variant from the
  * repo's catalog manifest (the honest in-repo source; stars have no
- * source of truth here and stay omitted rather than invented).
+ * source of truth here and stay omitted rather than invented). The
+ * committed dev-fixture overlay (data/dev-catalog.json) merges on top —
+ * the vite dev server serves those families from host font files.
  */
 const MANIFEST_META = new Map<string, FontMeta>(
-  catalogManifest.families.map((family) => [
+  [
+    ...catalogManifest.families,
+    ...devCatalogManifest.families,
+  ].map((family) => [
     family.family,
     {
       license: family.license_spdx
@@ -217,7 +223,9 @@ export function mountPicker(
     });
 
     // Locally loaded fonts, deduped against registered catalog faces
-    // (their catalog row already lists them).
+    // (their catalog row already lists them). Every local row carries
+    // the 本地字体文件 trait — the row AND the compact header card then
+    // read "Consolas / 本地字体文件" like the prototype's local picks.
     const registered = new Set(Object.values(catalog.registered));
     const seen = new Set<string>();
     for (const font of fonts) {
@@ -228,6 +236,7 @@ export function mountPicker(
         name: font.family,
         // Every row renders its family name in its own font (ADR-0004).
         family: font.cssFamily,
+        meta: { trait: "本地字体文件" },
       });
     }
 

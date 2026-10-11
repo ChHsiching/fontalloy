@@ -1,19 +1,24 @@
 import { store, type ContentMode } from "../state";
 import { segmentedControl } from "../kit/actionBar";
-import { mountCharmap } from "./charmap";
+import { mountCharmap, locateQuery } from "./charmap";
 import { mountScenes } from "./scenes";
 
 /**
  * Right content area (ADR-0004): the prototype's mode bar — the
- * 字符表/实际场景 segmented control, then the 自定义预览文字 field
- * (feeding the document scene) — and the stage. The scene previews
- * (issue #19) render with the same effective result as the grid; the
- * mode itself lives in the store, so mode round trips preserve it.
+ * 字符表/实际场景 segmented control, a grow spacer, then the mode-bar
+ * inputs at the row's end (自定义预览文字 in scene mode, feeding the
+ * document scene, and the always-visible 定位 field) — and the stage.
+ * The scene previews (issue #19) render with the same effective result
+ * as the grid; the mode itself lives in the store, so mode round trips
+ * preserve it.
  *
  * The stage is rebuilt only on mode changes — the character map and the
  * scenes each manage their own re-renders so their containers survive
  * state updates. Mode switches never reset the merge state: rules,
  * picks, and settings live in the store, not in either stage.
+ *
+ * 定位 from scene mode switches to the character map first (the
+ * prototype's own goto behavior), then jumps and scrolls to the cell.
  */
 export function mountContent(root: HTMLElement, fullscreenHost: HTMLElement): void {
   root.innerHTML = `
@@ -38,6 +43,10 @@ export function mountContent(root: HTMLElement, fullscreenHost: HTMLElement): vo
   });
   modebar.appendChild(seg);
 
+  const grow = document.createElement("span");
+  grow.className = "kit-grow";
+  modebar.appendChild(grow);
+
   const previewInput = document.createElement("input");
   previewInput.placeholder = "自定义预览文字";
   previewInput.setAttribute("aria-label", "自定义预览文字");
@@ -46,6 +55,20 @@ export function mountContent(root: HTMLElement, fullscreenHost: HTMLElement): vo
     store.set({ customPreview: previewInput.value });
   });
   modebar.appendChild(previewInput);
+
+  const gotoInput = document.createElement("input");
+  gotoInput.placeholder = "定位 永 或 U+6C38";
+  gotoInput.setAttribute("aria-label", "定位");
+  gotoInput.style.minWidth = "140px";
+  gotoInput.dataset.role = "goto";
+  gotoInput.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    if (store.get().mode !== "charmap") {
+      store.set({ mode: "charmap" });
+    }
+    locateQuery(gotoInput.value);
+  });
+  modebar.appendChild(gotoInput);
 
   let lastMode: ContentMode | null = null;
   const render = (): void => {

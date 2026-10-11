@@ -41,7 +41,9 @@ test.describe("local font loading", () => {
 
     const row = popup.locator(".kit-fp").first();
     await expect(row).toBeVisible();
-    const family = ((await row.textContent()) ?? "").trim();
+    // The row's NAME text (the meta line carries the 本地字体文件 trait
+    // on local rows — the whole-row text is no longer just the family).
+    const family = ((await row.locator(".kit-nm").textContent()) ?? "").trim();
     expect(family.length).toBeGreaterThan(0);
 
     // Self-rendering: the name text is set in its own font.
@@ -86,8 +88,12 @@ test.describe("local font loading", () => {
 
     const rows = popup.locator(".kit-fp");
     await expect(rows).toHaveCount(2);
-    const family1 = ((await rows.nth(0).textContent()) ?? "").trim();
-    const family2 = ((await rows.nth(1).textContent()) ?? "").trim();
+    // Family names from the rows' name spans (local rows carry the
+    // 本地字体文件 trait in their meta line).
+    const family1 =
+      ((await rows.nth(0).locator(".kit-nm").textContent()) ?? "").trim();
+    const family2 =
+      ((await rows.nth(1).locator(".kit-nm").textContent()) ?? "").trim();
     expect(family1).not.toBe(family2);
 
     // EN keeps family1 (auto-selected); CJK picks family2 explicitly.
