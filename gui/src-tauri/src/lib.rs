@@ -176,6 +176,20 @@ fn save_artifact(state: State<'_, ShellState>, request: tauri::ipc::Request) -> 
     std::fs::write(&path, bytes).map_err(|err| format!("无法写入 {}: {err}", path.display()))
 }
 
+/// Open a URL in the SYSTEM browser (round 5, owner item 12): the
+/// webview's `<a target="_blank">` is a no-op here, so the top bar's
+/// GitHub link routes through this command. https-only by contract.
+#[tauri::command]
+async fn open_external(app: AppHandle, url: String) -> Result<(), String> {
+    if !url.starts_with("https://") {
+        return Err("refusing to open a non-https URL".to_string());
+    }
+    #[allow(deprecated)] // superseded by tauri-plugin-opener (follow-up)
+    app.shell()
+        .open(url, None)
+        .map_err(|err| err.to_string())
+}
+
 /// Spawn the `fontalloy serve` sidecar and watch its stdout.
 fn spawn_sidecar(handle: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let font_dir = handle
@@ -256,7 +270,8 @@ pub fn run() {
             pick_font_files,
             read_font_file,
             prepare_save,
-            save_artifact
+            save_artifact,
+            open_external
         ])
         .setup(|app| {
             let handle = app.handle().clone();
