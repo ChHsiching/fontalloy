@@ -43,6 +43,86 @@ export function toggleAppTheme(): AppTheme {
   return next;
 }
 
+/* ---------- the three-state preference (round 5, owner item 8) ------ */
+
+/**
+ * The theme PREFERENCE: 自动 (follow the system) → 浅色 → 深色, cycling
+ * on the toggle. The icon always shows the EFFECTIVE theme (sun in
+ * light, moon in dark) and carries a tiny 自动 badge while the
+ * preference is auto. Persisted across launches in localStorage.
+ */
+export type ThemePreference = "auto" | "light" | "dark";
+
+const THEME_STORAGE_KEY = "fontalloy-theme-preference";
+
+function readStoredPreference(): ThemePreference {
+  try {
+    const raw = localStorage.getItem(THEME_STORAGE_KEY);
+    if (raw === "auto" || raw === "light" || raw === "dark") return raw;
+  } catch {
+    // Storage can be absent (privacy modes): the in-memory default stands.
+  }
+  return "auto";
+}
+
+let preference: ThemePreference = readStoredPreference();
+
+/** The current theme preference. */
+export function getThemePreference(): ThemePreference {
+  return preference;
+}
+
+/** The theme a preference resolves to right now. */
+export function effectiveTheme(pref: ThemePreference): AppTheme {
+  if (pref !== "auto") return pref;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light";
+}
+
+function storePreference(pref: ThemePreference): void {
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, pref);
+  } catch {
+    // Unpersistable is fine for the session.
+  }
+}
+
+/** The preference's announce label (the button's title/tooltip text). */
+export function themePreferenceLabel(pref: ThemePreference): string {
+  if (pref === "auto") return "自动";
+  return pref === "light" ? "浅色" : "深色";
+}
+
+/** Set the preference: applies it and persists the choice. */
+export function setThemePreference(pref: ThemePreference): ThemePreference {
+  preference = pref;
+  storePreference(pref);
+  applyAppTheme(effectiveTheme(pref));
+  return pref;
+}
+
+/** The toggle's cycle: 自动 → 浅色 → 深色 → 自动. */
+export function cycleThemePreference(): ThemePreference {
+  const order: ThemePreference[] = ["auto", "light", "dark"];
+  return setThemePreference(
+    order[(order.indexOf(preference) + 1) % order.length]!,
+  );
+}
+
+// While the preference is 自动, the app follows the system live (the
+// OS flip applies with the same transition killer as a manual toggle).
+window
+  .matchMedia("(prefers-color-scheme: dark)")
+  .addEventListener("change", () => {
+    if (preference === "auto") applyAppTheme(effectiveTheme("auto"));
+  });
+
+/** Apply the persisted preference at boot (the ui/topbar entry point). */
+export function applyStoredThemePreference(): ThemePreference {
+  return setThemePreference(preference);
+}
+
 /* ---------- scene themes ---------- */
 
 export interface ThemeOption {

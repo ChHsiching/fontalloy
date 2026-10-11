@@ -2,7 +2,7 @@ import { store } from "../state";
 import { synthStore } from "../service/state";
 import { synthesize, synthesizeReady } from "../service/synthesize";
 import { mountTopBar, type TopBar } from "../kit/topBar";
-import { applyAppTheme, type AppTheme } from "../kit/theme";
+import { applyStoredThemePreference } from "../kit/theme";
 import { openCliPanel } from "./noservice";
 import { mountWindowControls } from "./wincontrols";
 import { isTauri } from "../platform/config";
@@ -48,21 +48,33 @@ function disabledReason(): string | null {
   return null;
 }
 
-/** The boot theme: the OS preference (the demo page's convention). */
-function initialTheme(): AppTheme {
-  return window.matchMedia("(prefers-color-scheme: dark)").matches
-    ? "dark"
-    : "light";
-}
-
 export function mountTopbar(root: HTMLElement): TopBar {
-  applyAppTheme(initialTheme());
+  // Round 5 (owner item 8): the boot theme is the PERSISTED preference
+  // (自动 by default — following the system, live).
+  applyStoredThemePreference();
 
   const topBar = mountTopBar(root, {
     base: "",
     donor: "",
     fontName: store.get().outputFamily,
     onFontName: (value) => store.set({ outputFamily: value.trim() }),
+    // Round 5 (owner item 12): under Tauri the webview cannot open
+    // tabs — the GitHub link routes through the shell's open_external
+    // and the SYSTEM browser launches. The web target keeps the normal
+    // anchor navigation (no intercept).
+    onGithubNavigate: isTauri()
+      ? (url) => {
+          void (async () => {
+            const { invoke } = await import("@tauri-apps/api/core");
+            try {
+              await invoke("open_external", { url });
+            } catch {
+              // Stay inert; a dead link must not error into the bar.
+            }
+          })();
+          return true;
+        }
+      : undefined,
     onSynthesize: () => {
       const reason = disabledReason();
       if (reason !== null) {

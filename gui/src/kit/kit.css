@@ -37,6 +37,27 @@
   font-weight: 700;
 }
 
+/* The theme toggle's 自动 badge (round 5, owner item 8): a tiny tag at
+ * the button's corner marking the follow-system state. The button
+ * itself shows the EFFECTIVE theme's icon (sun / moon). */
+.kit-topbar [data-role="theme-toggle"] {
+  position: relative;
+}
+
+.kit-theme-auto {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  padding: 0 3px;
+  border-radius: 4px;
+  background: var(--acsoft);
+  color: var(--ac);
+  font-size: 8.5px;
+  line-height: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
 /* The hand-drawn mark (A × 永): 24-grid strokes, rendered at 16px in
    the top bar — crisp from 16 to 24px, currentColor + teal accent so
    both themes read. */
@@ -705,18 +726,21 @@
   padding: 0 8px 8px;
 }
 
-/* Footer action — outside the scroll area entirely. */
+/* Footer action — outside the scroll area entirely. Round 5 (owner
+ * item 13): left-aligned with the rows — the plus icon sits at the row
+ * names' left edge (scroll padding 8px + row padding 8px), reading as
+ * one list instead of a centered caption. */
 .kit-fpsys {
   display: flex;
   flex-direction: row;
-  justify-content: center;
+  justify-content: flex-start;
   align-items: center;
   gap: 6px;
   flex: none;
   background: var(--sf);
   border-top: 1px solid var(--ln);
   border-radius: 0 0 11px 11px;
-  padding: 9px 6px 7px;
+  padding: 9px 6px 7px 16px;
   color: var(--ac);
   font-weight: 500;
   font-size: 12px;
@@ -1416,6 +1440,19 @@
   color: var(--ac);
 }
 
+/* The ? beside 覆盖 (round 5): same circular help button as the
+ * settings rows, scaled to the bar's 42px height. */
+.kit-stat .kit-cov-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.kit-stat .kit-cov .kit-qh .kit-ci {
+  width: 11px;
+  height: 11px;
+}
+
 /* Counter pop when a value changes. */
 .kit-stat b.kit-num {
   display: inline-block;
@@ -1545,17 +1582,25 @@
   padding: 24px 32px;
 }
 
+/* Round 5 (owner item 9): a comfortable zoom level — larger than the
+ * cards' 13px, well below the earlier 19px wall of text. */
 .kit-zf .kit-term {
-  font-size: 19px;
-  line-height: 1.85;
+  font-size: 16px;
+  line-height: 1.8;
 }
 
 .kit-zf .kit-code {
-  font-size: 19px;
-  line-height: 1.95;
+  font-size: 16px;
+  line-height: 1.9;
 }
 
 .kit-zf .kit-doc {
-  font-size: 15px;
+  font-size: 14px;
   line-height: 1.75;
+}
+
+/* The theme select in the fullscreen bar (round 5, owner item 10). */
+.kit-zf-b .kit-cselw {
+  width: auto;
+  min-width: 130px;
 }

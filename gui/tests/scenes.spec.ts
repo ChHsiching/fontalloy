@@ -341,6 +341,46 @@ test.describe("scene previews and synthesis settings", () => {
     await expect(fullscreen).toBeVisible();
     await expect(fullscreen.locator("[data-role='fullscreen-close']")).toBeVisible();
     await expect(fullscreen.locator(".kit-term")).toBeVisible();
+
+    // Round 5, owner item 9: the overlay never covers the top bar —
+    // its top edge starts at the bar's bottom, keeping the window
+    // chrome clickable — and the zoomed type is comfortable (16px).
+    const bounds = await page.evaluate(() => {
+      const bar = document.querySelector<HTMLElement>(".topbar")!;
+      const zf = document.querySelector<HTMLElement>(".kit-zf")!;
+      return {
+        barBottom: bar.getBoundingClientRect().bottom,
+        zfTop: zf.getBoundingClientRect().top,
+        fontSize: getComputedStyle(zf.querySelector(".kit-term")!).fontSize,
+      };
+    });
+    expect(bounds.zfTop).toBeGreaterThanOrEqual(bounds.barBottom - 0.5);
+    expect(bounds.fontSize).toBe("16px");
+
+    // Round 5, owner item 10: the theme select is available while
+    // zoomed, and picking a palette locks it on the zoomed terminal.
+    const zoomSelect = fullscreen.locator("[data-role='fullscreen-theme']");
+    await expect(zoomSelect).toBeVisible();
+    await pointerClick(page, zoomSelect.locator(".kit-csel"));
+    await pointerClick(page, zoomSelect.locator(".kit-cso", { hasText: "Dracula" }));
+    await expect(fullscreen.locator(".kit-term")).toHaveAttribute(
+      "data-t",
+      "dracula",
+    );
+
+    // Prev/next swap content IN PLACE: the SAME overlay node stays
+    // mounted (no close-then-reopen choreography).
+    await fullscreen.evaluate((el) => el.setAttribute("data-marker", "alive"));
+    await pointerClick(page, fullscreen.locator("button", { hasText: "下一项" }));
+    await expect(
+      page.locator(".kit-zf[data-marker='alive'] .kit-code"),
+    ).toBeVisible();
+    await expect(page.locator(".kit-zf[data-marker='alive'] .kit-term")).toHaveCount(0);
+    await pointerClick(page, fullscreen.locator("button", { hasText: "上一项" }));
+    await expect(
+      page.locator(".kit-zf[data-marker='alive'] .kit-term"),
+    ).toBeVisible();
+
     await pointerClick(page, fullscreen.locator("[data-role='fullscreen-close']"));
     await expect(fullscreen).toHaveCount(0);
   });
@@ -411,15 +451,21 @@ test.describe("scene previews and synthesis settings", () => {
     await page.keyboard.press("Escape");
 
     // The weight popover: opened by a real click, clamped to the app
-    // frame, and carrying the worked-example tables.
+    // frame, and carrying the prototype's VERBATIM worked-example tables
+    // (round 5, owner item 11 — the 中等 output row is back, the
+    // engineering note is gone).
     await pointerClick(page, page.locator("[data-role='help-weightMode']"));
     const weightPop = page.locator("[data-help-popup='weight']");
     await expect(weightPop).toBeVisible();
     await expect(weightPop.locator("table").first()).toContainText(
       "双方字重全部保留",
     );
-    // Honesty: the popover states the pipeline constraint (ADR-0006).
-    await expect(weightPop).toContainText("成品字重只能来自英文字体");
+    await expect(weightPop.locator("table").first()).toContainText(
+      "细、常规、中等、粗体",
+    );
+    await expect(weightPop.locator("table").nth(1)).toContainText("中等");
+    await expect(weightPop).not.toContainText("ADR");
+    await expect(weightPop).not.toContainText("管线约束");
     const box = await weightPop.boundingBox();
     expect(box).not.toBeNull();
     expect(box!.x).toBeGreaterThanOrEqual(0);

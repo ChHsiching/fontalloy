@@ -144,7 +144,18 @@ test.describe("cell details (the char popup at the cell)", () => {
 
     expect(await accentOf()).toBe(await probe());
 
-    await pointerClick(page, page.locator(".topbar [data-role='theme-toggle']"));
+    // The 3-state toggle (round 5): from a fresh context the cycle runs
+    // 自动 → 浅色 → 深色; only a step that actually flips the effective
+    // theme exercises the re-tint under the .theming guard, so step
+    // through until the resolved theme differs.
+    const before = await page.evaluate(
+      () => document.documentElement.dataset.theme,
+    );
+    for (let step = 0; step < 3; step++) {
+      await pointerClick(page, page.locator(".topbar [data-role='theme-toggle']"));
+      const now = await page.evaluate(() => document.documentElement.dataset.theme);
+      if (now !== before) break;
+    }
     await page.waitForTimeout(150); // the two-frame .theming guard settles
     expect(await accentOf()).toBe(await probe());
   });

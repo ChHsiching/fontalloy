@@ -11,7 +11,7 @@
  * the same body builders at full size, with prev/next/close chrome.
  */
 
-import { mountAppSelect } from "./appSelect";
+import { mountAppSelect, type AppSelect } from "./appSelect";
 import { icon } from "./icons";
 import {
   buildCode,
@@ -129,21 +129,36 @@ export interface FullscreenSceneProps {
   kind: SceneKind;
   caption: string;
   content?: SceneContentProps;
+  /** Locked scene theme id (terminal/code only); "" follows the app theme. */
+  themeId?: string;
+  /** Theme change from the fullscreen bar (round 5, owner item 10). */
+  onThemeChange?(id: string): void;
   /** Optional prev/next navigation between scenes. */
   onPrev?(): void;
   onNext?(): void;
   onClose(): void;
 }
 
+export interface FullscreenScene {
+  /** Swap the shown scene IN PLACE — no close/reopen choreography. */
+  render(props: FullscreenSceneProps): void;
+  close(): void;
+}
+
 /**
  * Mount the fullscreen scene overlay inside `host` (a positioned
- * ancestor — the app frame). Enter rises; close sinks and fades, the
+ * ancestor — the app frame, bounded BELOW the top bar so the window
+ * chrome stays clickable). Enter rises; close sinks and fades, the
  * node is removed after the exit transition.
+ *
+ * Round 5 (owner items 9 + 10): the bar carries the scene THEME select
+ * while zoomed (terminal/code), and `render()` swaps the content in
+ * place — prev/next never closes and reopens the overlay.
  */
 export function mountFullscreenScene(
   host: HTMLElement,
   props: FullscreenSceneProps,
-): { close(): void } {
+): FullscreenScene {
   host.innerHTML = "";
   const zf = document.createElement("div");
   zf.className = "kit-zf";
@@ -151,25 +166,24 @@ export function mountFullscreenScene(
   zf.setAttribute("aria-modal", "true");
   const bar = document.createElement("div");
   bar.className = "kit-zf-b";
-  if (props.onPrev) {
-    const prev = document.createElement("button");
-    prev.type = "button";
-    prev.className = "kit-btn sm";
-    prev.textContent = "上一项";
-    prev.addEventListener("click", props.onPrev);
-    bar.appendChild(prev);
-  }
-  if (props.onNext) {
-    const next = document.createElement("button");
-    next.type = "button";
-    next.className = "kit-btn sm";
-    next.textContent = "下一项";
-    next.addEventListener("click", props.onNext);
-    bar.appendChild(next);
-  }
+  const prev = document.createElement("button");
+  prev.type = "button";
+  prev.className = "kit-btn sm";
+  prev.textContent = "上一项";
+  prev.addEventListener("click", () => current.onPrev?.());
+  bar.appendChild(prev);
+  const next = document.createElement("button");
+  next.type = "button";
+  next.className = "kit-btn sm";
+  next.textContent = "下一项";
+  next.addEventListener("click", () => current.onNext?.());
+  bar.appendChild(next);
+  // The theme select lives in the fullscreen bar for the two themed
+  // cards (the document card has none, exactly like the scene cards).
+  const themeHost = document.createElement("div");
+  bar.appendChild(themeHost);
   const title = document.createElement("span");
   title.className = "t";
-  title.textContent = props.caption;
   bar.appendChild(title);
   const grow = document.createElement("span");
   grow.className = "kit-grow";
@@ -186,20 +200,57 @@ export function mountFullscreenScene(
   zf.append(bar, bodyHost);
   host.appendChild(zf);
 
-  let closed = false;
-  const fill = (): void => {
-    bodyHost.innerHTML = "";
-    const content = { ...props.content, full: true };
-    bodyHost.appendChild(
-      props.kind === "terminal"
-        ? buildTerminal(content)
-        : props.kind === "code"
-          ? buildCode(content)
-          : buildDocument(content),
-    );
-    title.textContent = props.caption;
+  let current: FullscreenSceneProps = props;
+  let themeSelect: AppSelect | null = null;
+
+  const syncChrome = (): void => {
+    title.textContent = current.caption;
+    prev.style.display = current.onPrev ? "" : "none";
+    next.style.display = current.onNext ? "" : "none";
+    themeHost.innerHTML = "";
+    themeSelect = null;
+    if (current.kind === "terminal" || current.kind === "code") {
+      themeSelect = mountAppSelect({
+        label: current.kind === "terminal" ? "终端主题" : "编辑器主题",
+        value: current.themeId ?? "",
+        options:
+          current.kind === "terminal"
+            ? TERMINAL_THEME_OPTIONS
+            : EDITOR_THEME_OPTIONS,
+        onChange: (id) => {
+          current.themeId = id;
+          const body = bodyHost.firstElementChild;
+          if (body) {
+            if (current.kind === "terminal") applyTerminalTheme(body as HTMLElement, id);
+            else applyEditorTheme(body as HTMLElement, id);
+          }
+          current.onThemeChange?.(id);
+        },
+      });
+      themeSelect.el.dataset.role = "fullscreen-theme";
+      themeHost.appendChild(themeSelect.el);
+    }
   };
 
+  const fill = (): void => {
+    bodyHost.innerHTML = "";
+    const content = { ...current.content, full: true };
+    const body =
+      current.kind === "terminal"
+        ? buildTerminal(content)
+        : current.kind === "code"
+          ? buildCode(content)
+          : buildDocument(content);
+    if (current.themeId && current.kind === "terminal") {
+      applyTerminalTheme(body, current.themeId);
+    }
+    if (current.themeId && current.kind === "code") {
+      applyEditorTheme(body, current.themeId);
+    }
+    bodyHost.appendChild(body);
+  };
+
+  let closed = false;
   const close = (): void => {
     if (closed) return;
     closed = true;
@@ -214,7 +265,18 @@ export function mountFullscreenScene(
     if (e.key === "Escape" && !closed) close();
   });
 
+  syncChrome();
   fill();
   closeBtn.focus();
-  return { close };
+  return {
+    render(next) {
+      if (closed) return;
+      current = next;
+      // Content swaps IN PLACE: only the body and the bar labels move,
+      // the overlay itself never closes and reopens (round 5).
+      syncChrome();
+      fill();
+    },
+    close,
+  };
 }

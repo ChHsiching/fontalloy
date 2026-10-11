@@ -68,24 +68,34 @@ test.describe("workspace shell", () => {
     ).toContain("tabular-nums");
   });
 
-  test("the theme toggle flips the app theme through the kit tokens", async ({
+  test("the theme toggle cycles the app theme through the kit tokens", async ({
     page,
   }) => {
+    // Round 5: the toggle is a 3-state cycle (自动 → 浅色 → 深色 → 自动).
+    // From a fresh context (自动, system light) reaching a FLIP takes
+    // one step to 浅色 (no change) then one to 深色; the cycle closes.
     const before = await page.evaluate(() => document.documentElement.dataset.theme);
-    await pointerClick(page, page.locator(".topbar [data-role='theme-toggle']"));
-    await page.waitForTimeout(100); // the two-frame .theming guard settles
-    const after = await page.evaluate(() => document.documentElement.dataset.theme);
-    expect(after).not.toBe(before);
+    const theme = () =>
+      page.evaluate(() => document.documentElement.dataset.theme);
+    const toggle = page.locator(".topbar [data-role='theme-toggle']");
+    let steps = 0;
+    while ((await theme()) === before && steps < 3) {
+      await pointerClick(page, toggle);
+      await page.waitForTimeout(100); // the two-frame .theming guard settles
+      steps++;
+    }
+    expect(await theme()).not.toBe(before);
     // The token the whole app paints with follows the theme attribute.
     const pageColor = await page.evaluate(
       () => getComputedStyle(document.documentElement).getPropertyValue("--page").trim(),
     );
     expect(pageColor.length).toBeGreaterThan(0);
-    await pointerClick(page, page.locator(".topbar [data-role='theme-toggle']"));
-    await page.waitForTimeout(100);
-    expect(await page.evaluate(() => document.documentElement.dataset.theme)).toBe(
-      before,
-    );
+    while ((await theme()) !== before && steps < 6) {
+      await pointerClick(page, toggle);
+      await page.waitForTimeout(100);
+      steps++;
+    }
+    expect(await theme()).toBe(before);
   });
 
   test("synthesize action is present but disabled with a click-reachable explanation", async ({

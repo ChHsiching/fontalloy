@@ -5,6 +5,7 @@ import { cssFamily } from "../kit/pickerPopup";
 import {
   mountSceneCard,
   mountFullscreenScene,
+  type FullscreenScene,
   type SceneCard,
   type SceneKind,
 } from "../kit/sceneCard";
@@ -26,6 +27,13 @@ import { formatCp } from "./charmap";
  * Cards render in place with no entrance choreography (round 4: the
  * charmap has none; parallel surfaces behave alike). A signature guard
  * still skips no-op re-renders.
+ *
+ * Fullscreen (round 5, owner items 9 + 10): the overlay never covers
+ * the top bar (its host is bounded below it — see main.ts), its zoomed
+ * type stays comfortable, its bar carries the THEME select, and
+ * prev/next swap the content IN PLACE — no close-then-reopen
+ * choreography. Theme changes made in the fullscreen bar flow back
+ * into the cards (one shared themeState).
  */
 
 const CAPTIONS: Record<SceneKind, string> = {
@@ -43,25 +51,49 @@ const themeState: Record<"terminal" | "code", string> = {
 /** The fullscreen host (a positioned ancestor — the app frame). */
 let zoomHost: HTMLElement | null = null;
 
+/** The live fullscreen overlay (null while none is open). */
+let fullscreen: FullscreenScene | null = null;
+
 const KINDS: SceneKind[] = ["terminal", "code", "document"];
 
-function openFullscreen(kind: SceneKind): void {
-  if (!zoomHost) return;
-  let index = KINDS.indexOf(kind);
-  mountFullscreenScene(zoomHost, {
+/** The kind the fullscreen overlay currently shows (null while closed). */
+let fullscreenKind: SceneKind | null = null;
+
+/** Re-renders the stacked cards (set by mountScenes; the fullscreen
+ *  bar's theme changes call it so both surfaces stay in sync). */
+let renderCards: (() => void) | null = null;
+
+/** The fullscreen props for one scene kind. */
+function fullscreenProps(kind: SceneKind): Parameters<FullscreenScene["render"]>[0] {
+  return {
     kind,
     caption: CAPTIONS[kind],
+    themeId: kind === "document" ? "" : themeState[kind],
     content: contentProps(),
-    onPrev: () => {
-      index = (index - 1 + KINDS.length) % KINDS.length;
-      openFullscreen(KINDS[index]!);
+    onThemeChange: (id: string): void => {
+      if (kind !== "document") themeState[kind] = id;
+      renderCards?.();
     },
-    onNext: () => {
-      index = (index + 1) % KINDS.length;
-      openFullscreen(KINDS[index]!);
-    },
-    onClose: () => undefined,
-  });
+    onPrev: (): void => step(-1),
+    onNext: (): void => step(1),
+    onClose: (): void => undefined,
+  };
+}
+
+/** Open the fullscreen overlay on one scene (fresh entry each time). */
+function openFullscreen(kind: SceneKind): void {
+  if (!zoomHost) return;
+  fullscreen?.close();
+  fullscreenKind = kind;
+  fullscreen = mountFullscreenScene(zoomHost, fullscreenProps(kind));
+}
+
+/** Prev/next IN PLACE: swap the content, keep the overlay mounted. */
+function step(delta: number): void {
+  if (fullscreen === null || fullscreenKind === null) return;
+  const index = KINDS.indexOf(fullscreenKind);
+  fullscreenKind = KINDS[(index + delta + KINDS.length) % KINDS.length]!;
+  fullscreen.render(fullscreenProps(fullscreenKind));
 }
 
 const MONO_TAIL = "Consolas,ui-monospace,monospace";
@@ -146,7 +178,12 @@ export function mountScenes(root: HTMLElement, fullscreenHost: HTMLElement): voi
     for (const [kind, card] of cards) {
       card.render(cardProps(kind));
     }
+    // An open fullscreen overlay follows the same state in place.
+    if (fullscreen !== null && fullscreenKind !== null) {
+      fullscreen.render(fullscreenProps(fullscreenKind));
+    }
   };
+  renderCards = render;
   store.subscribe(render);
   render();
 }

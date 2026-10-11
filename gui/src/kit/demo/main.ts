@@ -29,7 +29,7 @@ import { mountCharPopup, type CharPopupFacts } from "../charPopup";
 import { mountRangePopup } from "../rangePopup";
 import type { IconName } from "../icons";
 import type { SceneKind } from "../sceneCard";
-import { applyAppTheme, type AppTheme } from "../theme";
+import { applyStoredThemePreference } from "../theme";
 import type { FontSide } from "../actionBar";
 import {
   ADJUSTED_CHARS,
@@ -708,28 +708,40 @@ const zoomHost = document.createElement("div");
 zoomHost.className = "demo-zoom-host";
 app.appendChild(zoomHost);
 
-function openFullscreen(kind: SceneKind): void {
-  const captions: Record<SceneKind, string> = {
-    terminal: "终端",
-    code: "代码编辑器",
-    document: "文档",
-  };
-  const kinds: SceneKind[] = ["terminal", "code", "document"];
-  let index = kinds.indexOf(kind);
-  mountFullscreenScene(zoomHost, {
+let zoomOverlay: ReturnType<typeof mountFullscreenScene> | null = null;
+
+const ZOOM_CAPTIONS: Record<SceneKind, string> = {
+  terminal: "终端",
+  code: "代码编辑器",
+  document: "文档",
+};
+const ZOOM_KINDS: SceneKind[] = ["terminal", "code", "document"];
+let zoomKind: SceneKind = "terminal";
+
+/** The fullscreen props for one scene kind (prev/next step in place). */
+function zoomProps(kind: SceneKind): Parameters<ReturnType<typeof mountFullscreenScene>["render"]>[0] {
+  return {
     kind,
-    caption: captions[kind],
+    caption: ZOOM_CAPTIONS[kind],
     content: { customText: state.customPreview || undefined },
     onPrev: () => {
-      index = (index - 1 + kinds.length) % kinds.length;
-      openFullscreen(kinds[index]);
+      const i = ZOOM_KINDS.indexOf(zoomKind);
+      zoomKind = ZOOM_KINDS[(i - 1 + ZOOM_KINDS.length) % ZOOM_KINDS.length]!;
+      zoomOverlay?.render(zoomProps(zoomKind));
     },
     onNext: () => {
-      index = (index + 1) % kinds.length;
-      openFullscreen(kinds[index]);
+      const i = ZOOM_KINDS.indexOf(zoomKind);
+      zoomKind = ZOOM_KINDS[(i + 1) % ZOOM_KINDS.length]!;
+      zoomOverlay?.render(zoomProps(zoomKind));
     },
     onClose: () => undefined,
-  });
+  };
+}
+
+function openFullscreen(kind: SceneKind): void {
+  zoomOverlay?.close();
+  zoomKind = kind;
+  zoomOverlay = mountFullscreenScene(zoomHost, zoomProps(kind));
 }
 
 /* ---------- status bar + mode switching ---------- */
@@ -753,10 +765,9 @@ function setMode(mode: "grid" | "scene"): void {
 
 /* ---------- boot ---------- */
 
-const initialTheme: AppTheme = window.matchMedia("(prefers-color-scheme: dark)").matches
-  ? "dark"
-  : "light";
-applyAppTheme(initialTheme);
+// Round 5: boot from the persisted 3-state preference (自动 follows the
+// system live) — the same policy the app's top bar uses.
+applyStoredThemePreference();
 previewInput.style.display = "none";
 sceneWrap.style.display = "none";
 renderGridArea();

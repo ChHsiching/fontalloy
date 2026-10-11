@@ -68,18 +68,33 @@ test("the workspace frame: top bar, rail, stage, status bar", async ({
   expect((await stats.textContent()) ?? "").toContain("字符");
 });
 
-test("the theme toggle flips the app theme through the kit tokens", async ({
+test("the theme toggle cycles the app theme through the kit tokens", async ({
   page,
 }) => {
-  const before = await page.evaluate(() => document.documentElement.dataset.theme);
-  await pointerClick(page, page.locator(".topbar [data-role='theme-toggle']"));
-  await page.waitForTimeout(150);
-  const after = await page.evaluate(() => document.documentElement.dataset.theme);
-  expect(after).not.toBe(before);
+  // Round 5: the 3-state cycle (自动 → 浅色 → 深色 → 自动) — from a
+  // fresh 自动 context with a light system, a flip needs up to two
+  // steps and the cycle closes back.
+  const theme = () =>
+    page.evaluate(() => document.documentElement.dataset.theme);
+  const before = await theme();
+  const toggle = page.locator(".topbar [data-role='theme-toggle']");
+  let steps = 0;
+  while ((await theme()) === before && steps < 3) {
+    await pointerClick(page, toggle);
+    await page.waitForTimeout(150);
+    steps++;
+  }
+  expect(await theme()).not.toBe(before);
   const pageColor = await page.evaluate(() =>
     getComputedStyle(document.documentElement).getPropertyValue("--page").trim(),
   );
   expect(pageColor.length).toBeGreaterThan(0);
+  while ((await theme()) !== before && steps < 6) {
+    await pointerClick(page, toggle);
+    await page.waitForTimeout(150);
+    steps++;
+  }
+  expect(await theme()).toBe(before);
 });
 
 test("the mode bar switches the stage between charmap and scenes", async ({

@@ -10,7 +10,13 @@
  */
 
 import { icon } from "./icons";
-import { toggleAppTheme } from "./theme";
+import {
+  cycleThemePreference,
+  effectiveTheme,
+  getThemePreference,
+  themePreferenceLabel,
+  type ThemePreference,
+} from "./theme";
 
 export const GITHUB_REPO = "ChHsiching/fontalloy";
 export const GITHUB_URL = `https://github.com/${GITHUB_REPO}`;
@@ -86,7 +92,23 @@ export function fontPairTags(
   return { el, set };
 }
 
-export function githubLink(): HTMLAnchorElement {
+export interface GithubLinkProps {
+  /**
+   * Intercept the navigation (returning true suppresses the anchor's
+   * own navigation — e.g. the Tauri shell routes the click to the
+   * system browser). The plain web target never passes one.
+   */
+  onNavigate?(url: string): boolean;
+}
+
+/**
+ * The GitHub repo ghost link (the prototype's top bar, same spot: after
+ * the grow spacer, before the theme toggle). In the plain web target it
+ * is a normal link; under Tauri the consumer intercepts the click and
+ * opens the system browser (round 5, owner item 12) — the kit itself
+ * stays environment-agnostic.
+ */
+export function githubLink(props: GithubLinkProps = {}): HTMLAnchorElement {
   const link = document.createElement("a");
   link.className = "kit-btn gh";
   link.href = GITHUB_URL;
@@ -96,24 +118,51 @@ export function githubLink(): HTMLAnchorElement {
   link.style.fontSize = "12px";
   link.innerHTML = icon("github");
   link.appendChild(document.createTextNode(GITHUB_REPO));
+  link.addEventListener("click", (event) => {
+    if (props.onNavigate?.(GITHUB_URL) === true) {
+      event.preventDefault();
+    }
+  });
   return link;
 }
 
 export interface ThemeToggleProps {
-  onToggle?: () => void;
+  /** Notified with the new preference after each cycle step. */
+  onPreference?(pref: ThemePreference): void;
 }
 
+/**
+ * The theme toggle (round 5, owner item 8): a THREE-STATE cycle
+ * 自动 → 浅色 → 深色 → 自动. The icon shows the EFFECTIVE theme (sun in
+ * light, moon in dark) whatever the preference, and a tiny 自动 badge
+ * marks the follow-system state. `data-theme-mode` carries the
+ * preference for walkers; the aria-label stays the prototype's
+ * 切换明暗 with the current mode in the title.
+ */
 export function themeToggle(props: ThemeToggleProps = {}): HTMLButtonElement {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "kit-btn gh";
   btn.dataset.role = "theme-toggle";
-  btn.setAttribute("aria-label", "切换明暗");
-  btn.innerHTML = icon("theme");
+
+  const draw = (): void => {
+    const pref = getThemePreference();
+    const effective = effectiveTheme(pref);
+    btn.dataset.themeMode = pref;
+    btn.setAttribute("aria-label", "切换明暗");
+    btn.title = `主题：${themePreferenceLabel(pref)}${pref === "auto" ? "（跟随系统）" : ""} · 点击切换`;
+    btn.innerHTML =
+      icon(effective === "dark" ? "moon" : "theme") +
+      (pref === "auto" ? '<span class="kit-theme-auto">自动</span>' : "");
+  };
+
   btn.addEventListener("click", () => {
-    toggleAppTheme();
-    props.onToggle?.();
+    cycleThemePreference();
+    draw();
+    props.onPreference?.(getThemePreference());
   });
+
+  draw();
   return btn;
 }
 
@@ -161,7 +210,11 @@ export interface TopBarProps {
   fontName?: string;
   onFontName?(value: string): void;
   onSynthesize(): void;
-  onThemeToggle?(): void;
+  /** Notified on every theme cycle step (round 5). */
+  onThemePreference?(pref: ThemePreference): void;
+  /** GitHub link navigation intercept (the Tauri shell opens the system
+   *  browser; see githubLink). */
+  onGithubNavigate?(url: string): boolean;
 }
 
 export interface TopBar {
@@ -179,8 +232,8 @@ export function mountTopBar(host: HTMLElement, props: TopBarProps): TopBar {
     brandPart(),
     pair.el,
     grow,
-    githubLink(),
-    themeToggle({ onToggle: props.onThemeToggle }),
+    githubLink({ onNavigate: props.onGithubNavigate }),
+    themeToggle({ onPreference: props.onThemePreference }),
     fontNameInput({ value: props.fontName, onChange: props.onFontName }),
     synthesizeButton({ onClick: props.onSynthesize }),
   );

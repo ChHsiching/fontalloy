@@ -58,34 +58,61 @@ test.describe("kit demo page", () => {
     await expect(pair.nth(1)).toHaveText("Maple Mono CN");
   });
 
-  test("theme toggle flips the app theme with the extracted palettes", async ({
+  test("theme toggle: 3-state cycle with the effective icon and persistence", async ({
     page,
   }) => {
     const frame = page.locator(".kit-app");
-    const initial = await page.evaluate(() =>
-      document.documentElement.dataset.theme === "dark" ? "dark" : "light",
-    );
     const accentOf = () =>
       frame.evaluate((el) => getComputedStyle(el).getPropertyValue("--ac").trim());
+    const toggle = page.locator('[data-role="theme-toggle"]');
+    // The test browser's system preference is light, so a fresh page
+    // boots 自动 (effective light: sun icon + 自动 badge) — round 5.
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    await expect(toggle).toHaveAttribute("data-theme-mode", "auto");
+    await expect(toggle.locator(".kit-theme-auto")).toHaveText("自动");
+    expect(await accentOf()).toBe("#0f766e");
 
-    if (initial === "light") {
-      expect(await accentOf()).toBe("#0f766e");
-    } else {
-      expect(await accentOf()).toBe("#4ade9e");
-    }
+    // Step 1: 浅色 — same effective theme, badge gone.
+    await pointerClick(page, toggle);
+    await expect(toggle).toHaveAttribute("data-theme-mode", "light");
+    await expect(toggle.locator(".kit-theme-auto")).toHaveCount(0);
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
 
-    await pointerClick(page, page.locator('[data-role="theme-toggle"]'));
-    await expect(page.locator("html")).toHaveAttribute(
-      "data-theme",
-      initial === "light" ? "dark" : "light",
-    );
-    expect(await accentOf()).toBe(initial === "light" ? "#4ade9e" : "#0f766e");
+    // Step 2: 深色 — moon icon, dark palette.
+    await pointerClick(page, toggle);
+    await expect(toggle).toHaveAttribute("data-theme-mode", "dark");
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    expect(await accentOf()).toBe("#4ade9e");
+    // The crescent carries no circle (the sun does) — icon vocabulary.
+    expect(
+      await toggle.evaluate((el) => el.querySelector("svg circle") !== null),
+    ).toBe(false);
+
+    // Step 3: back to 自动 — badge returns, the system (light) wins.
+    await pointerClick(page, toggle);
+    await expect(toggle).toHaveAttribute("data-theme-mode", "auto");
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    await expect(toggle.locator(".kit-theme-auto")).toHaveText("自动");
+    expect(
+      await toggle.evaluate((el) => el.querySelector("svg circle") !== null),
+    ).toBe(true);
 
     // The transition-killer class is transient (two frames), never stuck.
     await page.waitForTimeout(120);
     expect(
       await page.evaluate(() => document.documentElement.classList.contains("theming")),
     ).toBe(false);
+
+    // The choice persists: a reload of the same context boots dark.
+    await pointerClick(page, toggle); // 自动 → 浅色
+    await pointerClick(page, toggle); // 浅色 → 深色
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await page.reload();
+    await page.locator('[data-role="theme-toggle"]').waitFor();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await expect(
+      page.locator('[data-role="theme-toggle"]'),
+    ).toHaveAttribute("data-theme-mode", "dark");
   });
 
   /* ---------- AppSelect ---------- */
@@ -159,7 +186,7 @@ test.describe("kit demo page", () => {
 
   /* ---------- HelpPopover ---------- */
 
-  test("help popover: circular button, verbatim chrome, ADR-corrected content", async ({
+  test("help popover: circular button, verbatim chrome, prototype content", async ({
     page,
   }) => {
     const button = page.locator('[data-role="help-weight"]');
@@ -180,12 +207,16 @@ test.describe("kit demo page", () => {
     await expect(th.nth(0)).toHaveText("选项");
     await expect(th.nth(1)).toHaveText("成品字重");
 
-    // ADR-0006-corrected content marker: the donor-only row reads the
-    // shared-slots semantics, and the mapping table has no 中等 output row.
-    await expect(tables.first()).toContainText("仅保留两种字体共有的档位");
+    // Round 5, owner item 11: the prototype's VERBATIM rows — including
+    // the 中等 output row the earlier ADR-0006 correction dropped.
+    await expect(tables.first()).toContainText("细、常规、中等、粗体");
+    await expect(tables.first()).toContainText("常规、中等");
     const rows = tables.nth(1).locator("tbody tr");
-    await expect(rows).toHaveCount(3);
-    await expect(rows.nth(2).locator("td").first()).toHaveText("粗体");
+    await expect(rows).toHaveCount(4);
+    await expect(rows.nth(2).locator("td").first()).toHaveText("中等");
+    await expect(rows.nth(3).locator("td").first()).toHaveText("粗体");
+    // No engineering notes in user-facing popovers.
+    await expect(pop).not.toContainText("ADR");
 
     // The popover clamps inside the app frame.
     const frameBox = await page.locator(".kit-app").boundingBox();
