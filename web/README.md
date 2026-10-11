@@ -1,36 +1,39 @@
 # FontAlloy WebApp
 
-The static build target of the shared frontend: the recipe builder
-(issue #21) with live merging through the local service (issue #22).
-Build a `fontalloy` recipe in the browser — base/donor selection from
-the catalog, precedence rules including the fc-lang language presets,
-output naming — and either run the merge right there when the local
-`fontalloy serve` service answers the detection probe (submit, watch
-progress, download the font and the verification report), or walk away
-with a downloadable recipe YAML plus a copyable `fontalloy build`
-command that reproduces the same merge. When no service answers, the
-copy-CLI fallback is the default rendering and the page states why.
+The static build target of the shared frontend — and since the
+design-fidelity repair round 2, it mounts the SAME workspace app the
+Tauri GUI mounts: the same top bar (GitHub link, font pair tags, output
+font name, theme toggle, 合成字体), the same rail (font pickers,
+language presets, custom rules, synthesis settings), the same character
+map / scene stage and status bar. The WebApp is not a second UI; the
+only differences are platform mechanics:
 
-## Detecting the local service
+- **catalog source** — the desktop app downloads the release catalog
+  into its app-data directory; the WebApp (dev server and `vite
+  preview`) bootstraps the local dev catalog served at `/dev-catalog/`
+  (the repo manifest's families, zipped from a local fonts directory —
+  see `gui/scripts/dev-catalog.mjs`). A deployed static bundle stays
+  catalog-free unless an injected config names an origin.
+- **the merge service** — the desktop app starts its bundled sidecar;
+  the WebApp probes a local `fontalloy serve` on load (issue #22): the
+  `?serve=` query parameter, defaulting to `http://127.0.0.1:7777`:
 
-The page probes on load and renders from the published status: the
-topbar chip (已连接 / 未连接) and the result-panel notice follow it.
-The address probed is the `?serve=` query parameter — loopback http
-origins only — and defaults to `http://127.0.0.1:7777`:
+  ```
+  fontalloy serve --port 7777 --allow-origin <this site's origin>
+  # then open:  <site-url>/?serve=http://127.0.0.1:7777   (or just the
+  #             site URL — 7777 is the default probe target)
+  ```
 
-```
-fontalloy serve --port 7777 --allow-origin <this site's origin>
-# then open:  <site-url>/?serve=http://127.0.0.1:7777   (or just the
-#             site URL — 7777 is the default probe target)
-```
-
-`--allow-origin` must name the origin the page is served from (the
-CORS allowlist is the whole point: the flow works only from the
-configured origin — see `fontalloy serve --help`). A refused
-connection, a timeout, or a CORS block is a handled state: the notice
-states that no service was detected and offers a click-reachable
-re-probe. Live submissions send the recipe as JSON with absolute font
-paths (they resolve against the serve process's working directory).
+  `--allow-origin` must name the origin the page is served from (the
+  CORS allowlist is the whole point). A refused connection, a timeout,
+  or a CORS block is a handled state: clicking 合成字体 opens the
+  workspace's no-service panel — the absorbed recipe-builder flow —
+  offering the recipe YAML (built from the same picks/rules/settings
+  the service flow would submit) as a download plus the copyable
+  `fontalloy build` command that reproduces the same merge.
+- **saving artifacts** — the native save dialog becomes a browser
+  download; the build panel renders the run's journal and verification
+  report identically on both targets.
 
 ## One codebase, two build targets
 
@@ -39,22 +42,24 @@ source and compiles into both targets:
 
 ```
 gui/                     target 1: the Tauri 2 desktop shell
-  index.html             GUI entry -> src/main.ts (split-pane workspace)
+  index.html             GUI entry -> src/main.ts (the workspace)
   src/                   THE shared frontend source
-    state.ts             createStore (generic) + the GUI workspace store
+    state.ts             createStore (generic) + the workspace store
     platform/            environment adapter (tauri | web) — the only
-                         place that sniffs the runtime
-    recipe/              recipe model + validation mirror + YAML writer
-    webapp/              the WebApp feature (builder, listbox, result,
-                         service notice) — web-only, GUI never imports it
+                         place that sniffs the runtime (config seams:
+                         catalog bootstrap, serve address, artifact saver)
+    recipe/              recipe model + validation mirror + YAML/JSON writers
     data/                generated static JSON (committed; see below)
   tests/                 seam-3 Playwright suite (GUI target)
 
 web/                     target 2: the static site
-  index.html             WebApp entry -> ../gui/src/webapp/main.ts
-  vite.config.ts         base "./" (relative asset URLs), root = web/
+  index.html             WebApp entry -> ../gui/src/main.ts (the SAME
+                         workspace entry the GUI uses)
+  vite.config.ts         base "./", the dev-catalog plugin (dev + preview),
+                         VITE_WEB_CATALOG=1 (the built bundle boots the
+                         local catalog under vite preview)
   playwright.config.ts   seam-3 suite against the BUILT site
-  tests/                 the WebApp specs (+ fixtures/sample-recipe.yaml)
+  tests/                 the WebApp specs (drive the workspace)
   scripts/render-static-data.py   regenerates gui/src/data/*.json
 ```
 
@@ -74,7 +79,9 @@ rendered from the repo's own truth — no live serve dependency:
   codepoint count and sub-block structure (zh_hk = zh_tw +
   zh_hk_supplement), plus the standalone selectable sets.
 
-Regenerate after changing the manifest or the corpus:
+`gui/src/data/curated-meta.json` overlays the prototype's curated
+display data (GitHub stars, Chinese trait tags) onto the picker rows.
+Regenerate the snapshots after changing the manifest or the corpus:
 
 ```bash
 python web/scripts/render-static-data.py   # or: uv run python …
@@ -89,36 +96,34 @@ until the inputs change.
 cd web
 npm install
 npm run build        # vite build -> dist/ (relative paths, any host)
-npm run preview      # serve dist/ (http://localhost:4173)
+npm run preview      # serve dist/ (http://localhost:4173) + /dev-catalog
 npm run test:e2e     # seam-3 Playwright suite (builds, then previews)
-npm run dev          # dev server (http://localhost:5174)
+npm run dev          # dev server (http://localhost:5174) + /dev-catalog
 ```
 
 ## Testing (seam 3)
 
-`tests/` drives the built site through Playwright with the spec's
+`tests/` drives the built WORKSPACE through Playwright with the spec's
 mandatory conventions (real pointer events + elementFromPoint guards,
 DOM textContent assertions, zero-JS-errors gate; see
 `gui/tests/helpers.ts` for the shared rationale — `web/tests/helpers.ts`
-mirrors them per target). The generated YAML is asserted semantically:
-the test parses it (`yaml`) and compares against the builder state —
-including preset rules — and against `tests/fixtures/sample-recipe.yaml`,
-which the core suite (`tests/test_webapp_recipe.py` in the repo root)
-proves parses through the strict `fontalloy_core.load_recipe`. Same
-builder state, same merge: page ⇔ fixture ⇔ core loader. The JSON twin
-(`sample-recipe.json`) pins the serve submission body the same way.
+mirrors them per target). The no-service panel's YAML is asserted
+semantically (parsed and compared against the workspace state) and its
+JSON twin — the body the live flow POSTs — stays pinned by
+`tests/fixtures/sample-recipe.json` against the core loader
+(`tests/test_webapp_recipe.py` in the repo root).
 
 The live-merge tests (`tests/live-merge.spec.ts`) run against a REAL
 `fontalloy serve` instance: `tests/serve.ts` spawns it through the
 project env (`uv run fontalloy serve`, ephemeral port, the ready URL
 read from stdout) with synthetic fixture fonts from
-`scripts/make-serve-fixture-fonts.py`, and the assertions cover
-detection, the submitted JSON body verbatim, progress (the slow donor
-keeps the build observably in flight), artifact + report download,
-inline failures, and both sides of the CORS boundary. The zero-JS-
-errors gate has a benign-error policy: the browser's own console line
-for an intentionally refused/blocked probe is declared per test
-(`allowProbeRefusal`), never silently excused.
+`scripts/make-serve-fixture-fonts.py`, and the assertions cover the
+`?serve=` detection, the submitted JSON body verbatim, the build
+panel's journal and report rendering, the browser-download artifact,
+inline failures, and both sides of the CORS boundary. The
+zero-JS-errors gate has a benign-error policy: the browser's own
+console line for an intentionally refused/blocked probe is declared
+per test (`allowProbeRefusal`), never silently excused.
 
 ## Deploying
 

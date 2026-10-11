@@ -9,14 +9,16 @@
     <link rel="icon" href="data:," />
     <meta
       name="description"
-      content="FontAlloy 配方构建器：在浏览器中拼装合并配方，带走可运行的 CLI 命令。"
+      content="FontAlloy：与桌面版同一个工作台 —— 选字体、定规则、看字符映射；连接本地服务实时合成，或带走 CLI 命令在本地完成同一合并。"
     />
-    <title>FontAlloy — 配方构建器</title>
+    <title>FontAlloy</title>
   </head>
   <body>
     <div id="app"></div>
-    <!-- The shared frontend source: the same tree the Tauri GUI builds
-         from (gui/src). Only the entry differs per build target. -->
-    <script type="module" src="../gui/src/webapp/main.ts"></script>
+    <!-- The SAME workspace the Tauri GUI mounts (repair round 2: one
+         workspace UI, both targets). Only the entry URL differs — the
+         platform adapter (gui/src/platform) decides the rest (catalog
+         bootstrap source, the serve probe, browser-native saving). -->
+    <script type="module" src="../gui/src/main.ts"></script>
   </body>
 </html>

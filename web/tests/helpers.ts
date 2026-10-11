@@ -7,11 +7,16 @@ import { expect, type Locator, type Page } from "@playwright/test";
  * - DOM textContent assertions, never pixels;
  * - zero-JS-errors gate on load;
  * - font readiness awaited before asserting rendered text.
+ *
+ * Since the round-2 unification the WebApp IS the workspace: the specs
+ * drive the same top bar / rail / charmap / build panel the GUI suite
+ * drives. The helpers below add the workspace-driving vocabulary on
+ * top of the kit's popup/select helpers.
  */
 
 /**
  * The zero-JS-errors gate with a benign-error policy: expected
- * network-refusal console lines (the WebApp probes a possibly-absent
+ * network-refusal console lines (the workspace probes a possibly-absent
  * local service BY DESIGN, and the browser logs the refused/blocked
  * fetch itself) are declared per test instead of leaking into the gate.
  * A declaration only ever matches `console.error` lines — page errors
@@ -42,7 +47,7 @@ export function collectJsErrors(page: Page, sink: string[]): ErrorGate {
   });
   return {
     allow(pattern, reason) {
-      allowed.push({ pattern, reason: reason });
+      allowed.push({ pattern, reason });
     },
   };
 }
@@ -51,6 +56,9 @@ export function collectJsErrors(page: Page, sink: string[]): ErrorGate {
 export function assertNoJsErrors(sink: string[]): void {
   expect(sink, `page reported JS errors:\n${sink.join("\n")}`).toHaveLength(0);
 }
+
+/** A loopback address nothing listens on (deterministic absence). */
+export const UNUSED_SERVE = "http://127.0.0.1:59999";
 
 /**
  * The suite-wide benign declaration: the page's load-time probe of the
@@ -80,28 +88,79 @@ export async function waitForFontsReady(page: Page): Promise<void> {
 }
 
 /**
+ * Opt the page OUT of the real dev catalog the static bundle boots by
+ * default (VITE_WEB_CATALOG=1): specs that are not about the catalog
+ * run catalog-free for determinism and speed — the injected config
+ * nulls the bootstrap URL (the platform seam, gui/src/platform/config).
+ */
+export async function optOutOfCatalog(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const config = window as unknown as {
+      __FONTALLOY_CONFIG__: Record<string, unknown>;
+    };
+    config.__FONTALLOY_CONFIG__ = { catalogBootstrapUrl: null };
+  });
+}
+
+/**
+ * Wait for the first-run catalog run to SETTLE: the progress screen
+ * appears while families are pending and hides itself when the run
+ * finishes. Waiting for the hide (instead of skipping) leaves the store
+ * quiet — the picker headers/rows stop rebuilding mid-cursor, so the
+ * real-pointer helpers stop racing the download churn. On
+ * already-verified storage the screen never shows; the bounded wait
+ * covers that too.
+ */
+export async function waitForCatalogReady(
+  page: Page,
+  timeout = 240_000,
+): Promise<void> {
+  const screen = page.locator(".catalog-screen");
+  await screen.waitFor({ state: "visible", timeout: 20_000 }).catch(() => {});
+  await expect(screen).toBeHidden({ timeout });
+}
+
+/**
  * Compute the center of `locator` and return it only if the element (or
  * a descendant of it) is what elementFromPoint reports there.
+ *
+ * Re-render races retry: a store render between the visibility wait and
+ * the geometry read can replace the node (the workspace rebuilds picker
+ * headers and rows on every store patch — during catalog downloads
+ * that is constant); the fresh node occupies the same spot, so
+ * re-resolving and retrying (up to three times) clicks the real
+ * element rather than failing the gesture.
  */
 export async function hitTestCenter(
   page: Page,
   locator: Locator,
 ): Promise<{ x: number; y: number }> {
-  await locator.waitFor({ state: "visible" });
-  await locator.scrollIntoViewIfNeeded();
-  const box = await locator.boundingBox();
-  if (!box) throw new Error("hit test target has no bounding box");
-  const x = Math.round(box.x + box.width / 2);
-  const y = Math.round(box.y + box.height / 2);
-  const covered = await page.evaluate(
-    ([px, py]) => document.elementFromPoint(px, py) === null,
-    [x, y],
-  );
-  expect(
-    covered,
-    `elementFromPoint(${x}, ${y}) is covered or outside the viewport`,
-  ).toBe(false);
-  return { x, y };
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await locator.waitFor({ state: "visible" });
+      await locator.scrollIntoViewIfNeeded();
+      const box = await locator.boundingBox();
+      if (!box) throw new Error("hit test target has no bounding box");
+      const x = Math.round(box.x + box.width / 2);
+      const y = Math.round(box.y + box.height / 2);
+      const covered = await page.evaluate(
+        ([px, py]) => document.elementFromPoint(px, py) === null,
+        [x, y],
+      );
+      expect(
+        covered,
+        `elementFromPoint(${x}, ${y}) is covered or outside the viewport`,
+      ).toBe(false);
+      return { x, y };
+    } catch (err) {
+      lastError = err;
+      const message = err instanceof Error ? err.message : String(err);
+      if (!message.includes("not attached")) throw err;
+      await page.waitForTimeout(50);
+    }
+  }
+  throw lastError;
 }
 
 /** Click via real mouse events, after an elementFromPoint guard. */
@@ -123,17 +182,15 @@ export async function pointerClick(page: Page, locator: Locator): Promise<void> 
 }
 
 /**
- * Open a picker popup (the kit PickerPopup card for catalog slots, the
- * .kit-pop preset popup for rules) through a real pointer click on its
- * anchor/card and wait for the discrete open transition.
+ * Open one of the rail's font pickers (the kit PickerPopup card) and
+ * return the popup locator.
  */
-export async function openListbox(
+export async function openFontPicker(
   page: Page,
-  anchor: Locator,
-  label: string,
+  role: "en" | "cjk",
 ): Promise<Locator> {
-  await pointerClick(page, anchor);
-  const popup = page.locator(`[data-picker-popup="${label}"]`);
+  await pointerClick(page, page.locator(`[data-role="picker-${role}"] .kit-hd`));
+  const popup = page.locator(`[data-picker-popup="${role}"]`);
   await expect(popup).toBeVisible();
   await expect
     .poll(() => popup.evaluate((el) => getComputedStyle(el).opacity))
@@ -142,21 +199,108 @@ export async function openListbox(
 }
 
 /**
- * Pick one option from an open picker popup by its id. Catalog popups
- * (kit PickerPopup) key rows by data-font-id; the preset popup keeps
- * data-option-id — one helper accepts both.
+ * Pick one CATALOG family through its picker: wait until the family's
+ * row exists AND is enabled (its download verified), then click it and
+ * wait for the card header to carry the family.
+ *
+ * The row click goes through raw mouse coordinates on purpose: while
+ * the catalog's lazy registration sweep runs, every store patch
+ * rebuilds the popup's rows — an elementHandle-pinned pointerClick can
+ * keep missing the replaced node. The row set at a given point is
+ * stable (same spot, same handler semantics); the elementFromPoint
+ * guard still verifies a real row is under the cursor.
  */
-export async function pickOption(
+export async function pickCatalogFamily(
   page: Page,
-  popup: Locator,
-  optionId: string,
+  role: "en" | "cjk",
+  family: string,
+  timeout = 240_000,
 ): Promise<void> {
-  const row = popup.locator(
-    `[data-font-id="${optionId}"], [data-option-id="${optionId}"]`,
+  const popup = await openFontPicker(page, role);
+  await page.waitForFunction(
+    ({ role, family }) => {
+      const rows = [
+        ...document.querySelectorAll(`[data-picker-popup="${role}"] .kit-fp`),
+      ];
+      const row = rows.find((r) => r.textContent?.startsWith(family));
+      return row && !row.classList.contains("off") ? true : null;
+    },
+    { role, family },
+    { timeout },
   );
-  await expect(row).toBeVisible();
-  await pointerClick(page, row);
-  await expect(popup).not.toBeVisible();
+  const row = popup.locator(`.kit-fp[data-font-id]:has-text("${family}")`);
+  // Bounded retry over the residual row churn (a rebuild between the
+  // scroll and the geometry read detaches the node — measure null, so
+  // re-resolve and re-measure until one attempt lands a stable box).
+  let box: { x: number; y: number; width: number; height: number } | null =
+    null;
+  for (let attempt = 0; box === null; attempt++) {
+    try {
+      await row.scrollIntoViewIfNeeded();
+      box = await row.boundingBox();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (!message.includes("not attached") || attempt >= 10) throw err;
+    }
+    if (box === null && attempt >= 10) {
+      throw new Error(`no bounding box for the ${family} row`);
+    }
+    if (box === null) await page.waitForTimeout(100);
+  }
+  if (!box) throw new Error(`no bounding box for the ${family} row`);
+  const x = Math.round(box.x + box.width / 2);
+  const y = Math.round(box.y + box.height / 2);
+  const hitIsRow = await page.evaluate(([px, py]) => {
+    const hit = document.elementFromPoint(px, py);
+    return hit !== null && hit.closest(".kit-fp") !== null;
+  }, [x, y]);
+  expect(hitIsRow, `hit test at (${x}, ${y}) did not resolve to a row`).toBe(
+    true,
+  );
+  await page.mouse.move(x, y);
+  await page.mouse.click(x, y);
+  await page.waitForFunction(
+    ({ role, family }) =>
+      (document.querySelector(`[data-role="picker-${role}"] .kit-hd b`)
+        ?.textContent ?? "") === family,
+    { role, family },
+    { timeout: 10_000 },
+  );
+  await page.keyboard.press("Escape");
+}
+
+/**
+ * Load one local font file into a picker through the workspace's shared
+ * hidden file input (the browser local-load path — the footer action's
+ * own input, set directly like the GUI suite does).
+ */
+export async function loadLocalFont(
+  page: Page,
+  role: "en" | "cjk",
+  path: string,
+): Promise<void> {
+  const popup = await openFontPicker(page, role);
+  await page.locator("input[data-role='font-file']").setInputFiles(path);
+  await expect(popup.locator(".kit-fp").first()).toBeVisible();
+  await waitForFontsReady(page);
+  await page.keyboard.press("Escape");
+}
+
+/** The top bar's primary synthesize action. */
+export function synthesizeButton(page: Page): Locator {
+  return page.locator(".topbar [data-role='synthesize']");
+}
+
+/**
+ * Open the no-service CLI panel through the synthesize flow: clicking
+ * 合成字体 without a connected service offers the copy-CLI command and
+ * the recipe YAML download (the absorbed #22 builder).
+ */
+export async function openCliPanel(page: Page): Promise<Locator> {
+  await pointerClick(page, synthesizeButton(page));
+  const panel = page.locator('[data-testid="cli-panel"]');
+  await expect(panel).toBeVisible();
+  return panel;
 }
 
 /**
@@ -173,14 +317,4 @@ export async function pickSelectOption(
   await expect(row).toBeVisible();
   await pointerClick(page, row);
   await expect(host.locator(".kit-csel-pk")).toBeHidden();
-}
-
-/** The rendered recipe YAML (the builder's own preview of the file). */
-export function yamlPreview(page: Page): Locator {
-  return page.locator('[data-testid="recipe-yaml"]');
-}
-
-/** The rendered `fontalloy build` command. */
-export function cliCommand(page: Page): Locator {
-  return page.locator('[data-testid="cli-command"]');
 }
