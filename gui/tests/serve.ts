@@ -101,6 +101,78 @@ function defaultServeBin(): string {
   );
 }
 
+/** Spawn a real `fontalloy serve` over `fontsDir` (ephemeral port). */
+export function spawnServeOverFonts(fontsDir: string): Promise<{
+  url: string;
+  dispose: () => Promise<void>;
+}> {
+  const bin = process.env.FONTALLOY_SERVE_BIN ?? defaultServeBin();
+  const child: ChildProcess = spawn(
+    bin,
+    ["serve", "--port", "0", "--allow-origin", devOrigin, "--font-dir", fontsDir],
+    { cwd: repoRoot, stdio: ["ignore", "pipe", "pipe"] },
+  );
+  const url = new Promise<string>((resolvePromise, rejectPromise) => {
+    let stdout = "";
+    let stderr = "";
+    const timer = setTimeout(() => {
+      rejectPromise(
+        new Error(
+          `fontalloy serve did not print its startup line in 20s ` +
+            `(stdout so far: ${stdout}; stderr: ${stderr})`,
+        ),
+      );
+    }, 20_000);
+    child.stdout!.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString("utf-8");
+      const match = STARTUP_LINE.exec(stdout);
+      if (match) {
+        clearTimeout(timer);
+        resolvePromise(`http://127.0.0.1:${match[1]}`);
+      }
+    });
+    child.stderr!.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf-8");
+    });
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      rejectPromise(err);
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      rejectPromise(
+        new Error(
+          `fontalloy serve exited before binding (code ${code}; ` +
+            `stdout: ${stdout}; stderr: ${stderr})`,
+        ),
+      );
+    });
+  });
+  return {
+    url,
+    dispose: async () => {
+      if (child.pid !== undefined) {
+        if (process.platform === "win32") {
+          await run(
+            "taskkill",
+            ["/pid", String(child.pid), "/T", "/F"],
+            repoRoot,
+          ).catch(() => child.kill());
+        } else {
+          child.kill("SIGTERM");
+        }
+      }
+      await new Promise<void>((resolvePromise) => {
+        const timer = setTimeout(() => resolvePromise(), 3_000);
+        child.once("exit", () => {
+          clearTimeout(timer);
+          resolvePromise();
+        });
+      });
+    },
+  };
+}
+
 /**
  * Generate the fixture fonts and spawn the real service. `donorGlyphs`
  * is the build-duration knob: ~30k glyphs makes a merge take ~2s, long

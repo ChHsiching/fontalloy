@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /**
  * Seam-3 helpers (spec issue #1 "Testing Decisions" / ticket #15):
@@ -168,4 +169,32 @@ export function fixtureFontPaths(): string[] {
 /** CSS-quoted font-family value, safe for names with spaces. */
 export function cssFamilyQuote(family: string): string {
   return `"${family.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+/**
+ * The REAL catalog font binaries for the minimal-path synthesis test
+ * (round 5, owner item 7): JetBrainsMono NF + Maple Mono CN — the same
+ * files the dev catalog serves, from the same font directory candidates
+ * (FONTALLOY_DEV_FONT_DIR, the sibling prototype checkout, an in-tree
+ * prototype branch). Font binaries never enter git; the test is
+ * mandatory, so a missing directory fails loudly rather than skipping.
+ */
+export function realCatalogFontPaths(): { base: string; donor: string } {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const root = resolve(here, "../..");
+  const candidates = [
+    process.env.FONTALLOY_DEV_FONT_DIR,
+    resolve(root, "..", "fontalloy", "gui", "prototype", "fonts"),
+    resolve(root, "gui", "prototype", "fonts"),
+  ].filter((p): p is string => typeof p === "string" && p.length > 0);
+  for (const dir of candidates) {
+    const base = resolve(dir, "JetBrainsMonoNerdFont-Regular.ttf");
+    const donor = resolve(dir, "MapleMonoCN-Regular.ttf");
+    if (existsSync(base) && existsSync(donor)) return { base, donor };
+  }
+  throw new Error(
+    "the real catalog fonts were not found (tried " +
+      candidates.map((p) => `"${p}"`).join(", ") +
+      ") — set FONTALLOY_DEV_FONT_DIR to the dev-catalog font directory",
+  );
 }

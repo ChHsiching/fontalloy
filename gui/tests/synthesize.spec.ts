@@ -1,15 +1,21 @@
 import { test, expect, type Page } from "@playwright/test";
-import { writeFile } from "node:fs/promises";
-import { mkdtemp } from "node:fs/promises";
+import { writeFile, copyFile, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve, basename } from "node:path";
 import { readFileSync } from "node:fs";
 import { parseFontMeta } from "../src/fonts/sfnt";
-import { startServeFixture, type ServeFixture } from "./serve";
+import {
+  spawnServeOverFonts,
+  startServeFixture,
+  type ServeFixture,
+} from "./serve";
+import { SimCatalog, injectCatalogConfig } from "./catalog-fixtures";
 import {
   assertNoJsErrors,
   collectJsErrors,
+  fixtureFontPaths,
   pointerClick,
+  realCatalogFontPaths,
   waitForFontsReady,
 } from "./helpers";
 
@@ -212,7 +218,11 @@ test.describe("sidecar synthesize", () => {
       expect(num(mergeTotals.total)).toBeLessThan(1_112_032);
       const next = page.locator(".kit-toolrow .kit-pgc button[aria-label='下一页']");
       await pointerClick(page, next);
-      await expect(page.locator("[data-pager-label]")).toHaveText("第 2/1086 页");
+      // Round 5: the aggregate pages the VISIBLE codepoints in whole
+      // rows — the count follows the live page size, never a constant.
+      await expect(page.locator("[data-pager-label]")).toHaveText(
+        /第 2\/\d+ 页/,
+      );
       // The whole-merge counters did not move with the page.
       await expect(page.locator("[data-stat='total']")).toHaveText(
         mergeTotals.total,
@@ -311,5 +321,127 @@ test.describe("sidecar synthesize", () => {
     const notice = page.locator(".synthesize-notice");
     await expect(notice).toBeVisible();
     await expect(notice).toContainText("本地");
+  });
+
+  test("the minimal path: two REAL catalog fonts picked, no other settings, builds and saves", async ({
+    page,
+  }) => {
+    // Real-shape fonts take a real while to graft (~40s on this
+    // machine); the suite's 30s default cannot cover the full merge.
+    test.setTimeout(180_000);
+    // Round 5, owner item 7 — the flagship flow, exactly as an owner
+    // runs it: pick JetBrainsMono NF + a CJK family from the catalog
+    // rows, touch nothing else, press 合成字体. Real-shape fonts (the
+    // same binaries the dev catalog serves), the real recipe the GUI
+    // builds (boot zh_cn preset included), the real service.
+    const real = realCatalogFontPaths();
+    const fontsDir = await mkdtemp(resolve(tmpdir(), "fontalloy-real-"));
+    await copyFile(real.base, resolve(fontsDir, basename(real.base)));
+    await copyFile(real.donor, resolve(fontsDir, basename(real.donor)));
+    const service = await spawnServeOverFonts(fontsDir);
+
+    const saved: string[] = [];
+    const saveDir = await mkdtemp(resolve(tmpdir(), "fontalloy-save-"));
+    try {
+      // A catalog over the same binaries — the picks come from ROWS.
+      const sim = await SimCatalog.create([
+        { family: "JetBrainsMono", file: basename(real.base), fontPath: real.base },
+        { family: "MapleMono", file: basename(real.donor), fontPath: real.donor },
+      ]);
+      await sim.install(page);
+      await injectCatalogConfig(page);
+      const serveUrl = await service.url;
+      await page.addInitScript((serve: string) => {
+        const config = window as unknown as {
+          __FONTALLOY_CONFIG__: Record<string, unknown>;
+        };
+        config.__FONTALLOY_CONFIG__.serveUrl = serve;
+      }, serveUrl);
+      // The page has a catalog configured, so the star refresh fires;
+      // keep it hermetic and quiet (a fulfilled count logs nothing).
+      await page.route("https://api.github.com/repos/**", (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ stargazers_count: 1234 }),
+        }),
+      );
+      await page.exposeFunction(
+        "__fontalloyTestSave",
+        async (name: string, bytesB64: string): Promise<string | null> => {
+          const bytes = Buffer.from(bytesB64, "base64");
+          const target = resolve(saveDir, name);
+          await writeFile(target, bytes);
+          saved.push(target);
+          return target;
+        },
+      );
+      await page.addInitScript(() => {
+        const config = window as unknown as {
+          __FONTALLOY_CONFIG__: Record<string, unknown>;
+        };
+        config.__FONTALLOY_CONFIG__.saveArtifact = async (
+          name: string,
+          bytes: Uint8Array,
+        ): Promise<{ saved: boolean; path: string | null }> => {
+          const b64 = btoa(
+            Array.from(bytes, (b) => String.fromCharCode(b)).join(""),
+          );
+          const path = await window.__fontalloyTestSave(name, b64);
+          return path === null ? { saved: false, path: null } : { saved: true, path };
+        };
+      });
+      collectJsErrors(page, jsErrors);
+      await page.goto("/");
+      await waitForFontsReady(page);
+      await expect(page.locator(".catalog-screen")).toBeHidden({
+        timeout: 30_000,
+      });
+
+      // The slot split (round 5, item 2): the EN slot lists the NF
+      // coding family, the CJK slot the CJK family.
+      await pointerClick(page, page.locator('[data-role="picker-en"] .kit-hd'));
+      await pointerClick(
+        page,
+        page
+          .locator('[data-picker-popup="en"] .kit-fp', { hasText: "JetBrains Mono" })
+          .first(),
+      );
+      await pointerClick(page, page.locator('[data-role="picker-cjk"] .kit-hd'));
+      await pointerClick(
+        page,
+        page
+          .locator('[data-picker-popup="cjk"] .kit-fp', { hasText: "Maple Mono CN" })
+          .first(),
+      );
+      await waitForFontsReady(page);
+
+      const synthesize = page.locator(".topbar [data-role='synthesize']");
+      await expect(synthesize).toHaveAttribute("aria-disabled", "false");
+      await pointerClick(page, synthesize);
+
+      const panel = page.locator('[data-testid="build-panel"]');
+      await expect(panel).toBeVisible();
+      await expect(
+        panel.locator("[data-build-stage]").first(),
+      ).toHaveText("完成", { timeout: 60_000 });
+      await expect(panel).toContainText("已保存");
+      expect(saved.length).toBe(1);
+
+      // The saved artifact parses as the merged font.
+      const bytes = readFileSync(saved[0]!);
+      expect(bytes[0]).toBe(0x00);
+      expect(bytes[1]).toBe(0x01);
+      const meta = parseFontMeta(
+        new Uint8Array(bytes).buffer as ArrayBuffer,
+      );
+      expect(meta.family).toBe("ChHsich");
+      // JetBrains Mono NF (~4.4k+) and Maple Mono CN hanzi both present.
+      expect(meta.codepoints.length).toBeGreaterThan(6_000);
+      expect(meta.codepoints).toContain(0x4e2d); // 中
+      expect(meta.codepoints).toContain(0xe0b0); // a Nerd Font powerline glyph
+    } finally {
+      await service.dispose();
+    }
   });
 });
