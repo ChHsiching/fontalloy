@@ -37,16 +37,16 @@ Inventory numbers cite the 62-item prototype inventory in
 | `tokens.css` | The prototype's CSS custom properties: both app palettes (light off-white/teal `#0f766e`, dark "teal on iron" `#4ade9e`), hairlines, radii-in-use, spring curves, keyframes, the `.theming` transition killer, scene-theme variable blocks. **The single home of the base tokens** — the typed duplicate was deleted (this pass); only data TypeScript needs stays in `tokens.ts`. |
 | `tokens.ts` | The scene-theme DATA in typed form: `TERMINAL_THEMES` (14), `EDITOR_THEMES` (10), `AppTheme` (inv. 51–52, 61). |
 | `theme.ts` | Theme apply/toggle with the two-frame `.theming` guard (inv. 4), scene theme option lists and locked-palette lookups (inv. 51–52). |
-| `position.ts` | The prototype's `fitPop` discipline: below → flip above → cap, clamped to the `[data-kit-frame]` element; `attachPopupBelow` (picker-style seamless attach). |
+| `position.ts` | The prototype's `fitPop` discipline: below → flip above → cap, clamped to the `[data-kit-frame]` element. |
 | `icons.ts` | The prototype's linear icon family + specials (star, chevron, GitHub mark, theme sun, close ×, pen). The unused `LINEAR_ICON_NAMES` export was deleted (this pass). |
 
 ### Components — PROTOTYPE-DERIVED
 
 | Module | Prototype origin |
 | --- | --- |
-| `topBar.ts` | Top bar (inv. 1–7): brand mark, font-pair tags, GitHub ghost link (verbatim repo + aria), theme toggle (`切换明暗`), font-name input (`ChHsich`), `合成字体` shimmer button. |
+| `topBar.ts` | Top bar (inv. 1–7): brand mark (round 4: the hand-drawn A×永 SVG mark, teal accent, replacing the solid placeholder), font-pair tags, GitHub ghost link (verbatim repo + aria), theme toggle (`切换明暗`), font-name input (`ChHsich`), `合成字体` shimmer button. |
 | `metaLine.ts` | The picker MetaLine (inv. 12–13): `X.Xk` stars in accent, license without `-1.1`, trait tag. |
-| `pickerPopup.ts` | The 英文字体/中文字体 card + popup (inv. 11–17): self-rendering rows, `搜索字体` 120 ms debounce, footer `加载本地字体文件` outside the scroll, check on selected, node persistence, open/close transition. |
+| `pickerPopup.ts` | The 英文字体/中文字体 card + popup (inv. 11–17): round 4 presents the popup in the SAME anchor-fused dropdown-list form as AppSelect — a persistent CHILD of the card (top:100%, left/right −1px, no top border, class-driven display transitions with allow-discrete + @starting-style; no portal, no deferred removal). Self-rendering rows, `搜索字体` 120 ms debounce, footer `加载本地字体文件` outside the scroll, check on selected. |
 | `helpPopover.ts` | The circular `?` buttons + popovers (inv. 28–30 chrome): widths 380/340, `.kit-wtab` worked-table chrome verbatim. |
 | `settingsTopics.ts` | The three 合成设置 topics (inv. 25–27) — labels, option lists, popover copy — plus `mountSettingRow` (the `.set` row: label + `?` + AppSelect, extracted this pass from duplicated app/demo glue). See the correction note below. |
 | `categoryChips.ts` | The two-level chip bar (inv. 31–33) — see the taxonomy deviation below. |
@@ -75,12 +75,14 @@ They are deliberate, marked, and must not grow without a decision:
 
 App-level PRODUCT-EXTENSION surfaces (NOT kit — they live in `gui/src/ui` /
 `gui/src/catalog` with chrome in `app.css`, and must stay marked): the build
-panel (`ui/buildpanel.ts`), the no-service CLI panel (`ui/noservice.ts`), the
-first-run catalog screen (`catalog/screen.ts`), the synthesize notice strip
+panel (`ui/buildpanel.ts`), the no-service CLI panel (`ui/noservice.ts`),
+the first-run catalog screen (`catalog/screen.ts`), the synthesize notice strip
 (`ui/topbar.ts`), the language-preset picker popup + `添加语言预设…` entry
-(`ui/presetpicker.ts`, `ui/rulelist.ts`). Layout glue (workspace split, rail
-sections, charmap layout) is neither component chrome nor extension — it is
-assembly, and it stays in `app.css`.
+(`ui/presetpicker.ts`, `ui/rulelist.ts`), and the custom window controls
+(`ui/wincontrols.ts`, round 4: minimize/maximize/close + drag region for the
+undecorated Tauri window — never mounted in the web target). Layout glue
+(workspace split, rail sections, charmap layout) is neither component chrome
+nor extension — it is assembly, and it stays in `app.css`.
 
 ## Table-content policy — the ONE retained correction
 
@@ -122,8 +124,8 @@ handle.open?.(); handle.close?.();             // overlays only
 - Popups/selects close on outside `pointerdown` (with the still-connected
   guard) and on `Escape`; opening one closes the others of its kind.
 - Open/close run through `display` transitions with `allow-discrete` +
-  `@starting-style`; popup nodes persist across re-renders (rows rebuild
-  only) and are removed ~240ms after close so the exit transition plays.
+  `@starting-style`; overlay nodes persist across re-renders (rows
+  rebuild only) so both directions of the transition always play.
 - All positioning clamps to the frame element marked `data-kit-frame`
   (fall back to the viewport when the app fills the window).
 - FACTS (data, state, gestures) are the consumer's; the kit renders what it
