@@ -3,6 +3,7 @@ import { mountStatusBar, type StatusBar } from "../kit/statusBar";
 import { currentResolver, defaultResolver } from "../precedence/live";
 import { pickRefs, type PickRefs } from "../precedence/picks";
 import { categoryIntervals, categorySize } from "../unicode/blocks";
+import { MISSING_CATEGORY_ID, missingCodepoints } from "./missing";
 
 /**
  * Persistent bottom stats bar (ADR-0004), on the kit's StatusBar: the
@@ -46,6 +47,22 @@ function computeStats(state: AppState, picks: PickRefs): LiveStats {
     .join("|")}`;
   if (statsMemo && statsMemo.signature === signature) {
     return statsMemo.stats;
+  }
+
+  // The missing view IS its own stat line: every cell in it is uncovered
+  // by construction, so the counters read all-缺失 with 0.00 coverage.
+  if (state.categoryId === MISSING_CATEGORY_ID) {
+    const total = missingCodepoints().length;
+    const stats = {
+      total,
+      en: 0,
+      cjk: 0,
+      adjusted: 0,
+      missing: total,
+      coveragePct: "0.00",
+    };
+    statsMemo = { signature, stats };
+    return stats;
   }
 
   const total = categorySize(state.categoryId);

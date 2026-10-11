@@ -33,6 +33,7 @@ import { mountCategoryChips, type CategoryChips } from "../kit/categoryChips";
 import { mountActionBar, type ActionBar, type FontSide } from "../kit/actionBar";
 import { mountCharGrid, type CharGrid, type GridCellData } from "../kit/grid";
 import type { IconName } from "../kit/icons";
+import { MISSING_CATEGORY_ID, missingCodepoints } from "./missing";
 
 /**
  * Character map (ADR-0004), assembled from the kit: the horizontal
@@ -470,6 +471,48 @@ const BLOCK_ICONS: Record<string, IconName> = {
   devanagari: "lang",
 };
 
+/* ---------------- module-level locate ---------------- */
+
+/**
+ * The mounted stage's live grid (locate scrolls the matched cell into
+ * view). Updated on every charmap mount; a stale (detached) grid is
+ * ignored — the mode bar's 定位 field reaches this from either mode.
+ */
+let activeGrid: CharGrid | null = null;
+
+/**
+ * Locate a typed codepoint (hex form or a single character): jump to its
+ * category page, select it, and scroll it into view.
+ */
+export function locateQuery(raw: string): void {
+  const text = raw.trim();
+  const cp =
+    parseCodepointInput(text) ??
+    ([...text].length === 1 ? text.codePointAt(0) ?? null : null);
+  if (cp === null) return;
+  const block = ALL_BLOCKS.find((b) => cp >= b.start && cp <= b.end);
+  let categoryId = ALL_CATEGORY_ID;
+  let page = 1;
+  if (block) {
+    categoryId = block.id;
+    page = Math.floor((cp - block.start) / CELLS_PER_PAGE) + 1;
+  } else if (cp >= 0x20) {
+    // The aggregate view: index within it, surrogate gap included.
+    const bmpEnd = 0xd7ff;
+    const index = cp <= bmpEnd ? cp - 0x20 : cp - 0xe000 + (bmpEnd - 0x20 + 1);
+    page = Math.floor(index / CELLS_PER_PAGE) + 1;
+  }
+  store.set({ categoryId, page });
+  // Locating is a selection gesture too: the codepoint becomes the
+  // selection and the anchor, and the details cursor lands on it.
+  beginSelectionGesture([cp], cp, cp);
+  // Bring the cell into view (prototype parity: locate scrolls to it).
+  window.setTimeout(() => {
+    const cell = activeGrid?.cellAt(String.fromCodePoint(cp));
+    if (cell && cell.isConnected) cell.scrollIntoView({ block: "center" });
+  }, 60);
+}
+
 /* ------------------------------ mount ------------------------------- */
 
 export function mountCharmap(root: HTMLElement): void {
@@ -513,6 +556,7 @@ export function mountCharmap(root: HTMLElement): void {
     toolbar // re-anchored on every action-bar render (see syncRangeAnchor)
   );
   const grid: CharGrid = mountCharGrid(gridHost);
+  activeGrid = grid;
 
   /** The live 按编码指定 anchor inside the (rebuilt) action bar. */
   const syncRangeAnchor = (): void => {
@@ -609,35 +653,7 @@ export function mountCharmap(root: HTMLElement): void {
 
   /** Locate a typed codepoint (hex form or a single character):
    *  jump to its category page and select it. */
-  const locate = (raw: string): void => {
-    const text = raw.trim();
-    const cp =
-      parseCodepointInput(text) ??
-      ([...text].length === 1 ? text.codePointAt(0) ?? null : null);
-    if (cp === null) return;
-    const block = ALL_BLOCKS.find((b) => cp >= b.start && cp <= b.end);
-    let categoryId = ALL_CATEGORY_ID;
-    let page = 1;
-    if (block) {
-      categoryId = block.id;
-      page = Math.floor((cp - block.start) / CELLS_PER_PAGE) + 1;
-    } else if (cp >= 0x20) {
-      // The aggregate view: index within it, surrogate gap included.
-      const bmpEnd = 0xd7ff;
-      const index =
-        cp <= bmpEnd ? cp - 0x20 : cp - 0xe000 + (bmpEnd - 0x20 + 1);
-      page = Math.floor(index / CELLS_PER_PAGE) + 1;
-    }
-    store.set({ categoryId, page });
-    // Locating is a selection gesture too: the codepoint becomes the
-    // selection and the anchor, and the details cursor lands on it.
-    beginSelectionGesture([cp], cp, cp);
-    // Bring the cell into view (prototype parity: locate scrolls to it).
-    window.setTimeout(() => {
-      const cell = grid.cellAt(String.fromCodePoint(cp));
-      if (cell) cell.scrollIntoView({ block: "center" });
-    }, 60);
-  };
+  const locate = locateQuery;
 
   const render = (): void => {
     const {
@@ -648,7 +664,11 @@ export function mountCharmap(root: HTMLElement): void {
       selection,
       fonts,
     } = store.get();
-    const last = pageCountFor(categoryId);
+    const missing = missingCodepoints();
+    const last =
+      categoryId === MISSING_CATEGORY_ID
+        ? Math.max(1, Math.ceil(missing.length / CELLS_PER_PAGE))
+        : pageCountFor(categoryId);
     const safePage = Math.min(Math.max(page, 1), last);
 
     renderChips(categoryId);
@@ -661,6 +681,7 @@ export function mountCharmap(root: HTMLElement): void {
       selected.cjk,
       selectedCodepoint,
       selection,
+      missing,
     );
     syncRangeAnchor();
   };
@@ -671,6 +692,7 @@ export function mountCharmap(root: HTMLElement): void {
 
   function renderChips(categoryId: string): void {
     const group = blockGroup(categoryId);
+    const missing = missingCodepoints();
     chips.render({
       groups: [
         {
@@ -685,6 +707,19 @@ export function mountCharmap(root: HTMLElement): void {
           count: categorySize(groupCategoryId(g.id)),
           icon: GROUP_ICONS[g.id],
         })),
+        // The 缺失 aggregate closes the row (danger styling) whenever
+        // the declared preset scope has uncovered codepoints.
+        ...(missing.length > 0
+          ? [
+              {
+                id: MISSING_CATEGORY_ID,
+                label: "缺失",
+                count: missing.length,
+                icon: "warn" as IconName,
+                danger: true,
+              },
+            ]
+          : []),
       ],
       blocks:
         group === undefined
@@ -703,14 +738,19 @@ export function mountCharmap(root: HTMLElement): void {
                 icon: BLOCK_ICONS[b.id],
               })),
             ],
-      activeGroupId: group?.id ?? null,
+      activeGroupId:
+        categoryId === MISSING_CATEGORY_ID
+          ? MISSING_CATEGORY_ID
+          : (group?.id ?? null),
       activeBlockId: categoryId,
       onGroup: (id) => {
         store.set({
           categoryId:
-            id === null || id === "all"
-              ? ALL_CATEGORY_ID
-              : groupCategoryId(id),
+            id === MISSING_CATEGORY_ID
+              ? MISSING_CATEGORY_ID
+              : id === null || id === "all"
+                ? ALL_CATEGORY_ID
+                : groupCategoryId(id),
           page: 1,
         });
       },
@@ -728,6 +768,34 @@ export function mountCharmap(root: HTMLElement): void {
     last: number,
     selection: readonly number[],
   ): void {
+    // The missing view replaces both segments with its notice.
+    if (categoryId === MISSING_CATEGORY_ID) {
+      actionBar.render({
+        missingView: true,
+        multi: selection.length > 0,
+        showCodepoints,
+        canUndo: canUndoRules(),
+        onUndo: () => undoRules(),
+        onToggleMulti: () => beginSelectionGesture([], null),
+        onToggleCodepoints: () => {
+          showCodepoints = !showCodepoints;
+          render();
+        },
+        page: {
+          page: safePage - 1,
+          count: last,
+          onPage: (delta) => {
+            const { page: current } = store.get();
+            store.set({ page: Math.min(Math.max(current + delta, 1), last) });
+          },
+        },
+        adjustedLegend: true,
+        onLocate: locate,
+        onRangeSpecify: () => rangePopup.open(),
+      });
+      return;
+    }
+
     const group = blockGroup(categoryId);
     const block =
       findGroupCategory(categoryId) === undefined
@@ -824,8 +892,12 @@ export function mountCharmap(root: HTMLElement): void {
     cjkFamily: string | null,
     selectedCodepoint: number | null,
     selection: readonly number[],
+    missing: readonly number[] = missingCodepoints(),
   ): void {
-    const size = categorySize(categoryId);
+    const size =
+      categoryId === MISSING_CATEGORY_ID
+        ? missing.length
+        : categorySize(categoryId);
     const first = (page - 1) * CELLS_PER_PAGE;
     const count = Math.min(CELLS_PER_PAGE, size - first);
     const picks = pickRefs();
@@ -848,6 +920,19 @@ export function mountCharmap(root: HTMLElement): void {
 
     const cells: GridCellData[] = [];
     for (let i = 0; i < count; i++) {
+      // The missing view pages its own list: every cell is a dashed
+      // danger cell (no picked font covers it, by construction).
+      if (categoryId === MISSING_CATEGORY_ID) {
+        const cp = missing[first + i]!;
+        cells.push({
+          ch: String.fromCodePoint(cp),
+          state: "none",
+          selected: selectionSet.has(cp),
+          cursor: cp === selectedCodepoint,
+          cp: formatCp(cp),
+        });
+        continue;
+      }
       const cp = nthCodepoint(categoryId, first + i);
       const ch = String.fromCodePoint(cp);
       // The effective merged result: resolve, expose, render in the
