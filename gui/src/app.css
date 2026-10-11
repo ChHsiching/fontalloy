@@ -112,19 +112,33 @@ body {
 
 .charmap-details {
   flex: none;
-  /* Fixed geometry (issue #20): drag-paint re-renders this strip while
-     the pointer is held — if its height changed with its content, the
-     grid would shift under the pointer and the drag would paint the
-     wrong cells. The editors fit; reserve their height always. */
-  min-height: 150px;
-  padding: 8px 14px;
-  border-bottom: 1px solid var(--ln);
+  /* Collapsed while nothing is selected (prototype density: zero-height
+     band between the chip bar and the toolbar; the transition is the
+     collapse/expand animation). While OPEN the geometry is fixed
+     (issue #20): drag-paint re-renders this strip while the pointer is
+     held — if its height changed with its content, the grid would shift
+     under the pointer and the drag would paint the wrong cells. The
+     editors fit; reserve their height always. */
+  min-height: 0;
+  padding: 0 14px;
+  border-bottom: 0 solid var(--ln);
+  overflow: hidden;
   font-size: 12.5px;
   color: var(--ink2);
   font-variant-numeric: tabular-nums;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  transition: min-height 180ms var(--spring-out),
+    padding-top 180ms var(--spring-out),
+    padding-bottom 180ms var(--spring-out),
+    border-bottom-width 180ms var(--spring-out);
+}
+
+.charmap-details[data-open="true"] {
+  min-height: 150px;
+  padding: 8px 14px;
+  border-bottom-width: 1px;
 }
 
 .charmap-details > div:first-child {

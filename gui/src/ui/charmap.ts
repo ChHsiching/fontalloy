@@ -776,7 +776,14 @@ export function mountCharmap(root: HTMLElement): void {
 
     renderChips(categoryId);
     renderToolbar(categoryId, safePage, last, selection);
-    renderDetails(details, selectedCodepoint, selection, fonts, selected);
+    renderDetails(
+      details,
+      selectedCodepoint,
+      selection,
+      fonts,
+      selected,
+      painting,
+    );
     renderGrid(
       categoryId,
       safePage,
@@ -1079,6 +1086,15 @@ export function mountCharmap(root: HTMLElement): void {
  * result (winning font, via, kind). Below the facts sits the
  * single-codepoint precedence editor — or, when a multi-selection is
  * active, the batch precedence editor for the whole selection.
+ *
+ * The dock COLLAPSES to zero height while nothing is selected (prototype
+ * density: its unselected frames have no strip between the chip bar and
+ * the toolbar). It expands the moment a cursor or selection exists — but
+ * never mid-drag: `painting` holds the collapsed/open state steady while
+ * the pointer is held, the same fixed-geometry discipline issue #20
+ * forced on this strip (an expansion at drag start would shift the grid
+ * under the pointer and paint the wrong cells). Paint end is the moment
+ * the strip may re-open.
  */
 function renderDetails(
   details: HTMLElement,
@@ -1086,17 +1102,14 @@ function renderDetails(
   selection: readonly number[],
   fonts: ReturnType<typeof store.get>["fonts"],
   selected: { en: string | null; cjk: string | null },
+  painting: boolean,
 ): void {
+  const open = !painting && (codepoint !== null || selection.length >= 2);
+  details.dataset.open = String(open);
   details.replaceChildren();
+  if (!open) return;
   if (selection.length >= 2) {
     details.appendChild(buildBatchEditor(selection));
-    return;
-  }
-  if (codepoint === null) {
-    const hint = document.createElement("div");
-    hint.textContent =
-      "点击任一字符格，查看码位与生效字体，并调整该码位的优先级。";
-    details.appendChild(hint);
     return;
   }
   const head = document.createElement("div");

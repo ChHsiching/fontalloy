@@ -249,6 +249,41 @@ test.describe("action bar rule wiring", () => {
     await expect.poll(() => completeRuleCount(page)).toBe(1);
   });
 
+  test("the details dock collapses while no cell is selected and opens on a click", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await waitForFontsReady(page);
+
+    // Boot (nothing selected): the dock holds ZERO height — the
+    // prototype's unselected density (its frames have no strip between
+    // the chip bar and the toolbar).
+    const dock = page.locator(".charmap-details");
+    await expect(dock).toHaveAttribute("data-open", "false");
+    expect((await dock.boundingBox())?.height).toBe(0);
+
+    // Selecting a cell expands it back to the fixed band (the codepoint
+    // facts — and, with a pick pair, the precedence editor).
+    await pointerClick(
+      page,
+      page.locator(".charmap-grid .kit-cell[data-cp='U+0041']"),
+    );
+    await expect(dock).toHaveAttribute("data-open", "true");
+    await expect(dock).toContainText("U+0041");
+    await expect
+      .poll(async () => (await dock.boundingBox())?.height)
+      .toBeGreaterThanOrEqual(150);
+
+    // A fresh state (reload) collapses it again — the cursor is a store
+    // field, and nothing but a click ever sets it.
+    await page.reload();
+    await waitForFontsReady(page);
+    await expect(dock).toHaveAttribute("data-open", "false");
+    await expect
+      .poll(async () => (await dock.boundingBox())?.height)
+      .toBe(0);
+  });
+
   test("the 编码 toggle shows codepoint rows; the locator takes a character", async ({
     page,
   }) => {
