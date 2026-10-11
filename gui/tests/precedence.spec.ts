@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page, type Locator } from "@playwright/test";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
@@ -23,6 +23,15 @@ import {
  * first N ASCII letters so override cases exist (the two coverages are
  * otherwise disjoint and "override" could never be observed).
  */
+
+/** The count of COMPLETE rules, read from the rail (incomplete rows show
+ *  an ellipsis placeholder as their target label). */
+async function completeRuleCount(page: Page): Promise<number> {
+  return page.evaluate(
+    () => document.querySelectorAll("[data-rule-id][data-complete='true']").length,
+  );
+}
+
 test.describe("precedence editing", () => {
   test.describe.configure({ mode: "serial" });
   const jsErrors: string[] = [];
@@ -47,13 +56,12 @@ test.describe("precedence editing", () => {
   ): Promise<void> {
     await pointerClick(
       page,
-      page.locator(`[data-role="picker-${role}"] .picker-anchor`),
+      page.locator(`[data-role="picker-${role}"] .kit-hd`),
     );
     const popup = page.locator(`[data-picker-popup="${role}"]`);
     await expect(popup).toBeVisible();
-    await popup
-      .locator(".popup-footer input[type=file]")
-      .setInputFiles(path);
+    await page.locator("input[data-role='font-file']").setInputFiles(path);
+    await expect(popup.locator(".kit-fp").first()).toBeVisible();
     await waitForFontsReady(page);
     await page.keyboard.press("Escape");
   }
@@ -74,7 +82,7 @@ test.describe("precedence editing", () => {
   function collectGrid(page: Page): Promise<Record<string, [string, string, string]>> {
     return page.evaluate(() => {
       const out: Record<string, [string, string, string]> = {};
-      for (const cell of document.querySelectorAll(".charmap-grid .cell")) {
+      for (const cell of document.querySelectorAll(".charmap-grid .kit-cell")) {
         const cp = cell.getAttribute("data-cp");
         if (!cp) continue;
         out[cp] = [
@@ -91,7 +99,7 @@ test.describe("precedence editing", () => {
   function cellRenderFamily(page: Page, cp: string): Promise<string> {
     return page.evaluate((target) => {
       const cell = document.querySelector(
-        `.charmap-grid .cell[data-cp='${target}'] .cell-char`,
+        `.charmap-grid .kit-cell[data-cp='${target}']`,
       );
       if (!cell) return "";
       return getComputedStyle(cell).fontFamily.split(",")[0]!.trim();
@@ -99,18 +107,13 @@ test.describe("precedence editing", () => {
   }
 
   async function gotoCjkPage(page: Page): Promise<void> {
+    await pointerClick(page, page.locator(".kit-cat-g[data-group='cjk']"));
     await pointerClick(
       page,
-      page.locator(".charmap-categories .group-toggle", { hasText: "中日韩文字" }),
+      page.locator(".kit-cat-s[data-block='cjk-unified']"),
     );
-    await pointerClick(
-      page,
-      page.locator(".charmap-categories .block-button", {
-        hasText: "CJK 统一表意文字",
-      }),
-    );
-    await expect(page.locator(".charmap-pager .page-indicator")).toHaveText(
-      "第 1 / 21 页",
+    await expect(page.locator(".kit-toolrow [data-pager-label]")).toHaveText(
+      "第 1/21 页",
     );
   }
 
@@ -164,9 +167,6 @@ test.describe("precedence editing", () => {
       collectJsErrors(page, jsErrors);
       await page.goto("/");
       await waitForFontsReady(page);
-      await expect(page.locator('[data-role="service-state"]')).toHaveText(
-        /已连接/,
-      );
 
       await loadIntoPicker(page, "en", service.baseFont);
       await loadIntoPicker(page, "cjk", service.donorFont);
@@ -180,7 +180,7 @@ test.describe("precedence editing", () => {
       await addRangeRule(page, "0x4E00", "0x4E0F", ["base"]);
       await addCodepointRuleViaRail(page, "0x41", ["donor-0"]);
       await addCodepointRuleViaRail(page, "0x4E08", ["base", "donor-0"]);
-      await expect(page.locator("[data-stat='rules']")).toHaveText("4");
+      await expect.poll(() => completeRuleCount(page)).toBe(4);
 
       // Collect the client-side resolution over the whole coverage union
       // (base A–Z on page 1 of "all"; donor 4E00–4E3F on CJK page 1).
@@ -193,7 +193,9 @@ test.describe("precedence editing", () => {
       };
 
       // Synthesize: the same rule state through the real serve pipeline.
-      await pointerClick(page, page.locator(".topbar .synthesize"));
+      const synthesize = page.locator(".topbar [data-role='synthesize']");
+      await expect(synthesize).toHaveAttribute("aria-disabled", "false");
+      await pointerClick(page, synthesize);
       await expect(
         page.locator(".build-row", { hasText: "已保存" }),
       ).toBeVisible({ timeout: 60_000 });
@@ -278,29 +280,29 @@ test.describe("precedence editing", () => {
     await addRangeRule(page, "0x0041", "0x005A", ["donor-0"]);
 
     // A–F: the donor holds them, so the rule overrides the base.
-    await expect(page.locator(".charmap-grid .cell[data-cp='U+0041']")).toHaveAttribute(
+    await expect(page.locator(".charmap-grid .kit-cell[data-cp='U+0041']")).toHaveAttribute(
       "data-winner",
       "donor-0",
     );
-    await expect(page.locator(".charmap-grid .cell[data-cp='U+0041']")).toHaveAttribute(
+    await expect(page.locator(".charmap-grid .kit-cell[data-cp='U+0041']")).toHaveAttribute(
       "data-kind",
       "override",
     );
     expect(await cellRenderFamily(page, "U+0041")).toBe("AlloyDonor");
 
     // Z: the donor LACKS it — absence never overrides, the base renders.
-    await expect(page.locator(".charmap-grid .cell[data-cp='U+005A']")).toHaveAttribute(
+    await expect(page.locator(".charmap-grid .kit-cell[data-cp='U+005A']")).toHaveAttribute(
       "data-winner",
       "base",
     );
-    await expect(page.locator(".charmap-grid .cell[data-cp='U+005A']")).toHaveAttribute(
+    await expect(page.locator(".charmap-grid .kit-cell[data-cp='U+005A']")).toHaveAttribute(
       "data-via",
       "default",
     );
     expect(await cellRenderFamily(page, "U+005A")).toBe("AlloyBase");
 
     // The details strip states the fallback in plain text.
-    await pointerClick(page, page.locator(".charmap-grid .cell[data-cp='U+005A']"));
+    await pointerClick(page, page.locator(".charmap-grid .kit-cell[data-cp='U+005A']"));
     const details = page.locator(".charmap-details");
     await expect(details).toContainText("U+005A");
     await expect(details).toContainText("英文字体 AlloyBase");
@@ -318,17 +320,17 @@ test.describe("precedence editing", () => {
     await openWithFonts(page, fonts);
 
     // U+0041 defaults to the base (both fonts hold it, base first).
-    await expect(page.locator(".charmap-grid .cell[data-cp='U+0041']")).toHaveAttribute(
+    await expect(page.locator(".charmap-grid .kit-cell[data-cp='U+0041']")).toHaveAttribute(
       "data-winner",
       "base",
     );
-    await expect(page.locator(".charmap-grid .cell[data-cp='U+0041']")).toHaveAttribute(
+    await expect(page.locator(".charmap-grid .kit-cell[data-cp='U+0041']")).toHaveAttribute(
       "data-via",
       "default",
     );
 
     // Click the cell; the details strip opens the precedence editor.
-    await pointerClick(page, page.locator(".charmap-grid .cell[data-cp='U+0041']"));
+    await pointerClick(page, page.locator(".charmap-grid .kit-cell[data-cp='U+0041']"));
     const editor = page.locator("[data-role='cp-rule-editor']");
     await expect(editor).toBeVisible();
 
@@ -338,12 +340,12 @@ test.describe("precedence editing", () => {
     await pointerClick(page, editor.locator("[data-role='cp-rule-apply']"));
 
     // The grid updates in place: override by rule, donor renders it.
-    const cell = page.locator(".charmap-grid .cell[data-cp='U+0041']");
+    const cell = page.locator(".charmap-grid .kit-cell[data-cp='U+0041']");
     await expect(cell).toHaveAttribute("data-winner", "donor-0");
     await expect(cell).toHaveAttribute("data-via", "rule-0");
     await expect(cell).toHaveAttribute("data-kind", "override");
     expect(await cellRenderFamily(page, "U+0041")).toBe("AlloyDonor");
-    await expect(page.locator("[data-stat='rules']")).toHaveText("1");
+    await expect.poll(() => completeRuleCount(page)).toBe(1);
 
     // The editor reflects the existing rule; removing it restores default.
     await expect(editor.locator("[data-role='cp-font-donor-0']")).toBeChecked();
@@ -351,7 +353,7 @@ test.describe("precedence editing", () => {
     await expect(cell).toHaveAttribute("data-winner", "base");
     await expect(cell).toHaveAttribute("data-via", "default");
     expect(await cellRenderFamily(page, "U+0041")).toBe("AlloyBase");
-    await expect(page.locator("[data-stat='rules']")).toHaveText("0");
+    await expect.poll(() => completeRuleCount(page)).toBe(0);
   });
 
   test("typing a codepoint locates it and sets precedence; updates are live", async ({
@@ -361,13 +363,14 @@ test.describe("precedence editing", () => {
     await openWithFonts(page, fonts);
 
     // Type a codepoint and locate it from the aggregate view.
-    await page.locator("[data-role='cp-locate-input']").fill("4E2D");
-    await pointerClick(page, page.locator("[data-role='cp-locate']"));
+    const locate = page.locator(".kit-toolrow [data-role='locate']");
+    await locate.fill("4E2D");
+    await locate.press("Enter");
 
     // The grid jumped to the codepoint's page and selected the cell.
     await expect(
-      page.locator(".charmap-grid .cell[data-cp='U+4E2D']"),
-    ).toHaveClass(/is-selected/);
+      page.locator(".charmap-grid .kit-cell[data-cp='U+4E2D']"),
+    ).toHaveClass(/cur/);
     const details = page.locator(".charmap-details");
     await expect(details).toContainText("U+4E2D");
     await expect(details).toContainText("中文字体 AlloyDonor");
@@ -378,17 +381,17 @@ test.describe("precedence editing", () => {
     await editor.locator("[data-role='cp-font-base']").uncheck();
     await pointerClick(page, editor.locator("[data-role='cp-rule-apply']"));
 
-    const cell = page.locator(".charmap-grid .cell[data-cp='U+4E2D']");
+    const cell = page.locator(".charmap-grid .kit-cell[data-cp='U+4E2D']");
     await expect(cell).toHaveAttribute("data-winner", "donor-0");
     await expect(cell).toHaveAttribute("data-via", "rule-0");
     await expect(cell).toHaveAttribute("data-kind", "fill");
 
     // Live update, no reload: same pager state, sibling cell untouched.
-    await expect(page.locator(".charmap-pager .page-indicator")).toHaveText(
-      "第 1 / 21 页",
+    await expect(page.locator(".kit-toolrow [data-pager-label]")).toHaveText(
+      "第 1/21 页",
     );
     await expect(
-      page.locator(".charmap-grid .cell[data-cp='U+4E2E']"),
+      page.locator(".charmap-grid .kit-cell[data-cp='U+4E2E']"),
     ).toHaveAttribute("data-via", "default");
 
     // The rule is visible and editable in the rail's custom rule list.
@@ -418,7 +421,7 @@ test.describe("precedence editing", () => {
     // 一 (U+4E00) is in zh_tw (hence zh_hk) — the rule supplies it:
     // base lacks it, so the donor wins via the rule.
     await gotoCjkPage(page);
-    await expect(page.locator(".charmap-grid .cell[data-cp='U+4E00']")).toHaveAttribute(
+    await expect(page.locator(".charmap-grid .kit-cell[data-cp='U+4E00']")).toHaveAttribute(
       "data-via",
       "rule-0",
     );
@@ -427,14 +430,14 @@ test.describe("precedence editing", () => {
     // rule no longer covers it — the default precedence takes over.
     await row.locator("[data-role='subblock-zh_tw']").uncheck();
     await expect(row).toContainText("生效集合：zh_hk_supplement");
-    await expect(page.locator(".charmap-grid .cell[data-cp='U+4E00']")).toHaveAttribute(
+    await expect(page.locator(".charmap-grid .kit-cell[data-cp='U+4E00']")).toHaveAttribute(
       "data-via",
       "default",
     );
 
     // Toggle back on: the union covers it again.
     await row.locator("[data-role='subblock-zh_tw']").check();
-    await expect(page.locator(".charmap-grid .cell[data-cp='U+4E00']")).toHaveAttribute(
+    await expect(page.locator(".charmap-grid .kit-cell[data-cp='U+4E00']")).toHaveAttribute(
       "data-via",
       "rule-0",
     );
@@ -473,32 +476,32 @@ test.describe("precedence editing", () => {
     await row.locator(`[data-role='rule-end-${id}']`).fill("0x0046");
 
     // base is first and holds A–F: base wins via the rule.
-    await expect(page.locator(".charmap-grid .cell[data-cp='U+0041']")).toHaveAttribute(
+    await expect(page.locator(".charmap-grid .kit-cell[data-cp='U+0041']")).toHaveAttribute(
       "data-winner",
       "base",
     );
-    await expect(page.locator(".charmap-grid .cell[data-cp='U+0041']")).toHaveAttribute(
+    await expect(page.locator(".charmap-grid .kit-cell[data-cp='U+0041']")).toHaveAttribute(
       "data-via",
       "rule-0",
     );
 
     // Reorder within the rule: donor-0 above base flips the winner.
     await pointerClick(page, row.locator(`[data-role='rule-font-up-${id}-donor-0']`));
-    await expect(page.locator(".charmap-grid .cell[data-cp='U+0041']")).toHaveAttribute(
+    await expect(page.locator(".charmap-grid .kit-cell[data-cp='U+0041']")).toHaveAttribute(
       "data-winner",
       "donor-0",
     );
     expect(await cellRenderFamily(page, "U+0041")).toBe("AlloyDonor");
 
     // Removing the rule restores the default precedence, live.
-    await expect(page.locator("[data-stat='rules']")).toHaveText("1");
+    await expect.poll(() => completeRuleCount(page)).toBe(1);
     await pointerClick(page, row.locator("[data-role='remove-rule']"));
-    await expect(page.locator("[data-stat='rules']")).toHaveText("0");
-    await expect(page.locator(".charmap-grid .cell[data-cp='U+0041']")).toHaveAttribute(
+    await expect.poll(() => completeRuleCount(page)).toBe(0);
+    await expect(page.locator(".charmap-grid .kit-cell[data-cp='U+0041']")).toHaveAttribute(
       "data-winner",
       "base",
     );
-    await expect(page.locator(".charmap-grid .cell[data-cp='U+0041']")).toHaveAttribute(
+    await expect(page.locator(".charmap-grid .kit-cell[data-cp='U+0041']")).toHaveAttribute(
       "data-via",
       "default",
     );
@@ -510,12 +513,12 @@ test.describe("precedence editing", () => {
     await cpRow.locator(`[data-role='rule-codepoint-${cpId}']`).fill("0x4E10");
     await cpRow.locator(`[data-role='rule-font-${cpId}-base']`).uncheck();
     await gotoCjkPage(page);
-    await expect(page.locator(".charmap-grid .cell[data-cp='U+4E10']")).toHaveAttribute(
+    await expect(page.locator(".charmap-grid .kit-cell[data-cp='U+4E10']")).toHaveAttribute(
       "data-via",
       "rule-0",
     );
     await expect(
-      page.locator(".charmap-grid .cell[data-cp='U+4E10']"),
+      page.locator(".charmap-grid .kit-cell[data-cp='U+4E10']"),
     ).toHaveAttribute("data-winner", "donor-0");
   });
 
@@ -534,7 +537,7 @@ test.describe("precedence editing", () => {
     await expect(popup).toBeVisible();
     await pointerClick(
       page,
-      popup.locator(".picker-row", { hasText: new RegExp(`^${preset}`) }).first(),
+      popup.locator(".kit-fp", { hasText: new RegExp(`^${preset}`) }).first(),
     );
     await expect(popup).toBeHidden();
 
@@ -578,7 +581,7 @@ test.describe("precedence editing", () => {
    */
   async function setRuleFonts(
     page: Page,
-    row: ReturnType<Page["locator"]>,
+    row: Locator,
     fonts: string[],
   ): Promise<void> {
     const id = await row.getAttribute("data-rule-id");
@@ -613,7 +616,7 @@ test.describe("precedence editing", () => {
   /** The checked fonts of a rule row, in display (precedence) order. */
   async function ruleFontOrder(
     page: Page,
-    row: ReturnType<Page["locator"]>,
+    row: Locator,
   ): Promise<string[]> {
     return row.evaluate((el) => {
       const out: string[] = [];

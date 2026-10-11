@@ -13,16 +13,22 @@ import {
 /**
  * Issue #19: scene previews and synthesis settings.
  *
- * The judgment loop beyond the grid: terminal / code / document scenes
- * rendering mixed CJK+Latin sample text with the EFFECTIVE merged result
- * (the same per-codepoint resolution the preview grid uses), plus the
- * three synthesis settings (weight merge mode, baseline alignment, CJK
- * width), each behind a ?-popover carrying a worked-example table that
- * states honestly what the pipeline does with the option.
+ * The judgment loop beyond the grid: the kit's three stacked scene cards
+ * (终端 / 代码编辑器 / 文档) rendering the prototype's sample content with
+ * the EFFECTIVE merged result (the same per-codepoint resolution the
+ * preview grid uses), each with its own theme select (14 terminal / 10
+ * editor palettes) and 全屏查看 expand, plus the three synthesis settings
+ * (weight merge mode, baseline alignment, CJK width) behind ?-popovers
+ * carrying worked-example tables that state honestly what the pipeline
+ * does with the option.
  *
- * Mode and scene switches must preserve the merge state: rules, picks,
- * and the resolver output all survive without a reset.
+ * Mode switches must preserve the merge state: rules, picks, and the
+ * resolver output all survive without a reset.
  */
+
+/** Escape for exact-text regexes. */
+const re = (text: string): RegExp => new RegExp(`^${text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
+
 test.describe("scene previews and synthesis settings", () => {
   test.describe.configure({ mode: "serial" });
   const jsErrors: string[] = [];
@@ -47,13 +53,12 @@ test.describe("scene previews and synthesis settings", () => {
   ): Promise<void> {
     await pointerClick(
       page,
-      page.locator(`[data-role="picker-${role}"] .picker-anchor`),
+      page.locator(`[data-role="picker-${role}"] .kit-hd`),
     );
     const popup = page.locator(`[data-picker-popup="${role}"]`);
     await expect(popup).toBeVisible();
-    await popup
-      .locator(".popup-footer input[type=file]")
-      .setInputFiles(path);
+    await page.locator("input[data-role='font-file']").setInputFiles(path);
+    await expect(popup.locator(".kit-fp").first()).toBeVisible();
     await waitForFontsReady(page);
     await page.keyboard.press("Escape");
   }
@@ -74,24 +79,10 @@ test.describe("scene previews and synthesis settings", () => {
   async function gotoSceneMode(page: Page): Promise<void> {
     await pointerClick(
       page,
-      page.locator('.mode-tab[data-mode="scene"]'),
+      page.locator(".kit-modebar .kit-mseg button[data-value='scene']"),
     );
     await expect(
-      page.locator('.content-stage[data-mode="scene"]'),
-    ).toBeVisible();
-  }
-
-  /** Switch to one scene (terminal / code / document). */
-  async function gotoScene(
-    page: Page,
-    scene: "terminal" | "code" | "document",
-  ): Promise<void> {
-    await pointerClick(
-      page,
-      page.locator(`.scene-tab[data-scene="${scene}"]`),
-    );
-    await expect(
-      page.locator(`.scene-panel[data-scene="${scene}"]`),
+      page.locator(".content-stage[data-mode='scene']"),
     ).toBeVisible();
   }
 
@@ -104,7 +95,7 @@ test.describe("scene previews and synthesis settings", () => {
     return page.evaluate(
       ([sceneId, target]) => {
         const span = document.querySelector(
-          `.scene-panel[data-scene="${sceneId}"] .scene-char[data-cp="${target}"]`,
+          `.kit-sc[data-scene="${sceneId}"] span[data-cp="${target}"]`,
         );
         if (!span) return "";
         return getComputedStyle(span).fontFamily.split(",")[0]!.trim();
@@ -114,83 +105,97 @@ test.describe("scene previews and synthesis settings", () => {
   }
 
   /* --------------------------------------------------------------- */
-  /* The three scenes render mixed sample text effectively.           */
+  /* The three scene cards render mixed sample text effectively.      */
   /* --------------------------------------------------------------- */
 
-  test("three scenes render mixed CJK+Latin text with the effective result", async ({
+  test("three stacked scene cards render mixed CJK+Latin text effectively", async ({
     page,
   }) => {
     const fonts = await makeLocalFixtures();
     await openWithFonts(page, fonts);
     await gotoSceneMode(page);
 
-    // Terminal: a realistic prompt + ls output block. The fixture fonts
+    // All three cards are visible at once (the prototype's composition).
+    for (const scene of ["terminal", "code", "document"]) {
+      await expect(page.locator(`.kit-sc[data-scene='${scene}']`)).toBeVisible();
+    }
+
+    // Terminal: the prototype's multi-command log. The fixture fonts
     // cover uppercase A–Z (base) and U+4E00..U+4E3F + A–F (donor); the
-    // samples are written for real fonts, the assertions below stick to
-    // codepoints the fixtures actually cover.
-    const terminal = page.locator(".scene-panel[data-scene='terminal']");
+    // assertions stick to codepoints the fixtures actually cover.
+    const terminal = page.locator(".kit-sc[data-scene='terminal']");
     const terminalText = await terminal.textContent();
-    expect(terminalText).toContain("fontalloy build");
-    expect(terminalText).toContain("字体清单");
+    expect(terminalText).toContain("git log"); // NBSP alignment (kit rule)
+    expect(terminalText).toContain("docker ps");
     // Effective rendering: Latin resolves to the base, CJK to the donor.
     expect(
       await page
-        .locator(".scene-panel[data-scene='terminal'] .scene-char[data-cp='U+0052']")
+        .locator(".kit-sc[data-scene='terminal'] span[data-cp='U+0052']")
         .first()
         .getAttribute("data-winner"),
     ).toBe("base");
     expect(await sceneCharFamily(page, "terminal", "U+0052")).toBe("AlloyBase");
     expect(
       await page
-        .locator(".scene-panel[data-scene='terminal'] .scene-char[data-cp='U+4E00']")
+        .locator(".kit-sc[data-scene='terminal'] span[data-cp='U+4E2D']")
         .first()
         .getAttribute("data-winner"),
     ).toBe("donor-0");
-    expect(await sceneCharFamily(page, "terminal", "U+4E00")).toBe("AlloyDonor");
+    expect(await sceneCharFamily(page, "terminal", "U+4E2D")).toBe("AlloyDonor");
 
-    // Code: a realistic TypeScript sample with Chinese comments.
-    await gotoScene(page, "code");
+    // Code editor: the prototype's TypeScript sample with Chinese comments.
     const codeText = await page
-      .locator(".scene-panel[data-scene='code']")
+      .locator(".kit-sc[data-scene='code']")
       .textContent();
-    expect(codeText).toContain("export function merge");
-    expect(codeText).toContain("窄者胜");
+    expect(codeText).toContain("import { FC");
+    expect(codeText).toContain("中文字体补齐汉字与标点");
     expect(
       await page
-        .locator(".scene-panel[data-scene='code'] .scene-char[data-cp='U+4E09']")
+        .locator(".kit-sc[data-scene='code'] span[data-cp='U+4E2D']")
         .first()
         .getAttribute("data-winner"),
     ).toBe("donor-0");
 
-    // Document: mixed prose.
-    await gotoScene(page, "document");
+    // Document: mixed prose; its spans carry provenance like the grid.
     const docText = await page
-      .locator(".scene-panel[data-scene='document']")
+      .locator(".kit-sc[data-scene='document']")
       .textContent();
-    expect(docText).toContain("FontAlloy");
-    expect(docText).toContain("英文等宽字体");
+    expect(docText).toContain("FontAlloy 使用指南");
+    expect(docText).toContain("英文字母、数字和连字符");
     expect(
       await page
-        .locator(".scene-panel[data-scene='document'] .scene-char[data-cp='U+0046']")
+        .locator(".kit-sc[data-scene='document'] span[data-cp='U+0043']")
         .first()
         .getAttribute("data-winner"),
     ).toBe("base");
-    expect(
-      await page
-        .locator(".scene-panel[data-scene='document'] .scene-char[data-cp='U+4E0B']")
-        .first()
-        .getAttribute("data-winner"),
-    ).toBe("donor-0");
 
     // A codepoint no build font covers renders through the fallback stack
-    // and is marked as uncovered (the scene never lies, like the grid).
+    // and carries no winner (the scene never lies, like the grid).
     const uncovered = page.locator(
-      ".scene-panel[data-scene='document'] .scene-char.is-uncovered",
+      ".kit-sc[data-scene='document'] span[data-cp]:not([data-winner])",
     );
     await expect(uncovered.first()).toBeAttached();
   });
 
-  test("scenes work without picks: samples render in the fallback stack with a note", async ({
+  test("the custom preview text renders through the effective resolution", async ({
+    page,
+  }) => {
+    const fonts = await makeLocalFixtures();
+    await openWithFonts(page, fonts);
+    await gotoSceneMode(page);
+
+    // Type preview text whose codepoints the fixtures cover.
+    const preview = page.locator("[data-role='preview-text']");
+    await preview.fill("一 A 中");
+    await expect(
+      page.locator(".kit-sc[data-scene='document'] span[data-cp='U+4E00']").first(),
+    ).toHaveAttribute("data-winner", "donor-0");
+    await expect(
+      page.locator(".kit-sc[data-scene='document'] span[data-cp='U+0041']").first(),
+    ).toHaveAttribute("data-winner", "base");
+  });
+
+  test("scenes work without picks: samples render with a fallback stack", async ({
     page,
   }) => {
     collectJsErrors(page, jsErrors);
@@ -198,12 +203,13 @@ test.describe("scene previews and synthesis settings", () => {
     await waitForFontsReady(page);
     await gotoSceneMode(page);
     const terminalText = await page
-      .locator(".scene-panel[data-scene='terminal']")
+      .locator(".kit-sc[data-scene='terminal']")
       .textContent();
-    expect(terminalText).toContain("fontalloy build");
+    expect(terminalText).toContain("git log"); // NBSP alignment (kit rule)
+    // No picks: no span claims a winner.
     await expect(
-      page.locator(".scene-note"),
-    ).toContainText("选择英文字体与中文字体");
+      page.locator(".kit-sc[data-scene='terminal'] span[data-winner]"),
+    ).toHaveCount(0);
   });
 
   /* --------------------------------------------------------------- */
@@ -214,12 +220,13 @@ test.describe("scene previews and synthesis settings", () => {
     const fonts = await makeLocalFixtures();
     await openWithFonts(page, fonts);
     await gotoSceneMode(page);
-    await gotoScene(page, "document");
 
-    // 'A' (U+0041) in "FontAlloy": both fonts hold it, base wins by default.
+    // 'A' in the custom preview text: both fonts hold it, base wins.
+    const preview = page.locator("[data-role='preview-text']");
+    await preview.fill("A");
     const a = page.locator(
-      ".scene-panel[data-scene='document'] .scene-char[data-cp='U+0041']",
-    );
+      ".kit-sc[data-scene='document'] span[data-cp='U+0041']",
+    ).first();
     await expect(a).toHaveAttribute("data-winner", "base");
     await expect(a).toHaveAttribute("data-via", "default");
     expect(await sceneCharFamily(page, "document", "U+0041")).toBe("AlloyBase");
@@ -239,59 +246,101 @@ test.describe("scene previews and synthesis settings", () => {
     expect(await sceneCharFamily(page, "document", "U+0041")).toBe("AlloyDonor");
   });
 
-  test("mode and scene switches preserve the merge state (no reset)", async ({
-    page,
-  }) => {
+  test("mode switches preserve the merge state (no reset)", async ({ page }) => {
     const fonts = await makeLocalFixtures();
     await openWithFonts(page, fonts);
 
-    // Establish merge state: a rule + a grid selection.
+    // Establish merge state: a rule.
     await pointerClick(page, page.locator("[data-role='add-cp-rule']"));
     const row = page.locator("[data-role='custom-rule']").last();
     const id = await row.getAttribute("data-rule-id");
     await row.locator(`[data-role='rule-codepoint-${id}']`).fill("0x0041");
     await row.locator(`[data-role='rule-font-${id}-base']`).uncheck();
-    await expect(page.locator("[data-stat='rules']")).toHaveText("1");
 
     // Scene and back: rules, picks, and the grid's effective result survive.
     await gotoSceneMode(page);
     await expect(
-      page.locator(
-        ".scene-panel[data-scene='terminal'] .scene-char[data-cp='U+0041']",
-      ),
+      page.locator(".kit-sc[data-scene='terminal'] span[data-cp='U+0041']").first(),
     ).toHaveAttribute("data-via", "rule-0");
     await pointerClick(
       page,
-      page.locator('.mode-tab[data-mode="charmap"]'),
+      page.locator(".kit-modebar .kit-mseg button[data-value='charmap']"),
     );
     await expect(
-      page.locator(".charmap-grid .cell[data-cp='U+0041']"),
+      page.locator(".charmap-grid .kit-cell[data-cp='U+0041']"),
     ).toHaveAttribute("data-winner", "donor-0");
-    await expect(page.locator("[data-stat='rules']")).toHaveText("1");
     await expect(
-      page.locator("[data-role='picker-en'] .picker-current"),
+      page.locator("[data-role='picker-en'] .kit-hd b"),
     ).toContainText("AlloyBase");
     await expect(
-      page.locator("[data-role='picker-cjk'] .picker-current"),
+      page.locator("[data-role='picker-cjk'] .kit-hd b"),
     ).toContainText("AlloyDonor");
 
-    // Scene tab selection survives a round trip too.
+    // The scene cards are all still there after a round trip, and the
+    // rule still flips the terminal's 'A' (IMAGE in the docker table).
     await gotoSceneMode(page);
-    await gotoScene(page, "code");
-    await pointerClick(
-      page,
-      page.locator('.mode-tab[data-mode="charmap"]'),
-    );
-    await gotoSceneMode(page);
+    await expect(page.locator(".kit-sc[data-scene='code']")).toBeVisible();
     await expect(
-      page.locator(".scene-panel[data-scene='code']"),
-    ).toBeVisible();
-    await expect(page.locator("[data-stat='rules']")).toHaveText("1");
+      page.locator(".kit-sc[data-scene='terminal'] span[data-cp='U+0041']").first(),
+    ).toHaveAttribute("data-via", "rule-0");
+  });
+
+  /* --------------------------------------------------------------- */
+  /* Scene chrome: theme selects and the fullscreen expand.           */
+  /* --------------------------------------------------------------- */
+
+  test("per-card theme selects (14 terminal / 10 editor) and fullscreen expand", async ({
+    page,
+  }) => {
+    const fonts = await makeLocalFixtures();
+    await openWithFonts(page, fonts);
+    await gotoSceneMode(page);
+
+    // The terminal card's theme select lists 跟随主题 + 13 named themes.
+    const termSelect = page.locator(".kit-sc[data-scene='terminal'] .kit-cselw");
+    await pointerClick(page, termSelect.locator(".kit-csel"));
+    await expect(termSelect.locator(".kit-cso")).toHaveCount(14);
+    await expect(termSelect.locator(".kit-cso").first()).toHaveText("跟随主题");
+    // Picking a named theme locks the palette (data-t on the terminal body).
+    await pointerClick(page, termSelect.locator(".kit-cso", { hasText: "Dracula" }));
+    await expect(
+      page.locator(".kit-sc[data-scene='terminal'] .kit-term"),
+    ).toHaveAttribute("data-t", "dracula");
+    await page.keyboard.press("Escape");
+
+    // The editor card lists 10; the document card has no select at all.
+    const codeSelect = page.locator(".kit-sc[data-scene='code'] .kit-cselw");
+    await pointerClick(page, codeSelect.locator(".kit-csel"));
+    await expect(codeSelect.locator(".kit-cso")).toHaveCount(10);
+    await page.keyboard.press("Escape");
+    await expect(
+      page.locator(".kit-sc[data-scene='document'] .kit-cselw"),
+    ).toHaveCount(0);
+
+    // 全屏查看 opens the fullscreen scene with prev/next/close chrome.
+    await pointerClick(page, page.locator(".kit-sc[data-scene='terminal'] .kit-zb"));
+    const fullscreen = page.locator(".kit-zf");
+    await expect(fullscreen).toBeVisible();
+    await expect(fullscreen.locator("[data-role='fullscreen-close']")).toBeVisible();
+    await expect(fullscreen.locator(".kit-term")).toBeVisible();
+    await pointerClick(page, fullscreen.locator("[data-role='fullscreen-close']"));
+    await expect(fullscreen).toHaveCount(0);
   });
 
   /* --------------------------------------------------------------- */
   /* The synthesis settings and their worked-example popovers.        */
   /* --------------------------------------------------------------- */
+
+  /** Pick one option of a settings AppSelect by its exact label. */
+  async function pickSetting(
+    page: Page,
+    key: string,
+    label: string,
+  ): Promise<void> {
+    const select = page.locator(`[data-role='select-${key}']`);
+    await pointerClick(page, select.locator(".kit-csel"));
+    await pointerClick(page, select.locator(".kit-cso", { hasText: re(label) }));
+  }
 
   test("settings present with worked-example popovers; popup mechanics hold", async ({
     page,
@@ -303,28 +352,38 @@ test.describe("scene previews and synthesis settings", () => {
     const weight = page.locator("[data-role='select-weightMode']");
     const baseline = page.locator("[data-role='select-baseline']");
     const width = page.locator("[data-role='select-cjkWidth']");
-    await expect(weight).toHaveValue("nearest");
-    await expect(baseline).toHaveValue("auto");
-    await expect(width).toHaveValue("halfwidth");
-    expect(await weight.locator("option").allTextContents()).toEqual([
+    await expect(weight.locator(".kit-csel")).toHaveText(
+      "双方字重全部保留 · 推荐",
+    );
+    await expect(baseline.locator(".kit-csel")).toHaveText("自动 · 推荐");
+    await expect(width.locator(".kit-csel")).toHaveText(
+      "两倍英文宽 · 推荐（引号破折号半角）",
+    );
+    await pointerClick(page, weight.locator(".kit-csel"));
+    expect(await weight.locator(".kit-cso").allTextContents()).toEqual([
       "双方字重全部保留 · 推荐",
       "仅保留英文字体提供的字重",
       "仅保留中文字体提供的字重",
     ]);
-    expect(await baseline.locator("option").allTextContents()).toEqual([
+    await page.keyboard.press("Escape");
+    await pointerClick(page, baseline.locator(".kit-csel"));
+    expect(await baseline.locator(".kit-cso").allTextContents()).toEqual([
       "自动 · 推荐",
       "中文字和英文底边一样高",
       "中文字缩小一点更匀称",
     ]);
-    expect(await width.locator("option").allTextContents()).toEqual([
+    await page.keyboard.press("Escape");
+    await pointerClick(page, width.locator(".kit-csel"));
+    expect(await width.locator(".kit-cso").allTextContents()).toEqual([
       "两倍英文宽 · 推荐（引号破折号半角）",
       "两倍英文宽（引号破折号全角 · 中文习惯）",
     ]);
+    await page.keyboard.press("Escape");
 
     // The weight popover: opened by a real click, clamped to the app
     // frame, and carrying the worked-example tables.
     await pointerClick(page, page.locator("[data-role='help-weightMode']"));
-    const weightPop = page.locator("[data-help-popup='weightMode']");
+    const weightPop = page.locator("[data-help-popup='weight']");
     await expect(weightPop).toBeVisible();
     await expect(weightPop.locator("table").first()).toContainText(
       "双方字重全部保留",
@@ -345,12 +404,17 @@ test.describe("scene previews and synthesis settings", () => {
     // update is driven through a grid cell (the popover legitimately
     // overlays the rail rows below its anchor).
     await page.evaluate(() => {
-      const pop = document.querySelector("[data-help-popup='weightMode']");
+      const pop = document.querySelector("[data-help-popup='weight']");
       if (pop) pop.setAttribute("data-marker", "seen");
     });
-    await pointerClick(page, page.locator(".charmap-grid .cell").first());
+    // Any store update works; the pager next button sits clear of the
+    // popover (which legitimately overlays the grid's first cells).
+    await pointerClick(
+      page,
+      page.locator(".kit-toolrow .kit-pgc button[aria-label='下一页']"),
+    );
     await expect(
-      page.locator("[data-help-popup='weightMode'][data-marker='seen']"),
+      page.locator("[data-help-popup='weight'][data-marker='seen']"),
     ).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(weightPop).toBeHidden();
@@ -365,7 +429,7 @@ test.describe("scene previews and synthesis settings", () => {
 
     // CJK width popover: the honest ratio story (2:1 fixed, quotes knob).
     await pointerClick(page, page.locator("[data-role='help-cjkWidth']"));
-    const widthPop = page.locator("[data-help-popup='cjkWidth']");
+    const widthPop = page.locator("[data-help-popup='cjk-width']");
     await expect(widthPop).toBeVisible();
     await expect(widthPop.locator("table")).toContainText("全角");
     await expect(widthPop).toContainText("1.8");
@@ -408,12 +472,14 @@ test.describe("scene previews and synthesis settings", () => {
       donorAscii: 6,
     });
     const submissions: Array<Record<string, unknown>> = [];
+    const saved: string[] = [];
     try {
       // The save stand-in (the synthesize flow saves through it).
       const saveDir = await mkdtemp(resolve(tmpdir(), "fontalloy-save-"));
       await page.exposeFunction("__fontalloyTestSave", async (name: string, b64: string) => {
         const target = resolve(saveDir, name);
         await writeFile(target, Buffer.from(b64, "base64"));
+        saved.push(target);
         return target;
       });
       await page.addInitScript(() => {
@@ -453,15 +519,14 @@ test.describe("scene previews and synthesis settings", () => {
       collectJsErrors(page, jsErrors);
       await page.goto("/");
       await waitForFontsReady(page);
-      await expect(page.locator('[data-role="service-state"]')).toHaveText(
-        /已连接/,
-      );
       await loadIntoPicker(page, "en", service.baseFont);
       await loadIntoPicker(page, "cjk", service.donorFont);
+      const synthesize = page.locator(".topbar [data-role='synthesize']");
+      await expect(synthesize).toHaveAttribute("aria-disabled", "false");
 
       // Default settings: nothing but base/donors/rules — the core
       // defaults block is simply not sent.
-      await pointerClick(page, page.locator(".topbar .synthesize"));
+      await pointerClick(page, synthesize);
       await expect(page.locator(".build-row").first()).toBeVisible({
         timeout: 30_000,
       });
@@ -470,13 +535,9 @@ test.describe("scene previews and synthesis settings", () => {
       expect(submissions[0]!).not.toHaveProperty("weights");
 
       // Optical baseline + fullwidth quotes: the normalization block.
-      await page
-        .locator("[data-role='select-baseline']")
-        .selectOption("optical");
-      await page
-        .locator("[data-role='select-cjkWidth']")
-        .selectOption("fullwidth");
-      await pointerClick(page, page.locator(".topbar .synthesize"));
+      await pickSetting(page, "baseline", "中文字缩小一点更匀称");
+      await pickSetting(page, "cjkWidth", "两倍英文宽（引号破折号全角 · 中文习惯）");
+      await pointerClick(page, synthesize);
       await expect(page.locator(".build-row").nth(1)).toBeVisible({
         timeout: 30_000,
       });
@@ -488,10 +549,8 @@ test.describe("scene previews and synthesis settings", () => {
 
       // Weight mode "base only": an explicit slot per base-file face
       // (the fixtures are single 400 faces, shared by both files).
-      await page
-        .locator("[data-role='select-weightMode']")
-        .selectOption("base");
-      await pointerClick(page, page.locator(".topbar .synthesize"));
+      await pickSetting(page, "weightMode", "仅保留英文字体提供的字重");
+      await pointerClick(page, synthesize);
       await expect(page.locator(".build-row").nth(2)).toBeVisible({
         timeout: 30_000,
       });
@@ -504,10 +563,8 @@ test.describe("scene previews and synthesis settings", () => {
 
       // Weight mode "donor only": the shared weights only — with these
       // fixtures the same single 400 slot.
-      await page
-        .locator("[data-role='select-weightMode']")
-        .selectOption("donor");
-      await pointerClick(page, page.locator(".topbar .synthesize"));
+      await pickSetting(page, "weightMode", "仅保留中文字体提供的字重");
+      await pointerClick(page, synthesize);
       await expect(page.locator(".build-row").nth(3)).toBeVisible({
         timeout: 30_000,
       });

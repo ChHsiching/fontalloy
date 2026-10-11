@@ -20,11 +20,8 @@ test.describe("cell details (click-reachable information)", () => {
 
     // Load one font and let it auto-select for the EN picker.
     const [font1] = fixtureFontPaths();
-    await pointerClick(page, page.locator('[data-role="picker-en"] .picker-anchor'));
-    const popup = page.locator('[data-picker-popup="en"]');
-    await popup
-      .locator(".popup-footer input[type=file]")
-      .setInputFiles(font1);
+    await pointerClick(page, page.locator('[data-role="picker-en"] .kit-hd'));
+    await page.locator("input[data-role='font-file']").setInputFiles(font1);
     await waitForFontsReady(page);
     await page.keyboard.press("Escape");
   });
@@ -36,9 +33,13 @@ test.describe("cell details (click-reachable information)", () => {
   }) => {
     await pointerClick(
       page,
-      page.locator(".charmap-categories .block-button", { hasText: "基本拉丁" }),
+      page.locator(".kit-cat-g[data-group='latin-europe']"),
     );
-    await pointerClick(page, page.locator(".charmap-grid .cell[data-cp='U+0041']"));
+    await pointerClick(
+      page,
+      page.locator(".kit-cat-s[data-block='basic-latin']"),
+    );
+    await pointerClick(page, page.locator(".charmap-grid .kit-cell[data-cp='U+0041']"));
 
     const details = page.locator(".charmap-details");
     const text = (await details.textContent()) ?? "";
@@ -46,20 +47,17 @@ test.describe("cell details (click-reachable information)", () => {
     expect(text).toContain("A");
     expect(text).toContain("英文字体");
 
-    // The selected cell is marked with the accent (selected state) class.
+    // The selected cell is marked with the accent (cursor state) class.
     await expect(
-      page.locator(".charmap-grid .cell[data-cp='U+0041']"),
-    ).toHaveClass(/is-selected/);
+      page.locator(".charmap-grid .kit-cell[data-cp='U+0041']"),
+    ).toHaveClass(/cur/);
   });
 
   test("an uncovered cell states so in plain text", async ({ page }) => {
+    await pointerClick(page, page.locator(".kit-cat-g[data-group='symbols']"));
     await pointerClick(
       page,
-      page.locator(".charmap-categories .group-toggle", { hasText: "通用符号" }),
-    );
-    await pointerClick(
-      page,
-      page.locator(".charmap-categories .block-button", { hasText: "杂项符号" }),
+      page.locator(".kit-cat-s[data-block='misc-symbols']"),
     );
     // The uncovered example must be derived from the fixture's real cmap —
     // host fonts differ per platform (DejaVu Sans covers U+2603; the Windows
@@ -73,7 +71,7 @@ test.describe("cell details (click-reachable information)", () => {
       ) as ArrayBuffer,
     );
     const covered = new Set(meta.codepoints);
-    const cells = page.locator(".charmap-grid .cell");
+    const cells = page.locator(".charmap-grid .kit-cell");
     const cellCount = await cells.count();
     let target: string | null = null;
     for (let i = 0; i < cellCount; i++) {
@@ -89,7 +87,7 @@ test.describe("cell details (click-reachable information)", () => {
     ).not.toBeNull();
     await pointerClick(
       page,
-      page.locator(`.charmap-grid .cell[data-cp='${target}']`),
+      page.locator(`.charmap-grid .kit-cell[data-cp='${target}']`),
     );
     const text = (await page.locator(".charmap-details").textContent()) ?? "";
     expect(text).toContain(target!);

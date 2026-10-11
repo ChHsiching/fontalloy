@@ -39,29 +39,24 @@ test.describe("screenshots with open overlays", () => {
     const [font1, font2] = fixtureFontPaths();
 
     // Load two local fonts and select them for the pair.
-    await pointerClick(page, page.locator('[data-role="picker-en"] .picker-anchor'));
+    await pointerClick(page, page.locator('[data-role="picker-en"] .kit-hd'));
     const popup = page.locator('[data-picker-popup="en"]');
-    await popup
-      .locator(".popup-footer input[type=file]")
+    await page
+      .locator("input[data-role='font-file']")
       .setInputFiles([font1, font2]);
     await waitForFontsReady(page);
     await page.keyboard.press("Escape");
 
     // Pick a CJK block so the grid shows real glyphs, select a cell, then
     // reopen the EN picker so the overlay state is captured.
+    await pointerClick(page, page.locator(".kit-cat-g[data-group='cjk']"));
     await pointerClick(
       page,
-      page.locator(".charmap-categories .group-toggle", { hasText: "中日韩文字" }),
+      page.locator(".kit-cat-s[data-block='cjk-unified']"),
     );
-    await pointerClick(
-      page,
-      page.locator(".charmap-categories .block-button", {
-        hasText: "CJK 统一表意文字",
-      }),
-    );
-    await pointerClick(page, page.locator(".charmap-grid .cell[data-cp='U+4E2D']"));
+    await pointerClick(page, page.locator(".charmap-grid .kit-cell[data-cp='U+4E2D']"));
 
-    await pointerClick(page, page.locator('[data-role="picker-en"] .picker-anchor'));
+    await pointerClick(page, page.locator('[data-role="picker-en"] .kit-hd'));
     await expect(popup).toBeVisible();
     await page.waitForTimeout(250); // let the discrete open transition settle
 
@@ -119,10 +114,10 @@ test.describe("screenshots of the catalog overlays", () => {
     ).toHaveText("2");
 
     // Second overlay state: the picker listing catalog families, open.
-    await pointerClick(page, page.locator('[data-role="picker-en"] .picker-anchor'));
+    await pointerClick(page, page.locator('[data-role="picker-en"] .kit-hd'));
     const row = page
       .locator('[data-picker-popup="en"]')
-      .locator(".picker-row[data-family='Alloy Sans']");
+      .locator(".kit-fp", { hasText: "Alloy Sans" });
     await expect(row).toBeVisible();
     await expect
       .poll(() => row.evaluate((el) => getComputedStyle(el).fontFamily))

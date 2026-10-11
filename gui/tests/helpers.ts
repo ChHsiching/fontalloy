@@ -33,29 +33,45 @@ export async function waitForFontsReady(page: Page): Promise<void> {
  * Compute the center of `locator` and return it only if the element (or a
  * descendant of it) is what elementFromPoint reports there — i.e. the point is
  * actually clickable and not covered by an overlay or clipped away.
+ *
+ * Re-render races retry: a store render between the visibility wait and the
+ * geometry read can replace the node ("Element is not attached to the DOM");
+ * the fresh node occupies the same spot, so re-resolving and retrying (up to
+ * three times) clicks the real element rather than failing the gesture.
  */
 export async function hitTestCenter(
   page: Page,
   locator: Locator,
 ): Promise<{ x: number; y: number }> {
-  await locator.waitFor({ state: "visible" });
-  await locator.scrollIntoViewIfNeeded();
-  const box = await locator.boundingBox();
-  if (!box) throw new Error("hit test target has no bounding box");
-  const x = Math.round(box.x + box.width / 2);
-  const y = Math.round(box.y + box.height / 2);
-  const covered = await page.evaluate(
-    ([px, py]) => {
-      const hit = document.elementFromPoint(px, py);
-      return hit === null;
-    },
-    [x, y],
-  );
-  expect(
-    covered,
-    `elementFromPoint(${x}, ${y}) is covered or outside the viewport`,
-  ).toBe(false);
-  return { x, y };
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await locator.waitFor({ state: "visible" });
+      await locator.scrollIntoViewIfNeeded();
+      const box = await locator.boundingBox();
+      if (!box) throw new Error("hit test target has no bounding box");
+      const x = Math.round(box.x + box.width / 2);
+      const y = Math.round(box.y + box.height / 2);
+      const covered = await page.evaluate(
+        ([px, py]) => {
+          const hit = document.elementFromPoint(px, py);
+          return hit === null;
+        },
+        [x, y],
+      );
+      expect(
+        covered,
+        `elementFromPoint(${x}, ${y}) is covered or outside the viewport`,
+      ).toBe(false);
+      return { x, y };
+    } catch (err) {
+      lastError = err;
+      const message = err instanceof Error ? err.message : String(err);
+      if (!message.includes("not attached")) throw err;
+      await page.waitForTimeout(50);
+    }
+  }
+  throw lastError;
 }
 
 /**
@@ -66,15 +82,19 @@ export async function pointerClick(page: Page, locator: Locator): Promise<void> 
   const { x, y } = await hitTestCenter(page, locator);
   const handle = await locator.elementHandle();
   expect(handle, "target lost before click").not.toBeNull();
-  const ok = await page.evaluate(
+  const hitInfo = await page.evaluate(
     ({ px, py, el }) => {
       const hit = document.elementFromPoint(px, py);
-      if (!hit || !el) return false;
-      return hit === el || el.contains(hit);
+      if (!hit || !el) return { ok: false, desc: "no hit" };
+      const desc = `${hit.tagName}.${(hit as HTMLElement).className} in ${(hit as HTMLElement).closest("[data-help-popup]")?.getAttribute("data-help-popup") ?? (hit as HTMLElement).closest("[data-picker-popup]")?.getAttribute("data-picker-popup") ?? (hit as HTMLElement).closest(".kit-pop")?.className ?? "-"}`;
+      return { ok: hit === el || el.contains(hit), desc };
     },
     { px: x, py: y, el: handle },
   );
-  expect(ok, `hit test at (${x}, ${y}) did not resolve to the target`).toBe(true);
+  expect(
+    hitInfo.ok,
+    `hit test at (${x}, ${y}) did not resolve to the target (got: ${hitInfo.desc})`,
+  ).toBe(true);
   await page.mouse.move(x, y);
   await page.mouse.click(x, y);
 }

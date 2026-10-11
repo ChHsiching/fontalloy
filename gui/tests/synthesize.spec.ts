@@ -43,13 +43,12 @@ test.describe("sidecar synthesize", () => {
   ): Promise<void> {
     await pointerClick(
       page,
-      page.locator(`[data-role="picker-${role}"] .picker-anchor`),
+      page.locator(`[data-role="picker-${role}"] .kit-hd`),
     );
     const popup = page.locator(`[data-picker-popup="${role}"]`);
     await expect(popup).toBeVisible();
-    await popup
-      .locator(".popup-footer input[type=file]")
-      .setInputFiles(path);
+    await page.locator("input[data-role='font-file']").setInputFiles(path);
+    await expect(popup.locator(".kit-fp").first()).toBeVisible();
     await waitForFontsReady(page);
     await page.keyboard.press("Escape");
   }
@@ -109,15 +108,11 @@ test.describe("sidecar synthesize", () => {
     try {
       const saveDir = await openWithService(page, service, saved);
 
-      // The service chip states the connection in plain text.
-      await expect(page.locator('[data-role="service-state"]')).toHaveText(
-        /已连接/,
-      );
-
       await loadIntoPicker(page, "en", service.baseFont);
       await loadIntoPicker(page, "cjk", service.donorFont);
 
-      const synthesize = page.locator(".topbar .synthesize");
+      // Connected service + full pick pair => the action is enabled.
+      const synthesize = page.locator(".topbar [data-role='synthesize']");
       await expect(synthesize).toHaveAttribute("aria-disabled", "false");
       await pointerClick(page, synthesize);
 
@@ -187,7 +182,7 @@ test.describe("sidecar synthesize", () => {
       await loadIntoPicker(page, "en", service.baseFont);
       await loadIntoPicker(page, "cjk", service.donorFont);
 
-      const synthesize = page.locator(".topbar .synthesize");
+      const synthesize = page.locator(".topbar [data-role='synthesize']");
       await expect(synthesize).toHaveAttribute("aria-disabled", "false");
       await pointerClick(page, synthesize);
 
@@ -200,13 +195,11 @@ test.describe("sidecar synthesize", () => {
 
       // The app stays usable while the build runs: browsing categories
       // and pages keeps working (the panel is inline, never a modal).
-      await pointerClick(page, page.locator(".block-button.is-aggregate"));
-      await expect(page.locator('[data-stat="category"]')).toContainText(
-        "全部",
-      );
-      const next = page.locator(".page-next");
+      await pointerClick(page, page.locator(".kit-cat-g[data-group='all']"));
+      await expect(page.locator("[data-stat='total']")).toHaveText("1,112,032");
+      const next = page.locator(".kit-toolrow .kit-pgc button[aria-label='下一页']");
       await pointerClick(page, next);
-      await expect(page.locator('[data-stat="page"]')).toContainText("第 2 /");
+      await expect(page.locator("[data-pager-label]")).toHaveText("第 2/1086 页");
 
       // Queue a second build while the first one runs.
       await pointerClick(page, synthesize);
@@ -237,7 +230,7 @@ test.describe("sidecar synthesize", () => {
       expect(basename(hostFont)).not.toBe("donor.ttf");
       await loadIntoPicker(page, "cjk", hostFont);
 
-      const synthesize = page.locator(".topbar .synthesize");
+      const synthesize = page.locator(".topbar [data-role='synthesize']");
       await expect(synthesize).toHaveAttribute("aria-disabled", "false");
       await pointerClick(page, synthesize);
 
@@ -247,10 +240,8 @@ test.describe("sidecar synthesize", () => {
       expect(saved.length).toBe(0);
 
       // No modal: the workspace underneath keeps responding.
-      await pointerClick(page, page.locator(".block-button.is-aggregate"));
-      await expect(page.locator('[data-stat="category"]')).toContainText(
-        "全部",
-      );
+      await pointerClick(page, page.locator(".kit-cat-g[data-group='all']"));
+      await expect(page.locator("[data-stat='total']")).toHaveText("1,112,032");
     } finally {
       await service.dispose();
     }
@@ -272,7 +263,7 @@ test.describe("sidecar synthesize", () => {
       const { rm } = await import("node:fs/promises");
       await rm(service.donorFont);
 
-      const synthesize = page.locator(".topbar .synthesize");
+      const synthesize = page.locator(".topbar [data-role='synthesize']");
       await expect(synthesize).toHaveAttribute("aria-disabled", "false");
       await pointerClick(page, synthesize);
 
@@ -293,7 +284,7 @@ test.describe("sidecar synthesize", () => {
     await page.goto("/");
     await waitForFontsReady(page);
 
-    const synthesize = page.locator(".topbar .synthesize");
+    const synthesize = page.locator(".topbar [data-role='synthesize']");
     await expect(synthesize).toHaveAttribute("aria-disabled", "true");
     await pointerClick(page, synthesize);
     const notice = page.locator(".synthesize-notice");

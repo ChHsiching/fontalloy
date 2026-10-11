@@ -4,7 +4,6 @@ import { parseFontMeta } from "../src/fonts/sfnt";
 import {
   assertNoJsErrors,
   collectJsErrors,
-  cssFamilyQuote,
   fixtureFontPaths,
   pointerClick,
   waitForFontsReady,
@@ -55,8 +54,10 @@ const catalogDone = (page: Page) =>
   screen(page).locator("[data-stat='catalog-done']");
 /** The EN picker popup (scoped: both pickers keep popups on <body>). */
 const enPopup = (page: Page) => page.locator('[data-picker-popup="en"]');
+/** A catalog family's row (rows are keyed by their pick id: the css
+ *  family once registered, `cat:<family>` while not). */
 const catalogRow = (page: Page, family: string) =>
-  enPopup(page).locator(`.picker-row[data-family='${family}']`);
+  enPopup(page).locator(".kit-fp", { hasText: family });
 
 test.describe("first-run catalog download", () => {
   const jsErrors: string[] = [];
@@ -133,9 +134,23 @@ test.describe("first-run catalog download", () => {
 
     // Downloads continue in the background; the families land as fonts.
     // Sans and Serif come from two distinct host faces; Mono reuses the
-    // Sans face binary, so it registers onto the same css family (dedupe).
+    // Sans face binary, so it registers onto the same css family (dedupe)
+    // — the three rows self-render in exactly two distinct faces.
     openGate();
-    await expect(page.locator("[data-stat='fonts']")).toHaveText("2");
+    await pointerClick(page, page.locator('[data-role="picker-en"] .kit-hd'));
+    await expect
+      .poll(() =>
+        enPopup(page)
+          .evaluate((el) => {
+            const faces = new Set<string>();
+            for (const row of el.querySelectorAll(".kit-fp")) {
+              const font = getComputedStyle(row.querySelector(".kit-nm")!).fontFamily;
+              if (font && !font.startsWith("system-ui")) faces.add(font);
+            }
+            return faces.size;
+          }),
+      )
+      .toBe(2);
   });
 
   test("a sha256 mismatch fails only that family; startup is never blocked", async ({
@@ -156,13 +171,13 @@ test.describe("first-run catalog download", () => {
     // The picker lists the verified families and marks the missing one.
     await pointerClick(
       page,
-      page.locator('[data-role="picker-en"] .picker-anchor'),
+      page.locator('[data-role="picker-en"] .kit-hd'),
     );
     await expect(catalogRow(page, "Alloy Sans")).toBeVisible();
     await expect(catalogRow(page, "Alloy Serif")).toBeVisible();
     const missing = catalogRow(page, "Alloy Mono");
     await expect(missing).toBeVisible();
-    await expect(missing.locator(".picker-row-tag")).toContainText("未下载");
+    await expect(missing.locator(".kit-fp-note")).toContainText("未下载");
     expect(await missing.getAttribute("aria-disabled")).toBe("true");
   });
 
@@ -193,10 +208,10 @@ test.describe("first-run catalog download", () => {
     // The missing family is shown as such in the picker.
     await pointerClick(
       page,
-      page.locator('[data-role="picker-en"] .picker-anchor'),
+      page.locator('[data-role="picker-en"] .kit-hd'),
     );
     await expect(
-      catalogRow(page, "Alloy Mono").locator(".picker-row-tag"),
+      catalogRow(page, "Alloy Mono").locator(".kit-fp-note"),
     ).toContainText("未下载");
   });
 
@@ -225,7 +240,7 @@ test.describe("first-run catalog download", () => {
     // The stored catalog still feeds the picker.
     await pointerClick(
       page,
-      page.locator('[data-role="picker-en"] .picker-anchor'),
+      page.locator('[data-role="picker-en"] .kit-hd'),
     );
     await expect(catalogRow(page, "Alloy Sans")).toBeVisible();
   });
@@ -253,11 +268,11 @@ test.describe("first-run catalog download", () => {
 
     await pointerClick(
       page,
-      page.locator('[data-role="picker-en"] .picker-anchor'),
+      page.locator('[data-role="picker-en"] .kit-hd'),
     );
     const healed = catalogRow(page, "Alloy Mono");
     await expect(healed).toBeVisible();
-    await expect(healed.locator(".picker-row-tag")).toHaveCount(0);
+    await expect(healed.locator(".kit-fp-note")).toHaveCount(0);
     expect(await healed.getAttribute("aria-disabled")).toBeNull();
   });
 
@@ -278,7 +293,7 @@ test.describe("first-run catalog download", () => {
 
     await pointerClick(
       page,
-      page.locator('[data-role="picker-en"] .picker-anchor'),
+      page.locator('[data-role="picker-en"] .kit-hd'),
     );
     const row = catalogRow(page, "Alloy Serif");
     await expect(row).toBeVisible();
@@ -297,7 +312,7 @@ test.describe("first-run catalog download", () => {
 
     await pointerClick(
       page,
-      page.locator('[data-role="picker-en"] .picker-anchor'),
+      page.locator('[data-role="picker-en"] .kit-hd'),
     );
     const sansRow = catalogRow(page, "Alloy Sans");
     await expect(sansRow).toBeVisible();
@@ -307,15 +322,23 @@ test.describe("first-run catalog download", () => {
     // (Computed font-family drops the quotes — compare the bare name.)
     await expect(sansRow).toContainText("Alloy Sans");
     await expect
-      .poll(() => sansRow.evaluate((el) => getComputedStyle(el).fontFamily))
+      .poll(() =>
+        sansRow
+          .locator(".kit-nm")
+          .evaluate((el) => getComputedStyle(el).fontFamily),
+      )
       .toContain(cssA);
-    const rendered = await sansRow.evaluate(
-      (el) => getComputedStyle(el).fontFamily,
-    );
+    const rendered = await sansRow
+      .locator(".kit-nm")
+      .evaluate((el) => getComputedStyle(el).fontFamily);
     expect(rendered).not.toContain("Alloy Sans");
+    // MetaLine tags come from the repo's catalog manifest; the fixture
+    // families are invented, so their rows carry no meta (the kit demo
+    // specs cover the MetaLine rendering itself).
+    await expect(sansRow.locator(".kit-meta")).toHaveCount(0);
 
     // Search filters across the catalog rows.
-    const search = enPopup(page).locator(".picker-search");
+    const search = enPopup(page).locator(".kit-q");
     await expect(search).toBeVisible();
     await search.fill("Serif");
     await expect(catalogRow(page, "Alloy Sans")).toBeHidden();
@@ -324,7 +347,7 @@ test.describe("first-run catalog download", () => {
     await expect(catalogRow(page, "Alloy Sans")).toBeVisible();
 
     // The local-file footer stays outside the scroll area.
-    await expect(enPopup(page).locator(".popup-footer")).toContainText(
+    await expect(enPopup(page).locator(".kit-fpsys")).toContainText(
       "加载本地字体文件",
     );
   });
@@ -341,17 +364,17 @@ test.describe("first-run catalog download", () => {
 
     await pointerClick(
       page,
-      page.locator('[data-role="picker-en"] .picker-anchor'),
+      page.locator('[data-role="picker-en"] .kit-hd'),
     );
     await pointerClick(page, catalogRow(page, "Alloy Sans"));
     await waitForFontsReady(page);
 
     await expect(
-      page.locator('[data-role="picker-en"] .picker-current'),
+      page.locator('[data-role="picker-en"] .kit-hd b'),
     ).toHaveText("Alloy Sans");
-    await expect(page.locator("[data-role='pair-en']")).toHaveText(
-      "EN Alloy Sans",
-    );
+    await expect(
+      page.locator("[data-role='font-pair'] [data-pair='base']"),
+    ).toHaveText("Alloy Sans");
 
     // Independent oracle: the face is really registered under the parsed
     // family name and covers U+0041.
@@ -361,15 +384,13 @@ test.describe("first-run catalog download", () => {
     );
     expect(loaded).toBe(true);
 
-    // The selection drives the preview stack and coverage like a local font.
-    const stack = await page
-      .locator(".charmap-grid")
-      .evaluate((el) => el.style.getPropertyValue("--font-preview"));
-    expect(stack).toContain(cssFamilyQuote(cssA));
-    const coverage = await page
-      .locator("[data-stat='coverage']")
-      .textContent();
-    expect(Number((coverage ?? "0").replace(/,/g, ""))).toBeGreaterThan(0);
+    // The selection drives the plain preview cells and the coverage
+    // counters like a local font (a lone pick still resolves).
+    const cellFont = await page
+      .locator(".charmap-grid .kit-cell[data-cp='U+0041']")
+      .evaluate((el) => getComputedStyle(el).fontFamily);
+    expect(cellFont).toContain(cssA);
+    await expect(page.locator("[data-stat='en']")).not.toHaveText("0");
   });
 
   test("offline: the catalog is unavailable and local fonts work fully", async ({
@@ -389,23 +410,18 @@ test.describe("first-run catalog download", () => {
 
     await pointerClick(
       page,
-      page.locator('[data-role="picker-en"] .picker-anchor'),
+      page.locator('[data-role="picker-en"] .kit-hd'),
     );
     await expect(
-      enPopup(page).locator(".picker-catalog-note"),
+      enPopup(page).locator("[data-picker-note]"),
     ).toContainText("目录不可用");
     await expect(catalogRow(page, "Alloy Sans")).toHaveCount(0);
 
     // Local files load and preview exactly as before the catalog existed.
-    await enPopup(page)
-      .locator(".popup-footer input[type=file]")
-      .setInputFiles(FONT_A);
+    await page.locator("input[data-role='font-file']").setInputFiles(FONT_A);
     await waitForFontsReady(page);
-    await expect(page.locator("[data-stat='fonts']")).toHaveText("1");
-    await pointerClick(page, enPopup(page).locator(".picker-row").first());
-    const coverage = await page
-      .locator("[data-stat='coverage']")
-      .textContent();
-    expect(Number((coverage ?? "0").replace(/,/g, ""))).toBeGreaterThan(0);
+    await expect(enPopup(page).locator(".kit-fp")).toHaveCount(1);
+    await pointerClick(page, enPopup(page).locator(".kit-fp").first());
+    await expect(page.locator("[data-stat='en']")).not.toHaveText("0");
   });
 });
