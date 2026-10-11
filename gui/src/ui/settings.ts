@@ -34,15 +34,17 @@ export function mountSettings(root: HTMLElement): void {
     name.textContent = topic.name;
     head.appendChild(name);
     // The ?-button: its popup node mounts on <body> once (ADR-0004).
-    head.appendChild(
-      mountHelpPopover({
-        id: topic.topic.id,
-        title: topic.topic.title,
-        buttonLabel: topic.topic.buttonLabel,
-        width: topic.topic.width,
-        build: topic.topic.build,
-      }).anchor,
-    );
+    // The anchor's data-role follows the store key (the popup's
+    // data-help-popup keeps the kit topic id).
+    const help = mountHelpPopover({
+      id: topic.topic.id,
+      title: topic.topic.title,
+      buttonLabel: topic.topic.buttonLabel,
+      width: topic.topic.width,
+      build: topic.topic.build,
+    });
+    help.anchor.dataset.role = `help-${key}`;
+    head.appendChild(help.anchor);
     row.appendChild(head);
 
     const select = mountAppSelect({

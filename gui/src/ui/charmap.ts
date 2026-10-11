@@ -575,7 +575,13 @@ export function mountCharmap(root: HTMLElement): void {
     if (cp !== null) extendSelection([cp]);
   });
   const stopPaint = (): void => {
+    if (!painting) return;
     painting = false;
+    // The toolbar holds its normal variant while the pointer is held
+    // (the prototype's fixed-geometry discipline: a variant swap mid-drag
+    // would shift the grid under the pointer and paint the wrong cells).
+    // Paint end is the moment the batch variant may appear.
+    render();
   };
   window.addEventListener("pointerup", stopPaint);
   window.addEventListener("pointercancel", stopPaint);
@@ -730,7 +736,7 @@ export function mountCharmap(root: HTMLElement): void {
     const picks = pickRefs();
     const effective = picks.base !== null && picks.donor !== null;
 
-    if (selection.length >= 2) {
+    if (selection.length >= 2 && !painting) {
       actionBar.render({
         multi: true,
         showCodepoints,

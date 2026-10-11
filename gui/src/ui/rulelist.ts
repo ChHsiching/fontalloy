@@ -124,10 +124,21 @@ function codepointInput(
 
 /* --------------------------- rule rows ------------------------------ */
 
+/** Whether a rule's target is fully specified (resolvable, serializable). */
+function ruleComplete(rule: EditorRule): boolean {
+  const target = rule.target;
+  if (target.kind === "codepoint") return target.cp !== null;
+  if (target.kind === "range") return target.start !== null && target.end !== null;
+  return true;
+}
+
 function buildRuleRow(rule: EditorRule): HTMLElement {
   const row = document.createElement("div");
   row.className = "rule-row";
   row.dataset.ruleId = String(rule.id);
+  // Test/a11y oracle: a half-typed row is not a rule yet (the complete
+  // count is what the recipe will declare).
+  row.dataset.complete = String(ruleComplete(rule));
   row.setAttribute(
     "data-role",
     rule.target.kind === "preset" ? "preset-rule" : "custom-rule",
@@ -324,6 +335,12 @@ export function mountRulesSection(root: HTMLElement): void {
       active.type !== "checkbox" &&
       root.contains(active)
     ) {
+      // The node stays (a rebuild would drop focus) — but its
+      // completeness oracle follows the store, not the stale node.
+      for (const rowEl of list.querySelectorAll<HTMLElement>("[data-rule-id]")) {
+        const rule = store.get().rules.find((r) => String(r.id) === rowEl.dataset.ruleId);
+        if (rule) rowEl.dataset.complete = String(ruleComplete(rule));
+      }
       return;
     }
     const { rules } = store.get();

@@ -95,10 +95,13 @@ function contentProps(): SceneContentProps {
       }
       return isCjkChar(ch) ? SANS_TAIL : MONO_TAIL;
     },
-    spanAttrs: (ch) => {
+    spanAttrs: (ch): Record<string, string> | undefined => {
+      // Every span carries its codepoint (walkable like the grid); the
+      // winner/via/kind provenance marks the covered ones — an uncovered
+      // character is a span with data-cp and no data-winner.
       const cp = ch.codePointAt(0)!;
       const entry = resolver ? resolver.resolve(cp) : null;
-      if (!entry) return undefined;
+      if (!entry) return { cp: formatCp(cp) };
       return {
         cp: formatCp(cp),
         winner: entry.winner,

@@ -95,7 +95,9 @@ export function gridCell(props: GridCellProps): HTMLElement {
   if (showCp) {
     const cp = document.createElement("span");
     cp.className = "cp";
-    cp.textContent = data.cp ?? formatCodepoint(data.ch);
+    // The row shows the bare hex (the prototype's compact form); the
+    // cell's data-cp attribute keeps the full U+XXXX label.
+    cp.textContent = (data.cp ?? formatCodepoint(data.ch)).replace(/^U\+/, "");
     cell.classList.add("hascp");
     cell.appendChild(cp);
   }

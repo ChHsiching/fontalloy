@@ -27,7 +27,7 @@ app.innerHTML = `
     <aside class="workspace-rail"></aside>
     <main class="workspace-content"></main>
   </div>
-  <footer class="statsbar enter" style="animation-delay: 120ms"></footer>
+  <div class="statsbar-slot"></div>
   <div class="zoom-host"></div>
 `;
 
@@ -37,7 +37,7 @@ mountContent(
   app.querySelector<HTMLElement>(".workspace-content")!,
   app.querySelector<HTMLElement>(".zoom-host")!,
 );
-mountStatsbar(app.querySelector<HTMLElement>(".statsbar")!);
+mountStatsbar(app.querySelector<HTMLElement>(".statsbar-slot")!);
 
 // Ctrl+Z / Cmd+Z triggers rule undo (issue #20); the selection undo
 // stack has its own click entry point in the batch editor.

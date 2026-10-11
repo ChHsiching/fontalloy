@@ -29,16 +29,36 @@ export interface FontPicker {
 
 /** The shared hidden file input (one local-load flow at a time). */
 let fileInput: HTMLInputElement | null = null;
+/** The registration callback the input's change event runs (set by the
+ *  footer action; tests and warm loads reach the input directly). */
+let pendingRegister: ((files: File[]) => Promise<void>) | null = null;
+/** Per-picker registration flows, for direct loads (the file input set
+ *  without a footer click): they land in the picker that opened last. */
+const registerFlows = new Map<PickerRole, (files: File[]) => Promise<void>>();
+let lastOpenedRole: PickerRole | null = null;
 
 function ensureFileInput(): HTMLInputElement {
   if (fileInput === null) {
-    fileInput = document.createElement("input");
-    fileInput.type = "file";
-    fileInput.accept = ".ttf,.otf,.woff,.woff2,.ttc";
-    fileInput.multiple = true;
-    fileInput.hidden = true;
-    fileInput.dataset.role = "font-file";
-    document.body.appendChild(fileInput);
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".ttf,.otf,.woff,.woff2,.ttc";
+    input.multiple = true;
+    input.hidden = true;
+    input.dataset.role = "font-file";
+    input.addEventListener("change", () => {
+      const files = [...(input.files ?? [])];
+      input.value = "";
+      const flow =
+        pendingRegister ??
+        (lastOpenedRole !== null
+          ? registerFlows.get(lastOpenedRole) ?? null
+          : null);
+      if (flow !== null && files.length > 0) {
+        void flow(files);
+      }
+    });
+    document.body.appendChild(input);
+    fileInput = input;
   }
   return fileInput;
 }
@@ -97,6 +117,9 @@ export function mountPicker(
   options: PickerOptions,
 ): FontPicker {
   root.dataset.role = `picker-${options.role}`;
+  // The shared local-file input exists from the start (tests and the
+  // footer action reach for it without an open/click warm-up).
+  ensureFileInput();
   let error: string | null = null;
 
   /** Register picked local fonts, selecting the first new family. */
@@ -134,10 +157,7 @@ export function mountPicker(
       }
       return;
     }
-    const input = ensureFileInput();
-    input.onchange = async (): Promise<void> => {
-      const files = [...(input.files ?? [])];
-      input.value = "";
+    pendingRegister = async (files: File[]): Promise<void> => {
       await registerPicked(
         await Promise.all(
           files.map(async (file) => ({
@@ -147,7 +167,7 @@ export function mountPicker(
         ),
       );
     };
-    input.click();
+    ensureFileInput().click();
   };
 
   /**
@@ -235,7 +255,27 @@ export function mountPicker(
     };
   };
 
+  registerFlows.set(options.role, async (files: File[]): Promise<void> => {
+    await registerPicked(
+      await Promise.all(
+        files.map(async (file) => ({
+          buffer: await file.arrayBuffer(),
+          fileName: file.name,
+        })),
+      ),
+    );
+  });
+
   const popup: PickerPopup = mountPickerPopup(root, buildProps());
+  // Capture-phase: a real click on the card makes THIS picker the
+  // direct-load target before the kit's own header handler runs.
+  popup.el.addEventListener(
+    "click",
+    () => {
+      lastOpenedRole = options.role;
+    },
+    true,
+  );
 
   function rerender(): void {
     popup.render(buildProps());
@@ -244,7 +284,10 @@ export function mountPicker(
   rerender();
 
   return {
-    open: () => popup.open(),
+    open: () => {
+      lastOpenedRole = options.role;
+      popup.open();
+    },
     close: () => popup.close(),
   };
 }

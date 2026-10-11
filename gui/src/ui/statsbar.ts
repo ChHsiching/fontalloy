@@ -81,7 +81,8 @@ function computeStats(state: AppState, picks: PickRefs): LiveStats {
 
 export function mountStatsbar(root: HTMLElement): StatusBar {
   const bar = mountStatusBar(root);
-  bar.el.classList.add("statsbar");
+  bar.el.classList.add("statsbar", "enter");
+  bar.el.style.animationDelay = "120ms";
 
   const render = (): void => {
     bar.render(computeStats(store.get(), pickRefs()));
