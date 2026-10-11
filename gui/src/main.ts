@@ -58,11 +58,13 @@ void connectService();
 mountCatalogScreen();
 
 // Catalog bootstrap: under Tauri the GitHub release tag; in dev the vite
-// server's fixture catalog (/dev-catalog — host fonts zipped in memory, see
-// gui/scripts/dev-catalog.mjs; opt out with VITE_DEV_CATALOG=0); in a
-// production browser build only when an injected config names an origin.
-// The run is fire-and-forget on purpose — nothing here may delay the
-// workspace.
+// server's REAL local catalog (/dev-catalog — the repo manifest's families
+// zipped from a local fonts directory, see gui/scripts/dev-catalog.mjs;
+// opt out with VITE_DEV_CATALOG=0); in the static WebApp build the same
+// local catalog through vite preview (web/ defines VITE_WEB_CATALOG=1);
+// any other plain-browser build only when an injected config names an
+// origin. The run is fire-and-forget on purpose — nothing here may
+// delay the workspace.
 const config = readConfig();
 const bootstrapUrl = config.catalogBootstrapUrl;
 if (bootstrapUrl !== null) {

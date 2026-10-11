@@ -254,6 +254,19 @@ function renderRow(
     row.status === "failed" || row.status === "error",
   );
 
+  // The journal (issue #22, absorbed): append-only, one line per
+  // OBSERVED state transition, so the run's history stays readable
+  // after the fact — not only the latest poll result.
+  const journal = rowEl.querySelector<HTMLElement>("[data-build-journal]")!;
+  const signature = `${row.status}:${row.stage ?? ""}:${row.queuePosition ?? ""}`;
+  if (rowEl.dataset.journalSignature !== signature) {
+    rowEl.dataset.journalSignature = signature;
+    const line = document.createElement("div");
+    line.textContent = statusText(row);
+    journal.appendChild(line);
+    journal.scrollTop = journal.scrollHeight;
+  }
+
   // The stepper: one dot per pipeline stage, filled once passed.
   const steps = rowEl.querySelector<HTMLElement>(".build-steps")!;
   const order = STAGES.map(([key]) => key);
@@ -306,6 +319,7 @@ export function mountBuildPanel(): void {
       <div class="build-steps">
         ${STAGES.map(([, label]) => `<span class="build-step" title="${label}"></span>`).join("")}
       </div>
+      <div class="build-journal" data-build-journal></div>
       <div class="build-error" data-build-error role="alert" hidden></div>
       <div class="build-saved" data-build-saved hidden></div>
       <div class="build-report" data-build-report hidden></div>

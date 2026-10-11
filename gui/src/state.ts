@@ -155,7 +155,7 @@ export interface Store<T> {
 }
 
 /** Generic store factory: the GUI workspace and the web recipe builder
- *  (webapp/state.ts) are two instances of the same pattern. */
+ *  (the absorbed CLI panel's cached draft) follow the same pattern. */
 export function createStore<T extends object>(initial: T): Store<T> {
   let state = initial;
   const listeners = new Set<Listener<T>>();

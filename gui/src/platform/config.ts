@@ -25,9 +25,11 @@
  * - `serveUrl` — where the merge service answers (`http://127.0.0.1:<port>`).
  *   Under Tauri the shell's sidecar resolves it (the `serve_url` command);
  *   in tests the bootstrap injects the address of the REAL `fontalloy
- *   serve` subprocess it spawned. Unset + not Tauri = no service, no probe
- *   (a refused probe would log a console error; the default page stays
- *   silent).
+ *   serve` subprocess it spawned. Unset + the plain web target = the
+ *   #22 detection probe (`?serve=`, default port 7777) — a refused
+ *   connection is a handled state, and the browser's own console line
+ *   for the refused probe is declared benign by the e2e gates. Explicit
+ *   `null` disables the service entirely (no probe, status "none").
  * - `saveArtifact` — the artifact saver the synthesize flow hands the
  *   built font to. Under Tauri it is the native save dialog + a raw IPC
  *   write; tests inject a stand-in through `page.exposeFunction`.
@@ -38,12 +40,13 @@ export const CATALOG_TAG = "font-catalog-v1";
 export const CATALOG_REPO = "ChHsiching/fontalloy";
 
 /**
- * The dev-server fixture catalog (see gui/scripts/dev-catalog.mjs): a
- * small release built from host font files, served by vite at this path
- * so a plain `npm run dev` boots a working catalog (picker rows with
- * license/variant meta). Opt out with VITE_DEV_CATALOG=0 — the e2e
- * suite's web server does, keeping its pages catalog-free unless a test
- * injects its own origin.
+ * The dev-server REAL catalog (see gui/scripts/dev-catalog.mjs): the
+ * repo manifest's families zipped from a local fonts directory, served
+ * by vite (dev AND preview) at this path so a plain `npm run dev` and
+ * the built WebApp under `vite preview` boot the real catalog — picker
+ * rows with real meta, real glyph rendering. Opt out with
+ * VITE_DEV_CATALOG=0 — the gui e2e suite's web server does, keeping its
+ * pages catalog-free unless a test injects its own origin.
  */
 export const DEV_CATALOG_URL = "/dev-catalog/catalog-release.json";
 
@@ -92,6 +95,35 @@ export function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
+/**
+ * The web target's default serve probe address (issue #22): the `?serve=`
+ * query parameter — restricted to loopback http origins — or, without
+ * it, the well-known port `fontalloy serve --port 7777` listens on. The
+ * Tauri shell never uses this (its sidecar resolves the real address).
+ */
+export const DEFAULT_SERVE_ADDRESS = "http://127.0.0.1:7777";
+
+/** The `?serve=` parameter, validated to a loopback http origin. */
+export function serveProbeAddress(): string {
+  const raw =
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("serve")
+      : null;
+  if (raw !== null && raw.trim() !== "") {
+    try {
+      const url = new URL(raw);
+      const loopback =
+        url.hostname === "127.0.0.1" || url.hostname === "localhost";
+      if (url.protocol === "http:" && loopback) {
+        return url.origin;
+      }
+    } catch {
+      // An unparseable value falls through to the default probe target.
+    }
+  }
+  return DEFAULT_SERVE_ADDRESS;
+}
+
 export function readConfig(): FontalloyConfig {
   const injected =
     typeof window !== "undefined" ? window.__FONTALLOY_CONFIG__ : undefined;
@@ -99,12 +131,18 @@ export function readConfig(): FontalloyConfig {
     import.meta.env.DEV && import.meta.env.VITE_DEV_CATALOG !== "0"
       ? DEV_CATALOG_URL
       : null;
+  // The static WebApp build (web/) ships the same dev-catalog bootstrap:
+  // its vite config defines VITE_WEB_CATALOG=1 so `vite preview` of the
+  // built site boots the real catalog too. Other plain-browser builds
+  // (a gui dist opened outside Tauri) deliberately default to NONE.
+  const webStaticDefault =
+    import.meta.env.VITE_WEB_CATALOG === "1" ? DEV_CATALOG_URL : null;
   const bootstrap =
     injected?.catalogBootstrapUrl !== undefined
       ? injected.catalogBootstrapUrl
       : isTauri()
         ? githubBootstrapUrl()
-        : devDefault;
+        : (devDefault ?? webStaticDefault);
   return {
     catalogBootstrapUrl: bootstrap ?? null,
     serveUrl: injected?.serveUrl,

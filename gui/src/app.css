@@ -776,3 +776,152 @@ body {
   line-height: 1.5;
   color: var(--ink2);
 }
+
+/* The journal (issue #22, absorbed): the append-only run history under
+   the stepper — one dim line per observed state transition. */
+
+.build-journal {
+  margin-top: 6px;
+  max-height: 72px;
+  overflow-y: auto;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--ink3);
+  font-variant-numeric: tabular-nums;
+}
+
+.build-journal:empty {
+  display: none;
+}
+
+/* ---------- no-service CLI panel (issue #22's absorption) ----------
+   The synthesize flow's no-service state: the copy-CLI command + recipe
+   YAML download as a kit-styled, non-modal panel — the same surface
+   discipline as the build panel (fixed above the stats bar, clamped
+   height, internal scroll, the workspace stays usable). */
+
+.cli-panel {
+  position: fixed;
+  right: 14px;
+  bottom: 52px;
+  z-index: 880;
+  width: 440px;
+  max-height: min(72vh, 640px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  border: 1px solid var(--ln2);
+  background: var(--sf);
+  box-shadow: var(--sh3);
+  overflow: hidden;
+}
+
+.cli-panel[hidden] {
+  display: none;
+}
+
+.cli-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--ln);
+}
+
+.cli-title {
+  color: var(--ink2);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.cli-close {
+  margin-left: auto;
+  color: var(--ink3);
+  padding: 0 2px;
+  font-size: 14px;
+}
+
+.cli-close:hover {
+  color: var(--ink);
+}
+
+.cli-notice {
+  padding: 9px 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink2);
+  border-bottom: 1px dashed var(--ln);
+}
+
+.cli-actions {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+}
+
+.cli-problems {
+  margin: 0;
+  padding: 4px 12px 6px 28px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--dgr);
+}
+
+.cli-problems:empty {
+  display: none;
+}
+
+.cli-label {
+  flex: none;
+  padding: 6px 12px 2px;
+  color: var(--ink3);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.cli-yaml {
+  margin: 4px 12px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--ln);
+  background: var(--sf2);
+  font-family: Consolas, ui-monospace, monospace;
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--ink2);
+  overflow: auto;
+  min-height: 40px;
+  max-height: 180px;
+  white-space: pre;
+}
+
+.cli-command-box {
+  margin: 4px 12px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--acsoft);
+  background: var(--sf2);
+  overflow-x: auto;
+}
+
+.cli-command-box code {
+  font-family: Consolas, ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.cli-status {
+  padding: 2px 12px 4px;
+  font-size: 12px;
+  color: var(--ink2);
+  min-height: 18px;
+}
+
+.cli-hint {
+  padding: 6px 12px 10px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--ink3);
+  border-top: 1px dashed var(--ln);
+}

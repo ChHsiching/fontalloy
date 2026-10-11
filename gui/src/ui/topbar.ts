@@ -3,6 +3,7 @@ import { synthStore } from "../service/state";
 import { synthesize, synthesizeReady } from "../service/synthesize";
 import { mountTopBar, type TopBar } from "../kit/topBar";
 import { applyAppTheme, type AppTheme } from "../kit/theme";
+import { openCliPanel } from "./noservice";
 
 /**
  * Top bar (ADR-0004 + the validated prototype's chrome): the brand, the
@@ -61,6 +62,13 @@ export function mountTopbar(root: HTMLElement): TopBar {
       if (reason !== null) {
         notice.querySelector<HTMLElement>(".notice-text")!.textContent = reason;
         notice.hidden = false;
+        // Without a service the flow offers the CLI alternative (the
+        // absorbed #22 builder): copy-CLI command + recipe YAML
+        // download as the workspace's own no-service state.
+        const { service } = synthStore.get();
+        if (service.status === "none" || service.status === "unavailable") {
+          openCliPanel();
+        }
         return;
       }
       void synthesize();

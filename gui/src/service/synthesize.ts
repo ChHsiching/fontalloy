@@ -14,8 +14,8 @@ import { recipeJson } from "../recipe/json";
 import { applySettingsToDraft, fileFaceSlots } from "../recipe/settings";
 import { applyRulesToDraft } from "../precedence/serialize";
 import { saveArtifact } from "../platform/artifacts";
-import { isTauri, readConfig } from "../platform/config";
-import { ServeClient } from "./client";
+import { isTauri, readConfig, serveProbeAddress } from "../platform/config";
+import { ServeClient, type FaceDocument } from "./client";
 import {
   addBuild,
   patchBuild,
@@ -29,12 +29,15 @@ const RUNNING_POLL_MS = 250;
 const QUEUED_POLL_MS = 1_000;
 /** A build that never settles must not wedge a poll loop forever. */
 const BUILD_TIMEOUT_MS = 10 * 60_000;
+/** How long the web target's load-time probe may take before absence. */
+export const PROBE_TIMEOUT_MS = 1_500;
 
 /**
- * Where the service answers. Priority: injected config (tests, the
- * future WebApp build), then the Tauri shell's sidecar (`serve_url`
- * waits for the startup line), else null (no probe — a refused fetch
- * would log a console error; the default browser page stays silent).
+ * Where the service answers. Priority: injected config (tests), then
+ * the Tauri shell's sidecar (`serve_url` waits for the startup line),
+ * else the web target's #22 detection address (`?serve=`, default
+ * http://127.0.0.1:7777) — the workspace probes it on load and a
+ * refused connection is a handled state (the CLI fallback).
  */
 async function resolveServiceUrl(): Promise<string | null> {
   const injected = readConfig().serveUrl;
@@ -43,14 +46,36 @@ async function resolveServiceUrl(): Promise<string | null> {
     const { invoke } = await import("@tauri-apps/api/core");
     return (await invoke<string | null>("serve_url")) as string | null;
   }
-  return null;
+  return serveProbeAddress();
+}
+
+/**
+ * One bounded `/health` probe (the web target's detection): never
+ * throws and never logs — every failure mode (connection refused,
+ * timeout, CORS block, a non-fontalloy responder) resolves to false.
+ */
+async function probeHealth(url: string): Promise<boolean> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${url}/health`, { signal: controller.signal });
+    if (response.ok) {
+      const doc = (await response.json()) as { service?: string };
+      if (doc.service === "fontalloy") return true;
+    }
+  } catch {
+    // Handled by design: absence is a state, not an error.
+  } finally {
+    clearTimeout(timer);
+  }
+  return false;
 }
 
 /**
  * Boot the service connection. Fire-and-forget from main.ts: the
  * workspace is never delayed by it, and a failed probe leaves a fully
  * usable app (the synthesize action stays disabled with its reason as
- * page text).
+ * page text; the no-service CLI panel offers the copy-CLI alternative).
  */
 export async function connectService(): Promise<void> {
   const url = await resolveServiceUrl();
@@ -59,17 +84,15 @@ export async function connectService(): Promise<void> {
     return;
   }
   patchService({ status: "connecting", url });
-  const client = new ServeClient(url);
-  try {
-    await client.health();
-  } catch (err) {
+  if (!(await probeHealth(url))) {
     patchService({
       status: "unavailable",
       client: null,
-      error: err instanceof Error ? err.message : String(err),
+      error: `未检测到本地服务（${url} 无响应：连接被拒绝、超时或被 CORS 拦截）`,
     });
     return;
   }
+  const client = new ServeClient(url);
   let fontsIndex = null;
   try {
     fontsIndex = await client.fonts();
@@ -135,8 +158,52 @@ async function resolveFontPathWithRefresh(
  * font-name field (default the fixed brand default, never derived from
  * the source fonts — spec naming rule). Built through the shared recipe
  * modules (issue #21's model), then serialized by recipeJson for POST
- * /builds.
+ * /builds — and by recipeYaml for the no-service CLI panel, always from
+ * the SAME state (the build and the panel can never drift apart).
  */
+
+/** The currently picked pair, as loaded fonts (undefined when unset). */
+export function selectedPicks(): {
+  en: LoadedFont | undefined;
+  cjk: LoadedFont | undefined;
+} {
+  const { fonts, selected } = store.get();
+  return {
+    en: fonts.find((f) => f.cssFamily === selected.en),
+    cjk: fonts.find((f) => f.cssFamily === selected.cjk),
+  };
+}
+
+/**
+ * The workspace's recipe draft for the given pick paths. `faces` is the
+ * service's /fonts index when one is connected (weight-slot selection);
+ * empty degrades the weight selection to the default — normalization
+ * needs no face data.
+ */
+export function buildWorkspaceDraft(
+  paths: { en: string; cjk: string },
+  faces: readonly FaceDocument[] = [],
+): ReturnType<typeof defaultDraft> {
+  const { rules, settings, outputFamily } = store.get();
+  const draft = defaultDraft();
+  draft.base = { catalog: null, path: paths.en, face: null };
+  draft.donors = [{ catalog: null, path: paths.cjk, face: null }];
+  // The top bar's font-name field is the recipe's output family.
+  draft.output.family = outputFamily || "ChHsich";
+  // The SAME rule state the preview grid resolves (issue #18): the
+  // build and the preview can never drift apart.
+  applyRulesToDraft(draft, rules);
+  // The synthesis settings (issue #19): baseline / CJK width land in
+  // the normalization block, the weight merge mode in the weights
+  // selection (face data from the service's own /fonts index).
+  applySettingsToDraft(
+    draft,
+    settings,
+    fileFaceSlots(faces, paths.en),
+    fileFaceSlots(faces, paths.cjk),
+  );
+  return draft;
+}
 
 function newBuildRow(family: string): BuildRow {
   return {
@@ -164,9 +231,8 @@ export async function synthesize(): Promise<void> {
   const { service } = synthStore.get();
   if (service.status !== "connected" || service.client === null) return;
 
-  const { fonts, selected, outputFamily } = store.get();
-  const en = fonts.find((f) => f.cssFamily === selected.en);
-  const cjk = fonts.find((f) => f.cssFamily === selected.cjk);
+  const { outputFamily } = store.get();
+  const { en, cjk } = selectedPicks();
   const row = newBuildRow(outputFamily || "ChHsich");
   addBuild(row);
 
@@ -193,26 +259,13 @@ export async function synthesize(): Promise<void> {
     return;
   }
 
-  const draft = defaultDraft();
-  draft.base = { catalog: null, path: enPath, face: null };
-  draft.donors = [{ catalog: null, path: cjkPath, face: null }];
-  // The top bar's font-name field is the recipe's output family.
-  draft.output.family = outputFamily || "ChHsich";
-  // The SAME rule state the preview grid resolves (issue #18): the
-  // build and the preview can never drift apart.
-  applyRulesToDraft(draft, store.get().rules);
-  // The synthesis settings (issue #19): baseline / CJK width land in
-  // the normalization block, the weight merge mode in the weights
-  // selection (face data from the service's own /fonts index).
+  // The SAME draft the no-service CLI panel builds (issue #22's
+  // absorption): base + donor paths, the rail's rule state, the
+  // settings — one recipe model for the service and the YAML alike.
   const faces = synthStore.get().service.fontsIndex?.families.flatMap(
     (family) => family.faces,
   ) ?? [];
-  applySettingsToDraft(
-    draft,
-    store.get().settings,
-    fileFaceSlots(faces, enPath),
-    fileFaceSlots(faces, cjkPath),
-  );
+  const draft = buildWorkspaceDraft({ en: enPath, cjk: cjkPath }, faces);
 
   const client = service.client;
   let submitted;

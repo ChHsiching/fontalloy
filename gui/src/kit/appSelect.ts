@@ -42,7 +42,7 @@ export interface AppSelect {
   /**
    * Tear the component down: close, remove the element, and detach the
    * document-level listeners. Call before rebuilding a region that owns
-   * the select (Stage-3 webapp rule rows) — document listeners per
+   * the select (the rule rows) — document listeners per
    * instance would otherwise accumulate as inert leaks.
    */
   destroy(): void;

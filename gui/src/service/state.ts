@@ -1,7 +1,7 @@
 /**
  * The synthesis store (issue #16): the service connection state plus one
- * row per submitted build. Same store pattern as the app store and the
- * webapp's builder store — regions subscribe and patch themselves.
+ * row per submitted build. Same store pattern as the app store —
+ * regions subscribe and patch themselves.
  *
  * The UI-only statuses extend the service's own (`queued | running |
  * done | failed`) with `saving` (artifact handoff in flight), `saved`
