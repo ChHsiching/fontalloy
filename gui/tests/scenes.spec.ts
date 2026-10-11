@@ -338,8 +338,21 @@ test.describe("scene previews and synthesis settings", () => {
     label: string,
   ): Promise<void> {
     const select = page.locator(`[data-role='select-${key}']`);
-    await pointerClick(page, select.locator(".kit-csel"));
-    await pointerClick(page, select.locator(".kit-cso", { hasText: re(label) }));
+    const option = select.locator(".kit-cso", { hasText: re(label) });
+    // Bounded steps with one retry: a missed open click must surface as
+    // a clear failure, never as an unbounded wait for absent options.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await pointerClick(page, select.locator(".kit-csel"));
+      try {
+        await select.locator(".kit-csel-pk").waitFor({ state: "visible", timeout: 2_000 });
+        await option.waitFor({ state: "visible", timeout: 2_000 });
+        break;
+      } catch {
+        if (attempt === 1) throw new Error(`select-${key} did not open`);
+      }
+    }
+    await pointerClick(page, option);
+    await expect(select.locator(".kit-csel")).toHaveText(label, { timeout: 5_000 });
   }
 
   test("settings present with worked-example popovers; popup mechanics hold", async ({
@@ -467,6 +480,10 @@ test.describe("scene previews and synthesis settings", () => {
   test("settings serialize into the submitted recipe (real serve)", async ({
     page,
   }) => {
+    // Four real builds over one serve instance: the per-build waits alone
+    // can reach 30s each, so the file's default test timeout cannot hold
+    // under full-parallel load.
+    test.setTimeout(120_000);
     const service: ServeFixture = await startServeFixture({
       donorGlyphs: 64,
       donorAscii: 6,

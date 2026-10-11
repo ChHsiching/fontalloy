@@ -208,6 +208,7 @@ test.describe("kit demo page", () => {
   }) => {
     const card = page.locator('[data-role="picker-en"]');
     await pointerClick(page, card.locator(".kit-hd"));
+    await page.waitForTimeout(250); // the discrete open transition settles
     const popup = page.locator('[data-picker-popup="en"]');
     await expect(popup).toBeVisible();
     await expect(card).toHaveClass(/open/);
