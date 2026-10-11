@@ -1,0 +1,66 @@
+name: Sidecar binaries
+
+# Builds the `fontalloy` core sidecar binary for every platform the GUI
+# bundles (issue #16 / ADR-0002): the Tauri shell declares
+# `bundle.externalBin: ["binaries/fontalloy"]`, and the per-triple files
+# (`fontalloy-<target-triple>[.exe]`) must sit in `gui/src-tauri/binaries/`
+# before `tauri build`. Cross-compiling a PyInstaller binary from a
+# foreign host is not supported, so each triple builds on its native
+# runner and uploads its artifact; the desktop release job (when it
+# lands) downloads all three into the same tree before running
+# `tauri build` per platform.
+#
+# The binary is never committed — `gui/src-tauri/binaries/` is gitignored.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - core/**
+      - cli/**
+      - gui/scripts/build-sidecar.py
+      - gui/scripts/sidecar_entry.py
+      - .github/workflows/sidecar.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.triple }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            triple: x86_64-pc-windows-msvc
+            exe: .exe
+          - os: macos-latest
+            triple: aarch64-apple-darwin
+            exe: ""
+          - os: ubuntu-latest
+            triple: x86_64-unknown-linux-gnu
+            exe: ""
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+
+      - name: Build the sidecar binary
+        run: uv run --with pyinstaller python gui/scripts/build-sidecar.py --triple ${{ matrix.triple }}
+
+      - name: Smoke test (serve round trip through the binary)
+        run: uv run python gui/scripts/sidecar-smoke.py "gui/src-tauri/binaries/fontalloy-${{ matrix.triple }}${{ matrix.exe }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fontalloy-sidecar-${{ matrix.triple }}
+          path: gui/src-tauri/binaries/fontalloy-${{ matrix.triple }}*
+          if-no-files-found: error
+          retention-days: 14

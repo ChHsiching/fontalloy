@@ -5,10 +5,12 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+.pytest_cache/
 
 # Node / Tauri
 node_modules/
 target/
+*.tsbuildinfo
 
 # Font binaries — this repo ships the tool, not fonts
 *.ttf
@@ -16,6 +18,7 @@ target/
 *.ttc
 *.woff
 *.woff2
+assets/fonts/
 
 # Local working files
 .playwright-mcp/
@@ -23,9 +26,22 @@ target/
 .scratch/
 gui/prototype/_shots/
 
+# Frontend test artifacts (seam 3)
+gui/test-results/
+gui/playwright-report/
+web/test-results/
+web/playwright-report/
+
+# Tauri generated files (schemas, android/ios projects)
+gui/src-tauri/gen/
+
 # GUI prototype lives on the prototype/gui branch, never on main
-gui/
+gui/prototype/
 
 # OS
 .DS_Store
 Thumbs.db
+
+# Sidecar binaries are built per-platform (gui/scripts/build-sidecar.py),
+# never committed — CI builds them on their native runners
+gui/src-tauri/binaries/

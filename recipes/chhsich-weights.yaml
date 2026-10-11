@@ -1,0 +1,31 @@
+# The weight matrix recipe: one build, a whole family.
+
+# The same JetBrains Mono x Maple Mono NF-CN pairing as the flagship,
+# but the requested matrix selects three weights and the output format
+# packages them as one collection with shared-table dedup — the base
+# file's weight axis is the product. Each slot is its own merge: the
+# slot's base face is the container, and the donor family contributes
+# its nearest-weight face (stated as borrows in the verification
+# report: 300 from 300, 400 from 400, 700 from 700 — exact matches).
+
+base:
+  family: JetBrainsMono
+  variant: Nerd Font
+  pattern: "JetBrainsMonoNerdFont-*.ttf"
+donors:
+  - family: MapleMono
+    variant: NF-CN
+    pattern: "MapleMono-NF-CN-*.ttf"
+rules:
+  - set: zh_cn
+    fonts: [donor-0]
+weights:
+  - weight: 300
+  - weight: 400
+  - weight: 700
+normalization:
+  mode: grid
+  quote_dash_width: fullwidth
+output:
+  format: ttc
+  family: ChHsich-Weights

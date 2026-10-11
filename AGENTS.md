@@ -28,4 +28,4 @@ All project artifacts are English: docs, specs, tickets, commit messages, code c
 
 ### Commits
 
-Conventional Commits (`feat` `fix` `docs` `refactor` `test` `chore`), English subjects, one intent per commit. While the project is pre-implementation, push directly to `main`; once `core/` development starts, cross-file feature work goes through a branch + PR.
+Conventional Commits (`feat` `fix` `docs` `refactor` `test` `ci` `chore`), English subjects, one intent per commit. While the project is pre-implementation, push directly to `main`; once `core/` development starts, cross-file feature work goes through a branch + PR.

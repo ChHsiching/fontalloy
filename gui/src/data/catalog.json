@@ -1,0 +1,779 @@
+{
+  "families": [
+    {
+      "family": "0xProto",
+      "file": "0xProto.zip",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/0xProto",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "3270",
+      "file": "3270.zip",
+      "license_spdx": "BSD-3-Clause",
+      "path_hint": "fonts/3270",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "AdwaitaMono",
+      "file": "AdwaitaMono.zip",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/AdwaitaMono",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "Agave",
+      "file": "Agave.zip",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/Agave",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "AnnotationMono",
+      "file": "AnnotationMono.zip",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/AnnotationMono",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "AnonymousPro",
+      "file": "AnonymousPro.zip",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/AnonymousPro",
+      "rfn": true,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "Arimo",
+      "file": "Arimo.zip",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/Arimo",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "AtkinsonHyperlegibleMono",
+      "file": "AtkinsonHyperlegibleMono.zip",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/AtkinsonHyperlegibleMono",
+      "rfn": true,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "AurulentSansMono",
+      "file": "AurulentSansMono.zip",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/AurulentSansMono",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "BigBlueTerminal",
+      "file": "BigBlueTerminal.zip",
+      "license_spdx": "CC-BY-SA-4.0",
+      "path_hint": "fonts/BigBlueTerminal",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "BitstreamVeraSansMono",
+      "file": "BitstreamVeraSansMono.zip",
+      "license_spdx": "Bitstream-Vera",
+      "path_hint": "fonts/BitstreamVeraSansMono",
+      "rfn": true,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "CascadiaCode",
+      "file": "CascadiaCode.zip",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/CascadiaCode",
+      "rfn": true,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "CascadiaMono",
+      "file": "CascadiaMono.zip",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/CascadiaMono",
+      "rfn": true,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "CodeNewRoman",
+      "file": "CodeNewRoman.zip",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/CodeNewRoman",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "ComicShannsMono",
+      "file": "ComicShannsMono.zip",
+      "license_spdx": "MIT",
+      "path_hint": "fonts/ComicShannsMono",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "CommitMono",
+      "file": "CommitMono.zip",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/CommitMono",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "Cousine",
+      "file": "Cousine.zip",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/Cousine",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "D2Coding",
+      "file": "D2Coding.zip",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/D2Coding",
+      "rfn": true,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "DaddyTimeMono",
+      "file": "DaddyTimeMono.zip",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/DaddyTimeMono",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "DejaVuSansMono",
+      "file": "DejaVuSansMono.zip",
+      "license_spdx": "Bitstream-Vera",
+      "path_hint": "fonts/DejaVuSansMono",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "DepartureMono",
+      "file": "DepartureMono.zip",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/DepartureMono",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "DroidSansMono",
+      "file": "DroidSansMono.zip",
+      "license_spdx": "Apache-2.0",
+      "path_hint": "fonts/DroidSansMono",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "EnvyCodeR",
+      "file": "EnvyCodeR.zip",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/EnvyCodeR",
+      "rfn": true,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "FantasqueSansMono",
+      "file": "FantasqueSansMono.zip",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/FantasqueSansMono",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "FiraCode",
+      "file": "FiraCode.zip",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/FiraCode",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "FiraMono",
+      "file": "FiraMono.zip",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/FiraMono",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "GeistMono",
+      "file": "GeistMono.zip",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/GeistMono",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "Go-Mono",
+      "file": "Go-Mono.zip",
+      "license_spdx": "BSD-3-Clause-Clear",
+      "path_hint": "fonts/Go-Mono",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "Gohu",
+      "file": "Gohu.zip",
+      "license_spdx": "WTFPL",
+      "path_hint": "fonts/Gohu",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "GoogleSansCode",
+      "file": "GoogleSansCode.zip",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/GoogleSansCode",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "Hack",
+      "file": "Hack.zip",
+      "license_spdx": "Bitstream-Vera AND MIT",
+      "path_hint": "fonts/Hack",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "Hasklig",
+      "file": "Hasklig.zip",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/Hasklig",
+      "rfn": true,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "HeavyData",
+      "file": "HeavyData.zip",
+      "license_spdx": "LicenseRef-VicFieger",
+      "path_hint": "fonts/HeavyData",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "Hermit",
+      "file": "Hermit.zip",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/Hermit",
+      "rfn": true,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "iA-Writer",
+      "file": "iA-Writer.zip",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/iA-Writer",
+      "rfn": true,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "IBMPlexMono",
+      "file": "IBMPlexMono.zip",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/IBMPlexMono",
+      "rfn": true,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "Inconsolata",
+      "file": "Inconsolata.zip",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/Inconsolata",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "InconsolataGo",
+      "file": "InconsolataGo.zip",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/InconsolataGo",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "InconsolataLGC",
+      "file": "InconsolataLGC.zip",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/InconsolataLGC",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "IntelOneMono",
+      "file": "IntelOneMono.zip",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/IntelOneMono",
+      "rfn": true,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "Iosevka",
+      "file": "Iosevka.zip",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/Iosevka",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "IosevkaTerm",
+      "file": "IosevkaTerm.zip",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/IosevkaTerm",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "IosevkaTermSlab",
+      "file": "IosevkaTermSlab.zip",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/IosevkaTermSlab",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "JetBrainsMono",
+      "file": "JetBrainsMono.zip",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/JetBrainsMono",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "Lekton",
+      "file": "Lekton.zip",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/Lekton",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "LiberationMono",
+      "file": "LiberationMono.zip",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/LiberationMono",
+      "rfn": true,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "Lilex",
+      "file": "Lilex.zip",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/Lilex",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "LXGWWenKai",
+      "file": "LXGWWenKai-Light.ttf",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/LXGWWenKai-Light",
+      "rfn": true,
+      "variant": "Light",
+      "version": "v1.522"
+    },
+    {
+      "family": "LXGWWenKai",
+      "file": "LXGWWenKai-Medium.ttf",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/LXGWWenKai-Medium",
+      "rfn": true,
+      "variant": "Medium",
+      "version": "v1.522"
+    },
+    {
+      "family": "LXGWWenKai",
+      "file": "LXGWWenKai-Regular.ttf",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/LXGWWenKai-Regular",
+      "rfn": true,
+      "variant": "Regular",
+      "version": "v1.522"
+    },
+    {
+      "family": "LXGWWenKaiGBScreen",
+      "file": "LXGWWenKaiGBScreen.ttf",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/LXGWWenKaiGBScreen",
+      "rfn": true,
+      "variant": "Regular",
+      "version": "v1.522"
+    },
+    {
+      "family": "LXGWWenKaiMono",
+      "file": "LXGWWenKaiMono-Light.ttf",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/LXGWWenKaiMono-Light",
+      "rfn": true,
+      "variant": "Light",
+      "version": "v1.522"
+    },
+    {
+      "family": "LXGWWenKaiMono",
+      "file": "LXGWWenKaiMono-Medium.ttf",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/LXGWWenKaiMono-Medium",
+      "rfn": true,
+      "variant": "Medium",
+      "version": "v1.522"
+    },
+    {
+      "family": "LXGWWenKaiMono",
+      "file": "LXGWWenKaiMono-Regular.ttf",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/LXGWWenKaiMono-Regular",
+      "rfn": true,
+      "variant": "Regular",
+      "version": "v1.522"
+    },
+    {
+      "family": "LXGWWenKaiMonoGBScreen",
+      "file": "LXGWWenKaiMonoGBScreen.ttf",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/LXGWWenKaiMonoGBScreen",
+      "rfn": true,
+      "variant": "Regular",
+      "version": "v1.522"
+    },
+    {
+      "family": "LXGWWenKaiMonoScreen",
+      "file": "LXGWWenKaiMonoScreen.ttf",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/LXGWWenKaiMonoScreen",
+      "rfn": true,
+      "variant": "Regular",
+      "version": "v1.522"
+    },
+    {
+      "family": "LXGWWenKaiScreen",
+      "file": "LXGWWenKaiScreen.ttf",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/LXGWWenKaiScreen",
+      "rfn": true,
+      "variant": "Regular",
+      "version": "v1.522"
+    },
+    {
+      "family": "MapleMono",
+      "file": "MapleMono-NF.zip",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/MapleMono-NF",
+      "rfn": false,
+      "variant": "NF",
+      "version": "v7.9"
+    },
+    {
+      "family": "MapleMono",
+      "file": "MapleMono-NF-CN.zip",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/MapleMono-NF-CN",
+      "rfn": false,
+      "variant": "NF-CN",
+      "version": "v7.9"
+    },
+    {
+      "family": "MartianMono",
+      "file": "MartianMono.zip",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/MartianMono",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "Meslo",
+      "file": "Meslo.zip",
+      "license_spdx": "Apache-2.0",
+      "path_hint": "fonts/Meslo",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "Monaspace",
+      "file": "Monaspace.zip",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/Monaspace",
+      "rfn": true,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "Monofur",
+      "file": "Monofur.zip",
+      "license_spdx": "LicenseRef-Monofur",
+      "path_hint": "fonts/Monofur",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "Monoid",
+      "file": "Monoid.zip",
+      "license_spdx": "MIT OR OFL-1.1-no-RFN",
+      "path_hint": "fonts/Monoid",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "Mononoki",
+      "file": "Mononoki.zip",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/Mononoki",
+      "rfn": true,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "MPlus",
+      "file": "MPlus.zip",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/MPlus",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "NerdFontsSymbolsOnly",
+      "file": "NerdFontsSymbolsOnly.zip",
+      "license_spdx": "MIT",
+      "path_hint": "fonts/NerdFontsSymbolsOnly",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "Noto",
+      "file": "Noto.zip",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/Noto",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "NotoSansSC",
+      "file": "NotoSansSC[wght].ttf",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/NotoSansSC[wght]",
+      "rfn": true,
+      "variant": "Variable",
+      "version": "a85815a42757630ce188fdad368c2dfc444d4773"
+    },
+    {
+      "family": "NotoSerifSC",
+      "file": "NotoSerifSC[wght].ttf",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/NotoSerifSC[wght]",
+      "rfn": false,
+      "variant": "Variable",
+      "version": "8b0a1d0f5983c89bc2b93f1b5fb55f9e252744b5"
+    },
+    {
+      "family": "OpenDyslexic",
+      "file": "OpenDyslexic.zip",
+      "license_spdx": "Bitstream-Vera",
+      "path_hint": "fonts/OpenDyslexic",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "Overpass",
+      "file": "Overpass.zip",
+      "license_spdx": "OFL-1.1-no-RFN OR LGPL-2.1-only",
+      "path_hint": "fonts/Overpass",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "ProFont",
+      "file": "ProFont.zip",
+      "license_spdx": "MIT",
+      "path_hint": "fonts/ProFont",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "ProggyClean",
+      "file": "ProggyClean.zip",
+      "license_spdx": "MIT",
+      "path_hint": "fonts/ProggyClean",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "Recursive",
+      "file": "Recursive.zip",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/Recursive",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "RobotoMono",
+      "file": "RobotoMono.zip",
+      "license_spdx": "Apache-2.0",
+      "path_hint": "fonts/RobotoMono",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "ShareTechMono",
+      "file": "ShareTechMono.zip",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/ShareTechMono",
+      "rfn": true,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "SourceCodePro",
+      "file": "SourceCodePro.zip",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/SourceCodePro",
+      "rfn": true,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "SpaceMono",
+      "file": "SpaceMono.zip",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/SpaceMono",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "Terminus",
+      "file": "Terminus.zip",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/Terminus",
+      "rfn": true,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "Tinos",
+      "file": "Tinos.zip",
+      "license_spdx": "Apache-2.0",
+      "path_hint": "fonts/Tinos",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "Ubuntu",
+      "file": "Ubuntu.zip",
+      "license_spdx": "LicenseRef-UbuntuFont",
+      "path_hint": "fonts/Ubuntu",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "UbuntuMono",
+      "file": "UbuntuMono.zip",
+      "license_spdx": "LicenseRef-UbuntuFont",
+      "path_hint": "fonts/UbuntuMono",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "UbuntuSans",
+      "file": "UbuntuSans.zip",
+      "license_spdx": "LicenseRef-UbuntuFont",
+      "path_hint": "fonts/UbuntuSans",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "VictorMono",
+      "file": "VictorMono.zip",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/VictorMono",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    },
+    {
+      "family": "ZedMono",
+      "file": "ZedMono.zip",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/ZedMono",
+      "rfn": false,
+      "variant": "Nerd Font",
+      "version": "v3.5.1"
+    }
+  ],
+  "schema": "fontalloy/font-catalog@v1"
+}

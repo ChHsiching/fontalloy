@@ -1,0 +1,55 @@
+name: GUI seam-3 (Playwright)
+
+on:
+  push:
+    branches: [main, "spec/*"]
+  pull_request:
+    paths:
+      - "gui/**"
+      - ".github/workflows/gui-e2e.yml"
+
+defaults:
+  run:
+    working-directory: gui
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: gui/package-lock.json
+
+      # The synthesize suite (issue #16) drives a REAL `fontalloy serve`
+      # subprocess — the dev/e2e stand-in for the Tauri sidecar. It needs
+      # the workspace uv environment (core + cli + fontTools) for the
+      # service binary and the fixture-font generator.
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+
+      - run: uv sync
+        working-directory: .
+
+      - run: npm ci
+
+      - run: npx playwright install --with-deps chromium
+
+      # Production-compile gate before the suite drives the dev server.
+      - run: npm run build
+
+      - run: npm run test:e2e
+        env:
+          FONTALLOY_SERVE_BIN: ${{ github.workspace }}/.venv/bin/fontalloy
+          FONTALLOY_PYTHON: ${{ github.workspace }}/.venv/bin/python
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: gui/test-results/
+          retention-days: 7

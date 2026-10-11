@@ -1,0 +1,778 @@
+/*
+ * FontAlloy workspace — the app-level layout leftovers (ADR-0004).
+ *
+ * Since the design-fidelity repair, ALL component chrome lives in the
+ * kit (kit/tokens.css + kit/kit.css — the validated prototype's design
+ * language as CSS custom properties). What remains here is the shell
+ * (top bar host / rail / content / stats bar), the app-specific strips
+ * the prototype does not model (the details editors, the rail's rule
+ * list, the build panel, the catalog screen, the synthesize notice),
+ * and the app-level popups built on the kit's .kit-pop primitive.
+ * Colors, radii, shadows, and motion reference the kit variables only.
+ */
+
+body {
+  overflow: hidden;
+}
+
+#app {
+  position: relative; /* the fullscreen scene host clamps to it */
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--page);
+}
+
+/* ---------- workspace split ---------- */
+
+.workspace {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.workspace-rail {
+  flex: none;
+  width: 260px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-right: 1px solid var(--ln);
+  background: var(--sf);
+  padding: 12px 12px 20px;
+}
+
+.workspace-content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The stage flexes inside the constrained content column so the grid
+   and the scene wrap scroll INTERNALLY (a plain block would grow with
+   content and clip past the app frame). */
+.content-stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.content-stage > .charmap,
+.content-stage > .scenes {
+  flex: 1;
+  min-height: 0;
+}
+
+.section {
+  margin-bottom: 18px;
+}
+
+.section-title {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink2);
+  letter-spacing: 0.02em;
+}
+
+.section-desc {
+  margin: -2px 0 8px;
+  font-size: 11px;
+  color: var(--ink3);
+  line-height: 1.5;
+}
+
+/* Entrance animations — fill-mode: backwards everywhere. `both` leaves
+   every section a permanent stacking context that traps popup z-index
+   (ADR-0004; the prototype's r31 lesson). */
+
+.enter {
+  animation: kit-rise-in 0.35s var(--spring-out) backwards;
+}
+
+/* ---------- character map layout ---------- */
+
+.charmap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.charmap-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.charmap-details {
+  flex: none;
+  /* Fixed geometry (issue #20): drag-paint re-renders this strip while
+     the pointer is held — if its height changed with its content, the
+     grid would shift under the pointer and the drag would paint the
+     wrong cells. The editors fit; reserve their height always. */
+  min-height: 150px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--ln);
+  font-size: 12.5px;
+  color: var(--ink2);
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.charmap-details > div:first-child {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.charmap-toolbar {
+  flex: none;
+}
+
+.charmap-grid {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+/* The scenes stage: the kit's scene wrap scrolls inside it. */
+
+.scenes {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+/* The fullscreen scene overlay host (positioned against #app). */
+
+.zoom-host {
+  position: absolute;
+  inset: 0;
+  z-index: 400;
+  pointer-events: none;
+}
+
+.zoom-host > .kit-zf {
+  pointer-events: auto;
+}
+
+/* ---------- synthesize notice (click-reachable, never hover) ---------- */
+
+.synthesize-notice {
+  position: fixed;
+  top: 58px;
+  right: 14px;
+  z-index: 900;
+  max-width: 380px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--ln2);
+  background: var(--sf);
+  color: var(--ink2);
+  font-size: 12.5px;
+  line-height: 1.6;
+  box-shadow: var(--sh3);
+}
+
+.synthesize-notice[hidden] {
+  display: none;
+}
+
+.synthesize-notice .notice-close {
+  float: right;
+  color: var(--ink3);
+  padding: 0 2px;
+  margin-left: 8px;
+  font-size: 14px;
+}
+
+.synthesize-notice .notice-close:hover {
+  color: var(--ink);
+}
+
+/* ---------- the details strip editors (issues #18 / #20) ---------- */
+
+.cp-rule-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 560px;
+  padding: 8px 10px;
+  border: 1px solid var(--ln2);
+  border-radius: 9px;
+  background: var(--sf);
+}
+
+.cp-rule-title {
+  color: var(--ink3);
+  font-size: 11.5px;
+}
+
+.cp-rule-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.batch-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 560px;
+  padding: 8px 10px;
+  border: 1px solid var(--ac);
+  border-radius: 9px;
+  background: var(--sf);
+}
+
+.batch-summary {
+  color: var(--ac);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.batch-plan {
+  color: var(--ink2);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Ordered font lists: shared by the cell editor and the rail rows. */
+
+.rule-fonts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rule-font-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--ink);
+}
+
+.rule-font-line label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* ---------- the rail's rule list ---------- */
+
+.rule-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.rule-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rule-list-empty {
+  color: var(--ink3);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.rule-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--ln);
+  border-radius: 9px;
+  background: var(--sf);
+}
+
+.rule-row.is-preset {
+  border-color: var(--ln2);
+}
+
+.rule-row-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.rule-target-label {
+  color: var(--ink);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.rule-effective-set {
+  color: var(--ac);
+  font-size: 11.5px;
+}
+
+.rule-cp-input,
+.rule-range-input {
+  width: 96px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--ln2);
+  background: var(--sf2);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.rule-cp-input:focus,
+.rule-range-input:focus {
+  outline: none;
+  border-color: var(--ac);
+}
+
+.rule-remove {
+  margin-left: auto;
+}
+
+.rule-remove:hover {
+  color: var(--dgr);
+}
+
+.rule-subblocks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 11.5px;
+  color: var(--ink2);
+}
+
+.rule-subblock {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.rule-subblock input:disabled {
+  opacity: 0.45;
+}
+
+/* ---------- synthesis settings rows ---------- */
+
+.setting-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.setting-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.setting-name {
+  color: var(--ink2);
+  font-size: 12px;
+}
+
+/* ---------- app-level popups on the kit's .kit-pop primitive ---------- */
+
+.preset-pop {
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+}
+
+.preset-pop .kit-q {
+  width: 100%;
+  margin: 0 0 6px;
+  background: var(--page);
+  border: 1px solid var(--ln2);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.preset-pop .kit-q:focus {
+  outline: none;
+  border-color: var(--ac);
+}
+
+.preset-pop-scroll {
+  max-height: 300px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 2px 4px 0;
+}
+
+.picker-group-label {
+  padding: 6px 8px 2px;
+  font-size: 10.5px;
+  color: var(--ink3);
+}
+
+.preset-pop .preset-row {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+/* The 按编码指定 range popup. */
+
+.range-pop {
+  width: 300px;
+}
+
+.range-pop h5 {
+  margin: 0 0 2px;
+}
+
+.range-pop input {
+  width: 100%;
+  margin-bottom: 6px;
+  background: var(--page);
+  border: 1px solid var(--ln2);
+  border-radius: 7px;
+  padding: 5px 9px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.range-pop input:focus {
+  outline: none;
+  border-color: var(--ac);
+}
+
+.range-pop-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.range-pop-error {
+  margin-top: 6px;
+  color: var(--dgr);
+  font-size: 11px;
+}
+
+.range-pop-error[hidden] {
+  display: none;
+}
+
+/* ---------- first-run catalog screen (issue #17) ---------- */
+
+.catalog-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 950; /* below the app notices; above every kit popup */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--page) 72%, transparent);
+}
+
+.catalog-screen[hidden] {
+  display: none;
+}
+
+.catalog-panel {
+  width: min(480px, calc(100vw - 48px));
+  max-height: calc(100vh - 96px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 14px;
+  border: 1px solid var(--ln2);
+  background: var(--sf);
+  box-shadow: var(--sh3);
+  padding: 18px 20px 14px;
+}
+
+.catalog-title {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.catalog-progress {
+  font-size: 12.5px;
+  color: var(--ink2);
+  font-variant-numeric: tabular-nums;
+}
+
+.catalog-progress b {
+  color: var(--ink);
+}
+
+.catalog-list {
+  min-height: 0;
+  max-height: 300px;
+  overflow-y: auto;
+  margin: 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid var(--ln);
+  border-radius: 9px;
+  background: var(--sf2);
+  padding: 6px;
+}
+
+.catalog-family {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.catalog-family[data-status="verified"] {
+  color: var(--ink2);
+}
+
+.catalog-family[data-status="downloading"] {
+  color: var(--ink);
+}
+
+.catalog-family[data-status="failed"] {
+  color: var(--dgr);
+}
+
+.catalog-family-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catalog-family-status {
+  flex: none;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.catalog-family-error {
+  flex: none;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+.catalog-actions {
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* ---------- build panel (issue #16) ----------
+   Synthesis progress + verification report as a fixed, non-modal panel
+   above the stats bar. Clamped height with internal scroll (the same
+   pattern as the picker popups); the workspace underneath stays fully
+   interactive — builds never block browsing or queueing more. */
+
+.build-panel {
+  position: fixed;
+  right: 14px;
+  bottom: 52px; /* the 42px stats bar plus a gap */
+  z-index: 880;
+  width: 400px;
+  max-height: min(60vh, 520px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  border: 1px solid var(--ln2);
+  background: var(--sf);
+  box-shadow: var(--sh3);
+  overflow: hidden;
+}
+
+.build-panel[hidden] {
+  display: none;
+}
+
+.build-panel-title {
+  flex: none;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--ln);
+  color: var(--ink2);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.build-rows {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 0;
+}
+
+.build-row {
+  padding: 8px 12px 10px;
+  border-bottom: 1px solid var(--ln);
+}
+
+.build-row:last-child {
+  border-bottom: none;
+}
+
+.build-row-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.build-family {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.build-stage {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--ink2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.build-stage.is-done {
+  color: var(--ac);
+}
+
+.build-stage.is-failed {
+  color: var(--dgr);
+}
+
+.build-dismiss {
+  flex: none;
+  color: var(--ink3);
+  padding: 0 2px;
+  font-size: 14px;
+}
+
+.build-dismiss:hover {
+  color: var(--ink);
+}
+
+.build-steps {
+  display: flex;
+  gap: 4px;
+  margin-top: 7px;
+}
+
+.build-step {
+  flex: 1;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--ln);
+  transition: background 0.2s ease;
+}
+
+.build-step.is-passed {
+  background: var(--ac);
+}
+
+.build-step.is-current {
+  background: var(--acsoft);
+  box-shadow: 0 0 0 1px var(--ac);
+}
+
+.build-error {
+  margin-top: 8px;
+  padding: 7px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--dgr);
+  background: var(--dgrsoft);
+  color: var(--dgr);
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+.build-error[hidden] {
+  display: none;
+}
+
+.build-saved {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--ink2);
+  word-break: break-all;
+}
+
+.build-saved[hidden] {
+  display: none;
+}
+
+.build-report {
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.build-report[hidden] {
+  display: none;
+}
+
+.report-heading {
+  color: var(--ink);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.report-section {
+  padding: 4px 0;
+  border-top: 1px dashed var(--ln);
+}
+
+.report-section-title {
+  color: var(--ink3);
+  margin: 3px 0 2px;
+}
+
+.report-fact {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  line-height: 1.7;
+}
+
+.report-fact-label {
+  color: var(--ink2);
+  white-space: nowrap;
+}
+
+.report-raw {
+  border-top: 1px dashed var(--ln);
+  padding-top: 4px;
+  margin-top: 2px;
+}
+
+.report-raw summary {
+  color: var(--ink3);
+  cursor: pointer;
+}
+
+.report-raw pre {
+  max-height: 200px;
+  overflow: auto;
+  margin: 6px 0 0;
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--sf2);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink2);
+}

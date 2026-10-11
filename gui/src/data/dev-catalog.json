@@ -1,0 +1,38 @@
+{
+  "schema": "fontalloy/dev-catalog-meta@1",
+  "comment": [
+    "Provenance overlay for the DEV fixture catalog (never used in production",
+    "builds): the vite dev server serves catalog-release.json plus per-family",
+    "zips built from host font files (gui/scripts/dev-catalog.mjs), so a plain",
+    "`npm run dev` boots a working catalog without touching the ~375 MB real",
+    "release. Font binaries never enter git; this file only carries the honest",
+    "metadata those host files would show in a picker row."
+  ],
+  "families": [
+    {
+      "family": "Consolas",
+      "license_spdx": "Proprietary",
+      "variant": "等宽"
+    },
+    {
+      "family": "Courier New",
+      "license_spdx": "Proprietary",
+      "variant": "衬线等宽"
+    },
+    {
+      "family": "SimHei",
+      "license_spdx": "Proprietary",
+      "variant": "黑体"
+    },
+    {
+      "family": "KaiTi",
+      "license_spdx": "Proprietary",
+      "variant": "楷体"
+    },
+    {
+      "family": "FangSong",
+      "license_spdx": "Proprietary",
+      "variant": "仿宋"
+    }
+  ]
+}

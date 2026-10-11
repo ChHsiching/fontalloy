@@ -1,0 +1,31 @@
+# Workspace root. FontAlloy is a monorepo: `core/` is the pure-Python
+# capability layer, `cli/` is the thin consumer (ADR-0002). This root is a
+# virtual project: it is never built or published; it exists so one
+# `uv sync` gives a developer the whole workspace plus the dev tools.
+[project]
+name = "fontalloy-workspace"
+version = "0.0.0"
+requires-python = ">=3.11"
+dependencies = [
+    "fontalloy",
+    "fontalloy-core",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.uv.sources]
+fontalloy = { workspace = true }
+fontalloy-core = { workspace = true }
+
+[tool.uv.workspace]
+members = ["core", "cli"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "anchor: downloads and merges the pinned JetBrains Mono x Noto Sans SC pair (network on first run; opt out with FONTALLOY_SKIP_ANCHOR=1)",
+    "recipes_online: fetches the official recipes' families and builds the flagship against the real pinned pair (network on first run; opt out with FONTALLOY_SKIP_ANCHOR=1)",
+]

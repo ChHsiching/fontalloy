@@ -16,6 +16,8 @@ gui/    Tauri 2 desktop app — native windows on all three platforms, core bund
 web/    pure static site (github.io / vercel), shares its frontend components with gui/
 ```
 
+`gui/src/kit` is the component library abstracted from the validated prototype; gui and web screens assemble kit components only. The prototype (`gui/prototype/index.html`) remains the design contract: the kit extracts its design language verbatim (palettes, spacing, chrome, copy, theme lists, interaction architecture — see `gui/src/kit/README.md`) while all code is rewritten typed and prop-driven in the shared no-framework stack.
+
 - `fontalloy serve` runs the core as a localhost HTTP service (127.0.0.1 only; CORS allows just the WebApp origin). The WebApp drives real merges when it detects the service and degrades to a "copy CLI command" button otherwise.
 - The GUI's end state is Tauri (the user asked for the best result); a serve-plus-browser loop may validate the core API first.
 - CLI installs via pipx / brew / scoop.
@@ -32,7 +34,7 @@ Everything is a precedence rule: a codepoint range mapped to an ordered font lis
 
 The preview grid is the GUI/WebApp's core interaction: one cell per codepoint rendering the effective result; click a cell or type a codepoint to set precedence. The preview always renders the effective result — however complex the rules, it never lies.
 
-Language preset data: bundle fontconfig's fc-lang `.orth` files (permissive license) — zh_cn 6,765 / zh_tw 13,063 / ja 2,314 / ko 2,442 / zh_hk codepoints, plus the rest of fc-lang (any language with a well-defined codepoint set is selectable). Language charsets are a coverage question, not a partition (zh_cn and ja overlap by ~2,000 codepoints). Region-specific donors (MapleMono-CN, Source Han SC) already carry the correct default variants — no `locl` handling needed.
+Language preset data: bundle fontconfig's fc-lang `.orth` files (permissive license) — zh_cn 6,765 / zh_tw 13,063 / ja 2,314 / ko 2,442 / zh_hk 1,083 codepoints, plus the rest of fc-lang (any language with a well-defined codepoint set is selectable). zh_hk (and zh_mo, whose file includes zh_hk's) is a supplementary set that presupposes Traditional Chinese, so its preset presents zh_tw plus the supplement, with the supplement as its own toggleable sub-block; the raw fc-lang set stays selectable alongside. Language charsets are a coverage question, not a partition (zh_cn and ja overlap by 1,391 codepoints, measured from the bundled fc-lang data). Region-specific donors (MapleMono-CN, Source Han SC) already carry the correct default variants — no `locl` handling needed.
 
 ## Merge pipeline (core, seven stages)
 
@@ -63,7 +65,7 @@ The default output name is the fixed brand default `ChHsich` — never derived f
 
 ## Recipe (YAML)
 
-Fields: base font reference (family + version/hash), donor list, precedence rules at every granularity, weight mapping overrides, output naming, normalization switches. Three roles at once: CLI input (`fontalloy build x.yaml`), CI build input, community share unit. **A built font is a recipe run against pinned source fonts** — reproducible by CI, released through the storefront's Releases (reusing the old repo's AUR / install.sh experience). Built fonts are the marketing front and the no-install option.
+Fields: base font reference (family + version/hash), donor list, precedence rules at every granularity, weight mapping overrides, output naming, normalization switches. Three roles at once: CLI input (`fontalloy build x.yaml`), CI build input, community share unit. **A built font is a recipe run against pinned source fonts** — reproducible by CI, released through the storefront's Releases (reusing the old repo's AUR / install.sh experience). Built fonts are the marketing front and the no-install option. A font reference names a catalog family the manifest pins (`family`/`variant`, plus a filename `pattern` narrowing multi-file zips) — never a loose URL; the assets machinery resolves it against the fetched, sha256-verified catalog, and official recipes live in `recipes/`.
 
 ## v1 format tiers
 

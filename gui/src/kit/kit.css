@@ -1,0 +1,1387 @@
+/*
+ * FontAlloy kit — component styles.
+ *
+ * Class vocabulary is kit-prefixed; every length, color, radius, shadow,
+ * and timing below is extracted from the validated prototype. Components
+ * are prop-driven TS (see the .ts modules); this sheet is their chrome.
+ */
+
+/* ============ app shell ============ */
+
+.kit-app {
+  position: relative;
+  width: min(1400px, calc(100vw - 24px));
+  height: min(900px, calc(100vh - 24px));
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  background: var(--sf);
+  border: 1px solid var(--ln2);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: var(--sh3);
+}
+
+/* ============ top bar parts ============ */
+
+.kit-topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--ln);
+  animation: kit-rise-in 0.3s var(--spring-out) backwards;
+}
+
+.kit-brand {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.kit-brand i {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  background: var(--ac);
+  margin-right: 8px;
+  vertical-align: -2px;
+  font-style: normal;
+}
+
+/* Linear icon default size (24-viewBox stroke family). */
+.kit-ci {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  display: block;
+}
+
+/*
+ * Special glyphs (GitHub mark, theme-toggle sun, close, expand) carry
+ * their own markup WITHOUT the kit-ci class — without an explicit size
+ * they collapse to 0x0 inside flex buttons (the prototype sized every
+ * svg via svg.i / .ci). 15px is the prototype's svg.i size.
+ */
+.kit-btn > svg:not(.kit-ci) {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  display: block;
+}
+
+.kit-grow {
+  flex: 1;
+}
+
+.kit-fontname-input {
+  background: var(--sf);
+  border: 1px solid var(--ln2);
+  border-radius: 7px;
+  padding: 0 10px;
+  min-height: 30px;
+  font-size: 12px;
+  width: 180px;
+}
+
+/* ============ buttons / tags / segments ============ */
+
+.kit-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  justify-content: center;
+  border-radius: 7px;
+  padding: 0 12px;
+  min-height: 30px;
+  font-weight: 500;
+  font-size: 12.5px;
+  background: var(--sf);
+  border: 1px solid var(--ln2);
+  transition: transform 150ms var(--spring), background-color 100ms ease-out,
+    border-color 100ms ease-out, box-shadow 150ms ease-out;
+}
+
+.kit-btn:hover {
+  border-color: var(--ink3);
+}
+
+.kit-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.kit-btn.sm {
+  padding: 0 10px;
+  min-height: 26px;
+  font-size: 12px;
+  border-radius: 6px;
+}
+
+.kit-btn.gh {
+  background: transparent;
+  border-color: transparent;
+  color: var(--ink2);
+}
+
+.kit-btn.gh:hover {
+  background: var(--sf2);
+  color: var(--ink);
+  border-color: var(--ln);
+}
+
+.kit-btn.pri {
+  background: var(--ac);
+  border-color: var(--acs);
+  color: var(--acink);
+  position: relative;
+  overflow: hidden;
+}
+
+.kit-btn.pri:hover {
+  background: var(--acs);
+}
+
+.kit-btn.pri:not(:disabled):hover {
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--ac) 30%, transparent);
+}
+
+/* Primary shimmer sweep on hover. */
+.kit-btn.pri::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.25) 50%,
+    transparent 70%
+  );
+  transform: translateX(-130%);
+}
+
+.kit-btn.pri:not(:disabled):hover::after {
+  animation: kit-shimmer 0.9s ease;
+}
+
+@media (hover: hover) {
+  .kit-btn:not(:disabled):hover {
+    transform: translateY(-1px);
+  }
+}
+
+.kit-btn:not(:disabled):active {
+  transform: scale(0.96) translateY(0);
+}
+
+.kit-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--ln);
+  border-radius: 5px;
+  padding: 1px 6px;
+  font-size: 11px;
+  color: var(--ink2);
+  background: var(--sf);
+  white-space: nowrap;
+}
+
+.kit-tag.ac {
+  color: var(--ac);
+  border-color: color-mix(in srgb, var(--ac) 40%, var(--ln));
+}
+
+/* Segmented control (mseg): tray + pressed pill. */
+.kit-mseg {
+  display: flex;
+  gap: 1px;
+  background: var(--sf2);
+  border-radius: 8px;
+  padding: 2px;
+}
+
+.kit-mseg button {
+  padding: 0 14px;
+  min-height: 28px;
+  font-size: 12px;
+  color: var(--ink2);
+  border-radius: 6px;
+  transition: color 120ms ease-out, background-color 120ms ease-out,
+    box-shadow 120ms ease-out;
+}
+
+.kit-mseg button[aria-pressed="true"] {
+  background: var(--sf);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: var(--sh1);
+}
+
+.kit-mseg button:not([aria-pressed="true"]):hover {
+  color: var(--ink);
+}
+
+/* ============ circular help button (qh) ============ */
+
+.kit-qh {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 50%;
+  color: var(--ink3);
+  flex: none;
+  transition: background-color 100ms ease-out, color 100ms ease-out,
+    transform 120ms var(--spring);
+}
+
+.kit-qh:hover {
+  background: var(--sf2);
+  color: var(--ink);
+}
+
+@media (hover: hover) {
+  .kit-qh:hover {
+    transform: scale(1.1);
+  }
+}
+
+.kit-qh svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* ============ popover (pop) ============ */
+
+/*
+ * Containment (the prototype's #wtpop discipline): fitPopup clamps the
+ * card's maxHeight to the app frame — the card must then hold its own
+ * text. overflow-y:auto makes the clamped card scroll internally instead
+ * of letting the closing paragraphs paint past the rounded bottom edge
+ * onto the rail below.
+ */
+.kit-pop {
+  position: fixed;
+  z-index: 500;
+  width: 260px;
+  background: var(--sf);
+  border: 1px solid var(--ln2);
+  border-radius: 12px;
+  box-shadow: var(--sh3);
+  padding: 14px;
+  overflow-y: auto;
+  visibility: hidden;
+  opacity: 0;
+  transform: scale(0.96) translateY(2px);
+  pointer-events: none;
+  transition: opacity 150ms var(--spring-out),
+    transform 150ms var(--spring-out), visibility 150ms;
+}
+
+.kit-pop.open {
+  visibility: visible;
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+  animation: kit-pop-in 0.2s var(--spring-out);
+}
+
+.kit-pop h5 {
+  margin: 0 0 2px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.kit-pop .kit-sub {
+  color: var(--ink2);
+  font-size: 11.5px;
+  margin: 0 0 8px;
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+.kit-pop .kit-pop-code {
+  font-family: Consolas, monospace;
+  font-size: 13px;
+  color: var(--ac);
+  margin-bottom: 8px;
+}
+
+/* Worked-example table — chrome carried verbatim from the prototype. */
+.kit-wtab {
+  border-collapse: collapse;
+  font-size: 11px;
+  margin: 2px 0 6px;
+  width: 100%;
+}
+
+.kit-wtab th,
+.kit-wtab td {
+  border: 1px solid var(--ln);
+  padding: 3px 7px;
+  text-align: start;
+  font-weight: 400;
+  color: var(--ink2);
+  line-height: 1.4;
+}
+
+.kit-wtab th {
+  background: var(--sf2);
+  color: var(--ink);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/*
+ * Containment: the corrected (ADR) cell copy runs far longer than the
+ * prototype's short rows — cells must WRAP inside the popover card
+ * instead of forcing the table ~165px past its right edge (headers may
+ * stay nowrap; `anywhere` also breaks long Latin identifiers).
+ */
+.kit-wtab td {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* ============ custom dropdown (csel) ============ */
+
+.kit-cselw {
+  position: relative;
+  width: 100%;
+}
+
+.kit-csel {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background-color: var(--sf);
+  border: 1px solid var(--ln2);
+  border-radius: 6px;
+  padding: 5px 26px 5px 9px;
+  font-size: 12px;
+  color: var(--ink);
+  min-height: 28px;
+  /* appearance:none + chevron background-image requires the longhand
+   * background-color above (prototype trap). */
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238a94a2' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+  transition: border-color 100ms ease-out, box-shadow 100ms ease-out;
+}
+
+.kit-csel:hover {
+  border-color: var(--ink3);
+}
+
+.kit-csel span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: start;
+}
+
+.kit-cselw.open .kit-csel {
+  border-color: var(--ac);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ac) 15%, transparent);
+}
+
+.kit-csel-pk {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 100%;
+  z-index: 70;
+  padding: 5px;
+  background: var(--sf);
+  border: 1px solid var(--ln2);
+  border-radius: 9px;
+  box-shadow: var(--sh2);
+  max-height: 264px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  opacity: 0;
+  transform: translateY(-3px);
+  pointer-events: none;
+  transition: opacity 0.12s ease-in, transform 0.12s ease-in,
+    display 0.12s allow-discrete;
+}
+
+.kit-cselw.open .kit-csel-pk {
+  display: block;
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+  transition: opacity 0.15s var(--spring-out), transform 0.15s var(--spring-out),
+    display 0.15s allow-discrete;
+}
+
+@starting-style {
+  .kit-cselw.open .kit-csel-pk {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+}
+
+.kit-cso {
+  display: block;
+  width: 100%;
+  text-align: start;
+  padding: 5px 9px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--ink2);
+  white-space: nowrap;
+  transition: background-color 60ms ease-out, color 60ms ease-out;
+}
+
+.kit-cso:hover {
+  background: var(--sf2);
+}
+
+.kit-cso[aria-selected="true"] {
+  background: var(--acsoft);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* ============ font picker (fsel) ============ */
+
+.kit-fsel {
+  position: relative;
+  border: 1px solid var(--ln);
+  border-radius: 12px;
+  background: var(--sf);
+}
+
+.kit-fsel:hover {
+  border-color: var(--ln2);
+}
+
+.kit-fsel.open {
+  border-color: var(--ln2);
+  border-bottom: 1px solid var(--ln2);
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.kit-fsel .kit-hd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px 9px 12px;
+  cursor: pointer;
+  border-radius: 11px;
+  width: 100%;
+}
+
+.kit-fsel .kit-hd:hover {
+  background: var(--sf2);
+}
+
+.kit-fsel.open .kit-hd {
+  border-radius: 11px 11px 0 0;
+}
+
+.kit-fsel .kit-hd .kit-hdc {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.kit-fsel .kit-hd b {
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+
+.kit-fsel .kit-hd > svg {
+  color: var(--ink3);
+  transition: transform 160ms var(--spring-out);
+  flex: none;
+  /* The circular chevron disc: 15px glyph + 3px ring padding (the
+     prototype's svg.i sizing — without it the svg explodes to fill the
+     flex row and the "compact identity card" becomes a giant circle). */
+  width: 15px;
+  height: 15px;
+  padding: 3px;
+  border-radius: 50%;
+  background: var(--sf2);
+}
+
+.kit-fsel .kit-hd:hover > svg {
+  background: var(--ln2);
+}
+
+.kit-fsel.open .kit-hd > svg {
+  transform: rotate(90deg);
+}
+
+/*
+ * The picker popup. Portaled to <body> with fixed positioning (immune
+ * to rail overflow and entrance-animation stacking contexts) but laid
+ * out to attach seamlessly to the open card: JS aligns it to the
+ * card's box and removes the top border. Outer layer clips; the scroll
+ * area is one child; the footer is a sibling that never scrolls
+ * (prototype sticky-footer lesson). Node persistence: the node is
+ * created once per open, rows rebuild only, removal waits ~240ms after
+ * close so the exit transition plays.
+ */
+.kit-pk {
+  position: fixed;
+  z-index: 60;
+  display: none;
+  flex-direction: column;
+  max-height: 300px;
+  background: var(--sf);
+  border: 1px solid var(--ln2);
+  border-top: none;
+  border-radius: 0 0 12px 12px;
+  box-shadow: var(--sh3);
+  overflow: hidden;
+  transform-origin: top;
+  opacity: 0;
+  transform: translateY(-4px) scaleY(0.98);
+  pointer-events: none;
+  transition: opacity 0.13s ease-in, transform 0.13s ease-in,
+    display 0.13s allow-discrete;
+}
+
+.kit-pk.open {
+  display: flex;
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+  transition: opacity 0.17s var(--spring-out), transform 0.17s var(--spring-out),
+    display 0.17s allow-discrete;
+}
+
+@starting-style {
+  .kit-pk.open {
+    opacity: 0;
+    transform: translateY(-4px) scaleY(0.98);
+  }
+}
+
+/* Search header — outside the scroll, sticky at the popup's top. */
+.kit-pk .kit-q {
+  flex: none;
+  width: calc(100% - 16px);
+  margin: 8px 8px 6px;
+  background: var(--page);
+  border: 1px solid var(--ln2);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  transition: border-color 120ms ease-out, box-shadow 120ms ease-out;
+}
+
+.kit-pk .kit-q:focus {
+  outline: none;
+  border-color: var(--ac);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ac) 15%, transparent);
+}
+
+.kit-pk .kit-q::placeholder {
+  color: var(--ink3);
+}
+
+.kit-pks {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 8px 8px;
+}
+
+/* Footer action — outside the scroll area entirely. */
+.kit-fpsys {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  background: var(--sf);
+  border-top: 1px solid var(--ln);
+  border-radius: 0 0 11px 11px;
+  padding: 9px 6px 7px;
+  color: var(--ac);
+  font-weight: 500;
+  font-size: 12px;
+}
+
+.kit-fpsys:hover {
+  background: var(--sf2);
+}
+
+.kit-fpsys svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* Self-rendering row: name in its own font + meta line + check mark. */
+.kit-fp {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1px;
+  width: 100%;
+  text-align: start;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--ink2);
+  transition: background-color 80ms ease-out;
+}
+
+.kit-fp:hover {
+  background: var(--sf2);
+}
+
+.kit-fp.off {
+  opacity: 0.62;
+}
+
+.kit-fp.off:hover {
+  background: none;
+}
+
+.kit-fp .kit-fp-note {
+  font-size: 10px;
+  color: var(--ink3);
+  line-height: 1.4;
+}
+
+.kit-fp.off .kit-fp-note {
+  color: var(--dgr);
+}
+
+/* Status note / error line above the footer — page text, never hover. */
+.kit-pkn {
+  flex: none;
+  padding: 6px 12px 0;
+  font-size: 10.5px;
+  color: var(--ink3);
+  line-height: 1.4;
+}
+
+.kit-pke {
+  flex: none;
+  margin: 6px 8px 0;
+  padding: 5px 8px;
+  border: 1px solid var(--dgr);
+  border-radius: 7px;
+  background: var(--dgrsoft);
+  color: var(--dgr);
+  font-size: 10.5px;
+  line-height: 1.4;
+  overflow-wrap: break-word;
+}
+
+.kit-fp[aria-pressed="true"] {
+  background: var(--acsoft);
+  color: var(--ink);
+}
+
+.kit-fp .kit-nm {
+  min-width: 0;
+  overflow-wrap: break-word;
+  line-height: 1.35;
+  padding: 1px 0;
+}
+
+.kit-fp[aria-pressed="true"] .kit-nm {
+  font-weight: 600;
+}
+
+.kit-fp .kit-chk {
+  position: absolute;
+  right: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ac);
+  display: flex;
+}
+
+.kit-fp .kit-chk svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ============ meta line (no pills) ============ */
+
+/*
+ * The signature no-pills meta row: accent star count, license, trait —
+ * plain 10px text on one baseline, never pills. flex:none + nowrap so
+ * the metadata column never collapses (prototype picker-row lesson).
+ */
+.kit-meta {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  color: var(--ink3);
+  line-height: 1.4;
+  font-weight: 400;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.kit-meta .kit-gh {
+  color: var(--ac);
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+
+.kit-meta .kit-gh svg {
+  width: 10px;
+  height: 10px;
+  flex: none;
+}
+
+.kit-meta .kit-lic {
+  color: var(--ink3);
+  flex: none;
+}
+
+.kit-meta .kit-tg {
+  color: var(--ink3);
+  flex: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ============ language chips ============ */
+
+.kit-chiprow {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.kit-lchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--ln2);
+  border-radius: 7px;
+  padding: 4px 9px;
+  font-size: 12px;
+  color: var(--ink2);
+  background: var(--sf);
+  transition: border-color 100ms ease-out, background-color 100ms ease-out,
+    transform 120ms var(--spring);
+}
+
+.kit-lchip:hover {
+  border-color: var(--ink3);
+}
+
+.kit-lchip[aria-pressed="true"] {
+  border-color: var(--ac);
+  background: var(--acsoft);
+  color: var(--ink);
+}
+
+.kit-lchip .n {
+  font-size: 10px;
+  color: var(--ink3);
+}
+
+@media (hover: hover) {
+  .kit-lchip:hover {
+    transform: translateY(-1px);
+  }
+}
+
+/* ============ category chips ============ */
+
+.kit-catbar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--ln);
+  flex: none;
+}
+
+.kit-cat-l1 {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.kit-cat-g {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  color: var(--ink3);
+  border: 1px solid transparent;
+  white-space: nowrap;
+  transition: background-color 100ms ease-out, color 100ms ease-out,
+    border-color 100ms ease-out, transform 120ms var(--spring);
+}
+
+.kit-cat-g:hover {
+  background: var(--sf2);
+  color: var(--ink);
+}
+
+.kit-cat-g.on {
+  background: var(--acsoft);
+  color: var(--ink);
+  font-weight: 600;
+  border-color: color-mix(in srgb, var(--ac) 30%, transparent);
+}
+
+.kit-cat-g .n {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.kit-cat-g.miss {
+  color: var(--dgr);
+}
+
+.kit-cat-g.miss.on {
+  background: var(--dgrsoft);
+  border-color: var(--dgr);
+}
+
+.kit-cat-l2 {
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
+  padding-left: 8px;
+}
+
+.kit-cat-s {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px;
+  border-radius: 5px;
+  font-size: 11.5px;
+  color: var(--ink3);
+  white-space: nowrap;
+  transition: background-color 100ms ease-out, color 100ms ease-out,
+    transform 120ms var(--spring);
+}
+
+.kit-cat-s:hover {
+  background: var(--sf2);
+  color: var(--ink);
+}
+
+.kit-cat-s.on {
+  background: var(--acsoft);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.kit-cat-s .n {
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+.kit-cat-g svg,
+.kit-cat-s svg {
+  width: 11px;
+  height: 11px;
+  flex: none;
+  display: block;
+}
+
+.kit-cat-g > svg {
+  width: 13px;
+  height: 13px;
+}
+
+.kit-cat-g.on svg,
+.kit-cat-s.on svg {
+  color: var(--ac);
+}
+
+.kit-cat-g.miss svg {
+  color: var(--dgr);
+}
+
+@media (hover: hover) {
+  .kit-cat-g:not(.on):hover,
+  .kit-cat-s:not(.on):hover {
+    transform: translateY(-1px);
+  }
+}
+
+/* ============ action bar (toolrow) ============ */
+
+/*
+ * One-row discipline: real block labels (CJK 统一表意文字, CJK 兼容表意
+ * 文字) run far wider than the prototype's short draft labels, and the
+ * prototype's flex-wrap:wrap then orphans 按编码指定 onto a second row at
+ * 1440px. The row never wraps; the fixed clusters are pinned (their text
+ * must not re-wrap internally), and the pressure is absorbed by the
+ * compressible ones — the pager cluster and the 永 locate box shrink
+ * (min-width floors + ellipsis on the page label) exactly like the
+ * prototype's single-row chrome at its own widths.
+ */
+.kit-toolrow {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--ln);
+  flex: none;
+  flex-wrap: nowrap;
+}
+
+.kit-toolrow .kit-grow {
+  flex: 1;
+}
+
+/* Fixed clusters: labels, segments, buttons, dividers, legend. */
+.kit-toolrow > .kit-lab,
+.kit-toolrow > .kit-mseg,
+.kit-toolrow > .kit-btn,
+.kit-toolrow > .kit-div,
+.kit-toolrow > .kit-legend,
+.kit-toolrow > .kit-cnt {
+  flex: none;
+}
+
+.kit-toolrow > .kit-lab {
+  white-space: nowrap;
+}
+
+.kit-toolrow > .kit-legend {
+  white-space: nowrap;
+}
+
+/* Compressible: the locate box shrinks below its resting width. */
+.kit-toolrow input {
+  background: var(--sf);
+  border: 1px solid var(--ln2);
+  border-radius: 7px;
+  padding: 0 10px;
+  min-height: 28px;
+  font-size: 12px;
+  min-width: 84px;
+}
+
+.kit-toolrow input::placeholder {
+  color: var(--ink3);
+}
+
+.kit-toolrow .kit-lab {
+  color: var(--ink2);
+  font-size: 11.5px;
+}
+
+.kit-toolrow .kit-lab.dim {
+  color: var(--ink3);
+}
+
+.kit-toolrow .kit-div {
+  border-left: 1px solid var(--ln);
+  height: 20px;
+  margin: 0 4px;
+}
+
+.kit-legend {
+  color: var(--ink3);
+  font-size: 11.5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.kit-legend .dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ac);
+}
+
+/* Compressible: the pager cluster keeps one line but yields width. */
+.kit-pgc {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--ink3);
+  font-size: 11px;
+  min-width: 0;
+  flex: 0 1 auto;
+  white-space: nowrap;
+}
+
+.kit-pgc .kit-num {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kit-pgc button {
+  padding: 2px 8px;
+  border-radius: 5px;
+  color: var(--ink);
+}
+
+.kit-pgc button:hover:not(:disabled) {
+  background: var(--sf2);
+}
+
+.kit-pgc button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.kit-cnt {
+  color: var(--ac);
+  font-weight: 600;
+}
+
+/* ============ character grid ============ */
+
+.kit-gw {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 8px 14px;
+}
+
+.kit-grid {
+  display: grid;
+  gap: 3px;
+  align-content: start;
+  grid-template-columns: repeat(auto-fill, minmax(var(--cell, 40px), 1fr));
+}
+
+.kit-cell {
+  position: relative;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--sf);
+  border: 1px solid var(--ln);
+  border-radius: 8px;
+  font-size: calc(var(--cell, 40px) * 0.44);
+  user-select: none;
+  min-width: 0;
+  overflow: hidden;
+  transition: border-color 100ms ease-out, background-color 100ms ease-out,
+    transform 150ms var(--spring);
+}
+
+/* Hover stays neutral; the accent belongs to the selected state only. */
+.kit-cell:hover {
+  border-color: var(--ln2);
+  background: var(--sf2);
+}
+
+@media (hover: hover) {
+  .kit-cell:hover {
+    transform: scale(1.05);
+    z-index: 1;
+  }
+}
+
+/* Adjusted cell: the corner dot (paired with the 已调整 legend). */
+.kit-cell.ov::after {
+  content: "";
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--ac);
+}
+
+.kit-cell.sel {
+  border-color: var(--ac);
+  box-shadow: 0 0 0 1px var(--ac);
+  background: var(--acsoft);
+}
+
+/* Details cursor: the inner ring reads above the selection tint. */
+.kit-cell.cur {
+  box-shadow:
+    inset 0 0 0 2px var(--sf),
+    inset 0 0 0 3px var(--ac);
+}
+
+.kit-cell.sel.cur {
+  border-color: var(--ac);
+  box-shadow:
+    0 0 0 1px var(--ac),
+    inset 0 0 0 2px var(--sf),
+    inset 0 0 0 3px var(--ac);
+}
+
+.kit-cell.miss {
+  border-style: dashed;
+  border-color: var(--dgr);
+}
+
+.kit-cell.miss .ch {
+  opacity: 0.6;
+}
+
+.kit-cell.hascp {
+  flex-direction: column;
+  gap: 1px;
+}
+
+.kit-cell.hascp .ch {
+  font-size: calc(var(--cell, 40px) * 0.3);
+}
+
+.kit-cell .cp {
+  font-size: 8.5px;
+  color: var(--ink3);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.kit-cell.miss .cp {
+  color: var(--dgr);
+}
+
+.kit-gempty {
+  color: var(--ink3);
+  font-size: 12px;
+  padding: 20px 0;
+  text-align: center;
+  grid-column: 1 / -1;
+}
+
+/* ============ status bar ============ */
+
+.kit-stat {
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  height: 42px;
+  border-top: 1px solid var(--ln);
+  background: var(--sf);
+  flex: none;
+  overflow-x: auto;
+}
+
+.kit-stat .kit-c {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 0 12px;
+  white-space: nowrap;
+  border-left: 1px solid var(--ln);
+  font-size: 12px;
+  color: var(--ink2);
+}
+
+.kit-stat .kit-c:first-child {
+  border-left: none;
+  padding-left: 0;
+}
+
+.kit-stat .kit-c b {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.kit-stat .kit-c i {
+  width: 5px;
+  height: 5px;
+  border-radius: 2px;
+  font-style: normal;
+  flex: none;
+  align-self: center;
+}
+
+.kit-stat .kit-cov {
+  margin-left: auto;
+  color: var(--ink3);
+  font-size: 12px;
+}
+
+.kit-stat .kit-cov b {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ac);
+}
+
+/* Counter pop when a value changes. */
+.kit-stat b.kit-num {
+  display: inline-block;
+}
+
+.kit-stat b.kit-num.pop {
+  animation: kit-num-pop 0.25s var(--spring-out);
+}
+
+/* ============ scene cards ============ */
+
+.kit-scene-wrap {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 14px;
+}
+
+.kit-sc {
+  border: 1px solid var(--ln);
+  border-radius: 12px;
+  background: var(--sf);
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  animation: kit-rise-in 0.4s var(--spring-out) backwards;
+}
+
+.kit-sc:nth-child(1) {
+  animation-delay: 0ms;
+}
+
+.kit-sc:nth-child(2) {
+  animation-delay: 80ms;
+}
+
+.kit-sc:nth-child(3) {
+  animation-delay: 160ms;
+}
+
+/* Entrance replays are gated by the consumer (one-shot on mode switch);
+ * .no-in silences them for content-only re-renders. */
+.kit-scene-wrap.no-in .kit-sc {
+  animation: none;
+}
+
+.kit-sc-h {
+  display: flex;
+  align-items: center;
+  margin-bottom: 10px;
+  gap: 8px;
+}
+
+.kit-sc-h .kit-cap {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink2);
+}
+
+.kit-sc-h .kit-cselw {
+  width: auto;
+  min-width: 130px;
+}
+
+.kit-zb {
+  color: var(--ink3);
+  display: flex;
+  padding: 6px;
+  border-radius: 6px;
+}
+
+.kit-zb:hover {
+  background: var(--sf2);
+  color: var(--ink);
+}
+
+.kit-zb svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* ============ mode bar ============ */
+
+.kit-modebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--ln);
+  flex: none;
+  flex-wrap: wrap;
+}
+
+.kit-modebar input {
+  background: var(--sf);
+  border: 1px solid var(--ln2);
+  border-radius: 7px;
+  padding: 0 10px;
+  min-height: 30px;
+  font-size: 12px;
+  min-width: 150px;
+}
+
+.kit-modebar input::placeholder {
+  color: var(--ink3);
+}
+
+/* ============ fullscreen scene view (zf) ============ */
+
+.kit-zf {
+  position: absolute;
+  inset: 0;
+  z-index: 400;
+  background: var(--sf);
+  display: flex;
+  flex-direction: column;
+  animation: kit-rise-in 0.3s var(--spring-out);
+}
+
+.kit-zf.out {
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.15s ease-in, transform 0.15s ease-in;
+}
+
+.kit-zf-b {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--ln2);
+}
+
+.kit-zf-b .t {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.kit-zf-w {
+  flex: 1;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 24px 32px;
+}
+
+.kit-zf .kit-term {
+  font-size: 19px;
+  line-height: 1.85;
+}
+
+.kit-zf .kit-code {
+  font-size: 19px;
+  line-height: 1.95;
+}
+
+.kit-zf .kit-doc {
+  font-size: 15px;
+  line-height: 1.75;
+}

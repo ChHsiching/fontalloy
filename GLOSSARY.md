@@ -32,6 +32,10 @@ _Avoid_: empty-slot protection, skip rule
 A pre-researched "language → codepoint set" mapping (e.g. Simplified Chinese, 6,765 codepoints), selected by name, with sub-blocks to toggle.
 _Avoid_: language pack, orth (that is a data source, not the concept)
 
+**Sub-block**:
+One named component of a language preset; the preset is the union of its enabled sub-blocks (e.g. zh_hk = zh_tw + the zh_hk supplement). Every sub-block is selectable on its own.
+_Avoid_: layer, chunk
+
 **Precedence rule**:
 A declaration of the shape "codepoint range → ordered font list". Ranges come from language presets or custom intervals.
 _Avoid_: conflict strategy, override rule
@@ -43,6 +47,18 @@ _Avoid_: fine-grained control
 **Preview grid**:
 The interface that renders the effective merged glyphs one codepoint per cell; click a cell or type a codepoint to set precedence.
 _Avoid_: glyph table, character map
+
+**Weight matrix**:
+The set of output weight/style slots one recipe emits — the base font file's faces by default, a recipe `weights` selection otherwise. Each slot is merged like a single build; donor families match their nearest OS/2 usWeightClass per slot, and a recipe may rewrite the mapping per slot. Nearest match, never interpolation or synthesis.
+_Avoid_: instance set, style bundle
+
+**Borrow**:
+One donor face's landing in one output slot: which donor weight ended up in which output weight, chosen how (nearest, override, or pin). Every borrow is stated in the build report.
+_Avoid_: substitution, weight mix
+
+**Style fallback**:
+A donor family without the requested style contributes its other style (upright, by the terminal convention) to that slot, stated in the borrow. The outlines are always some face's own — never slanted or synthesized.
+_Avoid_: fake italic (that is what this prevents)
 
 ## Normalization
 
@@ -59,6 +75,25 @@ _Avoid_: config file, preset file
 **Built font**:
 The output of running a recipe against pinned source fonts: reproducible by CI, released through the storefront.
 _Avoid_: release font, official font
+
+**Format tier**:
+The v1 classification of font formats: required (TTF/OTF in, TTF out — always, the default), expected (TTC in with face selection; TTC out with shared-table dedup), optional (woff2 out, behind an explicit format choice). Selected by the recipe's `output.format` or the CLI `--format` switch.
+_Avoid_: output type, file kind
+
+**Shared-table dedup**:
+How a TTC output stays small: a table compiling to identical bytes across faces — the grafted donor glyphs above all — is stored once and pointed at by every face, instead of once per face (the old repo's 284 MB lesson). Content-keyed: any accidental per-face difference silently defeats sharing for that table.
+_Avoid_: compression (it is deduplication, not encoding)
+
+**Byte-reproducible build**:
+Identical pinned inputs rebuild byte-identical output: no wall clock in the file (head timestamps pinned from the base font), deterministic ordering, brotli pinned in the lockfile for woff2. The verification report records the source font hashes that make "identical inputs" checkable.
+_Avoid_: deterministic build (weaker: that only means same behavior)
+**Catalog release**:
+The consolidated font catalog republished by CI to a dedicated GitHub Releases tag (`font-catalog-v1`): one zip per family, checksums, and release metadata. The app's download origin, distinct from the upstream releases the manifest pins as provenance.
+_Avoid_: font bundle, CDN
+
+**Origin list**:
+The ordered download sources carried in catalog-release metadata; the downloader tries origins in list order, so adding a mirror is a data change, never a code change.
+_Avoid_: mirror config, fallback list
 
 **Reserved Font Name (RFN)**:
 A name an upstream font author reserves under its license; a modified version — every built font is one — must not carry it. The catalog records an `rfn` flag per family, and the default output name is the fixed brand default, never derived from source font names.
