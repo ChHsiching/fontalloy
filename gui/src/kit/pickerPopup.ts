@@ -44,7 +44,7 @@ export interface PickerFont {
   family?: string;
   meta?: FontMeta;
   /**
-   * Extra search terms matched alongside name/id (Stage-3 webapp
+   * Extra search terms matched alongside name/id (the builder
    * extension): catalog rows display "Family · Variant" but users type
    * "Family Variant" — the separator would otherwise hide the row.
    */
@@ -95,7 +95,7 @@ export interface PickerPopup {
   open(): void;
   close(): void;
   /**
-   * Tear the component down (Stage-3 webapp extension): close without
+   * Tear the component down (builder extension): close without
    * waiting for the exit transition, detach the document/window
    * listeners, and remove the card plus any popup node still on
    * <body>. Call before rebuilding a region that owns the picker — a
@@ -263,7 +263,6 @@ export function mountPickerPopup(
   const renderRows = (): void => {
     if (!scrollArea) return;
     const selectedId = props.selectedId;
-    const fragment = document.createDocumentFragment();
     const matches = props.fonts.filter(
       (f) =>
         !query ||
@@ -271,6 +270,25 @@ export function mountPickerPopup(
         f.id.toLowerCase().includes(query) ||
         (f.keywords?.toLowerCase().includes(query) ?? false),
     );
+    // Node persistence, rows edition: rebuild the row list only when
+    // what it SHOWS changed (same guard as the header). Store patches
+    // that do not touch this popup's rows then cannot churn the nodes
+    // under a cursor.
+    const signature = JSON.stringify([
+      query,
+      selectedId,
+      matches.map((f) => [
+        f.id,
+        f.name,
+        f.family ?? null,
+        f.meta ?? null,
+        f.disabled ?? false,
+        f.note ?? null,
+      ]),
+    ]);
+    if (scrollArea.dataset.signature === signature) return;
+    scrollArea.dataset.signature = signature;
+    const fragment = document.createDocumentFragment();
     for (const font of matches) {
       const row = document.createElement("button");
       row.type = "button";
@@ -321,8 +339,24 @@ export function mountPickerPopup(
   const renderHeader = (): void => {
     const selected = props.fonts.find((f) => f.id === props.selectedId);
     const fallback = props.emptyLabel ?? props.fonts[0]?.name ?? "—";
+    // Node persistence: rebuild the header only when what it SHOWS
+    // changed. The workspace patches the store for every catalog family
+    // (download status, lazy registration) — rebuilding the card header
+    // each time would churn the node under a user's cursor (and a
+    // test's), for identical pixels.
+    const signature = JSON.stringify([
+      selected?.id ?? null,
+      selected?.name ?? fallback,
+      selected?.family ?? null,
+      selected?.meta ?? null,
+      open,
+    ]);
+    if (header && header.dataset.signature === signature) {
+      return;
+    }
     const next = document.createElement("div");
     next.className = "kit-hd";
+    next.dataset.signature = signature;
     next.setAttribute("role", "button");
     next.tabIndex = 0;
     next.setAttribute("aria-expanded", String(open));

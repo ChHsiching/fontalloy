@@ -15,7 +15,7 @@ import {
 } from "../kit/pickerPopup";
 import type { FontMeta } from "../kit/metaLine";
 import catalogManifest from "../data/catalog.json";
-import devCatalogManifest from "../data/dev-catalog.json";
+import curatedMeta from "../data/curated-meta.json";
 
 export type PickerRole = "en" | "cjk";
 
@@ -86,24 +86,31 @@ function catalogNote(catalog: CatalogState): string | null {
 
 /**
  * Display metadata for a catalog family: license + variant from the
- * repo's catalog manifest (the honest in-repo source; stars have no
- * source of truth here and stay omitted rather than invented). The
- * committed dev-fixture overlay (data/dev-catalog.json) merges on top —
- * the vite dev server serves those families from host font files.
+ * repo's catalog manifest (the honest in-repo source), overlaid with
+ * the curated display data the validated prototype carries — GitHub
+ * stars and the Chinese trait tags (连字 / 楷体 / 圆角等宽 …) — from
+ * data/curated-meta.json. Where the prototype had no curated tag the
+ * manifest's own variant shows.
  */
+const CURATED_META = curatedMeta.families as Record<
+  string,
+  { stars?: number; trait?: string }
+>;
+
 const MANIFEST_META = new Map<string, FontMeta>(
-  [
-    ...catalogManifest.families,
-    ...devCatalogManifest.families,
-  ].map((family) => [
-    family.family,
-    {
-      license: family.license_spdx
-        .replace(/-1\.1$/, "")
-        .replace(/-(no-)?RFN$/, ""),
-      trait: family.variant,
-    },
-  ]),
+  catalogManifest.families.map((family) => {
+    const curated = CURATED_META[family.family];
+    return [
+      family.family,
+      {
+        license: family.license_spdx
+          .replace(/-1\.1$/, "")
+          .replace(/-(no-)?RFN$/, ""),
+        stars: curated?.stars,
+        trait: curated?.trait ?? family.variant,
+      },
+    ];
+  }),
 );
 
 /**
@@ -222,14 +229,17 @@ export function mountPicker(
       };
     });
 
-    // Locally loaded fonts, deduped against registered catalog faces
-    // (their catalog row already lists them). Every local row carries
-    // the 本地字体文件 trait — the row AND the compact header card then
-    // read "Consolas / 本地字体文件" like the prototype's local picks.
-    const registered = new Set(Object.values(catalog.registered));
+    // Locally loaded fonts. Faces that entered the registry through the
+    // catalog (download or lazy registration) are NEVER listed here —
+    // their catalog row already carries them, and `origin` says so
+    // directly (keying on the registered map instead would show ghost
+    // duplicate rows while the registration sweep is mid-flight).
+    // Every local row carries the 本地字体文件 trait — the row AND the
+    // compact header card then read "Consolas / 本地字体文件" like the
+    // prototype's local picks.
     const seen = new Set<string>();
     for (const font of fonts) {
-      if (seen.has(font.cssFamily) || registered.has(font.cssFamily)) continue;
+      if (seen.has(font.cssFamily) || font.origin === "catalog") continue;
       seen.add(font.cssFamily);
       rows.push({
         id: font.cssFamily,

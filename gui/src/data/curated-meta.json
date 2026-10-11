@@ -1,0 +1,250 @@
+{
+  "schema": "fontalloy/curated-display-meta@1",
+  "comment": [
+    "Curated DISPLAY data the repo manifest cannot provide (repair round 2):",
+    "GitHub star counts and the Chinese trait tags (连字 / 楷体 / 圆角等宽 …)",
+    "the validated prototype shows in its picker rows. Values are carried",
+    "from the prototype's own curated catalogs (gui/prototype/data/nerd-fonts-catalog.json",
+    "and cjk-catalog.json — design content, keyed there by the same family",
+    "ids our manifest uses; the five CJK ids that differ are mapped in the",
+    "generator). License and variant stay sourced from assets/fonts.manifest.json",
+    "via gui/src/data/catalog.json; this file only overlays what the manifest",
+    "cannot know. Prototype families absent from our manifest (得意黑, 更纱黑体,",
+    "方舟像素, 缝合像素, 朱雀仿宋) are honest misses and stay out."
+  ],
+  "families": {
+    "3270": {
+      "trait": "IBM 终端复刻"
+    },
+    "0xProto": {
+      "trait": "源码可读性优先"
+    },
+    "AdwaitaMono": {
+      "trait": "GNOME 官方等宽"
+    },
+    "Agave": {
+      "trait": "几何简洁等宽"
+    },
+    "AnnotationMono": {
+      "trait": "手写感等宽"
+    },
+    "AnonymousPro": {
+      "trait": "经典复刻 · 高辨识"
+    },
+    "Arimo": {
+      "trait": "非等宽 · 类 Arial"
+    },
+    "AtkinsonHyperlegibleMono": {
+      "trait": "低视力友好设计"
+    },
+    "AurulentSansMono": {
+      "trait": "无衬线等宽经典"
+    },
+    "BigBlueTerminal": {
+      "trait": "IBM 终端怀旧风"
+    },
+    "BitstreamVeraSansMono": {
+      "trait": "经典 Vera 血统"
+    },
+    "IBMPlexMono": {
+      "trait": "IBM Plex 官方"
+    },
+    "CascadiaCode": {
+      "trait": "微软出品 · 连字"
+    },
+    "CascadiaMono": {
+      "trait": "微软出品 · 无连字"
+    },
+    "CodeNewRoman": {
+      "trait": "复古罗马风编程"
+    },
+    "ComicShannsMono": {
+      "trait": "漫画手写风"
+    },
+    "CommitMono": {
+      "trait": "中性匿名设计"
+    },
+    "Cousine": {
+      "trait": "类 Courier 兼容"
+    },
+    "D2Coding": {
+      "trait": "Naver 出品 · 韩文"
+    },
+    "DaddyTimeMono": {
+      "trait": "等宽编程字体"
+    },
+    "DejaVuSansMono": {
+      "trait": "DejaVu 经典等宽"
+    },
+    "DepartureMono": {
+      "trait": "像素 Lo-Fi 风"
+    },
+    "DroidSansMono": {
+      "trait": "小屏显示优化"
+    },
+    "EnvyCodeR": {
+      "trait": "命令行老牌字体"
+    },
+    "FantasqueSansMono": {
+      "trait": "圆润手写感"
+    },
+    "FiraCode": {
+      "trait": "Mozilla 系 · 连字"
+    },
+    "FiraMono": {
+      "trait": "Mozilla 官方字体"
+    },
+    "GeistMono": {
+      "trait": "Vercel 出品"
+    },
+    "Go-Mono": {
+      "trait": "Go 语言官方"
+    },
+    "Gohu": {
+      "trait": "点阵位图字体"
+    },
+    "GoogleSansCode": {
+      "trait": "Google 品牌向"
+    },
+    "Hack": {
+      "trait": "经典开源等宽"
+    },
+    "Hasklig": {
+      "trait": "Haskell 连字"
+    },
+    "HeavyData": {
+      "trait": "非等宽 · 独特造型"
+    },
+    "Hermit": {
+      "trait": "符号醒目易辨"
+    },
+    "iA-Writer": {
+      "trait": "iA Writer 出品"
+    },
+    "Inconsolata": {
+      "trait": "经典编程字体"
+    },
+    "InconsolataGo": {
+      "trait": "Inconsolata 变体"
+    },
+    "InconsolataLGC": {
+      "trait": "西里尔文扩展"
+    },
+    "IntelOneMono": {
+      "trait": "Intel 出品"
+    },
+    "Iosevka": {
+      "trait": "窄身 · 高度可定制"
+    },
+    "IosevkaTerm": {
+      "trait": "Iosevka 终端版"
+    },
+    "IosevkaTermSlab": {
+      "trait": "Iosevka 粗衬线"
+    },
+    "JetBrainsMono": {
+      "trait": "JetBrains 出品 · 连字"
+    },
+    "Lekton": {
+      "trait": "细窄极简风"
+    },
+    "LiberationMono": {
+      "trait": "度量兼容 Courier"
+    },
+    "Lilex": {
+      "trait": "现代连字字体"
+    },
+    "MartianMono": {
+      "trait": "Evil Martians 出品"
+    },
+    "Meslo": {
+      "trait": "Apple Menlo 衍生"
+    },
+    "Monaspace": {
+      "trait": "GitHub 出品 · 五变体"
+    },
+    "Monofur": {
+      "trait": "圆润复古风"
+    },
+    "Monoid": {
+      "trait": "连字 · 紧凑型"
+    },
+    "Mononoki": {
+      "trait": "字符高区分度"
+    },
+    "MPlus": {
+      "trait": "多字重 · 日文支持"
+    },
+    "Noto": {
+      "trait": "Google 泛语言字族"
+    },
+    "OpenDyslexic": {
+      "trait": "非等宽 · 阅读障碍友好"
+    },
+    "Overpass": {
+      "trait": "高速公路路牌风"
+    },
+    "ProFont": {
+      "trait": "复古像素编程"
+    },
+    "ProggyClean": {
+      "trait": "小字号优化"
+    },
+    "Recursive": {
+      "trait": "手绘多风格变体"
+    },
+    "RobotoMono": {
+      "trait": "Google 出品"
+    },
+    "ShareTechMono": {
+      "trait": "科技感方正字形"
+    },
+    "SourceCodePro": {
+      "trait": "Adobe 出品 · 经典"
+    },
+    "SpaceMono": {
+      "trait": "方正个性字形"
+    },
+    "Terminus": {
+      "trait": "终端经典字形"
+    },
+    "Tinos": {
+      "trait": "非等宽 · 类 Times"
+    },
+    "Ubuntu": {
+      "trait": "非等宽 · Ubuntu 官方"
+    },
+    "UbuntuMono": {
+      "trait": "Ubuntu 官方等宽"
+    },
+    "UbuntuSans": {
+      "trait": "Ubuntu 新版字族"
+    },
+    "VictorMono": {
+      "trait": "连笔斜体 · 窄身"
+    },
+    "ZedMono": {
+      "trait": "Zed 出品 · 圆润"
+    },
+    "MapleMono": {
+      "stars": 29170,
+      "trait": "圆角等宽 · 中英 2:1 · 编程向"
+    },
+    "LXGWWenKai": {
+      "stars": 26195,
+      "trait": "楷体 · 阅读/正文"
+    },
+    "NotoSerifSC": {
+      "stars": 9749,
+      "trait": "宋体 · 印刷/正文"
+    },
+    "NotoSansSC": {
+      "stars": 4090,
+      "trait": "黑体 · 多 CJK 语种覆盖"
+    },
+    "LXGWWenKaiScreen": {
+      "stars": 2176,
+      "trait": "楷体 · 屏幕小字号优化"
+    }
+  }
+}

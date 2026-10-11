@@ -1,60 +1,110 @@
 /**
- * Dev fixture catalog — a working catalog source for `npm run dev`
- * (design-fidelity finding: the picker must list catalog families with
- * license/variant meta; production keeps the real GitHub/appDataDir flow).
+ * The REAL dev catalog — the same families production serves, from the
+ * repo's own single source of truth, so `npm run dev` (gui) and the
+ * built WebApp under `vite preview` (web) show the picker/rail/grid the
+ * validated prototype shows: 76+ real family rows with real meta and
+ * real glyph rendering (repair round 2; supersedes the 5-host-font
+ * fixture of round 1).
  *
- * Served by the vite dev server only (never built):
+ * Served by the vite dev AND preview servers (never built):
  *
  *   GET /dev-catalog/catalog-release.json   the bootstrap document
  *   GET /dev-catalog/origins/dev/<Zip>      one family zip per request
  *
- * The families are HOST font files (font binaries never enter git), zipped
- * in memory with fixed timestamps like the CI packaging, pinned by sha256.
- * The origin base_url points back at whatever host served the document
- * (127.0.0.1 or localhost — a loopback http origin, allowed by the
- * catalog-release loader as the documented dev carve-out). Host fonts that
- * are absent are skipped gracefully; with none at all the document 503s
- * and the app falls back to "catalog unavailable", still fully usable.
+ * Metadata comes from `assets/fonts.manifest.json` (ADR-0005: every
+ * family with its real name, license, variant). Font BYTES come from a
+ * local fonts directory holding the same families — by default the gui
+ * prototype checkout next to this worktree (`<sibling>/fontalloy/gui/
+ * prototype/fonts`; the binaries are gitignored everywhere and are only
+ * ever READ here), or `<repo>/gui/prototype/fonts` when that branch is
+ * checked out in-tree. Override with FONTALLOY_DEV_FONT_DIR. The
+ * per-family file mapping below is explicit (Nerd Fonts renames several
+ * families in their patched binaries); families without a local file
+ * are skipped and reported on the server console — the honest miss
+ * list, never a silent gap.
  *
- * Display metadata for these families lives in src/data/dev-catalog.json
- * (the provenance overlay the picker merges into its MetaLine source).
+ * Each family zip is STORED (no deflate — font binaries barely
+ * compress and loopback transfer is free) with fixed timestamps like
+ * the CI packaging, pinned by sha256. The origin base_url points back
+ * at whatever host served the document (a loopback http origin, the
+ * documented dev carve-out in catalog/release.ts). When no fonts
+ * directory is found the document 503s and the app falls back to
+ * "catalog unavailable", still fully usable.
  */
 
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { deflateRawSync } from "node:zlib";
+import { readFile, readdir } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
-/* ---------- the fixture families (host font files) ---------- */
+const HERE = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = resolve(HERE, "..", "..");
 
-const FIXTURE_SPECS = [
-  {
-    family: "Consolas",
-    file: "Consolas-Regular.ttf",
-    paths: ["C:/Windows/Fonts/consola.ttf"],
-  },
-  {
-    family: "Courier New",
-    file: "CourierNew-Regular.ttf",
-    paths: ["C:/Windows/Fonts/cour.ttf"],
-  },
-  {
-    family: "SimHei",
-    file: "SimHei-Regular.ttf",
-    paths: ["C:/Windows/Fonts/simhei.ttf"],
-  },
-  {
-    family: "KaiTi",
-    file: "KaiTi-Regular.ttf",
-    paths: ["C:/Windows/Fonts/simkai.ttf"],
-  },
-  {
-    family: "FangSong",
-    file: "FangSong-Regular.ttf",
-    paths: ["C:/Windows/Fonts/simfang.ttf"],
-  },
-];
+/** Where the repo's font catalog manifest lives (metadata truth). */
+const MANIFEST_PATH = resolve(REPO_ROOT, "assets", "fonts.manifest.json");
 
-/* ---------- minimal ZIP writer (stored + deflate entries) ---------- */
+/**
+ * Local font-byte candidates, in priority order: the env override, the
+ * prototype checkout that lives in the sibling main worktree, then an
+ * in-tree prototype branch checkout. The directory is only ever read.
+ */
+function fontDirCandidates() {
+  const list = [];
+  if (process.env.FONTALLOY_DEV_FONT_DIR) list.push(process.env.FONTALLOY_DEV_FONT_DIR);
+  list.push(
+    resolve(REPO_ROOT, "..", "fontalloy", "gui", "prototype", "fonts"),
+    resolve(REPO_ROOT, "gui", "prototype", "fonts"),
+  );
+  return list;
+}
+
+/**
+ * Manifest family -> the prototype's font binary. Most Nerd Font
+ * families map mechanically (`<Family>NerdFont-Regular.ttf`); the
+ * renamed ones and every CJK family are pinned explicitly so a wrong
+ * guess can never ship silently.
+ */
+const FILE_ALIASES = {
+  AnonymousPro: "AnonymiceProNerdFont-Regular.ttf",
+  AnnotationMono: "AnnotationMNerdFont-Regular.ttf",
+  AtkinsonHyperlegibleMono: "AtkynsonMonoNerdFont-Regular.otf",
+  AurulentSansMono: "AurulentSansMNerdFont-Regular.otf",
+  BigBlueTerminal: "BigBlueTerm437NerdFont-Regular.ttf",
+  BitstreamVeraSansMono: "BitstromWeraNerdFont-Regular.ttf",
+  CascadiaCode: "CaskaydiaCoveNerdFont-Regular.ttf",
+  CascadiaMono: "CaskaydiaMonoNerdFont-Regular.ttf",
+  D2Coding: "D2KodingLigatureNerdFont-Regular.ttf",
+  DejaVuSansMono: "DejaVuSansMNerdFont-Regular.ttf",
+  DroidSansMono: "DroidSansMNerdFont-Regular.otf",
+  FantasqueSansMono: "FantasqueSansMNerdFont-Regular.ttf",
+  Gohu: "GohuFont11NerdFont-Regular.ttf",
+  Hasklig: "HasklugNerdFont-Regular.otf",
+  Hermit: "HurmitNerdFont-Regular.otf",
+  IBMPlexMono: "BlexMonoNerdFont-Regular.ttf",
+  IntelOneMono: "IntoneMonoNerdFont-Regular.ttf",
+  LiberationMono: "LiterationMonoNerdFont-Regular.ttf",
+  MPlus: "M+1NerdFont-Regular.ttf",
+  Meslo: "MesloLGLDZNerdFont-Regular.ttf",
+  Monaspace: "MonaspiceArNerdFont-Regular.otf",
+  Noto: "NotoMonoNerdFont-Regular.ttf",
+  ProFont: "ProFontIIxNerdFont-Regular.ttf",
+  Recursive: "RecMonoCasualNerdFont-Regular.ttf",
+  ShareTechMono: "ShureTechMonoNerdFont-Regular.ttf",
+  SourceCodePro: "SauceCodeProNerdFont-Regular.ttf",
+  Terminus: "TerminessNerdFont-Regular.ttf",
+  "iA-Writer": "iMWritingDuoNerdFont-Regular.ttf",
+  // CJK families (the prototype ships one face per family; the Maple
+  // and Source-Han entries are the same typefaces our manifest lists
+  // under its MapleMono NF-CN / NotoSerifSC ids).
+  MapleMono: "MapleMonoCN-Regular.ttf",
+  LXGWWenKai: "LXGWWenKai-Regular.ttf",
+  LXGWWenKaiScreen: "LXGWWenKaiScreen-Regular.ttf",
+  NotoSansSC: "NotoSansSC-VF.ttf",
+  NotoSerifSC: "SourceHanSerifSC-Regular.otf",
+};
+
+/* ---------- minimal ZIP writer (stored entries) ---------- */
 
 const CRC_TABLE = (() => {
   const table = new Uint32Array(256);
@@ -82,15 +132,14 @@ function makeZip(entries) {
   let offset = 0;
   for (const entry of entries) {
     const nameBuf = Buffer.from(entry.name, "utf8");
-    const method = entry.deflate ? 8 : 0;
-    const payload = entry.deflate ? deflateRawSync(entry.data) : entry.data;
-    const crc = crc32(entry.data);
+    const payload = entry.data;
+    const crc = crc32(payload);
 
     const local = Buffer.alloc(30);
     local.writeUInt32LE(0x04034b50, 0);
     local.writeUInt16LE(20, 4);
     local.writeUInt16LE(0, 6);
-    local.writeUInt16LE(method, 8);
+    local.writeUInt16LE(0, 8); // stored
     local.writeUInt16LE(DOS_TIME, 10);
     local.writeUInt16LE(DOS_DATE, 12);
     local.writeUInt32LE(crc, 14);
@@ -105,7 +154,7 @@ function makeZip(entries) {
     cd.writeUInt16LE(20, 4);
     cd.writeUInt16LE(20, 6);
     cd.writeUInt16LE(0, 8);
-    cd.writeUInt16LE(method, 10);
+    cd.writeUInt16LE(0, 10);
     cd.writeUInt16LE(DOS_TIME, 12);
     cd.writeUInt16LE(DOS_DATE, 14);
     cd.writeUInt32LE(crc, 16);
@@ -137,50 +186,94 @@ function makeZip(entries) {
 
 const sha256hex = (data) => createHash("sha256").update(data).digest("hex");
 
-/* ---------- the fixture, built once on first request ---------- */
+/* ---------- the catalog, built once on first request ---------- */
+
+function resolveFamilyFile(family, available) {
+  const alias = FILE_ALIASES[family];
+  if (alias && available.has(alias)) return alias;
+  const compact = family.replace(/-/g, "");
+  for (const candidate of [
+    `${compact}NerdFont-Regular.ttf`,
+    `${compact}NerdFont-Regular.otf`,
+  ]) {
+    if (available.has(candidate)) return candidate;
+  }
+  return null;
+}
 
 /**
  * @typedef {{family: string, zip: string, zipSha256: string, zipBytes: Buffer,
- *            file: string, fileSha256: string}} FixtureFamily
+ *            file: string, fileSha256: string}} CatalogFamily
  */
 
-/** @type {Promise<FixtureFamily[]> | null} */
-let fixturePromise = null;
+/** @type {Promise<{families: CatalogFamily[], misses: string[]}> | null} */
+let catalogPromise = null;
 
-function fixtureFamilies() {
-  fixturePromise ??= (async () => {
-    const families = [];
-    for (const spec of FIXTURE_SPECS) {
-      let data = null;
-      for (const path of spec.paths) {
-        try {
-          data = await readFile(path);
-          break;
-        } catch {
-          // host font absent — try the next candidate
-        }
+function buildCatalog() {
+  catalogPromise ??= (async () => {
+    const manifest = JSON.parse(await readFile(MANIFEST_PATH, "utf8"));
+
+    let dir = null;
+    for (const candidate of fontDirCandidates()) {
+      if (existsSync(candidate)) {
+        dir = candidate;
+        break;
       }
-      if (data === null) continue;
-      const zipBytes = makeZip([{ name: spec.file, data, deflate: true }]);
+    }
+    if (dir === null) {
+      console.warn(
+        `[dev-catalog] no local fonts directory found (tried ${fontDirCandidates()
+          .map((p) => `"${p}"`)
+          .join(", ")}); set FONTALLOY_DEV_FONT_DIR — serving 503`,
+      );
+      return { families: [], misses: [] };
+    }
+
+    const available = new Set(
+      (await readdir(dir)).filter((name) => /\.(ttf|otf|ttc|woff2?)$/i.test(name)),
+    );
+
+    /** @type {CatalogFamily[]} */
+    const families = [];
+    /** @type {string[]} */
+    const misses = [];
+    const seen = new Set();
+    for (const entry of manifest.families) {
+      // One release family per manifest family id (the release schema is
+      // unique by family; the LXGW weight variants collapse onto the
+      // face the prototype actually ships).
+      if (seen.has(entry.family)) continue;
+      seen.add(entry.family);
+      const file = resolveFamilyFile(entry.family, available);
+      if (file === null) {
+        misses.push(entry.family);
+        continue;
+      }
+      const data = await readFile(resolve(dir, file));
+      const zipBytes = makeZip([{ name: file, data }]);
       families.push({
-        family: spec.family,
-        zip: `${spec.family.replace(/\s+/g, "")}.zip`,
+        family: entry.family,
+        zip: `${entry.family.replace(/\s+/g, "")}.zip`,
         zipSha256: sha256hex(zipBytes),
         zipBytes,
-        file: spec.file,
+        file,
         fileSha256: sha256hex(data),
       });
     }
-    return families;
+    console.info(
+      `[dev-catalog] serving ${families.length}/${seen.size} families from "${dir}"` +
+        (misses.length > 0 ? `; no local binary for: ${misses.join(", ")}` : ""),
+    );
+    return { families, misses };
   })();
-  return fixturePromise;
+  return catalogPromise;
 }
 
 function releaseDocument(families, baseUrl) {
   return JSON.stringify(
     {
       schema: "fontalloy/catalog-release@v1",
-      tag: "font-catalog-dev-fixture",
+      tag: "font-catalog-dev-local",
       origins: [{ id: "dev", base_url: baseUrl }],
       families: families.map((f) => ({
         family: f.family,
@@ -194,55 +287,59 @@ function releaseDocument(families, baseUrl) {
   );
 }
 
+/** The shared request handler (dev serve and preview alike). */
+async function handle(req, res, next) {
+  const url = req.url ?? "";
+  if (!url.startsWith("/dev-catalog/")) {
+    next();
+    return;
+  }
+  const { families } = await buildCatalog();
+  const cors = {
+    "access-control-allow-origin": "*",
+    "cache-control": "no-store",
+  };
+  if (url.split("?")[0] === "/dev-catalog/catalog-release.json") {
+    if (families.length === 0) {
+      res.writeHead(503, cors);
+      res.end("no local font binaries available for the dev catalog");
+      return;
+    }
+    // Same-origin by construction: base_url points at the host the
+    // browser actually reached us on.
+    const host = req.headers.host ?? "127.0.0.1:5173";
+    const body = releaseDocument(families, `http://${host}/dev-catalog/origins/dev`);
+    res.writeHead(200, { ...cors, "content-type": "application/json" });
+    res.end(body);
+    return;
+  }
+  const match = url.match(/^\/dev-catalog\/origins\/[^/]+\/([^/?]+)$/);
+  const family = match
+    ? families.find((f) => f.zip === decodeURIComponent(match[1]))
+    : undefined;
+  if (family) {
+    res.writeHead(200, { ...cors, "content-type": "application/zip" });
+    res.end(family.zipBytes);
+    return;
+  }
+  res.writeHead(404, cors);
+  res.end("not found");
+}
+
 /**
- * The vite plugin. `apply: "serve"` keeps it out of every build; the
- * middleware answers before the static roots.
+ * The vite plugin: `configureServer` covers `vite dev`, and
+ * `configurePreviewServer` covers `vite preview` (the built WebApp's
+ * e2e suite and any local preview of the static target boot the same
+ * real catalog). It never participates in a build.
  */
 export function devCatalogPlugin() {
   return {
     name: "fontalloy-dev-catalog",
-    apply: "serve",
     configureServer(server) {
-      server.middlewares.use(async (req, res, next) => {
-        const url = req.url ?? "";
-        if (!url.startsWith("/dev-catalog/")) {
-          next();
-          return;
-        }
-        const families = await fixtureFamilies();
-        const cors = {
-          "access-control-allow-origin": "*",
-          "cache-control": "no-store",
-        };
-        if (url.split("?")[0] === "/dev-catalog/catalog-release.json") {
-          if (families.length === 0) {
-            res.writeHead(503, cors);
-            res.end("no host font files available for the dev fixture");
-            return;
-          }
-          // Same-origin by construction: base_url points at the host the
-          // browser actually reached us on.
-          const host = req.headers.host ?? "127.0.0.1:5173";
-          const body = releaseDocument(
-            families,
-            `http://${host}/dev-catalog/origins/dev`,
-          );
-          res.writeHead(200, { ...cors, "content-type": "application/json" });
-          res.end(body);
-          return;
-        }
-        const match = url.match(/^\/dev-catalog\/origins\/[^/]+\/([^/?]+)$/);
-        const family = match
-          ? families.find((f) => f.zip === decodeURIComponent(match[1]))
-          : undefined;
-        if (family) {
-          res.writeHead(200, { ...cors, "content-type": "application/zip" });
-          res.end(family.zipBytes);
-          return;
-        }
-        res.writeHead(404, cors);
-        res.end("not found");
-      });
+      server.middlewares.use(async (req, res, next) => handle(req, res, next));
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use(async (req, res, next) => handle(req, res, next));
     },
   };
 }

@@ -28,6 +28,12 @@ export interface RegisterOptions {
    * interactive path (a user picking a font) registers non-lazily.
    */
   lazy?: boolean;
+  /**
+   * Skip the store patch (the catalog's registration sweep batches its
+   * fonts + registered map into one notification; the caller owns the
+   * accumulated state).
+   */
+  silent?: boolean;
 }
 
 /**
@@ -66,7 +72,9 @@ export async function registerFontBytes(
     path: options.path,
     codepoints: meta.codepoints,
   };
-  store.set({ fonts: [...store.get().fonts, font] });
+  if (!options.silent) {
+    store.set({ fonts: [...store.get().fonts, font] });
+  }
   return { font, isNewFamily: true };
 }
 

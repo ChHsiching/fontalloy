@@ -4,6 +4,7 @@ import {
   type CatalogState,
 } from "../state";
 import { registerFontBytes } from "../fonts/registry";
+import type { LoadedFont } from "../state";
 import type { BlobStorage } from "../platform/storage";
 import { parseCatalogRelease, type CatalogRelease, type ReleaseFamily, type ReleaseOrigin } from "./release";
 import { unzip } from "./zip";
@@ -213,7 +214,11 @@ export class CatalogManager {
    * Register every verified family's primary face (Regular preferred) as a
    * LAZY FontFace: rows self-render, and the browser loads each face only
    * when something actually renders in it. Yields between families so a
-   * large catalog never blocks the UI thread.
+   * large catalog never blocks the UI thread, and patches the store ONCE
+   * at the end — one notification for the whole sweep (fonts + the
+   * registered map together), not two per family (156 patches would
+   * rebuild every picker row over and over for identical-looking
+   * intermediate states).
    */
   private async registerVerified(release: CatalogRelease): Promise<void> {
     for (const family of release.families) {
@@ -221,19 +226,50 @@ export class CatalogManager {
         .get()
         .catalog.families.find((f) => f.family === family.family);
       if (!entry || entry.status !== "verified") continue;
-      await this.ensureRegistered(family);
+      await this.ensureRegistered(family, { silent: true });
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
+    this.flushPendingRegistrations();
+  }
+
+  /** The sweep's deferred state (see registerVerified), applied at once. */
+  private pendingFonts: LoadedFont[] = [];
+  private readonly pendingRegistrations = new Map<string, string>();
+
+  private flushPendingRegistrations(): void {
+    if (this.pendingFonts.length === 0 && this.pendingRegistrations.size === 0) {
+      return;
+    }
+    const state = store.get();
+    store.set({
+      fonts: [...state.fonts, ...this.pendingFonts],
+      catalog: {
+        ...state.catalog,
+        registered: {
+          ...state.catalog.registered,
+          ...Object.fromEntries(this.pendingRegistrations),
+        },
+      },
+    });
+    this.pendingFonts = [];
+    this.pendingRegistrations.clear();
   }
 
   /**
    * Make one catalog family selectable: read its primary face from storage,
    * register it through the same FontFace(arrayBuffer) path as local files,
-   * and record family -> cssFamily for the picker rows. Idempotent.
-   * Returns the cssFamily, or null when the family is not usable.
+   * and record family -> cssFamily for the picker rows. Idempotent —
+   * including mid-sweep, through the pending map (the sweep defers its
+   * store patches). Returns the cssFamily, or null when the family is not
+   * usable. `silent` skips both store patches (the sweep batches its own).
    */
-  async ensureRegistered(family: ReleaseFamily): Promise<string | null> {
-    const existing = store.get().catalog.registered[family.family];
+  async ensureRegistered(
+    family: ReleaseFamily,
+    opts: { silent?: boolean } = {},
+  ): Promise<string | null> {
+    const existing =
+      store.get().catalog.registered[family.family] ??
+      this.pendingRegistrations.get(family.family);
     if (existing) return existing;
 
     const dir = familyDir(family.family);
@@ -247,17 +283,24 @@ export class CatalogManager {
         fileName: primary.file,
         origin: "catalog",
         lazy: true,
+        silent: opts.silent,
         // The on-disk path (Tauri layout): recipes reference the exact
         // file the sidecar's --font-dir already scans. Null in browser
         // storage — the synthesize flow falls back to the listing match.
         path: this.deps.storage.absPath?.(`${dir}/${primary.file}`) ?? undefined,
       });
-      this.patchCatalog({
-        registered: {
-          ...store.get().catalog.registered,
-          [family.family]: font.cssFamily,
-        },
-      });
+      if (opts.silent) {
+        // The sweep collects these and patches the store once at the end.
+        this.pendingRegistrations.set(family.family, font.cssFamily);
+        this.pendingFonts.push(font);
+      } else {
+        this.patchCatalog({
+          registered: {
+            ...store.get().catalog.registered,
+            [family.family]: font.cssFamily,
+          },
+        });
+      }
       return font.cssFamily;
     } catch {
       // A stored face that no longer parses stays a plain picker row.
