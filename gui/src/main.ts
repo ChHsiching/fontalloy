@@ -57,9 +57,12 @@ void connectService();
 // usable underneath it before any download starts (failures never block).
 mountCatalogScreen();
 
-// Catalog bootstrap: under Tauri the GitHub release tag; elsewhere only when
-// an injected config names an origin (tests / future WebApp build). The run
-// is fire-and-forget on purpose — nothing here may delay the workspace.
+// Catalog bootstrap: under Tauri the GitHub release tag; in dev the vite
+// server's fixture catalog (/dev-catalog — host fonts zipped in memory, see
+// gui/scripts/dev-catalog.mjs; opt out with VITE_DEV_CATALOG=0); in a
+// production browser build only when an injected config names an origin.
+// The run is fire-and-forget on purpose — nothing here may delay the
+// workspace.
 const config = readConfig();
 const bootstrapUrl = config.catalogBootstrapUrl;
 if (bootstrapUrl !== null) {

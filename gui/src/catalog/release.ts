@@ -75,6 +75,14 @@ export function parseCatalogRelease(raw: unknown): CatalogRelease {
   return { tag, origins, families };
 }
 
+/**
+ * Loopback http origins — the documented dev carve-out: the vite dev
+ * server serves a fixture catalog from 127.0.0.1/localhost (see
+ * gui/scripts/dev-catalog.mjs). Production metadata keeps using
+ * https:// (GitHub release assets) or file:// (on-disk layouts).
+ */
+const LOOPBACK_ORIGIN_RE = /^http:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?\//;
+
 function loadOrigins(raw: unknown): ReleaseOrigin[] {
   if (!Array.isArray(raw) || raw.length === 0) {
     throw new CatalogError(
@@ -92,9 +100,13 @@ function loadOrigins(raw: unknown): ReleaseOrigin[] {
     const entry = item as Record<string, unknown>;
     const id = string(entry.id, `${where} field 'id'`);
     const baseUrl = string(entry.base_url, `${where} (${id}) field 'base_url'`);
-    if (!baseUrl.startsWith("https://") && !baseUrl.startsWith("file://")) {
+    const remote =
+      baseUrl.startsWith("https://") ||
+      baseUrl.startsWith("file://") ||
+      LOOPBACK_ORIGIN_RE.test(baseUrl);
+    if (!remote) {
       throw new CatalogError(
-        `${where} (${id}): base_url must be an https:// or file:// URL, got ${JSON.stringify(baseUrl)}`,
+        `${where} (${id}): base_url must be an https://, file://, or loopback http:// URL, got ${JSON.stringify(baseUrl)}`,
       );
     }
     if (seen.has(id)) throw new CatalogError(`${where}: duplicate origin id ${JSON.stringify(id)}`);

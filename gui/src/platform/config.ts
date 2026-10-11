@@ -13,9 +13,13 @@
  * });
  * ```
  *
- * Plain-browser builds deliberately default to NO catalog bootstrap — a dev
- * page must never start pulling the real ~375 MB catalog from GitHub. Only
- * the Tauri shell (or an explicit injected config) turns the downloader on.
+ * Plain-browser PRODUCTION builds deliberately default to NO catalog
+ * bootstrap — a deployed page must never start pulling the real ~375 MB
+ * catalog from GitHub. The Vite DEV server is the one exception: it
+ * serves a small fixture catalog itself (host fonts), so `npm run dev`
+ * boots a working catalog; the e2e web server opts out via
+ * VITE_DEV_CATALOG=0. Only the Tauri shell (or an explicit injected
+ * config) turns the real downloader on.
  *
  * Issue #16 adds two more injectable seams on the same object:
  * - `serveUrl` — where the merge service answers (`http://127.0.0.1:<port>`).
@@ -32,6 +36,16 @@
 /** GitHub Releases tag carrying the consolidated catalog (ADR-0005, #14). */
 export const CATALOG_TAG = "font-catalog-v1";
 export const CATALOG_REPO = "ChHsiching/fontalloy";
+
+/**
+ * The dev-server fixture catalog (see gui/scripts/dev-catalog.mjs): a
+ * small release built from host font files, served by vite at this path
+ * so a plain `npm run dev` boots a working catalog (picker rows with
+ * license/variant meta). Opt out with VITE_DEV_CATALOG=0 — the e2e
+ * suite's web server does, keeping its pages catalog-free unless a test
+ * injects its own origin.
+ */
+export const DEV_CATALOG_URL = "/dev-catalog/catalog-release.json";
 
 /** The result of handing a built font to the platform saver. */
 export interface ArtifactSaveResult {
@@ -81,12 +95,16 @@ export function isTauri(): boolean {
 export function readConfig(): FontalloyConfig {
   const injected =
     typeof window !== "undefined" ? window.__FONTALLOY_CONFIG__ : undefined;
+  const devDefault =
+    import.meta.env.DEV && import.meta.env.VITE_DEV_CATALOG !== "0"
+      ? DEV_CATALOG_URL
+      : null;
   const bootstrap =
     injected?.catalogBootstrapUrl !== undefined
       ? injected.catalogBootstrapUrl
       : isTauri()
         ? githubBootstrapUrl()
-        : null;
+        : devDefault;
   return {
     catalogBootstrapUrl: bootstrap ?? null,
     serveUrl: injected?.serveUrl,

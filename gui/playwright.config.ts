@@ -23,5 +23,10 @@ export default defineConfig({
     timeout: 60_000,
     stdout: "ignore",
     stderr: "pipe",
+    // Keep test pages catalog-free by default: the dev server's fixture
+    // catalog is off unless a spec injects its own origin (catalog.spec).
+    // With reuseExistingServer an already-running server keeps its own
+    // setting — don't leave a stray `npm run dev` on 5173 while testing.
+    env: { ...process.env, VITE_DEV_CATALOG: "0" },
   },
 });
