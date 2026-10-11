@@ -9,7 +9,9 @@
  * merging vs the copy-CLI fallback) follows it everywhere.
  */
 
-import "../app.css";
+// The pre-kit chrome (old app.css verbatim): the webapp keeps its
+// hand-rolled look until Stage 3 swaps it onto the kit.
+import "./app-chrome.css";
 import "./webapp.css";
 import { mountBuilder } from "./builder";
 import { mountResult } from "./result";
