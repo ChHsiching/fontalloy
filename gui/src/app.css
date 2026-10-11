@@ -260,6 +260,16 @@ body {
 
 /* Ordered font lists: shared by the cell editor and the rail rows. */
 
+/*
+ * Checkboxes paint with the kit accent (teal light / mint dark) — the
+ * native checkbox blue is off-palette in the light theme. One rule for
+ * every app checkbox (the details strip's editors and the rail's rule
+ * rows and sub-block toggles stay consistent), themed by --ac.
+ */
+input[type="checkbox"] {
+  accent-color: var(--ac);
+}
+
 .rule-fonts {
   display: flex;
   flex-direction: column;
