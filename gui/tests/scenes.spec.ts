@@ -58,9 +58,9 @@ test.describe("scene previews and synthesis settings", () => {
     const popup = page.locator(`[data-picker-popup="${role}"]`);
     await expect(popup).toBeVisible();
     await page.locator("input[data-role='font-file']").setInputFiles(path);
-    await expect(popup.locator(".kit-fp").first()).toBeVisible();
-    await waitForFontsReady(page);
-    await page.keyboard.press("Escape");
+    // Round 4: a successful local load CLOSES the picker (prototype
+    // parity — the closed card shows the new pick).
+    await expect(popup).toBeHidden();
   }
 
   /** Open the page (no service) with both fixture fonts picked. */

@@ -52,8 +52,9 @@ test.describe("missing glyph scope", () => {
       const popup = page.locator(`[data-picker-popup="${role}"]`);
       await expect(popup).toBeVisible();
       await page.locator("input[data-role='font-file']").setInputFiles(path);
-      await expect(popup.locator(".kit-fp").first()).toBeVisible();
-      await page.keyboard.press("Escape");
+      // Round 4: a successful local load CLOSES the picker (prototype
+      // parity — the closed card shows the new pick).
+      await expect(popup).toBeHidden();
     }
   }
 

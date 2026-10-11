@@ -126,8 +126,9 @@ const MANIFEST_META = new Map<string, FontMeta>(
 /**
  * A font picker (ADR-0004), assembled from the kit's PickerPopup: the
  * card renders the current font in its own typeface plus its MetaLine;
- * opening attaches the popup listbox (search header, inner scroll,
- * footer OUTSIDE the scroll) with node persistence and frame clamping.
+ * opening reveals the anchor-fused list card (search header, inner
+ * scroll, footer OUTSIDE the scroll) — a persistent child of the card
+ * with the AppSelect open/close discipline.
  *
  * Rows list catalog families (metadata-driven, self-rendered once their
  * face is registered, carrying their download state when not yet
@@ -168,6 +169,10 @@ export function mountPicker(
         }`;
       }
     }
+    // Prototype parity: a successful load closes the picker (the new
+    // pick is what the closed card now shows); a failure keeps it open
+    // so the error line above the footer stays reachable.
+    if (error === null) popup.close();
     rerender();
   };
 

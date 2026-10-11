@@ -417,9 +417,15 @@ test.describe("first-run catalog download", () => {
     ).toContainText("目录不可用");
     await expect(catalogRow(page, "Alloy Sans")).toHaveCount(0);
 
-    // Local files load and preview exactly as before the catalog existed.
+    // Local files load and preview exactly as before the catalog existed
+    // (round 4: the load closes the picker — reopen for the row).
     await page.locator("input[data-role='font-file']").setInputFiles(FONT_A);
     await waitForFontsReady(page);
+    await expect(enPopup(page)).toBeHidden();
+    await pointerClick(
+      page,
+      page.locator('[data-role="picker-en"] .kit-hd'),
+    );
     await expect(enPopup(page).locator(".kit-fp")).toHaveCount(1);
     await pointerClick(page, enPopup(page).locator(".kit-fp").first());
     await expect(page.locator("[data-stat='en']")).not.toHaveText("0");

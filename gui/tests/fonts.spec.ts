@@ -39,6 +39,13 @@ test.describe("local font loading", () => {
     await page.locator("input[data-role='font-file']").setInputFiles(font1);
     await waitForFontsReady(page);
 
+    // Round 4: the successful load CLOSED the picker (prototype
+    // parity); reopen it to inspect the row it now holds.
+    await expect(popup).toBeHidden();
+    await pointerClick(
+      page,
+      page.locator('[data-role="picker-en"] .kit-hd'),
+    );
     const row = popup.locator(".kit-fp").first();
     await expect(row).toBeVisible();
     // The row's NAME text (the meta line carries the 本地字体文件 trait
@@ -86,6 +93,12 @@ test.describe("local font loading", () => {
       .setInputFiles([font1, font2]);
     await waitForFontsReady(page);
 
+    // Round 4: both loads closed the picker; reopen to read the rows.
+    await expect(popup).toBeHidden();
+    await pointerClick(
+      page,
+      page.locator('[data-role="picker-en"] .kit-hd'),
+    );
     const rows = popup.locator(".kit-fp");
     await expect(rows).toHaveCount(2);
     // Family names from the rows' name spans (local rows carry the
