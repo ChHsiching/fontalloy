@@ -322,9 +322,9 @@ test.describe("kit demo page", () => {
     await expect(popup).toBeHidden();
     // display:none but still in the DOM while the exit transition plays…
     expect(await popup.count()).toBe(1);
-    // …then removed (~240ms deferred).
-    await page.waitForTimeout(420);
-    expect(await popup.count()).toBe(0);
+    // …then removed (~240ms deferred; polled, not a fixed sleep — the
+    // timer can lag under a full parallel suite run).
+    await expect(popup).toHaveCount(0, { timeout: 3000 });
   });
 
   test("the picker footer sits outside the scroll area", async ({ page }) => {
