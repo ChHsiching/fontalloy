@@ -102,6 +102,14 @@ def main() -> int:
             "fontalloy_core",
             "--collect-submodules",
             "fontalloy_cli",
+            # Package DATA, not just code: the core's fc-lang corpus
+            # (data/fc-lang/*.orth) is what BUILTIN_NAMED_SETS parses.
+            # Without it the frozen serve silently ships an EMPTY preset
+            # registry and every recipe with a named set dies at submit
+            # ("references the unknown named set 'zh_cn'") — the round-5
+            # P0. The core now also refuses to import without it.
+            "--collect-data",
+            "fontalloy_core",
             str(ENTRY),
         ]
         print(" ".join(command), flush=True)

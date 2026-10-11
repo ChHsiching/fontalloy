@@ -356,3 +356,18 @@ class TestPresetRulesAtTheBuildSeam:
         assert entries[0x41]["winner"] == "donor-0"
         assert entries[0x41]["via"] == "rule-0"
         assert entries[0x41]["kind"] == "override"
+
+
+def test_missing_corpus_fails_loudly(tmp_path, monkeypatch):
+    """A corpus directory with no .orth files is a broken install.
+
+    The round-5 sidecar P0: a frozen build that lost its package data
+    must fail at import, not silently serve an empty preset registry
+    that rejects every named set.
+    """
+    import fontalloy_core.presets as presets_module
+    from fontalloy_core.errors import PresetError
+
+    monkeypatch.setattr(presets_module, "DATA_DIR", tmp_path)
+    with pytest.raises(PresetError, match="fc-lang corpus is missing"):
+        presets_module._load_language_sets(tmp_path)

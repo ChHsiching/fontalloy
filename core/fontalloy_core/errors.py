@@ -25,3 +25,7 @@ class AssetsError(FontAlloyError):
 
 class ReleaseError(FontAlloyError):
     """Catalog-release metadata is invalid, or release packaging failed."""
+
+
+class PresetError(FontAlloyError):
+    """The language-preset corpus is missing or unreadable (bad install)."""

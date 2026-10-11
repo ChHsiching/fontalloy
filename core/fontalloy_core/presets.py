@@ -5,8 +5,9 @@ mapping, selected by name, with sub-blocks to toggle. The raw material is
 fontconfig's fc-lang corpus — 341 ``.orth`` files, one language charset
 per file — vendored under ``data/fc-lang`` with every license header
 intact (that directory's README carries the provenance and the pinned
-ref). This module is a leaf: it imports nothing from ``fontalloy_core``,
-so the precedence engine can plug into it without a cycle.
+ref). This module is a leaf on the engine: its only ``fontalloy_core``
+import is the errors module, so the precedence engine can plug into
+it without a cycle.
 
 One rule of thumb throughout: counts are never hand-maintained — they
 are derived from the bundled data (the test suite pins them against
@@ -19,6 +20,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
+
+from fontalloy_core.errors import PresetError
 
 #: The vendored fc-lang corpus (341 ``.orth`` files plus its README).
 DATA_DIR = Path(__file__).parent / "data" / "fc-lang"
@@ -117,10 +120,23 @@ def parse_orth(path: Path | str) -> frozenset[int]:
 
 
 def _load_language_sets(data_dir: Path) -> dict[str, frozenset[int]]:
-    """Every ``.orth`` file parsed, keyed by its file stem (``zh_cn``)."""
-    return {
+    """Every ``.orth`` file parsed, keyed by its file stem (``zh_cn``).
+
+    A corpus directory with no ``.orth`` files is a BROKEN INSTALL, not
+    an empty registry: a frozen build that lost its package data (the
+    round-5 sidecar P0) must fail loudly at import, not silently serve
+    a resolver that rejects every named set.
+    """
+    parsed = {
         path.stem: parse_orth(path) for path in sorted(data_dir.glob("*.orth"))
     }
+    if not parsed:
+        raise PresetError(
+            f"the vendored fc-lang corpus is missing or empty: {data_dir} "
+            "holds no .orth files — reinstall fontalloy-core (a frozen "
+            "build must bundle fontalloy_core's data/ package)"
+        )
+    return parsed
 
 
 #: The raw fc-lang boundary, verbatim: one codepoint set per ``.orth``
