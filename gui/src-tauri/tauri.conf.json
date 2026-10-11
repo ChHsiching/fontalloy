@@ -16,13 +16,14 @@
         "width": 1280,
         "height": 800,
         "minWidth": 960,
-        "minHeight": 600
+        "minHeight": 600,
+        "decorations": false
       }
     ],
     "security": {
       "csp": {
         "default-src": "'self'",
-        "connect-src": "ipc: http://ipc.localhost http://127.0.0.1:*",
+        "connect-src": "ipc: http://ipc.localhost http://127.0.0.1:* http://localhost:*",
         "img-src": "'self' blob: data:",
         "style-src": "'unsafe-inline' 'self'",
         "font-src": "'self' blob:",
@@ -33,7 +34,9 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "externalBin": ["binaries/fontalloy"],
+    "externalBin": [
+      "binaries/fontalloy"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

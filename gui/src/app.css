@@ -87,6 +87,15 @@ body {
   line-height: 1.5;
 }
 
+/* The 合成设置 rows: comfortable vertical rhythm (round 4 — the
+   prototype's rail paces its settings wrapper at 10px; this runs a
+   touch wider, as instructed). */
+.settings-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 /* Entrance animations — fill-mode: backwards everywhere. `both` leaves
    every section a permanent stacking context that traps popup z-index
    (ADR-0004; the prototype's r31 lesson). */
@@ -128,6 +137,54 @@ body {
   flex: 1;
   min-height: 0;
   display: flex;
+}
+
+/* ---------- custom window controls (GUI only, round 4) --------------
+ * With the native title bar hidden the top bar's right end carries the
+ * kit-styled 最小化/最大化/关闭 triple: the ghost-button language at the
+ * theme toggle's scale (30px hit height, 7px radius, sf2 hover), close
+ * hovering in the danger red like every native convention. Never
+ * rendered in the web target (ui/wincontrols gates on isTauri). */
+
+.win-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 2px;
+  flex: none;
+}
+
+.win-ctl {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  min-height: 30px;
+  border-radius: 7px;
+  color: var(--ink2);
+  background: transparent;
+  border: 1px solid transparent;
+  transition: background-color 100ms ease-out, color 100ms ease-out,
+    border-color 100ms ease-out;
+}
+
+.win-ctl svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  display: block;
+}
+
+.win-ctl:hover {
+  background: var(--sf2);
+  color: var(--ink);
+  border-color: var(--ln);
+}
+
+.win-close:hover {
+  background: var(--dgr);
+  border-color: var(--dgr);
+  color: #fff;
 }
 
 /* The fullscreen scene overlay host (positioned against #app). */

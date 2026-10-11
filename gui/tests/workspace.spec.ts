@@ -103,6 +103,25 @@ test.describe("workspace shell", () => {
     expect(text.length).toBeGreaterThan(4);
   });
 
+  test("the brand carries the hand-drawn SVG mark; the web target mounts no window chrome", async ({
+    page,
+  }) => {
+    // Round 4: the solid placeholder block became a drawn mark (an A
+    // built from 永-style strokes, teal accent) — an SVG, sized 16px.
+    const mark = page.locator(".topbar .kit-brand .kit-brand-mark");
+    await expect(mark).toBeVisible();
+    const box = await mark.boundingBox();
+    expect(box!.width).toBeCloseTo(16, 0);
+    expect(await mark.locator("path").count()).toBeGreaterThanOrEqual(3);
+
+    // The custom window controls and the drag region are GUI-only
+    // (ui/wincontrols gates on isTauri): none of it in the web target.
+    await expect(page.locator(".win-controls")).toHaveCount(0);
+    await expect(
+      page.locator(".topbar [data-tauri-drag-region]"),
+    ).toHaveCount(0);
+  });
+
   test("font-pair tags reflect the (empty) selection state in plain text", async ({
     page,
   }) => {

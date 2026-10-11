@@ -4,6 +4,8 @@ import { synthesize, synthesizeReady } from "../service/synthesize";
 import { mountTopBar, type TopBar } from "../kit/topBar";
 import { applyAppTheme, type AppTheme } from "../kit/theme";
 import { openCliPanel } from "./noservice";
+import { mountWindowControls } from "./wincontrols";
+import { isTauri } from "../platform/config";
 
 /**
  * Top bar (ADR-0004 + the validated prototype's chrome): the brand, the
@@ -14,6 +16,10 @@ import { openCliPanel } from "./noservice";
  *
  * The explanation for a disabled action is click-reachable page text,
  * never a hover-only tooltip (ADR-0004).
+ *
+ * Under Tauri the native title bar is hidden (round 4): the bar's empty
+ * stretches become the drag region and its right end carries the custom
+ * 最小化/最大化/关闭 controls. The web target mounts none of this.
  */
 
 /** Why the synthesize action cannot run right now (null when it can). */
@@ -74,6 +80,20 @@ export function mountTopbar(root: HTMLElement): TopBar {
       void synthesize();
     },
   });
+
+  // The custom window chrome (round 4, GUI only): the bar itself and
+  // its grow spacer drag the undecorated window; the controls live at
+  // its right end. `data-tauri-drag-region` must sit on the element
+  // the press actually lands on, hence both the bar and the spacer.
+  // The whole block is Tauri-gated — the web target carries no window
+  // chrome at all.
+  if (isTauri()) {
+    topBar.el.dataset.tauriDragRegion = "";
+    topBar.el
+      .querySelector<HTMLElement>(".kit-grow")
+      ?.setAttribute("data-tauri-drag-region", "");
+    mountWindowControls(topBar.el);
+  }
 
   // The notice lives in the document (not inside the button) so the text is
   // real page content reachable by a click.
