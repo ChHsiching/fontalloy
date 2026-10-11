@@ -16,6 +16,8 @@ gui/    Tauri 2 desktop app — native windows on all three platforms, core bund
 web/    pure static site (github.io / vercel), shares its frontend components with gui/
 ```
 
+`gui/src/kit` is the component library abstracted from the validated prototype; gui and web screens assemble kit components only. The prototype (`gui/prototype/index.html`) remains the design contract: the kit extracts its design language verbatim (palettes, spacing, chrome, copy, theme lists, interaction architecture — see `gui/src/kit/README.md`) while all code is rewritten typed and prop-driven in the shared no-framework stack.
+
 - `fontalloy serve` runs the core as a localhost HTTP service (127.0.0.1 only; CORS allows just the WebApp origin). The WebApp drives real merges when it detects the service and degrades to a "copy CLI command" button otherwise.
 - The GUI's end state is Tauri (the user asked for the best result); a serve-plus-browser loop may validate the core API first.
 - CLI installs via pipx / brew / scoop.
