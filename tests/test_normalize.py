@@ -75,6 +75,7 @@ class TestNormalizationSwitches:
         assert parsed.mode == "grid"
         assert parsed.optical_ratio == pytest.approx(1.23)
         assert parsed.quote_dash_width == "halfwidth"
+        assert parsed.width_factor == pytest.approx(2.0)
 
     def test_explicit_switch_values_parse(self, tmp_path: Path, synth_font_factory):
         base = synth_font_factory(
@@ -92,6 +93,7 @@ class TestNormalizationSwitches:
                 "  mode: optical\n"
                 "  optical_ratio: 1.4\n"
                 "  quote_dash_width: fullwidth\n"
+                "  width_factor: 1.8\n"
             ),
         )
 
@@ -100,6 +102,7 @@ class TestNormalizationSwitches:
         assert parsed.mode == "optical"
         assert parsed.optical_ratio == pytest.approx(1.4)
         assert parsed.quote_dash_width == "fullwidth"
+        assert parsed.width_factor == pytest.approx(1.8)
 
     def test_unknown_normalization_field_is_rejected(
         self, tmp_path: Path, base_font: Path, donor_font: Path
@@ -304,6 +307,64 @@ class TestGridAdvances:
             assert _advance(out, cp) == 600  # the base's own single cell
         # ...while the donor still fills the slot the base lacks.
         assert _advance(out, 0x4E2D) == 1200
+
+    @pytest.mark.parametrize("factor, expected", [(1.8, 1080), (1.5, 900)])
+    def test_the_width_factor_knob_compacts_the_wide_advance(
+        self, tmp_path: Path, synth_font_factory, factor, expected
+    ):
+        """The prototype's 1.8x/1.5x settings are real pipeline behavior:
+        on a 1000-upem base whose Latin advance is 600, a wide glyph
+        takes width_factor x 600 and the ink scales by the same factor's
+        grid target (k = width_factor*A/U under the guard)."""
+        base = synth_font_factory(
+            tmp_path / "base.ttf", family="SynthBase", codepoints=BASE_CODEPOINTS
+        )
+        donor = synth_font_factory(
+            tmp_path / "donor.ttf", family="SynthDonor", codepoints=(0x4E2D,)
+        )
+        recipe = _write_recipe(
+            tmp_path,
+            base,
+            donor,
+            extra=f"normalization:\n  width_factor: {factor}\n",
+        )
+
+        result = build(recipe, tmp_path / "out.ttf")
+
+        out = TTFont(result.font_path)
+        latin = _advance(out, 0x41)
+        assert latin == 600
+        assert _advance(out, 0x4E2D) == expected
+
+        # The scale target follows the same factor: k = factor*600/1000
+        # (0.95*typoSpan/H_ink = 1.9388 does not bind; see the module
+        # docstring's fixture arithmetic). The synthetic glyph's ink
+        # bounds scale accordingly about the shared baseline.
+        donor_font = TTFont(donor)
+        donor_name = donor_font.getBestCmap()[0x4E2D]
+        donor_bounds = _bounds(donor_font, donor_name)
+        out_bounds = _bounds(out, out.getBestCmap()[0x4E2D])
+        assert donor_bounds is not None and out_bounds is not None
+        k = factor * 600 / 1000
+        assert out_bounds[1] == pytest.approx(donor_bounds[1] * k, abs=1.0)
+        assert out_bounds[3] == pytest.approx(donor_bounds[3] * k, abs=1.0)
+
+    @pytest.mark.parametrize("factor", [0, -1.5, 2.5, "wide", True])
+    def test_out_of_range_width_factor_is_rejected(
+        self, tmp_path: Path, base_font: Path, donor_font: Path, factor
+    ):
+        rendered = f"{factor}" if not isinstance(factor, str) else f'"{factor}"'
+        recipe = _write_recipe(
+            tmp_path,
+            base_font,
+            donor_font,
+            extra=f"normalization:\n  width_factor: {rendered}\n",
+        )
+
+        from fontalloy_core.errors import RecipeError
+
+        with pytest.raises(RecipeError, match="width_factor"):
+            build(recipe, tmp_path / "out.ttf")
 
 
 class TestQuoteDashWidthPolicy:

@@ -14,11 +14,14 @@ weights since issue #9):
 - ``sets``: user-defined named range sets — a mapping of a name to a
   codepoint, an interval string, or a non-empty list of either
 - ``normalization``: the normalization switches (ADR-0003) — ``mode``
-  (``grid``, the terminal 2:1 default, or ``optical``),
-  ``optical_ratio`` (Han ink to cap height; default 1.23), and
+  (``grid``, the terminal-grid default, or ``optical``),
+  ``optical_ratio`` (Han ink to cap height; default 1.23),
   ``quote_dash_width`` (``halfwidth``, the UAX #11 default, or
-  ``fullwidth`` for the CJK locale convention). Every key is optional;
-  a recipe without a ``normalization`` block builds with the defaults.
+  ``fullwidth`` for the CJK locale convention), and ``width_factor``
+  (the grid school's CJK advance as a multiple of the Latin advance;
+  default 2, the UAX #11 two-cell convention, at most 2). Every key is
+  optional; a recipe without a ``normalization`` block builds with the
+  defaults.
 - ``output``: the build's output settings — ``format`` selects the
   output format tier (``ttf`` the default, ``ttc``, or ``woff2``;
   issue #10) and ``family`` the output family name (default: the fixed
@@ -86,12 +89,14 @@ import yaml
 from fontalloy_core.errors import RecipeError
 from fontalloy_core.normalize import (
     DEFAULT_OPTICAL_RATIO,
+    DEFAULT_WIDTH_FACTOR,
     FULLWIDTH,
     GRID,
     HALFWIDTH,
     MODES,
     NormalizationOptions,
     QUOTE_DASH_POLICIES,
+    WIDTH_FACTOR_MAX,
 )
 from fontalloy_core.output import OUTPUT_FORMATS
 from fontalloy_core.precedence import (
@@ -142,7 +147,7 @@ REF_FIELDS = ("path", "face", "instance", "family", "variant", "pattern", "sha25
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 #: The keys the normalization block accepts.
-_NORMALIZATION_FIELDS = ("mode", "optical_ratio", "quote_dash_width")
+_NORMALIZATION_FIELDS = ("mode", "optical_ratio", "quote_dash_width", "width_factor")
 
 #: The keys the output section accepts.
 OUTPUT_FIELDS = ("format", "family")
@@ -527,10 +532,32 @@ def _parse_normalization(raw: object) -> NormalizationOptions:
                 f"{raw['quote_dash_width']!r})"
             )
 
+    width_factor = DEFAULT_WIDTH_FACTOR
+    if "width_factor" in raw:
+        width_factor = raw["width_factor"]
+        if _is_bool(width_factor) or not isinstance(width_factor, (int, float)):
+            raise RecipeError(
+                f"recipe field 'normalization.width_factor' must be a "
+                f"number from 0 (exclusive) to {WIDTH_FACTOR_MAX} (the "
+                f"CJK advance as a multiple of the Latin advance; got "
+                f"{width_factor!r})"
+            )
+        width_factor = float(width_factor)
+        if not math.isfinite(width_factor) or not (
+            0 < width_factor <= WIDTH_FACTOR_MAX
+        ):
+            raise RecipeError(
+                f"recipe field 'normalization.width_factor' must be a "
+                f"number from 0 (exclusive) to {WIDTH_FACTOR_MAX} (the "
+                f"CJK advance as a multiple of the Latin advance; got "
+                f"{width_factor!r})"
+            )
+
     return NormalizationOptions(
         mode=mode,
         optical_ratio=ratio,
         quote_dash_width=quote_dash_width,
+        width_factor=width_factor,
     )
 
 

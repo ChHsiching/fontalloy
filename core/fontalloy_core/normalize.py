@@ -5,8 +5,10 @@ ADR-0003 — transform only, never reshape, grid school by default:
 - **upem unified**: every donor scales by s0 = U/u (the base's upem over
   the donor's) so all grafted geometry lives in the base's units;
 - **the scale** k = min(k_target, 0.95*(typoAsc + |typoDesc|)/H_ink) where
-  the target is the grid term 2A/U by default (CJK advance = exactly 2x
-  the Latin advance — the terminal-grid school) or the optical term
+  the target is the grid term width_factor*A/U by default (CJK advance =
+  width_factor × the Latin advance — the terminal-grid school, 2× by
+  default; the recipe's ``width_factor`` knob expresses the prototype's
+  两倍 / 1.8 倍 / 1.5 倍 English-width settings) or the optical term
   ratio * capHeight / H_ink (Han ink ~= 1.23x cap height, the Noto
   native pairing) when the recipe turns that knob;
 - **H_ink** is the 90th-percentile ink height over the donor's coverage
@@ -16,8 +18,9 @@ ADR-0003 — transform only, never reshape, grid school by default:
 - **zero vertical displacement**: the scale is about the shared baseline
   (dy = 0) — the CJK ideographic em box keeps its [-0.12em, +0.88em]
   convention, no top alignment, no centering;
-- **advances follow UAX #11**: Fullwidth/Wide take two cells, everything
-  else takes one (Python's ``unicodedata.east_asian_width``, no vendored
+- **advances follow the width factor**: Fullwidth/Wide glyphs take
+  ``width_factor`` cells (UAX #11's two by default), everything else
+  takes one (Python's ``unicodedata.east_asian_width``, no vendored
   data). An ambiguous codepoint the base font already covers stays with
   the base — a corollary of absence-never-overrides, enforced by the
   precedence resolver, not here. Fullwidth quotes/dashes/ellipsis are a
@@ -57,6 +60,15 @@ QUOTE_DASH_POLICIES = (HALFWIDTH, FULLWIDTH)
 #: native pairing; the recipe's adjustable knob).
 DEFAULT_OPTICAL_RATIO = 1.23
 
+#: The grid school's default CJK width factor (two Latin cells per wide
+#: glyph, the UAX #11 terminal convention; the recipe's ``width_factor``
+#: knob carries the prototype's 1.8 / 1.5 compacter settings).
+DEFAULT_WIDTH_FACTOR = 2.0
+
+#: The width factor's bounds: positive, never wider than the two-cell
+#: wide convention (UAX #11 grid discipline).
+WIDTH_FACTOR_MAX = 2.0
+
 #: The U+4E00-9FFF block: the common Han characters H_ink is measured
 #: over (never the CJK-extension extremes).
 HAN_COMMON_FIRST = 0x4E00
@@ -80,17 +92,21 @@ _WIDE_CLASSES = frozenset(("F", "W"))
 class NormalizationOptions:
     """The recipe's normalization switches (issue #8).
 
-    ``mode`` picks the school: ``grid`` (default — the terminal 2:1 grid)
-    or ``optical`` (Han ink at ``optical_ratio`` times the base's cap
-    height). ``quote_dash_width`` decides whether the ambiguous quotes,
-    dashes, and ellipsis a donor supplies land on two cells
-    (``fullwidth``, the CJK locale convention) or one (``halfwidth``,
-    the UAX #11 default).
+    ``mode`` picks the school: ``grid`` (default — the terminal grid at
+    ``width_factor`` Latin cells per wide glyph) or ``optical`` (Han ink
+    at ``optical_ratio`` times the base's cap height). ``width_factor``
+    is the grid school's CJK advance factor (2 by default — the UAX #11
+    two-cell convention; 1.8/1.5 for the compacter settings, capped by
+    the same ink guard). ``quote_dash_width`` decides whether the
+    ambiguous quotes, dashes, and ellipsis a donor supplies land on the
+    wide advance (``fullwidth``, the CJK locale convention) or one cell
+    (``halfwidth``, the UAX #11 default).
     """
 
     mode: str = GRID
     optical_ratio: float = DEFAULT_OPTICAL_RATIO
     quote_dash_width: str = HALFWIDTH
+    width_factor: float = DEFAULT_WIDTH_FACTOR
 
 
 @dataclass(frozen=True)
@@ -121,17 +137,18 @@ class NormalizationPlan:
     def advance_for(self, codepoint: int) -> int:
         """The output advance for a donor-supplied ``codepoint``.
 
-        Fullwidth/Wide take two cells; everything else takes one. The
-        fullwidth policy additionally widens the quotes, dashes, and
-        ellipsis UAX #11 leaves ambiguous.
+        Fullwidth/Wide take ``width_factor`` cells (rounded to whole
+        base units); everything else takes one. The fullwidth policy
+        additionally widens the quotes, dashes, and ellipsis UAX #11
+        leaves ambiguous — to the same wide advance.
         """
-        if (
+        wide = (
             self.options.quote_dash_width == FULLWIDTH
             and codepoint in QUOTE_DASH_CODEPOINTS
-        ):
-            return 2 * self.latin_advance
-        wide = unicodedata.east_asian_width(chr(codepoint)) in _WIDE_CLASSES
-        return (2 if wide else 1) * self.latin_advance
+        ) or unicodedata.east_asian_width(chr(codepoint)) in _WIDE_CLASSES
+        if wide:
+            return otRound(self.options.width_factor * self.latin_advance)
+        return self.latin_advance
 
 
 def plan_normalization(
@@ -205,7 +222,7 @@ def _donor_scale(
     if options.mode == OPTICAL:
         target = options.optical_ratio * cap_height / han_ink_in_base
     else:
-        target = 2 * latin_advance / upem
+        target = options.width_factor * latin_advance / upem
     k = min(target, guard)
     return DonorScale(
         donor_id=donor_id,
