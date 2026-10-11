@@ -571,7 +571,7 @@ test.describe("precedence editing", () => {
     const row = page.locator(".kit-toolrow").filter({ hasText: "基本拉丁" });
     await pointerClick(
       page,
-      row.locator(".kit-mseg button").filter({ hasText: /^用中文字体$/ }),
+      row.locator(".kit-mseg button").filter({ hasText: /^用中文$/ }),
     );
     const blockRow = page.locator("[data-role='rule-row'][data-kind='block']");
     await expect(blockRow).toHaveText(/基本拉丁用中文字体/);

@@ -58,8 +58,9 @@ test.describe("action bar rule wiring", () => {
       const popup = page.locator(`[data-picker-popup="${role}"]`);
       await expect(popup).toBeVisible();
       await page.locator("input[data-role='font-file']").setInputFiles(path);
-      await expect(popup.locator(".kit-fp").first()).toBeVisible();
-      await page.keyboard.press("Escape");
+      // Round 4: a successful local load CLOSES the picker (prototype
+      // parity — the closed card now shows the new pick).
+      await expect(popup).toBeHidden();
     }
   }
 
@@ -71,7 +72,7 @@ test.describe("action bar rule wiring", () => {
 
     // Basic Latin (U+0020..U+007F): its segment shows on the block view.
     // (The block's label sits beside the segment; the group segment's
-    // 全部用… buttons must not be confused with the block's 用… ones.)
+    // 全用… buttons must not be confused with the block's 用… ones.)
     await pointerClick(page, page.locator(".kit-cat-g[data-group='latin-europe']"));
     await pointerClick(page, page.locator(".kit-cat-s[data-block='basic-latin']"));
     const row = page.locator(".kit-toolrow").filter({ hasText: "基本拉丁" });
@@ -80,11 +81,11 @@ test.describe("action bar rule wiring", () => {
     // No explicit assignment yet — but the DEFAULT side shows pressed
     // (prototype parity: its chips read the block default too; here the
     // base font keeps every covered codepoint of the block).
-    await expect(blockButton("用英文字体")).toHaveAttribute("aria-pressed", "true");
-    await expect(blockButton("用中文字体")).toHaveAttribute("aria-pressed", "false");
+    await expect(blockButton("用英文")).toHaveAttribute("aria-pressed", "true");
+    await expect(blockButton("用中文")).toHaveAttribute("aria-pressed", "false");
     // The pressed block chip carries the SAME carried-side treatment as
     // the group chips: bold + the accent token.
-    const blockCarried = await blockButton("用英文字体").evaluate((el) => ({
+    const blockCarried = await blockButton("用英文").evaluate((el) => ({
       color: getComputedStyle(el).color,
       weight: getComputedStyle(el).fontWeight,
     }));
@@ -101,7 +102,7 @@ test.describe("action bar rule wiring", () => {
 
     // Assign the whole block to the donor: one exact range rule, one
     // human summary sentence.
-    await pointerClick(page, blockButton("用中文字体"));
+    await pointerClick(page, blockButton("用中文"));
     await expect.poll(() => summaryRowCount(page)).toBe(1);
     const blockRow = page.locator(
       "[data-role='rule-row'][data-kind='block']",
@@ -115,20 +116,20 @@ test.describe("action bar rule wiring", () => {
       page.locator(".charmap-grid .kit-cell[data-cp='U+0041']"),
     ).toHaveAttribute("data-kind", "override");
     // The pressed state follows the assignment.
-    await expect(blockButton("用中文字体")).toHaveAttribute("aria-pressed", "true");
+    await expect(blockButton("用中文")).toHaveAttribute("aria-pressed", "true");
 
     // Pressing the carried side again reverts to default (rule removed)
     // — exactly what the row's own delete × does too.
-    await pointerClick(page, blockButton("用中文字体"));
+    await pointerClick(page, blockButton("用中文"));
     await expect.poll(() => summaryRowCount(page)).toBe(0);
     await expect(
       page.locator(".charmap-grid .kit-cell[data-cp='U+0041']"),
     ).toHaveAttribute("data-winner", "base");
     // ...and the pressed state falls back to the DEFAULT side.
-    await expect(blockButton("用英文字体")).toHaveAttribute("aria-pressed", "true");
+    await expect(blockButton("用英文")).toHaveAttribute("aria-pressed", "true");
 
     // The row's delete × removes the assignment the same way.
-    await pointerClick(page, blockButton("用中文字体"));
+    await pointerClick(page, blockButton("用中文"));
     await expect.poll(() => summaryRowCount(page)).toBe(1);
     await pointerClick(page, page.locator("[data-role='remove-rule']").first());
     await expect.poll(() => summaryRowCount(page)).toBe(0);
@@ -148,48 +149,74 @@ test.describe("action bar rule wiring", () => {
     await pointerClick(page, page.locator(".kit-cat-s[data-block='basic-latin']"));
     const row = page.locator(".kit-toolrow").filter({ hasText: "基本拉丁" });
     await expect(
-      row.locator(".kit-mseg button").filter({ hasText: /^用英文字体$/ }),
+      row.locator(".kit-mseg button").filter({ hasText: /^用英文$/ }),
     ).toBeVisible();
     await expect(
-      row.locator(".kit-mseg button").filter({ hasText: /^用英文字体$/ }),
+      row.locator(".kit-mseg button").filter({ hasText: /^用英文$/ }),
     ).toHaveAttribute("aria-pressed", "false");
     await expect(
-      row.locator(".kit-mseg button").filter({ hasText: /^用中文字体$/ }),
+      row.locator(".kit-mseg button").filter({ hasText: /^用中文$/ }),
     ).toHaveAttribute("aria-pressed", "false");
   });
 
-  test("the toolbar stays one row at 1440px with the longest real block label", async ({
-    page,
-  }) => {
-    await page.setViewportSize({ width: 1440, height: 940 });
-    const fonts = await makeLocalFixtures();
-    await openWithFonts(page, fonts);
-
-    // The CJK group + its unified-ideographs block: the widest real
-    // toolrow (group segment + long block label + block segment + pager
-    // + legend + locator + 按编码指定).
-    await pointerClick(page, page.locator(".kit-cat-g[data-group='cjk']"));
-    await pointerClick(
+  for (const width of [1440, 1280]) {
+    test(`the toolbar stays one row at ${width}px with the longest real labels`, async ({
       page,
-      page.locator(".kit-cat-s[data-block='cjk-unified']"),
-    );
-    const metrics = await page.evaluate(() => {
-      const row = document.querySelector(".kit-toolrow");
-      if (!row) throw new Error("no toolrow");
-      // Single row = the row's height is one cluster tall (the mseg tray
-      // is 32px + 12px padding + border; a wrap would double it) and
-      // nothing spills past the row's right edge.
-      const locate = row.querySelector<HTMLElement>("[data-role='locate']");
-      return {
-        height: row.offsetHeight,
-        overflow: row.scrollWidth - row.clientWidth,
-        locateWidth: locate ? locate.getBoundingClientRect().width : null,
-      };
+    }) => {
+      await page.setViewportSize({ width, height: 940 });
+      const fonts = await makeLocalFixtures();
+      await openWithFonts(page, fonts);
+
+      // Round 4: the assign segments carry the SHORT labels (全用英文 /
+      // 用中文 …) with the full sentence in title/aria-label — the row
+      // must hold one line even at the narrow target width. (Asserted
+      // on a GROUP view, where the segments exist.)
+      await pointerClick(page, page.locator(".kit-cat-g[data-group='latin-europe']"));
+      await pointerClick(
+        page,
+        page.locator(".kit-cat-s[data-block='ipa']").first(),
+      );
+      const seg = page.locator(".kit-toolrow .kit-assign button");
+      await expect(seg.filter({ hasText: /^全用英文$/ })).toHaveAttribute(
+        "title",
+        "全部用英文字体",
+      );
+      await expect(seg.filter({ hasText: /^用中文$/ })).toHaveAttribute(
+        "title",
+        "用中文字体",
+      );
+
+      // The two widest real toolrows: the longest GROUP label + its
+      // longest block (拉丁与欧洲文字 · 国际音标扩展), and the CJK group +
+      // unified-ideographs block (group segment + pager + legend +
+      // locator + 按编码指定).
+      for (const [group, block] of [
+        ["latin-europe", "ipa"],
+        ["cjk", "cjk-unified"],
+      ] as const) {
+        await pointerClick(page, page.locator(`.kit-cat-g[data-group='${group}']`));
+        await pointerClick(
+          page,
+          page.locator(`.kit-cat-s[data-block='${block}']`).first(),
+        );
+        const metrics = await page.evaluate(() => {
+          const row = document.querySelector(".kit-toolrow");
+          if (!row) throw new Error("no toolrow");
+          // Single row = the row's height is one cluster tall (the mseg
+          // tray is 32px + 12px padding + border; a wrap would double it)
+          // and nothing spills past the row's right edge.
+          return {
+            height: row.offsetHeight,
+            overflow: row.scrollWidth - row.clientWidth,
+            label: row.querySelector(".kit-lab").textContent,
+          };
+        });
+        // One row, nothing clipped: 按编码指定 never orphans onto line 2.
+        expect(metrics.height, `${metrics.label}@${width}`).toBeLessThanOrEqual(46);
+        expect(metrics.overflow, `${metrics.label}@${width}`).toBeLessThanOrEqual(1);
+      }
     });
-    // One row, nothing clipped: 按编码指定 never orphans onto line 2.
-    expect(metrics.height).toBeLessThanOrEqual(46);
-    expect(metrics.overflow).toBeLessThanOrEqual(1);
-  });
+  }
 
   test("the group segment assigns every block of the group in one undo step", async ({
     page,
@@ -209,11 +236,11 @@ test.describe("action bar rule wiring", () => {
     // The DEFAULT side renders pressed (the donor alone covers the CJK
     // blocks) — with the carried-side treatment: bold + accent, the
     // block chips' own pressed look (the boot/workspace-frame parity).
-    await expect(groupButton("全部用中文字体")).toHaveAttribute(
+    await expect(groupButton("全用中文")).toHaveAttribute(
       "aria-pressed",
       "true",
     );
-    await expect(groupButton("全部用英文字体")).toHaveAttribute(
+    await expect(groupButton("全用英文")).toHaveAttribute(
       "aria-pressed",
       "false",
     );
@@ -225,21 +252,21 @@ test.describe("action bar rule wiring", () => {
       probe.remove();
       return color;
     });
-    const carried = await groupButton("全部用中文字体").evaluate((el) => ({
+    const carried = await groupButton("全用中文").evaluate((el) => ({
       color: getComputedStyle(el).color,
       weight: getComputedStyle(el).fontWeight,
     }));
     expect(carried.color).toBe(accent);
     expect(carried.weight).toBe("600");
 
-    await pointerClick(page, groupButton("全部用英文字体"));
+    await pointerClick(page, groupButton("全用英文"));
     // Every block of the group carries the same side — the summary
     // list MERGES them into one parent sentence (prototype parity).
     await expect.poll(() => summaryRowCount(page)).toBe(1);
     await expect(
       page.locator("[data-role='rule-row'][data-kind='group']"),
     ).toHaveText(/所有中日韩文字字符用英文字体/);
-    await expect(groupButton("全部用英文字体")).toHaveAttribute(
+    await expect(groupButton("全用英文")).toHaveAttribute(
       "aria-pressed",
       "true",
     );

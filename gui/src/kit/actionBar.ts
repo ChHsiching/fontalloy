@@ -3,9 +3,11 @@
  * reusable parts: the segmented control and the grid pager.
  *
  * Carried from the prototype's toolrow:
- * - per-GROUP segment (所有中文字符 → 全部用英文字体 / 全部用中文字体);
- * - per-BLOCK segment (汉字区 → 用英文字体 / 用中文字体), or a passive
- *   count note for aggregate views, or the missing-glyph notice;
+ * - per-GROUP segment (所有中文字符 → 全用英文 / 全用中文 — the round-4
+ *   short labels; the full sentences 全部用英文字体/全部用中文字体 ride
+ *   along as title/aria-label so nothing is lost);
+ * - per-BLOCK segment (汉字区 → 用英文 / 用中文, tooltips likewise), or a
+ *   passive count note for aggregate views, or the missing-glyph notice;
  * - 多选 / 编码 toggles (active = primary styling), 撤销 (disabled when
  *   the stack is empty);
  * - the pager (‹ 第 n/m 页 ›), the 已调整 legend with its dot, the
@@ -21,7 +23,7 @@ export type FontSide = "base" | "donor";
 /* ---------- segmented control (mseg) ---------- */
 
 export interface SegmentedProps {
-  options: readonly { value: string; label: string }[];
+  options: readonly { value: string; label: string; tooltip?: string }[];
   /** Active value (matches aria-pressed). */
   value: string;
   onSelect(value: string): void;
@@ -36,6 +38,13 @@ export function segmentedControl(props: SegmentedProps): HTMLElement {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.textContent = option.label;
+    // Round 4: the assign segments carry SHORT labels (全用英文/用中文
+    // …) so the row never wraps; the full sentence stays one hover away
+    // (and in the accessible name).
+    if (option.tooltip) {
+      btn.title = option.tooltip;
+      btn.setAttribute("aria-label", option.tooltip);
+    }
     btn.setAttribute("aria-pressed", String(option.value === props.value));
     btn.dataset.value = option.value;
     btn.addEventListener("click", () => props.onSelect(option.value));
@@ -175,14 +184,16 @@ export function mountActionBar(
       count.dataset.role = "batch-count";
       count.textContent = `已选 ${props.batch.count} 个`;
       el.appendChild(count);
-      for (const [side, label] of [
-        ["base", "用英文字体"],
-        ["donor", "用中文字体"],
+      for (const [side, label, full] of [
+        ["base", "用英文", "用英文字体"],
+        ["donor", "用中文", "用中文字体"],
       ] as const) {
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className = "kit-btn sm";
         btn.textContent = label;
+        btn.title = full;
+        btn.setAttribute("aria-label", full);
         btn.dataset.role = `batch-${side}`;
         btn.addEventListener("click", () => props.batch!.onApply(side));
         el.appendChild(btn);
@@ -229,8 +240,8 @@ export function mountActionBar(
           segmentedControl({
             className: "kit-assign",
             options: [
-              { value: "base", label: "全部用英文字体" },
-              { value: "donor", label: "全部用中文字体" },
+              { value: "base", label: "全用英文", tooltip: "全部用英文字体" },
+              { value: "donor", label: "全用中文", tooltip: "全部用中文字体" },
             ],
             value: props.group.allBase
               ? "base"
@@ -258,8 +269,8 @@ export function mountActionBar(
             segmentedControl({
               className: "kit-assign",
               options: [
-                { value: "base", label: "用英文字体" },
-                { value: "donor", label: "用中文字体" },
+                { value: "base", label: "用英文", tooltip: "用英文字体" },
+                { value: "donor", label: "用中文", tooltip: "用中文字体" },
               ],
               value: props.block.value,
               onSelect: (v) => {
