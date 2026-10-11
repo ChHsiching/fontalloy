@@ -434,6 +434,14 @@ function charFacts(cp: number): CharPopupFacts {
     };
   }
   const winnerFont = refFont(entry.winner, picks);
+  // Prototype parity (stk/stkW): the glyph stack carries the WINNING
+  // SIDE's fallback tail — the base side falls back to the mono tail,
+  // the donor side to the CJK tail. The app additionally keeps a
+  // sans-serif end so a partially loading face degrades gracefully.
+  const winnerTail =
+    entry.winner === "base"
+      ? "Consolas,ui-monospace,monospace"
+      : "'Microsoft YaHei',sans-serif";
   // The carried side hides; so does a side whose font is not picked
   // (an unpickable button would be a lie). `winner` is the REF
   // (`base` / `donor-0`), compared in that vocabulary.
@@ -460,7 +468,7 @@ function charFacts(cp: number): CharPopupFacts {
   return {
     glyph: ch,
     glyphFamily: winnerFont
-      ? `${cssFamily(winnerFont.cssFamily)}, sans-serif`
+      ? `${cssFamily(winnerFont.cssFamily)},${winnerTail}`
       : undefined,
     code: formatCp(cp),
     from: `来自 ${winnerFont?.family ?? ""}`,
