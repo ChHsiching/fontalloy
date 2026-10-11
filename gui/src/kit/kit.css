@@ -37,15 +37,16 @@
   font-weight: 700;
 }
 
-.kit-brand i {
-  display: inline-block;
-  width: 14px;
-  height: 14px;
-  border-radius: 4px;
-  background: var(--ac);
+/* The hand-drawn mark (A × 永): 24-grid strokes, rendered at 16px in
+   the top bar — crisp from 16 to 24px, currentColor + teal accent so
+   both themes read. */
+.kit-brand .kit-brand-mark {
+  width: 16px;
+  height: 16px;
   margin-right: 8px;
-  vertical-align: -2px;
-  font-style: normal;
+  vertical-align: -3px;
+  display: inline-block;
+  flex: none;
 }
 
 /* Linear icon default size (24-viewBox stroke family). */
@@ -316,12 +317,15 @@
 }
 
 /* The char popup's parts — the prototype's .pop .code/.from/.btns/.rest
- * (L470–476 + L242–246), carried verbatim by kit/charPopup.ts. */
+ * (L470–476 + L242–246), carried verbatim by kit/charPopup.ts. The
+ * glyph block carries the prototype's COMPUTED look: its inline
+ * `border-bottom:1px solid(var(--ln))` is invalid CSS (missing space),
+ * so no border ever rendered there — the validated look has no divider
+ * (round 4 audit). */
 .kit-pop .kit-pop-glyph {
   font-size: 44px;
   text-align: center;
   padding: 4px 0 8px;
-  border-bottom: 1px solid var(--ln);
   margin-bottom: 8px;
 }
 
@@ -622,17 +626,20 @@
 }
 
 /*
- * The picker popup. Portaled to <body> with fixed positioning (immune
- * to rail overflow and entrance-animation stacking contexts) but laid
- * out to attach seamlessly to the open card: JS aligns it to the
- * card's box and removes the top border. Outer layer clips; the scroll
- * area is one child; the footer is a sibling that never scrolls
- * (prototype sticky-footer lesson). Node persistence: the node is
- * created once per open, rows rebuild only, removal waits ~240ms after
- * close so the exit transition plays.
+ * The picker popup — the AppSelect dropdown-list form (round 4): an
+ * anchor-fused PERSISTENT CHILD of the card, absolutely positioned at
+ * its bottom edge (top:100%, left/right:-1px, no top border, bottom
+ * radius squared against the open card). Open/close is pure class
+ * toggling through `display` with allow-discrete + @starting-style —
+ * the csel-pk discipline verbatim, no portaling, no frame math. Outer
+ * layer clips; the scroll area is one child; the footer is a sibling
+ * that never scrolls (prototype sticky-footer lesson).
  */
 .kit-pk {
-  position: fixed;
+  position: absolute;
+  top: 100%;
+  left: -1px;
+  right: -1px;
   z-index: 60;
   display: none;
   flex-direction: column;
@@ -651,7 +658,7 @@
     display 0.13s allow-discrete;
 }
 
-.kit-pk.open {
+.kit-fsel.open .kit-pk {
   display: flex;
   opacity: 1;
   transform: none;
@@ -661,7 +668,7 @@
 }
 
 @starting-style {
-  .kit-pk.open {
+  .kit-fsel.open .kit-pk {
     opacity: 0;
     transform: translateY(-4px) scaleY(0.98);
   }
@@ -1427,31 +1434,14 @@
   padding: 14px;
 }
 
+/* Round 4: no entrance animation on the scene cards — the charmap has
+ * none, and parallel surfaces behave alike. Cards render in place. */
 .kit-sc {
   border: 1px solid var(--ln);
   border-radius: 12px;
   background: var(--sf);
   padding: 14px 16px;
   margin-bottom: 12px;
-  animation: kit-rise-in 0.4s var(--spring-out) backwards;
-}
-
-.kit-sc:nth-child(1) {
-  animation-delay: 0ms;
-}
-
-.kit-sc:nth-child(2) {
-  animation-delay: 80ms;
-}
-
-.kit-sc:nth-child(3) {
-  animation-delay: 160ms;
-}
-
-/* Entrance replays are gated by the consumer (one-shot on mode switch);
- * .no-in silences them for content-only re-renders. */
-.kit-scene-wrap.no-in .kit-sc {
-  animation: none;
 }
 
 .kit-sc-h {

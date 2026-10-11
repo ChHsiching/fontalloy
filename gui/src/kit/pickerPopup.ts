@@ -1,11 +1,15 @@
 /**
  * FontAlloy kit — PickerPopup.
  *
- * The prototype's font selector (fsel), rebuilt typed and prop-driven:
- * a bordered card whose header shows the current font in its own
- * typeface plus the no-pills MetaLine and a rotating chevron; opening
- * squares the card's bottom corners and attaches a popup listbox that
- * renders as one seamless extension of the card.
+ * The prototype's font selector (fsel), in the SAME dropdown-list form
+ * as AppSelect (round 4; the owner's chosen pattern): the popup is an
+ * anchor-fused list card — a PERSISTENT CHILD of the picker card,
+ * absolutely positioned at its bottom edge (top:100%, left/right:-1px,
+ * no top border, bottom corners squared against the open card), never
+ * portaled and never re-parented. Open/close is pure class toggling
+ * through `display` with allow-discrete + @starting-style, exactly the
+ * csel-pk discipline — no bespoke transition choreography, no deferred
+ * node removal, no frame math.
  *
  * Carried architecture constraints (the validated popup rules):
  *
@@ -13,15 +17,9 @@
  *   inner SCROLL area; the search field is a header above the scroll
  *   and the footer action sits below it, OUTSIDE the scroll — a sticky
  *   footer inside the scroll area always bleeds (prototype r27→r29);
- * - the popup node is portaled to <body> and positioned fixed against
- *   the card's box, immune to rail overflow and entrance-animation
- *   stacking contexts;
- * - NODE PERSISTENCE: the popup skeleton is built once per open;
- *   re-renders rebuild only the rows, so the open/close transitions
- *   (allow-discrete + @starting-style) survive; after close the node's
- *   removal waits ~240ms so the exit transition plays;
- * - positioning clamps to the app frame (never past the window edge),
- *   capping the height with internal scroll;
+ * - NODE PERSISTENCE: the popup skeleton (search + scroll + status +
+ *   footer) is built ONCE at mount; re-renders rebuild only the rows,
+ *   so the open/close transitions survive every render;
  * - rows self-render: the family name in its own font, the MetaLine,
  *   and a check mark on the selected row;
  * - open-at-the-selection: when the popup opens with the current pick
@@ -31,7 +29,6 @@
 
 import { icon } from "./icons";
 import { metaLine, type FontMeta } from "./metaLine";
-import { attachPopupBelow } from "./position";
 
 /** CSS font-family value, quoted safely for names with spaces/quotes. */
 export function cssFamily(family: string): string {
@@ -98,12 +95,9 @@ export interface PickerPopup {
   open(): void;
   close(): void;
   /**
-   * Tear the component down (builder extension): close without
-   * waiting for the exit transition, detach the document/window
-   * listeners, and remove the card plus any popup node still on
-   * <body>. Call before rebuilding a region that owns the picker — a
-   * popup mid-close would otherwise linger under the same
-   * data-picker-popup key.
+   * Tear the component down (builder extension): close, detach the
+   * document listeners, and remove the card (the popup is its child
+   * and goes with it).
    */
   destroy(): void;
 }
@@ -124,41 +118,73 @@ export function mountPickerPopup(
   el.dataset.role = `picker-${initial.role}`;
   host.appendChild(el);
 
-  // Stage-3 extension: document/window listeners ride one abort signal
+  // Stage-3 extension: document listeners ride one abort signal
   // so destroy() detaches them all.
   const listeners = new AbortController();
   const { signal } = listeners;
 
-  // --- card header (rebuilt on render; never contains the popup) ---
+  // --- card header (rebuilt on render; always the first child) ---
   let header: HTMLElement | null = null;
 
-  // --- popup state ---
-  let popup: HTMLElement | null = null;
-  let scrollArea: HTMLElement | null = null;
-  let searchInput: HTMLInputElement | null = null;
+  // --- the persistent popup skeleton (built ONCE, right after the
+  // header; rows and status lines are the only parts that re-render) ---
   let open = false;
   let query = "";
-  let removeTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const popup = document.createElement("div");
+  popup.className = "kit-pk";
+  popup.dataset.pickerPopup = initial.role;
+  popup.setAttribute("role", "listbox");
+  popup.setAttribute("aria-label", "字体列表");
+
+  // Search header — outside the scroll area (a header, not a row).
+  const searchInput = document.createElement("input");
+  searchInput.type = "search";
+  searchInput.className = "kit-q";
+  searchInput.placeholder = initial.searchPlaceholder ?? "搜索字体";
+  searchInput.setAttribute("aria-label", "搜索字体");
+  let debounce: ReturnType<typeof setTimeout> | undefined;
+  searchInput.addEventListener("input", () => {
+    query = searchInput.value.trim().toLowerCase();
+    clearTimeout(debounce);
+    debounce = setTimeout(() => renderRows(), 120);
+  });
+  popup.appendChild(searchInput);
+
+  // Inner scroll area — the only scrolling child.
+  const scrollArea = document.createElement("div");
+  scrollArea.className = "kit-pks";
+  popup.appendChild(scrollArea);
+
+  // Status note + error line — siblings below the scroll, above the
+  // footer action (page text, never hover-only).
+  const noteEl = document.createElement("div");
+  noteEl.className = "kit-pkn";
+  noteEl.dataset.pickerNote = "";
+  noteEl.hidden = true;
+  popup.appendChild(noteEl);
+  const errorEl = document.createElement("div");
+  errorEl.className = "kit-pke";
+  errorEl.setAttribute("role", "alert");
+  errorEl.dataset.pickerError = "";
+  errorEl.hidden = true;
+  popup.appendChild(errorEl);
+
+  // Footer action — a sibling BELOW the scroll, never scrolling. The
+  // button is permanent; render() only retunes its label and handler.
+  const footerBtn = document.createElement("button");
+  footerBtn.type = "button";
+  footerBtn.className = "kit-fpsys";
+  footerBtn.innerHTML = `${icon("plus")}<span></span>`;
+  const footerLabel = footerBtn.querySelector("span")!;
+  let footerClick: (() => void) | null = null;
+  footerBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    footerClick?.();
+  });
+  popup.appendChild(footerBtn);
 
   let props: PickerPopupProps = initial;
-
-  /** Deferred removal so the exit transition finishes (node persistence). */
-  const armRemoval = (): void => {
-    clearTimeout(removeTimer);
-    removeTimer = setTimeout(() => {
-      if (!open && popup && !popup.classList.contains("open")) {
-        popup.remove();
-        popup = null;
-        scrollArea = null;
-        searchInput = null;
-      }
-    }, 240);
-  };
-
-  const position = (): void => {
-    if (!popup) return;
-    attachPopupBelow(popup, el.getBoundingClientRect());
-  };
 
   const close = (): void => {
     if (!open) return;
@@ -166,84 +192,6 @@ export function mountPickerPopup(
     openPickers.delete(handle);
     el.classList.remove("open");
     if (header) header.setAttribute("aria-expanded", "false");
-    if (popup) {
-      popup.classList.remove("open");
-      armRemoval();
-    }
-  };
-
-  const buildPopup = (): void => {
-    popup = document.createElement("div");
-    popup.className = "kit-pk";
-    popup.dataset.pickerPopup = props.role;
-    popup.setAttribute("role", "listbox");
-    popup.setAttribute("aria-label", "字体列表");
-
-    // Search header — outside the scroll area (a header, not a row).
-    searchInput = document.createElement("input");
-    searchInput.type = "search";
-    searchInput.className = "kit-q";
-    searchInput.placeholder = props.searchPlaceholder ?? "搜索字体";
-    searchInput.setAttribute("aria-label", "搜索字体");
-    searchInput.value = query;
-    let debounce: ReturnType<typeof setTimeout> | undefined;
-    searchInput.addEventListener("input", () => {
-      query = searchInput!.value.trim().toLowerCase();
-      clearTimeout(debounce);
-      debounce = setTimeout(() => renderRows(), 120);
-    });
-    popup.appendChild(searchInput);
-
-    // Inner scroll area — the only scrolling child.
-    scrollArea = document.createElement("div");
-    scrollArea.className = "kit-pks";
-    popup.appendChild(scrollArea);
-
-    // Status note + error line — siblings below the scroll, above the
-    // footer action (page text, never hover-only). Built once per open;
-    // renderStatus keeps their text in sync with the props.
-    const noteEl = document.createElement("div");
-    noteEl.className = "kit-pkn";
-    noteEl.dataset.pickerNote = "";
-    noteEl.hidden = true;
-    popup.appendChild(noteEl);
-    const errorEl = document.createElement("div");
-    errorEl.className = "kit-pke";
-    errorEl.setAttribute("role", "alert");
-    errorEl.dataset.pickerError = "";
-    errorEl.hidden = true;
-    popup.appendChild(errorEl);
-
-    // Footer action — a sibling BELOW the scroll, never scrolling.
-    if (props.footer) {
-      const footer = document.createElement("button");
-      footer.type = "button";
-      footer.className = "kit-fpsys";
-      footer.innerHTML = `${icon("plus")}<span></span>`;
-      footer.querySelector("span")!.textContent = props.footer.label;
-      footer.addEventListener("click", (e) => {
-        e.stopPropagation();
-        props.footer!.onClick();
-      });
-      popup.appendChild(footer);
-    }
-
-    document.body.appendChild(popup);
-  };
-
-  /** Sync the note/error status lines with the current props. */
-  const renderStatus = (): void => {
-    if (!popup) return;
-    const noteEl = popup.querySelector<HTMLElement>("[data-picker-note]");
-    const errorEl = popup.querySelector<HTMLElement>("[data-picker-error]");
-    if (noteEl) {
-      noteEl.hidden = !props.note;
-      noteEl.textContent = props.note ?? "";
-    }
-    if (errorEl) {
-      errorEl.hidden = !props.error;
-      errorEl.textContent = props.error ?? "";
-    }
   };
 
   const openPicker = (): void => {
@@ -251,16 +199,10 @@ export function mountPickerPopup(
     for (const other of [...openPickers]) other.close();
     open = true;
     openPickers.add(handle);
-    // Reusing a still-animating-out node? It was kept alive precisely
-    // for this case — cancel its removal and reuse it.
-    clearTimeout(removeTimer);
-    if (!popup) buildPopup();
     el.classList.add("open");
     if (header) header.setAttribute("aria-expanded", "true");
     renderRows();
     renderStatus();
-    popup!.classList.add("open");
-    position();
     revealSelected();
   };
 
@@ -272,7 +214,7 @@ export function mountPickerPopup(
    * scrollIntoView here could also scroll the page under the popup.
    */
   const revealSelected = (): void => {
-    if (!scrollArea || props.selectedId === null) return;
+    if (props.selectedId === null) return;
     const row = scrollArea.querySelector<HTMLElement>(
       `[data-font-id="${CSS.escape(props.selectedId)}"]`,
     );
@@ -285,7 +227,6 @@ export function mountPickerPopup(
   };
 
   const renderRows = (): void => {
-    if (!scrollArea) return;
     const selectedId = props.selectedId;
     const matches = props.fonts.filter(
       (f) =>
@@ -360,6 +301,22 @@ export function mountPickerPopup(
     scrollArea.replaceChildren(fragment);
   };
 
+  /** Sync the note/error status lines and the footer action. */
+  const renderStatus = (): void => {
+    noteEl.hidden = !props.note;
+    noteEl.textContent = props.note ?? "";
+    errorEl.hidden = !props.error;
+    errorEl.textContent = props.error ?? "";
+    if (props.footer) {
+      footerLabel.textContent = props.footer.label;
+      footerClick = props.footer.onClick;
+      footerBtn.style.display = "";
+    } else {
+      footerClick = null;
+      footerBtn.style.display = "none";
+    }
+  };
+
   const renderHeader = (): void => {
     const selected = props.fonts.find((f) => f.id === props.selectedId);
     const fallback = props.emptyLabel ?? props.fonts[0]?.name ?? "—";
@@ -407,7 +364,7 @@ export function mountPickerPopup(
       }
     });
     if (header) header.replaceWith(next);
-    else el.appendChild(next);
+    else el.insertBefore(next, popup);
     header = next;
   };
 
@@ -417,7 +374,8 @@ export function mountPickerPopup(
       if (!open) return;
       const target = e.target as Node;
       if (!target.isConnected) return;
-      if (el.contains(target) || popup?.contains(target)) return;
+      // The popup lives INSIDE the card now — one contains() covers both.
+      if (el.contains(target)) return;
       close();
     },
     { signal },
@@ -429,38 +387,33 @@ export function mountPickerPopup(
     },
     { signal },
   );
-  window.addEventListener(
-    "resize",
-    () => {
-      if (open) position();
-    },
-    { signal },
-  );
 
   const handle: PickerPopupHandleInternal = { close };
 
+  // Skeleton order: header first, then the persistent popup (the same
+  // child order the prototype's fsel keeps). The popup STAYS mounted —
+  // closed is `display:none` through the card's class, exactly like
+  // AppSelect's list.
+  el.append(popup);
   renderHeader();
+  renderRows();
+  renderStatus();
 
   return {
     el,
     render(next) {
       props = next;
       renderHeader();
-      if (open) {
-        renderRows();
-        renderStatus();
-      }
+      renderStatus();
+      if (open) renderRows();
     },
     open: openPicker,
     close,
     destroy() {
       open = false;
       openPickers.delete(handle);
-      clearTimeout(removeTimer);
       listeners.abort();
       el.remove();
-      popup?.remove();
-      popup = null;
     },
   };
 }

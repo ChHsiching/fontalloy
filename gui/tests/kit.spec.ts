@@ -210,7 +210,7 @@ test.describe("kit demo page", () => {
 
   /* ---------- PickerPopup ---------- */
 
-  test("picker opens attached below the card and clamps inside the frame", async ({
+  test("picker opens as the anchor-fused list card (AppSelect form)", async ({
     page,
   }) => {
     const card = page.locator('[data-role="picker-en"]');
@@ -220,18 +220,26 @@ test.describe("kit demo page", () => {
     await expect(popup).toBeVisible();
     await expect(card).toHaveClass(/open/);
 
+    // Round 4: the popup is a PERSISTENT CHILD of the card, absolutely
+    // anchored at its bottom edge — no portal, no frame math.
+    const anchorInfo = await popup.evaluate((el) => {
+      const cardEl = el.closest(".kit-fsel")!;
+      const cs = getComputedStyle(el);
+      return {
+        childOfCard: el.parentElement === cardEl,
+        position: cs.position,
+        display: cs.display,
+      };
+    });
+    expect(anchorInfo.childOfCard).toBe(true);
+    expect(anchorInfo.position).toBe("absolute");
+    expect(anchorInfo.display).toBe("flex");
+    // Fused: overlaps the card's bottom border by 1px, same width (+2).
     const cardBox = (await card.boundingBox())!;
     const popupBox = (await popup.boundingBox())!;
-    const frameBox = (await page.locator(".kit-app").boundingBox())!;
-
-    // Attached: overlaps the card's bottom border by 1px, same width (+2).
     expect(Math.abs(popupBox.y - (cardBox.y + cardBox.height - 1))).toBeLessThanOrEqual(1.5);
     expect(Math.abs(popupBox.width - (cardBox.width + 2))).toBeLessThanOrEqual(2);
     expect(Math.abs(popupBox.x - (cardBox.x - 1))).toBeLessThanOrEqual(1.5);
-    // Clamped to the frame.
-    expect(popupBox.y + popupBox.height).toBeLessThanOrEqual(
-      frameBox.y + frameBox.height + 0.5,
-    );
 
     // Chevron rotates 90deg when open.
     const chevron = await card
@@ -241,21 +249,22 @@ test.describe("kit demo page", () => {
   });
 
   for (const height of [700, 520]) {
-    test(`picker stays inside the app frame at ${height}px height`, async ({
+    test(`picker stays anchored to its card at ${height}px height`, async ({
       page,
     }) => {
       await page.setViewportSize({ width: 900, height });
       const card = page.locator('[data-role="picker-cjk"]');
       await card.scrollIntoViewIfNeeded();
       await pointerClick(page, card.locator(".kit-hd"));
+      await page.waitForTimeout(250); // the discrete open transition settles
       const popup = page.locator('[data-picker-popup="cjk"]');
       await expect(popup).toBeVisible();
-      const frameBox = (await page.locator(".kit-app").boundingBox())!;
+      // Anchored below the card regardless of the frame: the rail's
+      // scroll box clips what does not fit (the prototype's own
+      // behavior — its .pk is an absolute child of .fsel too).
+      const cardBox = (await card.boundingBox())!;
       const popupBox = (await popup.boundingBox())!;
-      expect(popupBox.y).toBeGreaterThanOrEqual(frameBox.y - 1);
-      expect(popupBox.y + popupBox.height).toBeLessThanOrEqual(
-        frameBox.y + frameBox.height + 0.5,
-      );
+      expect(Math.abs(popupBox.y - (cardBox.y + cardBox.height - 1))).toBeLessThanOrEqual(1.5);
     });
   }
 
@@ -319,7 +328,7 @@ test.describe("kit demo page", () => {
     );
   });
 
-  test("closed picker removes its popup node after the exit transition", async ({
+  test("closed picker keeps its popup node mounted (AppSelect persistence)", async ({
     page,
   }) => {
     await pointerClick(page, page.locator('[data-role="picker-en"] .kit-hd'));
@@ -327,15 +336,22 @@ test.describe("kit demo page", () => {
     await expect(popup).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(popup).toBeHidden();
-    // Hidden (display:none via the discrete transition) and then removed
-    // ~240ms later, after the exit transition played. The removal is
-    // polled, not a fixed sleep — and the intermediate "still in the
-    // DOM" state is NOT pinned: under a full parallel suite run the
-    // deferred timer can win the race against the assertion, which
-    // would turn a green pass into a flake. The node-survival contract
-    // (the popup PERSISTS across re-renders) is pinned by the search
-    // test above via its data-marker.
-    await expect(popup).toHaveCount(0, { timeout: 3000 });
+    // Round 4: the popup is a persistent child of the card — closing is
+    // display:none through the card class (so the exit transition's
+    // node survives), exactly like AppSelect's list. No deferred
+    // removal anymore.
+    await expect(popup).toHaveCount(1);
+    const closed = await popup.evaluate((el) => ({
+      display: getComputedStyle(el).display,
+      pointer: getComputedStyle(el).pointerEvents,
+      cardOpen: el.closest(".kit-fsel")!.classList.contains("open"),
+    }));
+    expect(closed.display).toBe("none");
+    expect(closed.pointer).toBe("none");
+    expect(closed.cardOpen).toBe(false);
+    // And it reopens through the same node.
+    await pointerClick(page, page.locator('[data-role="picker-en"] .kit-hd'));
+    await expect(popup).toBeVisible();
   });
 
   test("the picker footer sits outside the scroll area", async ({ page }) => {
@@ -389,10 +405,17 @@ test.describe("kit demo page", () => {
   }) => {
     const row = page.locator(".kit-toolrow");
     await expect(row).toContainText("所有中文字符");
-    await expect(row).toContainText("全部用英文字体");
-    await expect(row).toContainText("全部用中文字体");
+    // Round 4: the segments carry SHORT labels; the full sentences ride
+    // in title (asserted here so nothing is lost).
+    await expect(row).toContainText("全用英文");
+    await expect(row).toContainText("全用中文");
+    const segs = row.locator(".kit-assign button");
+    await expect(segs.filter({ hasText: /^全用英文$/ })).toHaveAttribute(
+      "title",
+      "全部用英文字体",
+    );
     await expect(row).toContainText("汉字区");
-    await expect(row).toContainText("用英文字体");
+    await expect(row).toContainText("用英文");
     await expect(row.locator('[data-role="toggle-multi"]')).toHaveText("多选");
     await expect(row.locator('[data-role="toggle-codepoints"]')).toHaveText("编码");
     await expect(row.locator('[data-role="undo"]')).toBeEnabled();

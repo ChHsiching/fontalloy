@@ -19,60 +19,59 @@ test.describe("picker popup behavior", () => {
 
   test.afterEach(() => assertNoJsErrors(jsErrors));
 
-  test("opens below the anchor and stays inside the app frame", async ({
+  test("opens anchor-fused to the card (the AppSelect list form)", async ({
     page,
   }) => {
-    const anchor = page.locator('[data-role="picker-en"] .kit-hd');
-    await pointerClick(page, anchor);
+    const card = page.locator(".kit-fsel[data-role='picker-en']");
+    await pointerClick(page, card.locator(".kit-hd"));
     const popup = page.locator('[data-picker-popup="en"]');
     await expect(popup).toBeVisible();
     await page.waitForTimeout(250); // the discrete open transition settles
 
-    const anchorBox = await anchor.boundingBox();
-    const popupBox = await popup.boundingBox();
-    expect(anchorBox).not.toBeNull();
-    expect(popupBox).not.toBeNull();
+    // Round 4: a persistent CHILD of the card, absolutely anchored at
+    // its bottom edge (top:100%, left/right:-1px, no top border) —
+    // the card fuses with its list, no portal, no frame math.
+    const info = await popup.evaluate((el) => {
+      const cardEl = el.closest(".kit-fsel")!;
+      const cs = getComputedStyle(el);
+      return {
+        childOfCard: el.parentElement === cardEl,
+        position: cs.position,
+        display: cs.display,
+        borderTop: cs.borderTopWidth,
+      };
+    });
+    expect(info.childOfCard).toBe(true);
+    expect(info.position).toBe("absolute");
+    expect(info.display).toBe("flex");
+    expect(info.borderTop).toBe("0px");
 
-    // Below-first (the picker attaches seamlessly to the card).
-    expect(popupBox!.y).toBeGreaterThanOrEqual(anchorBox!.y + anchorBox!.height - 2);
-    // Clamped to the frame with a small margin.
-    expect(popupBox!.y).toBeGreaterThanOrEqual(4);
-    expect(popupBox!.x).toBeGreaterThanOrEqual(4);
-    expect(popupBox!.x + popupBox!.width).toBeLessThanOrEqual(
-      page.viewportSize()!.width - 4,
-    );
-    expect(popupBox!.y + popupBox!.height).toBeLessThanOrEqual(
-      page.viewportSize()!.height - 4,
-    );
+    const cardBox = (await card.boundingBox())!;
+    const popupBox = (await popup.boundingBox())!;
+    expect(Math.abs(popupBox.y - (cardBox.y + cardBox.height - 1))).toBeLessThanOrEqual(1.5);
+    expect(Math.abs(popupBox.x - (cardBox.x - 1))).toBeLessThanOrEqual(1.5);
+    expect(Math.abs(popupBox.width - (cardBox.width + 2))).toBeLessThanOrEqual(2);
   });
 
   for (const height of [700, 560, 420, 320]) {
-    test(`clamps (flips above or caps at the frame) at ${height}px height`, async ({
+    test(`stays anchored to its card at ${height}px height`, async ({
       page,
     }) => {
       await page.setViewportSize({ width: 900, height });
-      const anchor = page.locator('[data-role="picker-cjk"] .kit-hd');
-      await pointerClick(page, anchor);
+      const card = page.locator(".kit-fsel[data-role='picker-cjk']");
+      await card.scrollIntoViewIfNeeded();
+      await pointerClick(page, card.locator(".kit-hd"));
+      await page.waitForTimeout(250); // the discrete open transition settles
       const popup = page.locator('[data-picker-popup="cjk"]');
       await expect(popup).toBeVisible();
 
-      const anchorBox = (await anchor.boundingBox())!;
+      // Anchored below the card regardless of the frame: the rail's
+      // scroll box clips what does not fit — the prototype's own
+      // behavior (its .pk is an absolute child of .fsel too).
+      const cardBox = (await card.boundingBox())!;
       const popupBox = (await popup.boundingBox())!;
       expect(popupBox).not.toBeNull();
-
-      // Always inside the frame.
-      expect(popupBox.y).toBeGreaterThanOrEqual(4);
-      expect(popupBox.y + popupBox.height).toBeLessThanOrEqual(height - 4);
-
-      // When below does not fit, the kit caps the popup's height (and
-      // lifts it so the bottom edge stays inside the frame) — the
-      // picker never scrolls off-window.
-      const fitsBelow =
-        anchorBox.y + anchorBox.height + popupBox.height <= height - 4;
-      if (!fitsBelow) {
-        expect(popupBox.height).toBeLessThanOrEqual(height - 8);
-        expect(popupBox.y + popupBox.height).toBeLessThanOrEqual(height - 4);
-      }
+      expect(Math.abs(popupBox.y - (cardBox.y + cardBox.height - 1))).toBeLessThanOrEqual(1.5);
     });
   }
 
@@ -91,6 +90,12 @@ test.describe("picker popup behavior", () => {
       .locator("input[data-role='font-file']")
       .setInputFiles([font1, font2]);
     await waitForFontsReady(page);
+    // Round 4: the successful load closed the picker; reopen it — the
+    // SAME node comes back (data-marker below), so the load's re-render
+    // rebuilt rows only, never the skeleton.
+    await expect(popup).toBeHidden();
+    expect(await popup.getAttribute("data-marker")).toBe("alive");
+    await pointerClick(page, page.locator('[data-role="picker-en"] .kit-hd'));
     await expect(rows).toHaveCount(2);
 
     // Same node, still open, still interactive.
@@ -131,10 +136,11 @@ test.describe("picker popup behavior", () => {
     );
     expect(behavior).toContain("allow-discrete");
 
-    // Close by clicking outside (the chip bar area); the node's removal
-    // waits ~240ms so the exit transition plays, then reopens fine.
+    // Close by clicking outside (the chip bar area); the persistent
+    // node plays the exit transition through display, then reopens fine.
     await pointerClick(page, page.locator(".charmap-categories"));
     await expect(popup).toBeHidden();
+    await expect(popup).toHaveCount(1); // the node stays mounted
 
     await pointerClick(page, anchor);
     await expect(popup).toBeVisible();
