@@ -6,9 +6,10 @@ import { SETTINGS_TOPICS } from "../kit/settingsTopics";
 /**
  * The synthesis settings (issue #19, ADR-0004 left column): weight
  * merge mode, CJK–Latin baseline alignment, and CJK character width —
- * the three ratified settings, each a kit AppSelect plus a ?-popover
- * whose worked-example tables state HONESTLY what the option does in
- * this pipeline (the kit's ADR-corrected topics), never a faked knob.
+ * the prototype's three settings, each a kit AppSelect plus a
+ * ?-popover with the prototype's verbatim worked-example tables (the
+ * weight topic keeps its single ADR-0006 correction — output weight
+ * slots come only from the base font's faces).
  */
 
 /** The store key of each kit topic ("weight" is the store's weightMode). */
