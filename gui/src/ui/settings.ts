@@ -1,15 +1,14 @@
 import { store, type SynthesisSettings } from "../state";
-import { mountAppSelect, type AppSelect } from "../kit/appSelect";
-import { mountHelpPopover } from "../kit/helpPopover";
-import { SETTINGS_TOPICS } from "../kit/settingsTopics";
+import type { AppSelect } from "../kit/appSelect";
+import { SETTINGS_TOPICS, mountSettingRow } from "../kit/settingsTopics";
 
 /**
  * The synthesis settings (issue #19, ADR-0004 left column): weight
  * merge mode, CJK–Latin baseline alignment, and CJK character width —
- * the prototype's three settings, each a kit AppSelect plus a
- * ?-popover with the prototype's verbatim worked-example tables (the
- * weight topic keeps its single ADR-0006 correction — output weight
- * slots come only from the base font's faces).
+ * the prototype's three settings rows, each assembled from the kit
+ * (mountSettingRow: label + ?-popover + AppSelect; the weight topic
+ * keeps its single ADR-0006 correction — output weight slots come only
+ * from the base font's faces). The screen owns only the VALUE wiring.
  */
 
 /** The store key of each kit topic ("weight" is the store's weightMode). */
@@ -24,39 +23,13 @@ export function mountSettings(root: HTMLElement): void {
 
   for (const topic of SETTINGS_TOPICS) {
     const key = STORE_KEY[topic.key]!;
-    const row = document.createElement("div");
-    row.className = "setting-row";
-    row.dataset.setting = key;
-
-    const head = document.createElement("div");
-    head.className = "setting-head";
-    const name = document.createElement("span");
-    name.className = "setting-name";
-    name.textContent = topic.name;
-    head.appendChild(name);
-    // The ?-button: its popup node mounts on <body> once (ADR-0004).
-    // The anchor's data-role follows the store key (the popup's
-    // data-help-popup keeps the kit topic id).
-    const help = mountHelpPopover({
-      id: topic.topic.id,
-      title: topic.topic.title,
-      buttonLabel: topic.topic.buttonLabel,
-      width: topic.topic.width,
-      build: topic.topic.build,
-    });
-    help.anchor.dataset.role = `help-${key}`;
-    head.appendChild(help.anchor);
-    row.appendChild(head);
-
-    const select = mountAppSelect({
-      label: topic.name,
+    const row = mountSettingRow(topic, {
       // The cjkWidth topic's values are the numeric width factor's
       // string form (2 / 1.8 / 1.5); the store keeps the number.
       value:
         key === "cjkWidth"
           ? String(store.get().settings[key])
           : store.get().settings[key],
-      options: topic.options,
       onChange: (value) => {
         store.set({
           settings: {
@@ -66,11 +39,13 @@ export function mountSettings(root: HTMLElement): void {
         });
       },
     });
-    select.el.dataset.role = `select-${key}`;
-    row.appendChild(select.el);
-    selects[key] = select;
-
-    root.appendChild(row);
+    row.el.dataset.setting = key;
+    // The ?-button's data-role follows the store key (the popup's
+    // data-help-popup keeps the kit topic id).
+    row.helpAnchor.dataset.role = `help-${key}`;
+    row.select.el.dataset.role = `select-${key}`;
+    root.appendChild(row.el);
+    selects[key] = row.select;
   }
 
   const render = (): void => {

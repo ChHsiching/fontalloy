@@ -33,8 +33,8 @@ import {
   canUndoRules,
 } from "../history";
 import { cssFamily } from "../kit/pickerPopup";
-import { fitPopup } from "../kit/position";
-import { mountAppSelect, type AppSelect } from "../kit/appSelect";
+import { mountCharPopup, type CharPopupFacts } from "../kit/charPopup";
+import { mountRangePopup } from "../kit/rangePopup";
 import { mountCategoryChips, type CategoryChips } from "../kit/categoryChips";
 import { mountActionBar, type ActionBar, type FontSide } from "../kit/actionBar";
 import { mountCharGrid, type CharGrid, type GridCellData } from "../kit/grid";
@@ -402,176 +402,75 @@ function assignBlocks(
 /* ---------------- the char popup (at the cell) ---------------------- */
 
 /**
- * The character popup (`#charpop` ported): opens AT the clicked cell —
- * the 44px glyph in the winning font, the `U+XXXX` code in accent
- * mono, `来自 {字体名}`, one-click side buttons (the carried side
- * hidden), and 恢复默认 when the character carries its own override.
- * Missing glyphs read 两个字体均不含该字形 — or, in the Nerd Font
- * private-use area, the prototype's PUA explanation sentence.
+ * The character popup facts (the kit's CharPopup renders them
+ * verbatim): the 44px glyph in the winning font, the `U+XXXX` code,
+ * `来自 {字体名}`, one-click side buttons (the carried side hidden, and
+ * a side whose font is not picked — an unpickable button would be a
+ * lie), and 恢复默认 when the character carries its own override that
+ * changes the outcome. Missing glyphs read 两个字体均不含该字形 — or,
+ * in the Nerd Font private-use area, the prototype's PUA explanation
+ * sentence.
  */
-interface CharPopup {
-  openAt(cell: HTMLElement, cp: number): void;
-  close(): void;
-}
+function charFacts(cp: number): CharPopupFacts {
+  const ch = String.fromCodePoint(cp);
+  const picks = pickRefs();
+  const effective = picks.refs.length > 0;
+  const resolver = effective ? currentResolver(picks) : null;
+  const entry = resolver ? resolver.resolve(cp) : null;
 
-function mountCharPopup(): CharPopup {
-  const popup = document.createElement("div");
-  popup.className = "kit-pop char-pop";
-  popup.dataset.charPopup = "";
-  popup.setAttribute("role", "dialog");
-  popup.setAttribute("aria-label", "字符详情");
-
-  const glyph = document.createElement("div");
-  glyph.className = "char-pop-glyph";
-  glyph.dataset.role = "char-glyph";
-
-  const code = document.createElement("div");
-  code.className = "char-pop-code kit-num";
-  code.dataset.role = "char-code";
-
-  const from = document.createElement("div");
-  from.className = "char-pop-from";
-  from.dataset.role = "char-from";
-
-  const btns = document.createElement("div");
-  btns.className = "char-pop-btns";
-  const baseBtn = document.createElement("button");
-  baseBtn.type = "button";
-  baseBtn.className = "kit-btn sm";
-  baseBtn.dataset.role = "char-base";
-  baseBtn.textContent = "用英文字体";
-  const donorBtn = document.createElement("button");
-  donorBtn.type = "button";
-  donorBtn.className = "kit-btn sm";
-  donorBtn.dataset.role = "char-donor";
-  donorBtn.textContent = "用中文字体";
-  btns.append(baseBtn, donorBtn);
-
-  const reset = document.createElement("button");
-  reset.type = "button";
-  reset.className = "char-pop-rest kit-btn sm gh";
-  reset.dataset.role = "char-reset";
-  reset.textContent = "恢复默认";
-
-  popup.append(glyph, code, from, btns, reset);
-  document.body.appendChild(popup);
-
-  let anchorCell: HTMLElement | null = null;
-  let openCp: number | null = null;
-
-  const close = (): void => {
-    if (openCp === null) return;
-    openCp = null;
-    anchorCell = null;
-    popup.classList.remove("open");
-  };
-
-  const renderAt = (cp: number): void => {
-    const ch = String.fromCodePoint(cp);
-    const picks = pickRefs();
-    const effective = picks.refs.length > 0;
-    const resolver = effective ? currentResolver(picks) : null;
-    const entry = resolver ? resolver.resolve(cp) : null;
-
-    glyph.textContent = ch;
-    code.textContent = formatCp(cp);
-
-    // Missing (or pre-pick) copy and side buttons.
+  if (entry === null) {
     const missingCopy =
       cp >= 0xe000 && cp <= 0xf8ff
         ? "这是一个 Nerd Font 图标字符，位于专用区编码。只有英文字体包含这类图标，合成时保留英文字体的图标。"
         : "两个字体均不含该字形";
-    if (entry === null) {
-      glyph.style.fontFamily = "'Microsoft YaHei',serif";
-      glyph.style.color = "var(--ink3)";
-      if (effective) {
-        from.textContent = missingCopy;
-      } else {
-        from.textContent = "";
-      }
-      baseBtn.style.display = "none";
-      donorBtn.style.display = "none";
-      reset.style.display = "none";
-      return;
-    }
-    const winnerFont = refFont(entry.winner, picks);
-    glyph.style.fontFamily = winnerFont
-      ? `${cssFamily(winnerFont.cssFamily)}, sans-serif`
-      : "";
-    glyph.style.color = "";
-    from.textContent = `来自 ${winnerFont?.family ?? ""}`;
-    // The carried side hides; so does a side whose font is not picked
-    // (an unpickable button would be a lie). `winner` is the REF
-    // (`base` / `donor-0`), compared in that vocabulary.
-    baseBtn.style.display =
-      entry.winner === "base" || !picks.refs.includes("base") ? "none" : "";
-    donorBtn.style.display =
-      entry.winner === "donor-0" || !picks.refs.includes("donor-0")
-        ? "none"
-        : "";
+    return {
+      glyph: ch,
+      missing: true,
+      code: formatCp(cp),
+      from: effective ? missingCopy : "",
+      showBase: false,
+      showDonor: false,
+      showReset: false,
+    };
+  }
+  const winnerFont = refFont(entry.winner, picks);
+  // The carried side hides; so does a side whose font is not picked
+  // (an unpickable button would be a lie). `winner` is the REF
+  // (`base` / `donor-0`), compared in that vocabulary.
+  const showBase =
+    entry.winner !== "base" && picks.refs.includes("base");
+  const showDonor =
+    entry.winner !== "donor-0" && picks.refs.includes("donor-0");
 
-    // 恢复默认 shows only when the character carries its own override
-    // AND that override changes the outcome (prototype: S.ov[ch] &&
-    // S.ov[ch] !== layC(ch,b)).
-    const own = codepointRule(cp);
-    if (own === undefined) {
-      reset.style.display = "none";
-      return;
-    }
+  // 恢复默认 shows only when the character carries its own override
+  // AND that override changes the outcome (prototype: S.ov[ch] &&
+  // S.ov[ch] !== layC(ch,b)).
+  let showReset = false;
+  const own = codepointRule(cp);
+  if (own !== undefined) {
     const ownRef = own.fonts[0] ?? null;
     const deeper = deeperWinner(
       store.get().rules.filter((rule) => !targetsCodepoint(rule, cp)),
       picks,
       cp,
     );
-    reset.style.display =
-      ownRef !== null && ownRef !== deeper ? "" : "none";
+    showReset = ownRef !== null && ownRef !== deeper;
+  }
+
+  return {
+    glyph: ch,
+    glyphFamily: winnerFont
+      ? `${cssFamily(winnerFont.cssFamily)}, sans-serif`
+      : undefined,
+    code: formatCp(cp),
+    from: `来自 ${winnerFont?.family ?? ""}`,
+    showBase,
+    showDonor,
+    showReset,
+    onBase: () => applyCodepointSide(cp, "base"),
+    onDonor: () => applyCodepointSide(cp, "donor"),
+    onReset: () => removeCodepointRule(cp),
   };
-
-  const openAt = (cell: HTMLElement, cp: number): void => {
-    if (openCp !== null && openCp !== cp) close();
-    anchorCell = cell;
-    openCp = cp;
-    renderAt(cp);
-    popup.classList.add("open");
-    fitPopup(popup, cell.getBoundingClientRect());
-  };
-
-  baseBtn.addEventListener("click", () => {
-    if (openCp !== null) applyCodepointSide(openCp, "base");
-    close();
-  });
-  donorBtn.addEventListener("click", () => {
-    if (openCp !== null) applyCodepointSide(openCp, "donor");
-    close();
-  });
-  reset.addEventListener("click", () => {
-    if (openCp !== null) removeCodepointRule(openCp);
-    close();
-  });
-
-  popup.addEventListener("pointerdown", (e) => e.stopPropagation());
-  document.addEventListener("pointerdown", (e) => {
-    if (openCp === null) return;
-    const target = e.target as Node;
-    if (!target.isConnected) return;
-    // A click on any cell (re-opens at that cell) or inside the popup
-    // keeps it; everything else closes it.
-    if (popup.contains(target) || target instanceof Element && target.closest(".kit-cell")) {
-      return;
-    }
-    close();
-  });
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && openCp !== null) close();
-  });
-  window.addEventListener("resize", () => {
-    if (openCp !== null && anchorCell !== null && anchorCell.isConnected) {
-      fitPopup(popup, anchorCell.getBoundingClientRect());
-    }
-  });
-
-  return { openAt, close };
 }
 
 /** Upsert the codepoint rule as the side's single-font override. */
@@ -587,153 +486,29 @@ function upsertCodepointRule(cp: number, ref: string): void {
 /* ---------------- the 按编码指定 range popup ------------------------ */
 
 /**
- * The range-specify popup, the prototype's `#rangepop` contract
- * verbatim: title 按编码指定, the hint 输入编码或范围，窄范围优先于整类。,
- * the `U+0030 或 0` / `留空=单个` inputs (an empty end means a single
- * codepoint), the side select, and the primary 添加 — invalid input
- * paints the input border danger-red and adds nothing.
+ * The range-specify apply (the kit's RangePopup owns the verbatim
+ * chrome): parse `U+0030 或 0` / `留空=单个` (an empty end = a single
+ * codepoint), resolve the side's font ref, and add the narrow range
+ * rule that outranks class defaults. Invalid input (or an unpicked
+ * side) reports false — the popup paints the danger border.
  */
-function mountRangePopup(
-  anchor: HTMLElement,
-): { open(): void; toggle(): void; close(): void } {
-  const popup = document.createElement("div");
-  popup.className = "kit-pop range-pop";
-  popup.dataset.rangePopup = "";
-  popup.setAttribute("role", "dialog");
-  popup.setAttribute("aria-label", "按编码指定");
-  const title = document.createElement("h5");
-  title.textContent = "按编码指定";
-  const hint = document.createElement("p");
-  hint.className = "kit-sub";
-  hint.textContent = "输入编码或范围，窄范围优先于整类。";
-  const row = document.createElement("div");
-  row.className = "range-pop-row";
-  const startInput = document.createElement("input");
-  startInput.type = "search";
-  startInput.spellcheck = false;
-  startInput.dataset.role = "range-start";
-  startInput.placeholder = "U+0030 或 0";
-  startInput.setAttribute("aria-label", "起始码位");
-  const endInput = document.createElement("input");
-  endInput.type = "search";
-  endInput.spellcheck = false;
-  endInput.dataset.role = "range-end";
-  endInput.placeholder = "留空=单个";
-  endInput.setAttribute("aria-label", "结束码位");
-  row.append(startInput, endInput);
-
-  const actions = document.createElement("div");
-  actions.className = "range-pop-row range-pop-actions";
-  const sideSelect: AppSelect = mountAppSelect({
-    label: "指定字体",
-    value: "base",
-    options: [
-      { value: "base", label: "用英文字体" },
-      { value: "donor", label: "用中文字体" },
-    ],
-  });
-  sideSelect.el.dataset.role = "range-side";
-  sideSelect.el.style.flex = "1";
-  const add = document.createElement("button");
-  add.type = "button";
-  add.className = "kit-btn sm pri";
-  add.dataset.role = "range-add";
-  add.textContent = "添加";
-  actions.append(sideSelect.el, add);
-  popup.append(title, hint, row, actions);
-  document.body.appendChild(popup);
-
-  let open = false;
-  const position = (): void => {
-    fitPopup(popup, anchor.getBoundingClientRect());
-  };
-  const close = (): void => {
-    if (!open) return;
-    open = false;
-    startInput.style.borderColor = "";
-    endInput.style.borderColor = "";
-    popup.classList.remove("open");
-  };
-  const openUp = (): void => {
-    if (open) return;
-    open = true;
-    popup.classList.add("open");
-    position();
-    startInput.focus();
-  };
-  const toggle = (): void => {
-    if (open) close();
-    else openUp();
-  };
-  const markInvalid = (): void => {
-    startInput.style.borderColor = "var(--dgr)";
-    endInput.style.borderColor = "var(--dgr)";
-  };
-
-  add.addEventListener("click", () => {
-    const start = parseCodepointInput(startInput.value);
-    const endRaw = endInput.value.trim();
-    const end = endRaw === "" ? start : parseCodepointInput(endRaw);
-    const ref = sideRef(sideSelect.value === "base" ? "base" : "donor");
-    if (start === null || end === null || end < start || ref === null) {
-      markInvalid();
-      return;
-    }
-    mutateRules([
-      ...store.get().rules,
-      newRule({ kind: "range", start, end }, [ref]),
-    ]);
-    close();
-  });
-  for (const input of [startInput, endInput]) {
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        add.click();
-      }
-    });
-    input.addEventListener("input", () => {
-      input.style.borderColor = "";
-    });
+function applyRangeInput(
+  startText: string,
+  endText: string,
+  side: FontSide,
+): boolean {
+  const start = parseCodepointInput(startText);
+  const endRaw = endText.trim();
+  const end = endRaw === "" ? start : parseCodepointInput(endRaw);
+  const ref = sideRef(side);
+  if (start === null || end === null || end < start || ref === null) {
+    return false;
   }
-  // Escape with focus inside the popup (a search input may consume the
-  // document-level rung): close here, before anything else.
-  popup.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && open) {
-      e.stopPropagation();
-      close();
-    }
-  });
-
-  // The popup's anchor element is only used for POSITIONING here; the
-  // caller owns the click wiring (the toolbar's 按编码指定 buttons are
-  // recreated on every action-bar render and reach toggle() through
-  // ActionBarProps.onRangeSpecify — one owner of the open state).
-  popup.addEventListener("pointerdown", (e) => e.stopPropagation());
-  document.addEventListener("pointerdown", (e) => {
-    if (!open) return;
-    const target = e.target as Node;
-    if (!target.isConnected) return;
-    if (
-      popup.contains(target) ||
-      (target instanceof Element &&
-        (target.closest(".kit-cselw") || target.closest("[data-role='range-specify']")))
-    ) {
-      return;
-    }
-    close();
-  });
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && open) close();
-  });
-  window.addEventListener("resize", () => {
-    if (open) position();
-  });
-  return {
-    open: openUp,
-    toggle,
-    close,
-  };
+  mutateRules([
+    ...store.get().rules,
+    newRule({ kind: "range", start, end }, [ref]),
+  ]);
+  return true;
 }
 
 /* ---------------------- chip data ----------------------------------- */
@@ -848,7 +623,9 @@ export function mountCharmap(root: HTMLElement): void {
     onToggleMulti: () => undefined,
     onToggleCodepoints: () => undefined,
   });
-  const rangePopup = mountRangePopup(toolbar);
+  const rangePopup = mountRangePopup(toolbar, {
+    onApply: applyRangeInput,
+  });
   const charPopup = mountCharPopup();
   const grid: CharGrid = mountCharGrid(gridHost);
   activeGrid = grid;
@@ -898,7 +675,7 @@ export function mountCharmap(root: HTMLElement): void {
       // Position the popup against the LIVE cell first — the store
       // patch below re-renders the grid synchronously and would detach
       // the node (its rect then reads as zero).
-      charPopup.openAt(cellEl, cp);
+      charPopup.openAt(cellEl, charFacts(cp));
       store.set({ selectedCodepoint: cp });
       return;
     }

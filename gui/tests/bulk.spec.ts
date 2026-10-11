@@ -175,7 +175,7 @@ test.describe("multi-select, batch operations, undo", () => {
     // 多选 mode arms painting; the boot preset is the 文字范围 state,
     // so the 自定义规则 summary list starts empty.
     await enterMultiMode(page);
-    await expect(page.locator(".rule-list-empty")).toHaveText("暂无自定义规则。");
+    await expect(page.locator(".kit-rl-empty")).toHaveText("暂无自定义规则。");
 
     // Drag-paint a contiguous run of four cells.
     const run = ["U+4E10", "U+4E11", "U+4E12", "U+4E13"];
@@ -211,7 +211,7 @@ test.describe("multi-select, batch operations, undo", () => {
     await expect.poll(() => summaryRowCount(page)).toBe(1);
     const row = page.locator("[data-role='rule-row'][data-kind='range']");
     await expect(row).toContainText("用中文字体");
-    await expect(row.locator(".rule-line-suffix")).toHaveText(
+    await expect(row.locator(".kit-us")).toHaveText(
       "U+4E10 至 U+4E13",
     );
     for (const cp of run) {
@@ -241,7 +241,7 @@ test.describe("multi-select, batch operations, undo", () => {
     expect(await collectGrid(page)).toEqual(gridBefore);
     expect(await page.locator(".statsbar").textContent()).toBe(statsBefore);
     await expect.poll(() => summaryRowCount(page)).toBe(0);
-    await expect(page.locator(".rule-list-empty")).toHaveText("暂无自定义规则。");
+    await expect(page.locator(".kit-rl-empty")).toHaveText("暂无自定义规则。");
   });
 
   /* --------------------------------------------------------------- */

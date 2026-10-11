@@ -93,14 +93,15 @@ test.describe("scene previews and synthesis settings", () => {
     const popup = page.locator("[data-range-popup]");
     await expect(popup).toBeVisible();
     await popup.locator("[data-role='range-start']").fill(cp);
-    await pointerClick(
-      page,
-      popup.locator("[data-role='range-side'] .kit-csel"),
-    );
-    await pointerClick(
-      page,
-      popup.locator("[data-role='range-side'] .kit-cso[data-value='donor']"),
-    );
+    const side = popup.locator("[data-role='range-side']");
+    await pointerClick(page, side.locator(".kit-csel"));
+    // Wait for the dropdown to paint before clicking its option, and
+    // for the commit to land before 添加 — under a full parallel run
+    // the palette's allow-discrete open lags the click that opened it
+    // (suite convention: a visible-wait between dependent steps).
+    await expect(side.locator(".kit-csel-pk")).toBeVisible();
+    await pointerClick(page, side.locator(".kit-cso[data-value='donor']"));
+    await expect(side.locator(".kit-csel")).toContainText("用中文字体");
     await pointerClick(page, popup.locator("[data-role='range-add']"));
     await expect(popup).toBeHidden();
   }

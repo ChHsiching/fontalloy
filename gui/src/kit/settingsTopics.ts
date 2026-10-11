@@ -12,8 +12,8 @@
  * `CONTENT CORRECTED` comment so the owner can find them.
  */
 
-import type { AppSelectOption } from "./appSelect";
-import { helpNote, workedTable } from "./helpPopover";
+import { mountAppSelect, type AppSelect, type AppSelectOption } from "./appSelect";
+import { mountHelpPopover, helpNote, workedTable } from "./helpPopover";
 
 export interface SettingsTopic {
   key: string;
@@ -158,3 +158,56 @@ export const SETTINGS_TOPICS: readonly SettingsTopic[] = [
     },
   },
 ];
+
+/* -------------------------------------------------------------------- */
+/* The settings ROW (prototype L428–443): label + ? + AppSelect.         */
+/* -------------------------------------------------------------------- */
+
+export interface SettingRow {
+  readonly el: HTMLElement;
+  readonly select: AppSelect;
+  /** The ?-button's anchor (consumers annotate data-role on it). */
+  readonly helpAnchor: HTMLElement;
+}
+
+/**
+ * One settings row — the prototype's `.set` chrome: the label with the
+ * circular ? help button beside it, the kit AppSelect under it. The
+ * consumer owns the VALUE wiring (render on store change).
+ */
+export function mountSettingRow(
+  topic: SettingsTopic,
+  props: {
+    value: string;
+    onChange(value: string): void;
+  },
+): SettingRow {
+  const el = document.createElement("div");
+  el.className = "kit-setrow";
+
+  const head = document.createElement("div");
+  head.className = "kit-sethead";
+  const name = document.createElement("span");
+  name.className = "kit-setname";
+  name.textContent = topic.name;
+  head.appendChild(name);
+  const help = mountHelpPopover({
+    id: topic.topic.id,
+    title: topic.topic.title,
+    buttonLabel: topic.topic.buttonLabel,
+    width: topic.topic.width,
+    build: topic.topic.build,
+  });
+  head.appendChild(help.anchor);
+  el.appendChild(head);
+
+  const select = mountAppSelect({
+    label: topic.name,
+    value: props.value,
+    options: topic.options,
+    onChange: props.onChange,
+  });
+  el.appendChild(select.el);
+
+  return { el, select, helpAnchor: help.anchor };
+}

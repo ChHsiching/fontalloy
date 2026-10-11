@@ -130,14 +130,12 @@ test.describe("precedence editing", () => {
     await popup.locator("[data-role='range-start']").fill(start);
     await popup.locator("[data-role='range-end']").fill(end);
     if (side === "donor") {
-      await pointerClick(
-        page,
-        popup.locator("[data-role='range-side'] .kit-csel"),
-      );
-      await pointerClick(
-        page,
-        popup.locator("[data-role='range-side'] .kit-cso[data-value='donor']"),
-      );
+      const sideSel = popup.locator("[data-role='range-side']");
+      await pointerClick(page, sideSel.locator(".kit-csel"));
+      // Visible-wait before the option click: under parallel load the
+      // palette's allow-discrete open lags the click that opened it.
+      await expect(sideSel.locator(".kit-csel-pk")).toBeVisible();
+      await pointerClick(page, sideSel.locator(".kit-cso[data-value='donor']"));
     }
     await pointerClick(page, popup.locator("[data-role='range-add']"));
     await expect(popup).toBeHidden();
@@ -565,7 +563,7 @@ test.describe("precedence editing", () => {
     await openWithFonts(page, fonts);
 
     // Empty state (the 文字范围 chips own the preset scope).
-    await expect(page.locator(".rule-list-empty")).toHaveText("暂无自定义规则。");
+    await expect(page.locator(".kit-rl-empty")).toHaveText("暂无自定义规则。");
 
     // A block assignment reads as its sentence.
     await pointerClick(page, page.locator(".kit-cat-g[data-group='latin-europe']"));
@@ -582,7 +580,7 @@ test.describe("precedence editing", () => {
     await addRangeRule(page, "0x4E10", "0x4E13", "donor");
     const rangeRow = page.locator("[data-role='rule-row'][data-kind='range']");
     await expect(rangeRow).toHaveText(/用中文字体/);
-    await expect(rangeRow.locator(".rule-line-suffix")).toHaveText(
+    await expect(rangeRow.locator(".kit-us")).toHaveText(
       "U+4E10 至 U+4E13",
     );
 
@@ -598,7 +596,7 @@ test.describe("precedence editing", () => {
 
     // 全部恢复默认 clears every customization in one undoable step.
     await pointerClick(page, page.locator("[data-role='undo-all']"));
-    await expect(page.locator(".rule-list-empty")).toHaveText("暂无自定义规则。");
+    await expect(page.locator(".kit-rl-empty")).toHaveText("暂无自定义规则。");
     await page.keyboard.press("Control+z");
     await expect(blockRow).toHaveCount(1);
     await expect(page.locator("[data-role='rule-solo']")).toHaveCount(1);

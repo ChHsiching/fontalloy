@@ -3,13 +3,14 @@
  *
  * Since the design-fidelity repair, ALL component chrome lives in the
  * kit (kit/tokens.css + kit/kit.css — the validated prototype's design
- * language as CSS custom properties). What remains here is the shell
- * (top bar host / rail / content / stats bar), the app-specific strips
- * the prototype does not model (the build panel, the catalog screen,
- * the synthesize notice), and the app-level popups (the char popup at
- * the cell, the 按编码指定 range popup) built on the kit's .kit-pop
- * primitive. Colors, radii, shadows, and motion reference the kit
- * variables only.
+ * language as CSS custom properties; see kit/README.md for the
+ * component → prototype inventory mapping). What remains here is the
+ * shell (top bar host / rail / content / stats bar), the layout glue
+ * of the screens that assemble kit parts, and the app-specific strips
+ * the prototype does not model (the marked PRODUCT-EXTENSION group:
+ * the synthesize notice, the build panel, the no-service CLI panel,
+ * the first-run catalog screen, and the language-preset picker popup).
+ * Colors, radii, shadows, and motion reference the kit variables only.
  */
 
 body {
@@ -176,151 +177,18 @@ body {
   color: var(--ink);
 }
 
-/* ---------- the char popup (at the cell, prototype #charpop) ------- */
+/* ---------- the rail's rule surfaces (prototype rRules) -------------
+ * Both sections assemble kit parts: the 文字范围 chips (kit/langChips)
+ * and the 自定义规则 summary rows (kit/ruleRows + the kit's
+ * undoAllButton). Only the 添加语言预设… entry button (the extension
+ * surface) and section spacing live here. */
 
-.char-pop {
-  width: 240px;
-}
-
-.char-pop-glyph {
-  font-size: 44px;
-  line-height: 1.2;
-  text-align: center;
-  padding: 4px 0 8px;
-  border-bottom: 1px solid var(--ln);
-  margin-bottom: 8px;
-}
-
-.char-pop-code {
-  color: var(--ac);
-  font-size: 12.5px;
-  margin-bottom: 2px;
-}
-
-.char-pop-from {
-  color: var(--ink2);
-  font-size: 12px;
-  line-height: 1.6;
-  margin-bottom: 8px;
-}
-
-.char-pop-btns {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 6px;
-}
-
-.char-pop-btns .kit-btn {
-  flex: 1;
-}
-
-.char-pop-rest {
-  width: 100%;
-}
-
-/* ---------- the rail's rule summary list (prototype rRules) -------- */
-
-/* The 文字范围 chip row (the prototype's .lang-r): four fixed
-   language chips (kit-lchip), always visible, pressed = declared. */
-.lang-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-
-.rule-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.rule-list-empty {
-  color: var(--ink3);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-/* One summary line: category icon + the sentence (+ the dim tabular
-   U+… suffix) + the delete × (danger on hover), like .rl. */
-.rule-line {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
-  border: 1px solid var(--ln);
-  border-radius: 9px;
-  background: var(--sf);
-  font-size: 12.5px;
-  color: var(--ink);
-}
-
-.rule-line.dashed {
-  border-style: dashed;
-}
-
-.rule-line-ic {
-  display: inline-flex;
-  color: var(--ink3);
-  flex: none;
-}
-
-.rule-line-ic svg {
-  width: 14px;
-  height: 14px;
-}
-
-.rule-line-text {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.rule-line-suffix {
-  flex: none;
-  color: var(--ink3);
-  font-size: 11px;
-}
-
-.rule-line-del {
-  flex: none;
-  display: inline-flex;
-  color: var(--ink3);
-  padding: 2px;
-  border-radius: 5px;
-}
-
-.rule-line-del:hover {
-  color: var(--dgr);
-}
-
-.rule-line-del svg {
-  width: 13px;
-  height: 13px;
-}
-
-/* ---------- synthesis settings rows ---------- */
-
-.setting-row {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.setting-head {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.setting-name {
-  color: var(--ink2);
-  font-size: 12px;
-}
-
-/* ---------- app-level popups on the kit's .kit-pop primitive ---------- */
+/* ---------- app-level extension popups ------------------------------
+ * The 按编码指定 range popup and the cell's char popup are KIT parts
+ * (kit/rangePopup.ts, kit/charPopup.ts — prototype #rangepop /
+ * #charpop chrome in kit.css). What stays here is the one extension
+ * popup the prototype never modeled: the language-preset picker
+ * (ui/presetpicker.ts), assembled on the kit's .kit-pop chrome. */
 
 .preset-pop {
   width: 300px;
@@ -360,48 +228,6 @@ body {
   flex-direction: row;
   justify-content: space-between;
   align-items: baseline;
-}
-
-/* The 按编码指定 range popup (prototype #rangepop). */
-
-.range-pop {
-  width: 320px;
-}
-
-.range-pop h5 {
-  margin: 0 0 2px;
-}
-
-.range-pop .kit-sub {
-  margin: 0 0 8px;
-}
-
-.range-pop-row {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 6px;
-}
-
-.range-pop-row input {
-  flex: 1;
-  min-width: 0;
-  background: var(--page);
-  border: 1px solid var(--ln2);
-  border-radius: 7px;
-  padding: 5px 9px;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
-.range-pop-row input:focus {
-  outline: none;
-  border-color: var(--ac);
-}
-
-.range-pop-actions {
-  align-items: center;
-  margin-top: 4px;
-  margin-bottom: 0;
 }
 
 /* ---------- first-run catalog screen (issue #17) ---------- */

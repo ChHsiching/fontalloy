@@ -10,23 +10,35 @@ import "../kit.css";
 import "./demo.css";
 
 import { mountPickerPopup, type PickerPopup } from "../pickerPopup";
-import { mountAppSelect } from "../appSelect";
-import { mountHelpPopover } from "../helpPopover";
-import { SETTINGS_TOPICS } from "../settingsTopics";
+import { SETTINGS_TOPICS, mountSettingRow } from "../settingsTopics";
 import { mountCategoryChips, type CategoryChips } from "../categoryChips";
 import { mountActionBar, segmentedControl, undoAllButton, type ActionBar } from "../actionBar";
-import { mountCharGrid, type CharGrid } from "../grid";
+import {
+  formatCodepoint,
+  mountCharGrid,
+  PAGE_SIZE,
+  type CharGrid,
+  type GridCellData,
+} from "../grid";
 import { mountStatusBar, type StatusBar } from "../statusBar";
 import { mountSceneCard, mountFullscreenScene, type SceneCard } from "../sceneCard";
 import { mountTopBar } from "../topBar";
-import { icon } from "../icons";
+import { mountLangChips } from "../langChips";
+import { ruleEmptyState, ruleRow, ruleSoloRow } from "../ruleRows";
+import { mountCharPopup, type CharPopupFacts } from "../charPopup";
+import { mountRangePopup } from "../rangePopup";
+import type { IconName } from "../icons";
 import type { SceneKind } from "../sceneCard";
 import { applyAppTheme, type AppTheme } from "../theme";
 import type { FontSide } from "../actionBar";
 import {
   ADJUSTED_CHARS,
+  BASE_NAME,
+  BASE_STACK,
   CJK_FONTS,
   DEMO_BLOCKS,
+  DONOR_NAME,
+  DONOR_STACK,
   EN_FONTS,
   LANGUAGES,
   MISSING_CHARS,
@@ -70,7 +82,6 @@ const state: DemoState = {
   edTheme: "",
 };
 
-const PAGE_SIZE = 1024;
 let sceneEntrance = true;
 const undoDepth = { rules: 2, picks: 0 };
 
@@ -176,118 +187,115 @@ function cjkName(): string {
   return CJK_FONTS.find((f) => f.id === state.cjkId)?.name ?? "—";
 }
 
-/* ---------- rail: language chips ---------- */
+/* ---------- rail: language chips (kit/langChips) ---------- */
 
 const langHost = section("文字范围");
 const hint = document.createElement("div");
 hint.className = "hint2";
 hint.textContent = "勾选的文字由中文字体提供，并入成品";
 langHost.appendChild(hint);
-const langRow = document.createElement("div");
-langRow.className = "kit-chiprow";
-langHost.appendChild(langRow);
 
-function renderLangs(): void {
-  langRow.innerHTML = "";
-  for (const lang of LANGUAGES) {
-    const chip = document.createElement("button");
-    chip.type = "button";
-    chip.className = "kit-lchip";
-    chip.dataset.lang = lang.id;
-    chip.setAttribute("aria-pressed", String(state.langSelection.has(lang.id)));
-    chip.innerHTML = `${lang.label}<span class="n">${lang.count}</span>`;
-    chip.addEventListener("click", () => {
-      if (state.langSelection.has(lang.id) && state.langSelection.size === 1) {
-        live.textContent = "至少保留一种";
-        return;
-      }
-      if (state.langSelection.has(lang.id)) state.langSelection.delete(lang.id);
-      else state.langSelection.add(lang.id);
-      renderLangs();
-    });
-    langRow.appendChild(chip);
+const langChips = mountLangChips(langHost, {
+  chips: LANGUAGES.map(({ id, label, count }) => ({ id, label, count })),
+  isPressed: (id) => state.langSelection.has(id),
+  onToggle: (id) => toggleLang(id),
+});
+
+function toggleLang(id: string): void {
+  if (state.langSelection.has(id) && state.langSelection.size === 1) {
+    live.textContent = "至少保留一种";
+    return;
   }
+  if (state.langSelection.has(id)) state.langSelection.delete(id);
+  else state.langSelection.add(id);
+  langChips.render({
+    chips: LANGUAGES.map(({ id: lid, label, count }) => ({
+      id: lid,
+      label,
+      count,
+    })),
+    isPressed: (lid) => state.langSelection.has(lid),
+    onToggle: (lid) => toggleLang(lid),
+  });
 }
-renderLangs();
 
-/* ---------- rail: rules (assembled from kit primitives) ---------- */
+/* ---------- rail: rules (kit/ruleRows + the kit's undoAllButton) ----- */
 
 const rulesHost = section("自定义规则");
 const rulesEl = document.createElement("div");
-rulesEl.className = "demo-rules";
+rulesEl.className = "kit-rules";
 rulesHost.appendChild(rulesEl);
 
+/** The demo's rule state — removable rows + a solo-character count. */
+interface DemoRule {
+  kind: "group" | "block" | "range";
+  icon: IconName;
+  text: string;
+  suffix?: string;
+}
+const DEMO_RULES: DemoRule[] = [
+  { kind: "group", icon: "layers", text: "所有中文字符用中文字体" },
+  { kind: "block", icon: "tag", text: "Nerd Font用英文字体" },
+  {
+    kind: "range",
+    icon: "range",
+    text: "一 至 龙 用中文字体",
+    suffix: "U+4E00 至 U+9F99",
+  },
+];
+
+let soloCount = 2;
+
 function renderRules(): void {
-  rulesEl.innerHTML = "";
-  const rules: Array<{ icn: string; text: string; us?: string }> = [
-    { icn: "layers", text: "所有中文字符用中文字体" },
-    { icn: "star", text: "Nerd Font用英文字体" },
-    { icn: "range", text: "一 至 龙 用中文字体", us: "U+4E00 至 U+9F99" },
-    { icn: "pen", text: "单个字符" },
-  ];
-  for (const rule of rules) {
-    const row = document.createElement("div");
-    row.className = "demo-rl";
-    row.innerHTML = icon(rule.icn as never);
-    const tx = document.createElement("span");
-    tx.className = "tx";
-    tx.textContent = rule.text;
-    row.appendChild(tx);
-    if (rule.us) {
-      const us = document.createElement("span");
-      us.className = "us";
-      us.textContent = rule.us;
-      row.appendChild(us);
-    }
-    const del = document.createElement("button");
-    del.type = "button";
-    del.className = "del";
-    del.setAttribute("aria-label", "删除规则");
-    del.innerHTML = icon("close");
-    row.appendChild(del);
-    rulesEl.appendChild(row);
+  const fragment = document.createDocumentFragment();
+  for (const [index, rule] of DEMO_RULES.entries()) {
+    fragment.appendChild(
+      ruleRow({
+        ...rule,
+        onRemove: () => {
+          DEMO_RULES.splice(index, 1);
+          renderRules();
+        },
+      }),
+    );
   }
-  rulesEl.appendChild(
+  if (soloCount > 0) fragment.appendChild(ruleSoloRow(soloCount));
+  if (DEMO_RULES.length === 0 && soloCount === 0) {
+    fragment.appendChild(ruleEmptyState());
+  }
+  fragment.appendChild(
     undoAllButton(() => {
+      // The prototype's 全部恢复默认 clears EVERYTHING (block rules,
+      // ranges, single-character overrides) — the empty state follows.
+      DEMO_RULES.length = 0;
+      soloCount = 0;
+      renderRules();
       live.textContent = "已全部恢复默认";
     }),
   );
+  rulesEl.replaceChildren(fragment);
 }
 renderRules();
 
-/* ---------- rail: synthesis settings ---------- */
+/* ---------- rail: synthesis settings (kit mountSettingRow) ---------- */
 
 const settingsHost = section("合成设置");
 const settingsWrap = document.createElement("div");
-settingsWrap.className = "demo-setting-row";
+settingsWrap.className = "demo-settings";
 settingsHost.appendChild(settingsWrap);
 
 for (const topic of SETTINGS_TOPICS) {
-  const row = document.createElement("div");
-  const label = document.createElement("div");
-  label.className = "demo-setting-label";
-  label.appendChild(document.createTextNode(topic.name));
-  const help = mountHelpPopover({
-    id: topic.topic.id,
-    title: topic.topic.title,
-    buttonLabel: topic.topic.buttonLabel,
-    width: topic.topic.width,
-    build: topic.topic.build,
-  });
-  label.appendChild(help.anchor);
-  row.appendChild(label);
-  const select = mountAppSelect({
-    label: topic.name,
+  const row = mountSettingRow(topic, {
     value: topic.options[0].value,
-    options: topic.options,
     onChange: (value) => {
-      row.dataset.value = value;
-      live.textContent = `${topic.name}：${topic.options.find((o) => o.value === value)?.label ?? value}`;
+      row.el.dataset.value = value;
+      live.textContent = `${topic.name}：${
+        topic.options.find((o) => o.value === value)?.label ?? value
+      }`;
     },
   });
-  select.el.dataset.role = `select-${topic.key}`;
-  row.appendChild(select.el);
-  settingsWrap.appendChild(row);
+  row.select.el.dataset.role = `select-${topic.key}`;
+  settingsWrap.appendChild(row.el);
 }
 
 /* ---------- content: mode bar ---------- */
@@ -401,8 +409,58 @@ const actionBar: ActionBar = mountActionBar(gridView, {
     const parsed = parseCodepoint(query);
     if (parsed !== null) locate(String.fromCodePoint(parsed));
   },
-  onRangeSpecify: () => (live.textContent = "按编码指定：演示环境未接入"),
+  onRangeSpecify: () => rangePopup.toggle(),
 });
+
+/* ---------- the char popup + the range popup (kit parts) ---------- */
+
+const charPopup = mountCharPopup();
+
+const rangePopup = mountRangePopup(actionBar.el, {
+  onApply: (start, end, side) => {
+    const s = parseCodepoint(start);
+    const e = end.trim() === "" ? s : parseCodepoint(end);
+    if (s === null || e === null || e < s) return false;
+    live.textContent = `已添加区间规则（${
+      side === "base" ? "英文" : "中文"
+    }字体）`;
+    return true;
+  },
+});
+
+/** The demo's char-popup facts for a cell (the kit renders them). */
+function demoCharFacts(data: GridCellData): CharPopupFacts {
+  const cp = data.ch.codePointAt(0)!;
+  const code = data.cp ?? `U+${formatCodepoint(data.ch)}`;
+  if (data.state === "none") {
+    const missingCopy =
+      cp >= 0xe000 && cp <= 0xf8ff
+        ? "这是一个 Nerd Font 图标字符，位于专用区编码。只有英文字体包含这类图标，合成时保留英文字体的图标。"
+        : "两个字体均不含该字形";
+    return {
+      glyph: data.ch,
+      missing: true,
+      code,
+      from: missingCopy,
+      showBase: false,
+      showDonor: false,
+      showReset: false,
+    };
+  }
+  const winnerIsBase = data.state !== "donor";
+  return {
+    glyph: data.ch,
+    glyphFamily: winnerIsBase ? BASE_STACK : DONOR_STACK,
+    code,
+    from: `来自 ${winnerIsBase ? BASE_NAME : DONOR_NAME}`,
+    showBase: !winnerIsBase,
+    showDonor: winnerIsBase,
+    showReset: ADJUSTED_CHARS.has(data.ch),
+    onBase: () => (live.textContent = `${data.ch} 已指定为英文字体`),
+    onDonor: () => (live.textContent = `${data.ch} 已指定为中文字体`),
+    onReset: () => (live.textContent = `${data.ch} 已恢复默认`),
+  };
+}
 
 const grid: CharGrid = mountCharGrid(gridView);
 
@@ -514,7 +572,7 @@ function renderGridArea(): void {
         },
         onUndoPick: () => (live.textContent = "已撤销选择"),
       },
-      onRangeSpecify: () => (live.textContent = "按编码指定：演示环境未接入"),
+      onRangeSpecify: () => rangePopup.toggle(),
     });
   } else {
     actionBar.render({
@@ -566,7 +624,7 @@ function renderGridArea(): void {
         const parsed = parseCodepoint(query);
         if (parsed !== null) locate(String.fromCodePoint(parsed));
       },
-      onRangeSpecify: () => (live.textContent = "按编码指定：演示环境未接入"),
+      onRangeSpecify: () => rangePopup.toggle(),
     });
   }
 
@@ -584,18 +642,16 @@ function renderGridArea(): void {
     ),
     showCodepoints: state.showCodepoints,
     cellSize: 40,
-    onCellClick: (data) => {
+    onCellClick: (data, cell) => {
       if (state.multi) {
         if (state.selection.has(data.ch)) state.selection.delete(data.ch);
         else state.selection.add(data.ch);
         undoDepth.picks += 1;
         renderGridArea();
       } else {
-        live.textContent = `${data.ch} U+${data.ch
-          .codePointAt(0)!
-          .toString(16)
-          .toUpperCase()
-          .padStart(4, "0")}`;
+        // A plain click opens the char popup AT the cell (the kit's
+        // CharPopup; the demo facts come from the cell's state).
+        charPopup.openAt(cell, demoCharFacts(data));
       }
     },
   });

@@ -212,8 +212,13 @@ export interface DemoCellModel {
   adjusted: boolean;
 }
 
-const BASE_STACK = "Consolas,ui-monospace,monospace";
-const DONOR_STACK = "'Microsoft YaHei',sans-serif";
+/** The demo's effective font stacks (base / donor winners). */
+export const BASE_STACK = "Consolas,ui-monospace,monospace";
+export const DONOR_STACK = "'Microsoft YaHei',sans-serif";
+
+/** The demo's picker names for the char popup's 来自 line. */
+export const BASE_NAME = EN_FONTS[0]!.name;
+export const DONOR_NAME = CJK_FONTS[0]!.name;
 
 export function gridCellData(model: DemoCellModel, selected: boolean): GridCellData {
   return {

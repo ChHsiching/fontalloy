@@ -23,7 +23,8 @@ import {
 import { pickRefs } from "../precedence/picks";
 import { mutateRules } from "../history";
 import { undoAllButton } from "../kit/actionBar";
-import { icon, type IconName } from "../kit/icons";
+import { mountLangChips, type LangChips } from "../kit/langChips";
+import { ruleEmptyState, ruleRow, ruleSoloRow } from "../kit/ruleRows";
 import { ALL_BLOCKS, BLOCK_GROUPS, type UnicodeBlock } from "../unicode/blocks";
 import presetsData from "../data/presets.json";
 import { mountPresetPicker } from "./presetpicker";
@@ -101,14 +102,19 @@ function toggleLanguage(name: string): void {
 
 /** The 文字范围 section: the four language chips + the deep picker. */
 export function mountPresetSection(root: HTMLElement): void {
-  const chips = document.createElement("div");
-  chips.className = "lang-chips";
-  chips.dataset.role = "lang-chips";
-  root.appendChild(chips);
+  const chips: LangChips = mountLangChips(root, {
+    chips: LANG_CHIPS.map(({ preset, label }) => ({
+      id: preset,
+      label,
+      count: presetCount(preset).toLocaleString("en-US"),
+    })),
+    isPressed: () => false,
+    onToggle: toggleLanguage,
+  });
 
   const button = document.createElement("button");
   button.type = "button";
-  button.className = "add-rule-button kit-btn sm";
+  button.className = "kit-btn sm";
   button.dataset.role = "add-preset";
   button.textContent = "添加语言预设…";
   root.appendChild(button);
@@ -121,23 +127,15 @@ export function mountPresetSection(root: HTMLElement): void {
         return rule.target.name;
       }),
     );
-    const fragment = document.createDocumentFragment();
-    for (const { preset, label } of LANG_CHIPS) {
-      const chip = document.createElement("button");
-      chip.type = "button";
-      chip.className = "kit-lchip lang-chip";
-      chip.dataset.role = "lang-chip";
-      chip.dataset.preset = preset;
-      chip.setAttribute("aria-pressed", String(declared.has(preset)));
-      chip.appendChild(document.createTextNode(label));
-      const count = document.createElement("span");
-      count.className = "n kit-num";
-      count.textContent = presetCount(preset).toLocaleString("en-US");
-      chip.appendChild(count);
-      chip.addEventListener("click", () => toggleLanguage(preset));
-      fragment.appendChild(chip);
-    }
-    chips.replaceChildren(fragment);
+    chips.render({
+      chips: LANG_CHIPS.map(({ preset, label }) => ({
+        id: preset,
+        label,
+        count: presetCount(preset).toLocaleString("en-US"),
+      })),
+      isPressed: (id) => declared.has(id),
+      onToggle: toggleLanguage,
+    });
   };
   store.subscribe(render);
   render();
@@ -167,50 +165,6 @@ function isExactBlockRule(rule: EditorRule, block: UnicodeBlock): boolean {
 const sideLabel = (side: "base" | "donor"): string =>
   side === "base" ? "英文" : "中文";
 
-/** One summary line: icon + sentence (+ dim suffix) + the delete ×. */
-function summaryRow(options: {
-  kind: string;
-  icon: IconName;
-  text: string;
-  suffix?: string;
-  title?: string;
-  onRemove?: () => void;
-}): HTMLElement {
-  const row = document.createElement("div");
-  row.className = "rule-line";
-  row.dataset.role = "rule-row";
-  row.dataset.kind = options.kind;
-  row.setAttribute(
-    "title",
-    `${options.text}${options.suffix ? ` ${options.suffix}` : ""}`,
-  );
-  const ic = document.createElement("span");
-  ic.className = "rule-line-ic";
-  ic.innerHTML = icon(options.icon);
-  row.appendChild(ic);
-  const text = document.createElement("span");
-  text.className = "rule-line-text";
-  text.textContent = options.text;
-  row.appendChild(text);
-  if (options.suffix !== undefined) {
-    const suffix = document.createElement("span");
-    suffix.className = "rule-line-suffix kit-num";
-    suffix.textContent = options.suffix;
-    row.appendChild(suffix);
-  }
-  if (options.onRemove) {
-    const del = document.createElement("button");
-    del.type = "button";
-    del.className = "rule-line-del";
-    del.dataset.role = "remove-rule";
-    del.setAttribute("aria-label", "删除规则");
-    del.innerHTML = icon("close");
-    del.addEventListener("click", options.onRemove);
-    row.appendChild(del);
-  }
-  return row;
-}
-
 /**
  * The block-assignment summaries: per group, the blocks explicitly
  * assigned (exact single-font range rules). A group whose every block
@@ -234,7 +188,7 @@ function blockSummaryRows(rules: readonly EditorRule[]): HTMLElement[] {
     if (assigned.size === group.blocks.length && sides.size === 1) {
       const side = [...sides][0]!;
       rows.push(
-        summaryRow({
+        ruleRow({
           kind: "group",
           icon: "layers",
           text: `所有${group.name}字符用${sideLabel(side)}字体`,
@@ -253,7 +207,7 @@ function blockSummaryRows(rules: readonly EditorRule[]): HTMLElement[] {
       const entry = assigned.get(block.id);
       if (!entry) continue;
       rows.push(
-        summaryRow({
+        ruleRow({
           kind: "block",
           icon: "tag",
           text: `${block.name}用${sideLabel(entry.side)}字体`,
@@ -274,7 +228,7 @@ function blockSummaryRows(rules: readonly EditorRule[]): HTMLElement[] {
  */
 export function mountRulesSection(root: HTMLElement): void {
   const list = document.createElement("div");
-  list.className = "rule-list";
+  list.className = "kit-rules";
   root.appendChild(list);
 
   const render = (): void => {
@@ -313,7 +267,7 @@ export function mountRulesSection(root: HTMLElement): void {
               .toUpperCase()
               .padStart(4, "0")}`;
       items.push(
-        summaryRow({
+        ruleRow({
           kind: "range",
           icon: "range",
           text: `${chars} 用${sideLabel(side)}字体`,
@@ -325,32 +279,13 @@ export function mountRulesSection(root: HTMLElement): void {
 
     const fragment = document.createDocumentFragment();
     if (items.length === 0 && codepointRules.length === 0) {
-      const empty = document.createElement("div");
-      empty.className = "rule-list-empty";
-      empty.textContent = "暂无自定义规则。";
-      fragment.appendChild(empty);
+      fragment.appendChild(ruleEmptyState());
       list.replaceChildren(fragment);
       return;
     }
     for (const row of items) fragment.appendChild(row);
     if (codepointRules.length > 0) {
-      const solo = document.createElement("div");
-      solo.className = "rule-line dashed";
-      solo.dataset.role = "rule-solo";
-      const pen = document.createElement("span");
-      pen.className = "rule-line-ic";
-      pen.innerHTML = icon("pen");
-      solo.appendChild(pen);
-      const text = document.createElement("span");
-      text.className = "rule-line-text";
-      text.style.flex = "1";
-      text.textContent = "单个字符";
-      solo.appendChild(text);
-      const count = document.createElement("span");
-      count.className = "rule-line-suffix kit-num";
-      count.textContent = String(codepointRules.length);
-      solo.appendChild(count);
-      fragment.appendChild(solo);
+      fragment.appendChild(ruleSoloRow(codepointRules.length));
     }
     // 全部恢复默认: clears block assignments, custom ranges, and
     // single-character overrides in ONE undoable mutation (the preset

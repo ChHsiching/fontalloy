@@ -327,10 +327,14 @@ test.describe("kit demo page", () => {
     await expect(popup).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(popup).toBeHidden();
-    // display:none but still in the DOM while the exit transition plays…
-    expect(await popup.count()).toBe(1);
-    // …then removed (~240ms deferred; polled, not a fixed sleep — the
-    // timer can lag under a full parallel suite run).
+    // Hidden (display:none via the discrete transition) and then removed
+    // ~240ms later, after the exit transition played. The removal is
+    // polled, not a fixed sleep — and the intermediate "still in the
+    // DOM" state is NOT pinned: under a full parallel suite run the
+    // deferred timer can win the race against the assertion, which
+    // would turn a green pass into a flake. The node-survival contract
+    // (the popup PERSISTS across re-renders) is pinned by the search
+    // test above via its data-marker.
     await expect(popup).toHaveCount(0, { timeout: 3000 });
   });
 
@@ -565,6 +569,148 @@ test.describe("kit demo page", () => {
         el.classList.contains("no-in"),
       ),
     ).toBe(true);
+  });
+
+  /* ---------- LangChips (the 文字范围 row) ---------- */
+
+  test("language chips toggle with counts; the last one is guarded", async ({
+    page,
+  }) => {
+    const row = page.locator('[data-role="lang-chips"]');
+    const chips = row.locator('[data-role="lang-chip"]');
+    await expect(chips).toHaveCount(4);
+    await expect(chips.first()).toHaveText("简体中文6,765");
+    await expect(chips.nth(1)).toHaveText("繁体中文13,063");
+    // zh_cn pressed by default, the others not.
+    await expect(chips.first()).toHaveAttribute("aria-pressed", "true");
+    await expect(chips.nth(1)).toHaveAttribute("aria-pressed", "false");
+
+    // Toggling an off chip declares it; toggling again removes it.
+    await pointerClick(page, chips.nth(1));
+    await expect(chips.nth(1)).toHaveAttribute("aria-pressed", "true");
+    await pointerClick(page, chips.nth(1));
+    await expect(chips.nth(1)).toHaveAttribute("aria-pressed", "false");
+
+    // The last remaining language cannot be removed (至少保留一种).
+    await pointerClick(page, chips.first());
+    await expect(chips.first()).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator(".kit-sr")).toHaveText("至少保留一种");
+  });
+
+  /* ---------- rule summary rows ---------- */
+
+  test("rule rows carry icons, sentences, and the dim U+ suffix", async ({
+    page,
+  }) => {
+    const rules = page.locator(".kit-rules");
+    const rows = rules.locator('[data-role="rule-row"]');
+    await expect(rows).toHaveCount(3);
+    await expect(rows.first()).toHaveAttribute("data-kind", "group");
+    await expect(rows.first()).toContainText("所有中文字符用中文字体");
+    await expect(rows.first().locator(".kit-rl-ic svg")).toBeVisible();
+    const rangeRow = rows.filter({ hasText: "一 至 龙" });
+    await expect(rangeRow.locator(".kit-us")).toHaveText("U+4E00 至 U+9F99");
+    // The dashed single-character aggregate with its count.
+    const solo = rules.locator('[data-role="rule-solo"]');
+    await expect(solo).toHaveClass(/dashed/);
+    await expect(solo).toHaveText("单个字符2");
+
+    // Removing every row keeps the solo aggregate; 全部恢复默认 then
+    // clears everything and the prototype's empty state reads verbatim.
+    for (let i = 0; i < 3; i++) {
+      await pointerClick(page, rows.first().locator('[data-role="remove-rule"]'));
+    }
+    await expect(rules.locator('[data-role="rule-row"]')).toHaveCount(0);
+    await expect(solo).toBeVisible();
+    await pointerClick(page, rules.locator('[data-role="undo-all"]'));
+    await expect(solo).toHaveCount(0);
+    await expect(rules.locator(".kit-rl-empty")).toHaveText("暂无自定义规则。");
+  });
+
+  /* ---------- CharPopup + RangePopup ---------- */
+
+  test("a plain cell click opens the char popup at the cell with the facts", async ({
+    page,
+  }) => {
+    const cell = page.locator(".kit-cell").first();
+    await pointerClick(page, cell);
+    const popup = page.locator("[data-char-popup]");
+    await expect(popup).toBeVisible();
+    await expect(popup.locator('[data-role="char-glyph"]')).toBeVisible();
+    await expect(popup.locator('[data-role="char-code"]')).toHaveText(
+      /^U\+[0-9A-F]{4,6}$/,
+    );
+    await expect(popup.locator('[data-role="char-from"]')).toContainText(
+      "来自 Maple Mono CN",
+    );
+    // Anchored at the cell (below or flipped above, within its width).
+    const cellBox = (await cell.boundingBox())!;
+    const popBox = (await popup.boundingBox())!;
+    expect(Math.abs(popBox.x - cellBox.x)).toBeLessThan(60);
+
+    // The winner side's button is hidden; the other applies and closes.
+    await expect(popup.locator('[data-role="char-donor"]')).toBeHidden();
+    await expect(popup.locator('[data-role="char-base"]')).toBeVisible();
+    await pointerClick(page, popup.locator('[data-role="char-base"]'));
+    await expect(popup).toBeHidden();
+    await expect(page.locator(".kit-sr")).toContainText("已指定为英文字体");
+  });
+
+  test("the range popup keeps the prototype contract; invalid input paints danger", async ({
+    page,
+  }) => {
+    await pointerClick(
+      page,
+      page.locator(".kit-toolrow [data-role='range-specify']"),
+    );
+    const popup = page.locator("[data-range-popup]");
+    await expect(popup).toBeVisible();
+    await expect(popup.locator("h5")).toHaveText("按编码指定");
+    await expect(popup).toContainText("输入编码或范围，窄范围优先于整类。");
+    await expect(popup.locator("[data-role='range-start']")).toHaveAttribute(
+      "placeholder",
+      "U+0030 或 0",
+    );
+    await expect(popup.locator("[data-role='range-end']")).toHaveAttribute(
+      "placeholder",
+      "留空=单个",
+    );
+    await expect(popup.locator("[data-role='range-side']")).toContainText(
+      "用英文字体",
+    );
+
+    // Invalid input: the danger border and the popup stays open. The
+    // border resolves to the palette's danger value (light/dark).
+    await popup.locator("[data-role='range-start']").fill("not-a-code");
+    await pointerClick(page, popup.locator("[data-role='range-add']"));
+    await expect(popup).toBeVisible();
+    expect(
+      await popup
+        .locator("[data-role='range-start']")
+        .evaluate((el) => getComputedStyle(el).borderColor),
+    ).toMatch(/rgb\(197, 48, 48\)|rgb\(248, 113, 113\)/);
+
+    // A valid single codepoint (end left empty) applies and closes.
+    await popup.locator("[data-role='range-start']").fill("U+0041");
+    await pointerClick(page, popup.locator("[data-role='range-add']"));
+    await expect(popup).toBeHidden();
+    await expect(page.locator(".kit-sr")).toContainText("已添加区间规则");
+  });
+
+  /* ---------- settings rows (mountSettingRow) ---------- */
+
+  test("settings rows assemble label, ? help, and the AppSelect", async ({
+    page,
+  }) => {
+    const rows = page.locator(".kit-setrow");
+    await expect(rows).toHaveCount(3);
+    await expect(rows.first().locator(".kit-setname")).toHaveText(
+      "字重合并方式",
+    );
+    await expect(rows.first().locator(".kit-sethead svg")).toBeVisible();
+    await expect(
+      rows.first().locator('[data-role="select-weight"]'),
+    ).toBeVisible();
   });
 
   /* ---------- locate flow ---------- */

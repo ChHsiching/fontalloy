@@ -316,6 +316,96 @@
   margin-bottom: 8px;
 }
 
+/* The char popup's parts — the prototype's .pop .code/.from/.btns/.rest
+ * (L470–476 + L242–246), carried verbatim by kit/charPopup.ts. */
+.kit-pop .kit-pop-glyph {
+  font-size: 44px;
+  text-align: center;
+  padding: 4px 0 8px;
+  border-bottom: 1px solid var(--ln);
+  margin-bottom: 8px;
+}
+
+.kit-pop .kit-pop-from {
+  color: var(--ink2);
+  font-size: 12px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.kit-pop .kit-pop-btns {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.kit-pop .kit-pop-btns .kit-btn {
+  flex: 1;
+}
+
+.kit-pop .kit-pop-rest {
+  width: 100%;
+  color: var(--ink3);
+  padding: 4px;
+  font-size: 12px;
+  text-align: center;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.kit-pop .kit-pop-rest:hover {
+  color: var(--ink);
+}
+
+/* The range popup's rows — the prototype's .pop .rrow (L247–250),
+ * carried verbatim by kit/rangePopup.ts. */
+.kit-pop .kit-rrow {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 6px;
+}
+
+.kit-pop .kit-rrow input {
+  flex: 1;
+  min-width: 0;
+  background: var(--page);
+  border: 1px solid var(--ln2);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
+.kit-pop .kit-rrow .kit-cselw {
+  flex: 1;
+}
+
+.kit-pop .kit-rrow .kit-btn {
+  flex: 1;
+}
+
+/* The settings row — the prototype's .set chrome (L428–443): the
+ * label with the circular ? beside it, the select under it. Carried
+ * by kit/settingsTopics.ts (mountSettingRow). */
+.kit-setrow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.kit-sethead {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.kit-setname {
+  color: var(--ink2);
+  font-size: 12px;
+}
+
 /* Worked-example table — chrome carried verbatim from the prototype. */
 .kit-wtab {
   border-collapse: collapse;
@@ -813,6 +903,90 @@
   .kit-lchip:hover {
     transform: translateY(-1px);
   }
+}
+
+/* ============ rule summary rows (rl) ============ */
+
+/*
+ * The 自定义规则 summary rows — the prototype's .rules/.rl chrome
+ * (L106–119), carried verbatim by kit/ruleRows.ts: icon + sentence +
+ * dim tabular suffix + the delete × (danger on hover, 1.2 lift).
+ */
+.kit-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.kit-rl {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--ink2);
+  padding: 4px 7px;
+  border: 1px solid var(--ln);
+  border-radius: 6px;
+  background: var(--sf);
+  transition: border-color 100ms ease-out, background-color 100ms ease-out;
+}
+
+.kit-rl:hover {
+  border-color: var(--ln2);
+}
+
+.kit-rl.dashed {
+  border-style: dashed;
+}
+
+.kit-rl .kit-rl-ic {
+  display: inline-flex;
+  color: var(--ink3);
+  flex: none;
+}
+
+.kit-rl .kit-rl-ic svg {
+  width: 12px;
+  height: 12px;
+}
+
+.kit-rl .kit-tx {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kit-rl .kit-us {
+  flex: none;
+  font-size: 10.5px;
+  color: var(--ink3);
+}
+
+.kit-rl .kit-del {
+  color: var(--ink3);
+  display: flex;
+  padding: 2px;
+  border-radius: 4px;
+  margin-left: auto;
+  transition: color 100ms ease-out, transform 100ms var(--spring);
+}
+
+.kit-rl .kit-del:hover {
+  color: var(--dgr);
+}
+
+@media (hover: hover) {
+  .kit-rl .kit-del:hover {
+    transform: scale(1.2);
+  }
+}
+
+.kit-rl-empty {
+  font-size: 11.5px;
+  color: var(--ink2);
+  line-height: 1.6;
 }
 
 /* ============ category chips ============ */

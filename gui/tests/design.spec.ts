@@ -277,18 +277,16 @@ test.describe("action bar rule wiring", () => {
 
     // A single codepoint (end left empty) applies the chosen side.
     await popup.locator("[data-role='range-start']").fill("0x0041");
-    await pointerClick(
-      page,
-      popup.locator("[data-role='range-side'] .kit-csel"),
-    );
-    await pointerClick(
-      page,
-      popup.locator("[data-role='range-side'] .kit-cso[data-value='donor']"),
-    );
+    const side = popup.locator("[data-role='range-side']");
+    await pointerClick(page, side.locator(".kit-csel"));
+    // Visible-wait before the option click: under parallel load the
+    // palette's allow-discrete open lags the click that opened it.
+    await expect(side.locator(".kit-csel-pk")).toBeVisible();
+    await pointerClick(page, side.locator(".kit-cso[data-value='donor']"));
     await pointerClick(page, popup.locator("[data-role='range-add']"));
     await expect.poll(() => summaryRowCount(page)).toBe(1);
     await expect(
-      page.locator("[data-role='rule-row'][data-kind='range'] .rule-line-suffix"),
+      page.locator("[data-role='rule-row'][data-kind='range'] .kit-us"),
     ).toHaveText("U+0041");
     await expect(
       page.locator(".charmap-grid .kit-cell[data-cp='U+0041']"),
@@ -499,7 +497,7 @@ test.describe("action bar rule wiring", () => {
     await pointerClick(page, popup.locator("[data-role='char-donor']"));
     await expect(page.locator("[data-role='rule-solo']")).toHaveCount(1);
     await pointerClick(page, page.locator("[data-role='undo-all']"));
-    await expect(page.locator(".rule-list-empty")).toHaveText("暂无自定义规则。");
+    await expect(page.locator(".kit-rl-empty")).toHaveText("暂无自定义规则。");
   });
 
   test("the 编码 toggle shows codepoint rows; missing cells always show theirs", async ({
