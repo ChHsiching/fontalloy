@@ -104,6 +104,23 @@ const FILE_ALIASES = {
   NotoSerifSC: "SourceHanSerifSC-Regular.otf",
 };
 
+/**
+ * Families the committed manifest does NOT pin (upstream pinning is a
+ * documented follow-up) but the validated prototype ships and the dev
+ * catalog serves locally from the same fonts directory: the five CJK
+ * families the parity matrix flagged as honest misses (得意黑 / 更纱黑体 /
+ * 方舟像素 / 缝合像素 / 朱雀仿宋). Skipped with a console note when the
+ * local binary is absent — never a silent gap, and never served by a
+ * production catalog.
+ */
+const EXTRA_DEV_FAMILIES = [
+  { family: "SmileySans", file: "SmileySans-Oblique.otf" },
+  { family: "SarasaGothic", file: "SarasaMonoSC-Regular.ttf" },
+  { family: "ZhuqueFangsong", file: "ZhuqueFangsong-Regular.ttf" },
+  { family: "ArkPixel", file: "ark-pixel-12px-monospaced-zh_hans.ttf" },
+  { family: "FusionPixel", file: "fusion-pixel-12px-monospaced-zh_hans.otf" },
+];
+
 /* ---------- minimal ZIP writer (stored entries) ---------- */
 
 const CRC_TABLE = (() => {
@@ -260,8 +277,25 @@ function buildCatalog() {
         fileSha256: sha256hex(data),
       });
     }
+    // The prototype-only CJK families (dev-only; see EXTRA_DEV_FAMILIES).
+    for (const entry of EXTRA_DEV_FAMILIES) {
+      if (!available.has(entry.file)) {
+        misses.push(`${entry.family} (dev-only extra)`);
+        continue;
+      }
+      const data = await readFile(resolve(dir, entry.file));
+      const zipBytes = makeZip([{ name: entry.file, data }]);
+      families.push({
+        family: entry.family,
+        zip: `${entry.family}.zip`,
+        zipSha256: sha256hex(zipBytes),
+        zipBytes,
+        file: entry.file,
+        fileSha256: sha256hex(data),
+      });
+    }
     console.info(
-      `[dev-catalog] serving ${families.length}/${seen.size} families from "${dir}"` +
+      `[dev-catalog] serving ${families.length} families (${seen.size} manifest + dev extras) from "${dir}"` +
         (misses.length > 0 ? `; no local binary for: ${misses.join(", ")}` : ""),
     );
     return { families, misses };

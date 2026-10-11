@@ -1,17 +1,6 @@
 {
   "schema": "fontalloy/curated-display-meta@1",
-  "comment": [
-    "Curated DISPLAY data the repo manifest cannot provide (repair round 2):",
-    "GitHub star counts and the Chinese trait tags (连字 / 楷体 / 圆角等宽 …)",
-    "the validated prototype shows in its picker rows. Values are carried",
-    "from the prototype's own curated catalogs (gui/prototype/data/nerd-fonts-catalog.json",
-    "and cjk-catalog.json — design content, keyed there by the same family",
-    "ids our manifest uses; the five CJK ids that differ are mapped in the",
-    "generator). License and variant stay sourced from assets/fonts.manifest.json",
-    "via gui/src/data/catalog.json; this file only overlays what the manifest",
-    "cannot know. Prototype families absent from our manifest (得意黑, 更纱黑体,",
-    "方舟像素, 缝合像素, 朱雀仿宋) are honest misses and stay out."
-  ],
+  "comment": "Curated DISPLAY data the repo manifest cannot provide (repair round 2),\nplus the picker's curated FRONT (repair round 3): GitHub star counts,\ndisplay names (Maple Mono CN / 霞鹜文楷 Screen / 思源黑体, the spaced\nbase names), and the prototype's short pinned trait tags (连字 / 楷体 /\n圆角等宽 …) from gui/prototype/data catalogs. `front` pins the featured\nfamilies first in the matching picker (the prototype's LB/LD rows);\nNerdFontsSymbolsOnly never lists. The five CJK families the prototype\nships but the committed manifest lacks (得意黑 / 更纱黑体 / 方舟像素 /\n缝合像素 / 朱雀仿宋) are served by the DEV catalog from the local\nprototype fonts directory; upstream manifest pinning is a documented\nfollow-up.",
   "families": {
     "3270": {
       "trait": "IBM 终端复刻"
@@ -47,10 +36,12 @@
       "trait": "经典 Vera 血统"
     },
     "IBMPlexMono": {
-      "trait": "IBM Plex 官方"
+      "trait": "IBM",
+      "name": "IBM Plex Mono"
     },
     "CascadiaCode": {
-      "trait": "微软出品 · 连字"
+      "trait": "微软",
+      "name": "Cascadia Code"
     },
     "CascadiaMono": {
       "trait": "微软出品 · 无连字"
@@ -89,7 +80,8 @@
       "trait": "圆润手写感"
     },
     "FiraCode": {
-      "trait": "Mozilla 系 · 连字"
+      "trait": "连字",
+      "name": "Fira Code"
     },
     "FiraMono": {
       "trait": "Mozilla 官方字体"
@@ -107,7 +99,8 @@
       "trait": "Google 品牌向"
     },
     "Hack": {
-      "trait": "经典开源等宽"
+      "trait": "经典",
+      "name": "Hack"
     },
     "Hasklig": {
       "trait": "Haskell 连字"
@@ -134,7 +127,8 @@
       "trait": "Intel 出品"
     },
     "Iosevka": {
-      "trait": "窄身 · 高度可定制"
+      "trait": "超窄",
+      "name": "Iosevka"
     },
     "IosevkaTerm": {
       "trait": "Iosevka 终端版"
@@ -143,7 +137,8 @@
       "trait": "Iosevka 粗衬线"
     },
     "JetBrainsMono": {
-      "trait": "JetBrains 出品 · 连字"
+      "trait": "连字",
+      "name": "JetBrains Mono"
     },
     "Lekton": {
       "trait": "细窄极简风"
@@ -200,7 +195,8 @@
       "trait": "科技感方正字形"
     },
     "SourceCodePro": {
-      "trait": "Adobe 出品 · 经典"
+      "trait": "Adobe",
+      "name": "Source Code Pro"
     },
     "SpaceMono": {
       "trait": "方正个性字形"
@@ -221,14 +217,16 @@
       "trait": "Ubuntu 新版字族"
     },
     "VictorMono": {
-      "trait": "连笔斜体 · 窄身"
+      "trait": "手写",
+      "name": "Victor Mono"
     },
     "ZedMono": {
       "trait": "Zed 出品 · 圆润"
     },
     "MapleMono": {
       "stars": 29170,
-      "trait": "圆角等宽 · 中英 2:1 · 编程向"
+      "trait": "圆角等宽",
+      "name": "Maple Mono CN"
     },
     "LXGWWenKai": {
       "stars": 26195,
@@ -240,11 +238,55 @@
     },
     "NotoSansSC": {
       "stars": 4090,
-      "trait": "黑体 · 多 CJK 语种覆盖"
+      "trait": "黑体",
+      "name": "思源黑体"
     },
     "LXGWWenKaiScreen": {
       "stars": 2176,
-      "trait": "楷体 · 屏幕小字号优化"
+      "trait": "楷体",
+      "name": "霞鹜文楷 Screen"
+    },
+    "SmileySans": {
+      "name": "得意黑",
+      "stars": 14897,
+      "trait": "窄斜黑体 · 标题/强调"
+    },
+    "SarasaGothic": {
+      "name": "更纱黑体",
+      "stars": 12848,
+      "trait": "等宽中英 2:1 · 终端/IDE"
+    },
+    "ArkPixel": {
+      "name": "方舟像素字体",
+      "stars": 4780,
+      "trait": "像素 · 复古游戏风"
+    },
+    "ZhuqueFangsong": {
+      "name": "朱雀仿宋",
+      "stars": 3543,
+      "trait": "仿宋 · 文学排版/正文"
+    },
+    "FusionPixel": {
+      "name": "缝合像素字体",
+      "stars": 3304,
+      "trait": "像素 · 泛中日韩"
     }
+  },
+  "front": {
+    "en": [
+      "JetBrainsMono",
+      "FiraCode",
+      "CascadiaCode",
+      "Iosevka",
+      "Hack",
+      "SourceCodePro",
+      "IBMPlexMono",
+      "VictorMono"
+    ],
+    "cjk": [
+      "MapleMono",
+      "LXGWWenKaiScreen",
+      "NotoSansSC"
+    ]
   }
 }

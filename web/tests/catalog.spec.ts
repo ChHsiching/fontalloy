@@ -37,28 +37,46 @@ test("the real catalog lists real families with real meta", async ({ page }) => 
 
   const popup = await openFontPicker(page, "en");
   const rows = popup.locator(".kit-fp");
-  // 76 of the manifest's 81 unique families have local binaries
-  // (the five LXGW-mono/NerdFontsSymbolsOnly misses are skipped).
-  await expect(rows).toHaveCount(76);
-  // Real names, real license, the prototype's curated trait tags.
-  const jb = rows.filter({ hasText: "JetBrainsMono" });
+  // 76 of the manifest's 81 unique families have local binaries (the
+  // five LXGW-mono/NerdFontsSymbolsOnly misses are skipped), plus the
+  // dev catalog's five prototype-only CJK extras.
+  await expect(rows).toHaveCount(81);
+  // The curated FRONT pins first (the prototype's LB rows, its display
+  // names and short tags): JetBrains Mono 连字, Fira Code 连字,
+  // Cascadia Code 微软, Iosevka 超窄, Hack 经典, Source Code Pro Adobe,
+  // IBM Plex Mono IBM, Victor Mono 手写.
+  const front = ["JetBrains Mono", "Fira Code", "Cascadia Code", "Iosevka",
+    "Hack", "Source Code Pro", "IBM Plex Mono", "Victor Mono"];
+  const texts = await rows.allTextContents();
+  expect(texts.slice(0, 8)).toEqual(front.map((name) => expect.stringContaining(name)));
+  const jb = rows.filter({ hasText: "JetBrains Mono" });
   await expect(jb).toHaveCount(1);
   await expect(jb).toContainText("OFL");
   await expect(jb).toContainText("连字");
+  // The tail keeps manifest order and the curated trait tags.
   await expect(rows.filter({ hasText: "0xProto" })).toContainText(
     "源码可读性优先",
   );
+  // NerdFontsSymbolsOnly never lists (prototype parity).
+  await expect(rows.filter({ hasText: "SymbolsOnly" })).toHaveCount(0);
   await page.keyboard.press("Escape");
 
-  // The CJK picker carries the prototype's star counts as curated
-  // display data (the manifest has no source of truth for stars).
+  // The CJK picker: the prototype's LD front (Maple Mono CN 圆角等宽 /
+  // 霞鹜文楷 Screen 楷体 / 思源黑体 黑体) with its star counts, and the
+  // five prototype-only CJK families the dev catalog serves.
   const cjk = await openFontPicker(page, "cjk");
+  const cjkTexts = await cjk.locator(".kit-fp").allTextContents();
+  expect(cjkTexts.slice(0, 3)).toEqual([
+    expect.stringContaining("Maple Mono CN"),
+    expect.stringContaining("霞鹜文楷 Screen"),
+    expect.stringContaining("思源黑体"),
+  ]);
   const maple = cjk.locator(".kit-fp", { hasText: "29.2k" });
-  await expect(maple).toContainText("MapleMono");
+  await expect(maple).toContainText("Maple Mono CN");
   await expect(maple).toContainText("圆角等宽");
-  const lxgw = cjk.locator(".kit-fp", { hasText: "26.2k" });
-  await expect(lxgw).toContainText("LXGWWenKai");
-  await expect(lxgw).toContainText("楷体");
+  for (const name of ["得意黑", "更纱黑体", "方舟像素字体", "缝合像素字体", "朱雀仿宋"]) {
+    await expect(cjk.locator(".kit-fp").filter({ hasText: name })).toHaveCount(1);
+  }
   await page.keyboard.press("Escape");
 
   assertNoJsErrors(errors);
@@ -99,8 +117,8 @@ test("the real catalog drives the panel end to end (YAML, download, copy)", asyn
   // Maple Mono CN build as the donor (the prototype's own pair).
   await page.goto(`/?serve=${encodeURIComponent(UNUSED_SERVE)}`);
   await waitForCatalogReady(page);
-  await pickCatalogFamily(page, "en", "JetBrainsMono");
-  await pickCatalogFamily(page, "cjk", "MapleMono");
+  await pickCatalogFamily(page, "en", "JetBrains Mono");
+  await pickCatalogFamily(page, "cjk", "Maple Mono CN");
 
   // The pair tags carry both picks as plain text.
   await expect(page.locator(".topbar [data-pair='base']")).toHaveText(
@@ -111,7 +129,7 @@ test("the real catalog drives the panel end to end (YAML, download, copy)", asyn
   );
 
   // Open-at-the-selection: the EN picker reopens with the checked row
-  // (JetBrainsMono, ~30 rows into the 76-family list) already scrolled
+  // (JetBrains Mono — the pinned front's first row) already scrolled
   // into the popup's viewport — the scroll area scrolls, not the page.
   const reopened = await openFontPicker(page, "en");
   const inView = await reopened.evaluate((popup) => {

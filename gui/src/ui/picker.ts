@@ -87,15 +87,25 @@ function catalogNote(catalog: CatalogState): string | null {
 /**
  * Display metadata for a catalog family: license + variant from the
  * repo's catalog manifest (the honest in-repo source), overlaid with
- * the curated display data the validated prototype carries — GitHub
- * stars and the Chinese trait tags (连字 / 楷体 / 圆角等宽 …) — from
- * data/curated-meta.json. Where the prototype had no curated tag the
- * manifest's own variant shows.
+ * the curated display data the validated prototype carries — display
+ * names (Maple Mono CN / 霞鹜文楷 Screen / the spaced base names),
+ * GitHub stars, and the Chinese trait tags (连字 / 楷体 / 圆角等宽 …) —
+ * from data/curated-meta.json. Where the prototype had no curated tag
+ * the manifest's own variant shows.
  */
 const CURATED_META = curatedMeta.families as Record<
   string,
-  { stars?: number; trait?: string }
+  { name?: string; stars?: number; trait?: string }
 >;
+
+/** The curated front per picker role: featured families pinned first
+ *  (the prototype's LB/LD rows), in the prototype's order. */
+const CURATED_FRONT = (curatedMeta as {
+  front: { en: string[]; cjk: string[] };
+}).front;
+
+/** The one family the prototype never lists (icon-only symbols build). */
+const EXCLUDED_FAMILIES = new Set(["NerdFontsSymbolsOnly"]);
 
 const MANIFEST_META = new Map<string, FontMeta>(
   catalogManifest.families.map((family) => {
@@ -213,21 +223,44 @@ export function mountPicker(
     const { fonts, selected, catalog } = store.get();
     const selectedKey = selected[options.role];
 
-    // Catalog families first (metadata-driven rows); the name text is the
-    // metadata family and the row renders in its own font once the face
-    // is registered (ADR-0004).
-    const rows: PickerFont[] = catalog.families.map((family) => {
-      const cssKey = catalog.registered[family.family] ?? null;
-      const available = family.status === "verified";
-      return {
-        id: cssKey ?? `cat:${family.family}`,
-        name: family.family,
-        family: cssKey ?? undefined,
-        meta: MANIFEST_META.get(family.family),
-        disabled: !available,
-        note: catalogTag(family),
-      };
-    });
+    // Catalog families (metadata-driven rows); the name text is the
+    // curated display name where the prototype carries one (else the
+    // metadata family), each row renders in its own font once the face
+    // is registered (ADR-0004). The role's curated front pins first
+    // (the prototype's LB/LD featured rows); NerdFontsSymbolsOnly
+    // never lists.
+    const catalogRows: PickerFont[] = catalog.families
+      .filter((family) => !EXCLUDED_FAMILIES.has(family.family))
+      .map((family) => {
+        const cssKey = catalog.registered[family.family] ?? null;
+        const available = family.status === "verified";
+        const curated = CURATED_META[family.family];
+        return {
+          id: cssKey ?? `cat:${family.family}`,
+          name: curated?.name ?? family.family,
+          family: cssKey ?? undefined,
+          meta: MANIFEST_META.get(family.family),
+          disabled: !available,
+          note: catalogTag(family),
+        };
+      });
+    const frontIds = CURATED_FRONT[options.role] ?? [];
+    const frontSet = new Set(frontIds);
+    const byCatalogId = new Map(
+      catalogRows
+        .filter((row) => row.id.startsWith("cat:"))
+        .map((row) => [row.id.slice(4), row]),
+    );
+    const rows: PickerFont[] = [
+      ...frontIds.flatMap((id) => {
+        const row = byCatalogId.get(id);
+        return row === undefined ? [] : [row];
+      }),
+      ...catalogRows.filter((row) => {
+        const catId = row.id.startsWith("cat:") ? row.id.slice(4) : row.id;
+        return !frontSet.has(catId);
+      }),
+    ];
 
     // Locally loaded fonts. Faces that entered the registry through the
     // catalog (download or lazy registration) are NEVER listed here —
