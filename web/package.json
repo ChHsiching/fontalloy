@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "FontAlloy WebApp: the static build target of the shared frontend (recipe builder + copy-CLI fallback)",
+  "description": "FontAlloy WebApp: the static build target of the shared frontend \u2014 the SAME workspace app the Tauri GUI mounts",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
