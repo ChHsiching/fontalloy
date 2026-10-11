@@ -135,10 +135,24 @@ export function workedTable(
   return table;
 }
 
-/** A small explanatory paragraph inside the popover. */
-export function helpNote(text: string, className?: string): HTMLElement {
+/**
+ * A small explanatory paragraph inside the popover. An ARRAY joins its
+ * lines with `<br>` (the prototype's multi-line paragraphs) — only the
+ * caller's own literal strings ever arrive here, so the innerHTML is
+ * as safe as textContent.
+ */
+export function helpNote(
+  text: string | readonly string[],
+  className?: string,
+): HTMLElement {
   const p = document.createElement("p");
   p.className = className ?? "kit-sub";
-  p.textContent = text;
+  if (typeof text === "string") {
+    p.textContent = text;
+  } else {
+    p.innerHTML = text
+      .map((line) => line.replace(/&/g, "&amp;").replace(/</g, "&lt;"))
+      .join("<br>");
+  }
   return p;
 }

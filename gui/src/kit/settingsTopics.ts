@@ -3,13 +3,10 @@
  *
  * The three settings (weight merge, baseline alignment, CJK width) with
  * their ?-popover copy. Prose structure and tables follow the validated
- * prototype VERBATIM — the width table's 1.8×/1.5× rows are real
- * pipeline behavior (`normalization.width_factor`). The single
- * retained correction is the WEIGHT topic's tables (ADR-0006: output
- * weight slots come only from the base font's faces; donors borrow by
- * nearest match and never create slots — the prototype's draft rows
- * were superseded there); each corrected table keeps its
- * `CONTENT CORRECTED` comment so the owner can find them.
+ * prototype VERBATIM — including the weight topic's tables (round 5,
+ * owner item 11: help content is the prototype's text, full stop — no
+ * engineering notes in user-facing popovers; the ADR-0006 correction
+ * lives in the docs and the pipeline, not here).
  */
 
 import { mountAppSelect, type AppSelect, type AppSelectOption } from "./appSelect";
@@ -49,45 +46,29 @@ export const SETTINGS_TOPICS: readonly SettingsTopic[] = [
       build() {
         const wrap = document.createElement("div");
         wrap.append(
-          helpNote(
-            "字重，就是字的笔画粗细。比如：细、常规、中等、粗体。",
-          ),
-          helpNote(
-            "当一套字体里同时有英文和中文时，英文和中文可用的字重可能不一样。举例：英文字体有：细、常规、粗体；中文字体有：常规、中等。",
-          ),
+          helpNote(["字重，就是字的笔画粗细。", "比如：细、常规、中等、粗体。"]),
+          helpNote("当一套字体里同时有英文和中文时，英文和中文可用的字重可能不一样。举例："),
+          helpNote(["英文字体有：细、常规、粗体", "中文字体有：常规、中等"]),
           helpNote("合并成一套字体时，可以选择保留哪些字重："),
-          // CONTENT CORRECTED (ADR-0006): the prototype's first row
-          // claimed 双方字重全部保留 → 细、常规、中等、粗体, i.e. a
-          // donor-only weight creating an output slot. Output slots come
-          // only from the base font's faces; the donor-only row reads
-          // 共有档位 semantics instead. Table chrome stays verbatim.
+          // Verbatim prototype table (inventory item 28, round 5).
           workedTable(["选项", "成品字重"], [
-            [
-              "双方字重全部保留 · 推荐",
-              "细、常规、粗体（档位来自英文字体，每一档的中文取最接近的字重并入）",
-            ],
-            [
-              "仅保留英文字体提供的字重",
-              "细、常规、粗体（显式声明与上一项相同的档位集合）",
-            ],
-            ["仅保留中文字体提供的字重", "常规（仅保留两种字体共有的档位）"],
+            ["双方字重全部保留 · 推荐", "细、常规、中等、粗体"],
+            ["仅保留英文字体提供的字重", "细、常规、粗体"],
+            ["仅保留中文字体提供的字重", "常规、中等"],
           ]),
-          helpNote(
-            "如果某个成品字重在某种语言里没有对应字重，就用最接近的字重代替：",
-          ),
-          // CONTENT CORRECTED (ADR-0006): the prototype's 中等 output row
-          // is dropped — a donor-only weight can never be an output slot.
+          helpNote("如果某个成品字重在某种语言里没有对应字重，就用最接近的字重代替："),
+          // Verbatim prototype table — including the 中等 row the earlier
+          // ADR-0006 correction dropped (owner ruling, round 5).
           workedTable(["成品字重", "英文用", "中文用"], [
-            ["细", "细", "常规（最近）"],
+            ["细", "细", "常规"],
             ["常规", "常规", "常规"],
-            ["粗体", "粗体", "中等（最近）"],
+            ["中等", "常规", "中等"],
+            ["粗体", "粗体", "中等"],
           ]),
           helpNote(
-            "例如：成品要粗体，英文有粗体，所以用英文粗体；中文没有粗体，所以用中文中等。成品要常规，两种字体都有常规，所以都用常规。",
+            "例如：成品要粗体，英文有粗体，所以用英文粗体；中文没有粗体，所以用中文中等。成品要中等，中文有中等，所以用中文中等；英文没有中等，所以用英文常规。",
           ),
-          helpNote(
-            "管线约束（ADR-0006）：成品字重只能来自英文字体已有的字面，中文字体独有的档位不会新增成品字重——每笔借用都写入构建报告。即使某个字重没有单独保留，字也不会丢，只是会用最接近的字重显示。",
-          ),
+          helpNote("即使某个字重没有单独保留，字也不会丢，只是会用最接近的字重显示。"),
         );
         return wrap;
       },
