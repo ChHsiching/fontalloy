@@ -107,9 +107,12 @@ test.describe("workspace shell", () => {
     page,
   }) => {
     const tags = page.locator(".topbar [data-role='font-pair']");
-    await expect(tags).toBeVisible();
-    // Nothing selected yet: both tags state so in text (the kit's em dash).
-    await expect(tags.locator("[data-pair='base']")).toHaveText("—");
-    await expect(tags.locator("[data-pair='donor']")).toHaveText("—");
+    // The pair element itself stays mounted; the empty sides show no
+    // pill at all — the prototype's tags always carry real picks, so
+    // the honest empty state is no em-dash placeholder pill.
+    await expect(tags).toHaveCount(1);
+    await expect(tags.locator("[data-pair='base']")).toBeHidden();
+    await expect(tags.locator("[data-pair='donor']")).toBeHidden();
+    expect((await tags.textContent()) ?? "").not.toContain("—");
   });
 });

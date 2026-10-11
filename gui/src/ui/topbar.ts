@@ -52,8 +52,8 @@ export function mountTopbar(root: HTMLElement): TopBar {
   applyAppTheme(initialTheme());
 
   const topBar = mountTopBar(root, {
-    base: "—",
-    donor: "—",
+    base: "",
+    donor: "",
     fontName: store.get().outputFamily,
     onFontName: (value) => store.set({ outputFamily: value.trim() }),
     onSynthesize: () => {
@@ -91,7 +91,8 @@ export function mountTopbar(root: HTMLElement): TopBar {
     const { fonts, selected } = store.get();
     const label = (key: string | null): string => {
       const font = fonts.find((f) => f.cssFamily === key);
-      return font ? font.family : "—";
+      // Empty picks hide their tag (the kit's set() treats "" as absent).
+      return font ? font.family : "";
     };
     topBar.setPair(label(selected.en), label(selected.cjk));
     // The service state and the pick pair both feed the enablement.

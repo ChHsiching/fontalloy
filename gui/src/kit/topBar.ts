@@ -27,7 +27,12 @@ export function brandPart(): HTMLElement {
   return brand;
 }
 
-/** The base + donor pair: two tags joined by a dimmed `+`. */
+/**
+ * The base + donor pair: two tags joined by a dimmed `+`. Empty sides
+ * hide their tag (and the separator) — the prototype never shows a
+ * placeholder: its tags always carry real picks, so the honest empty
+ * state is no pill at all, not an em-dash one.
+ */
 export function fontPairTags(
   base: string,
   donor: string,
@@ -45,8 +50,11 @@ export function fontPairTags(
   donorTag.dataset.pair = "donor";
   el.append(baseTag, plus, donorTag);
   const set = (b: string, d: string): void => {
-    baseTag.textContent = b || "—";
-    donorTag.textContent = d || "—";
+    baseTag.textContent = b;
+    donorTag.textContent = d;
+    baseTag.style.display = b ? "" : "none";
+    donorTag.style.display = d ? "" : "none";
+    plus.style.display = b && d ? "" : "none";
   };
   set(base, donor);
   return { el, set };
