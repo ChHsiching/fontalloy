@@ -79,6 +79,15 @@ test.describe("screenshots of the catalog overlays", () => {
   test.beforeEach(async ({ page }) => {
     jsErrors.length = 0;
     collectJsErrors(page, jsErrors);
+    // These pages configure a catalog, so the live stars refresh fires
+    // (round 5); keep it hermetic and quiet (see catalog.spec too).
+    await page.route("https://api.github.com/repos/**", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: "{}",
+      }),
+    );
   });
 
   test.afterEach(() => assertNoJsErrors(jsErrors));

@@ -1,292 +1,310 @@
 {
-  "schema": "fontalloy/curated-display-meta@1",
-  "comment": "Curated DISPLAY data the repo manifest cannot provide (repair round 2),\nplus the picker's curated FRONT (repair round 3): GitHub star counts,\ndisplay names (Maple Mono CN / 霞鹜文楷 Screen / 思源黑体, the spaced\nbase names), and the prototype's short pinned trait tags (连字 / 楷体 /\n圆角等宽 …) from gui/prototype/data catalogs. `front` pins the featured\nfamilies first in the matching picker (the prototype's LB/LD rows);\nNerdFontsSymbolsOnly never lists. The five CJK families the prototype\nships but the committed manifest lacks (得意黑 / 更纱黑体 / 方舟像素 /\n缝合像素 / 朱雀仿宋) are served by the DEV catalog from the local\nprototype fonts directory; upstream manifest pinning is a documented\nfollow-up.",
-  "families": {
-    "3270": {
-      "trait": "IBM 终端复刻"
-    },
-    "0xProto": {
-      "trait": "源码可读性优先"
-    },
-    "AdwaitaMono": {
-      "trait": "GNOME 官方等宽"
-    },
-    "Agave": {
-      "trait": "几何简洁等宽"
-    },
-    "AnnotationMono": {
-      "trait": "手写感等宽"
-    },
-    "AnonymousPro": {
-      "trait": "经典复刻 · 高辨识"
-    },
-    "Arimo": {
-      "trait": "非等宽 · 类 Arial"
-    },
-    "AtkinsonHyperlegibleMono": {
-      "trait": "低视力友好设计"
-    },
-    "AurulentSansMono": {
-      "trait": "无衬线等宽经典"
-    },
-    "BigBlueTerminal": {
-      "trait": "IBM 终端怀旧风"
-    },
-    "BitstreamVeraSansMono": {
-      "trait": "经典 Vera 血统"
-    },
-    "IBMPlexMono": {
-      "trait": "IBM",
-      "name": "IBM Plex Mono"
-    },
-    "CascadiaCode": {
-      "trait": "微软",
-      "name": "Cascadia Code"
-    },
-    "CascadiaMono": {
-      "trait": "微软出品 · 无连字"
-    },
-    "CodeNewRoman": {
-      "trait": "复古罗马风编程"
-    },
-    "ComicShannsMono": {
-      "trait": "漫画手写风"
-    },
-    "CommitMono": {
-      "trait": "中性匿名设计"
-    },
-    "Cousine": {
-      "trait": "类 Courier 兼容"
-    },
-    "D2Coding": {
-      "trait": "Naver 出品 · 韩文"
-    },
-    "DaddyTimeMono": {
-      "trait": "等宽编程字体"
-    },
-    "DejaVuSansMono": {
-      "trait": "DejaVu 经典等宽"
-    },
-    "DepartureMono": {
-      "trait": "像素 Lo-Fi 风"
-    },
-    "DroidSansMono": {
-      "trait": "小屏显示优化"
-    },
-    "EnvyCodeR": {
-      "trait": "命令行老牌字体"
-    },
-    "FantasqueSansMono": {
-      "trait": "圆润手写感"
-    },
-    "FiraCode": {
-      "trait": "连字",
-      "name": "Fira Code"
-    },
-    "FiraMono": {
-      "trait": "Mozilla 官方字体"
-    },
-    "GeistMono": {
-      "trait": "Vercel 出品"
-    },
-    "Go-Mono": {
-      "trait": "Go 语言官方"
-    },
-    "Gohu": {
-      "trait": "点阵位图字体"
-    },
-    "GoogleSansCode": {
-      "trait": "Google 品牌向"
-    },
-    "Hack": {
-      "trait": "经典",
-      "name": "Hack"
-    },
-    "Hasklig": {
-      "trait": "Haskell 连字"
-    },
-    "HeavyData": {
-      "trait": "非等宽 · 独特造型"
-    },
-    "Hermit": {
-      "trait": "符号醒目易辨"
-    },
-    "iA-Writer": {
-      "trait": "iA Writer 出品"
-    },
-    "Inconsolata": {
-      "trait": "经典编程字体"
-    },
-    "InconsolataGo": {
-      "trait": "Inconsolata 变体"
-    },
-    "InconsolataLGC": {
-      "trait": "西里尔文扩展"
-    },
-    "IntelOneMono": {
-      "trait": "Intel 出品"
-    },
-    "Iosevka": {
-      "trait": "超窄",
-      "name": "Iosevka"
-    },
-    "IosevkaTerm": {
-      "trait": "Iosevka 终端版"
-    },
-    "IosevkaTermSlab": {
-      "trait": "Iosevka 粗衬线"
-    },
-    "JetBrainsMono": {
-      "trait": "连字",
-      "name": "JetBrains Mono"
-    },
-    "Lekton": {
-      "trait": "细窄极简风"
-    },
-    "LiberationMono": {
-      "trait": "度量兼容 Courier"
-    },
-    "Lilex": {
-      "trait": "现代连字字体"
-    },
-    "MartianMono": {
-      "trait": "Evil Martians 出品"
-    },
-    "Meslo": {
-      "trait": "Apple Menlo 衍生"
-    },
-    "Monaspace": {
-      "trait": "GitHub 出品 · 五变体"
-    },
-    "Monofur": {
-      "trait": "圆润复古风"
-    },
-    "Monoid": {
-      "trait": "连字 · 紧凑型"
-    },
-    "Mononoki": {
-      "trait": "字符高区分度"
-    },
-    "MPlus": {
-      "trait": "多字重 · 日文支持"
-    },
-    "Noto": {
-      "trait": "Google 泛语言字族"
-    },
-    "OpenDyslexic": {
-      "trait": "非等宽 · 阅读障碍友好"
-    },
-    "Overpass": {
-      "trait": "高速公路路牌风"
-    },
-    "ProFont": {
-      "trait": "复古像素编程"
-    },
-    "ProggyClean": {
-      "trait": "小字号优化"
-    },
-    "Recursive": {
-      "trait": "手绘多风格变体"
-    },
-    "RobotoMono": {
-      "trait": "Google 出品"
-    },
-    "ShareTechMono": {
-      "trait": "科技感方正字形"
-    },
-    "SourceCodePro": {
-      "trait": "Adobe",
-      "name": "Source Code Pro"
-    },
-    "SpaceMono": {
-      "trait": "方正个性字形"
-    },
-    "Terminus": {
-      "trait": "终端经典字形"
-    },
-    "Tinos": {
-      "trait": "非等宽 · 类 Times"
-    },
-    "Ubuntu": {
-      "trait": "非等宽 · Ubuntu 官方"
-    },
-    "UbuntuMono": {
-      "trait": "Ubuntu 官方等宽"
-    },
-    "UbuntuSans": {
-      "trait": "Ubuntu 新版字族"
-    },
-    "VictorMono": {
-      "trait": "手写",
-      "name": "Victor Mono"
-    },
-    "ZedMono": {
-      "trait": "Zed 出品 · 圆润"
-    },
-    "MapleMono": {
-      "stars": 29170,
-      "trait": "圆角等宽",
-      "name": "Maple Mono CN"
-    },
-    "LXGWWenKai": {
-      "stars": 26195,
-      "trait": "楷体 · 阅读/正文"
-    },
-    "NotoSerifSC": {
-      "stars": 9749,
-      "trait": "宋体 · 印刷/正文"
-    },
-    "NotoSansSC": {
-      "stars": 4090,
-      "trait": "黑体",
-      "name": "思源黑体"
-    },
-    "LXGWWenKaiScreen": {
-      "stars": 2176,
-      "trait": "楷体",
-      "name": "霞鹜文楷 Screen"
-    },
-    "SmileySans": {
-      "name": "得意黑",
-      "stars": 14897,
-      "trait": "窄斜黑体 · 标题/强调"
-    },
-    "SarasaGothic": {
-      "name": "更纱黑体",
-      "stars": 12848,
-      "trait": "等宽中英 2:1 · 终端/IDE"
-    },
-    "ArkPixel": {
-      "name": "方舟像素字体",
-      "stars": 4780,
-      "trait": "像素 · 复古游戏风"
-    },
-    "ZhuqueFangsong": {
-      "name": "朱雀仿宋",
-      "stars": 3543,
-      "trait": "仿宋 · 文学排版/正文"
-    },
-    "FusionPixel": {
-      "name": "缝合像素字体",
-      "stars": 3304,
-      "trait": "像素 · 泛中日韩"
-    }
+ "schema": "fontalloy/curated-display-meta@1",
+ "comment": "Curated DISPLAY data the repo manifest cannot provide (repair round 2), plus the pickers curated FRONT (repair round 3) and the round-5 SLOT SPLIT: GitHub star counts (seed values only - the pickers overlay them with live counts fetched at startup, see catalog/stars.ts), display names (Maple Mono CN / 霞鹜文楷 Screen / 思源黑体, the spaced base names), the prototype short pinned trait tags (连字 / 楷体 / 圆角等宽 …) from gui/prototype/data catalogs, and slots.cjk (owner item 2: the EN slot lists the Nerd Fonts coding families, the CJK slot the CJK families - the prototype BA/DA wiring, separate catalogs per slot; every family not named there is an EN-slot family). front pins the featured families first in the matching picker (the prototype LB/LD rows); NerdFontsSymbolsOnly never lists. The five CJK families the prototype ships but the committed manifest lacks (得意黑 / 更纱黑体 / 方舟像素 / 缝合像素 / 朱雀仿宋) are served by the DEV catalog from the local prototype fonts directory; upstream manifest pinning is a documented follow-up.",
+ "families": {
+  "3270": {
+   "trait": "IBM 终端复刻"
   },
-  "front": {
-    "en": [
-      "JetBrainsMono",
-      "FiraCode",
-      "CascadiaCode",
-      "Iosevka",
-      "Hack",
-      "SourceCodePro",
-      "IBMPlexMono",
-      "VictorMono"
-    ],
-    "cjk": [
-      "MapleMono",
-      "LXGWWenKaiScreen",
-      "NotoSansSC"
-    ]
+  "0xProto": {
+   "trait": "源码可读性优先"
+  },
+  "AdwaitaMono": {
+   "trait": "GNOME 官方等宽"
+  },
+  "Agave": {
+   "trait": "几何简洁等宽"
+  },
+  "AnnotationMono": {
+   "trait": "手写感等宽"
+  },
+  "AnonymousPro": {
+   "trait": "经典复刻 · 高辨识"
+  },
+  "Arimo": {
+   "trait": "非等宽 · 类 Arial"
+  },
+  "AtkinsonHyperlegibleMono": {
+   "trait": "低视力友好设计"
+  },
+  "AurulentSansMono": {
+   "trait": "无衬线等宽经典"
+  },
+  "BigBlueTerminal": {
+   "trait": "IBM 终端怀旧风"
+  },
+  "BitstreamVeraSansMono": {
+   "trait": "经典 Vera 血统"
+  },
+  "IBMPlexMono": {
+   "trait": "IBM",
+   "name": "IBM Plex Mono"
+  },
+  "CascadiaCode": {
+   "trait": "微软",
+   "name": "Cascadia Code"
+  },
+  "CascadiaMono": {
+   "trait": "微软出品 · 无连字"
+  },
+  "CodeNewRoman": {
+   "trait": "复古罗马风编程"
+  },
+  "ComicShannsMono": {
+   "trait": "漫画手写风"
+  },
+  "CommitMono": {
+   "trait": "中性匿名设计"
+  },
+  "Cousine": {
+   "trait": "类 Courier 兼容"
+  },
+  "D2Coding": {
+   "trait": "Naver 出品 · 韩文"
+  },
+  "DaddyTimeMono": {
+   "trait": "等宽编程字体"
+  },
+  "DejaVuSansMono": {
+   "trait": "DejaVu 经典等宽"
+  },
+  "DepartureMono": {
+   "trait": "像素 Lo-Fi 风"
+  },
+  "DroidSansMono": {
+   "trait": "小屏显示优化"
+  },
+  "EnvyCodeR": {
+   "trait": "命令行老牌字体"
+  },
+  "FantasqueSansMono": {
+   "trait": "圆润手写感"
+  },
+  "FiraCode": {
+   "trait": "连字",
+   "name": "Fira Code"
+  },
+  "FiraMono": {
+   "trait": "Mozilla 官方字体"
+  },
+  "GeistMono": {
+   "trait": "Vercel 出品"
+  },
+  "Go-Mono": {
+   "trait": "Go 语言官方"
+  },
+  "Gohu": {
+   "trait": "点阵位图字体"
+  },
+  "GoogleSansCode": {
+   "trait": "Google 品牌向"
+  },
+  "Hack": {
+   "trait": "经典",
+   "name": "Hack"
+  },
+  "Hasklig": {
+   "trait": "Haskell 连字"
+  },
+  "HeavyData": {
+   "trait": "非等宽 · 独特造型"
+  },
+  "Hermit": {
+   "trait": "符号醒目易辨"
+  },
+  "iA-Writer": {
+   "trait": "iA Writer 出品"
+  },
+  "Inconsolata": {
+   "trait": "经典编程字体"
+  },
+  "InconsolataGo": {
+   "trait": "Inconsolata 变体"
+  },
+  "InconsolataLGC": {
+   "trait": "西里尔文扩展"
+  },
+  "IntelOneMono": {
+   "trait": "Intel 出品"
+  },
+  "Iosevka": {
+   "trait": "超窄",
+   "name": "Iosevka"
+  },
+  "IosevkaTerm": {
+   "trait": "Iosevka 终端版"
+  },
+  "IosevkaTermSlab": {
+   "trait": "Iosevka 粗衬线"
+  },
+  "JetBrainsMono": {
+   "trait": "连字",
+   "name": "JetBrains Mono"
+  },
+  "Lekton": {
+   "trait": "细窄极简风"
+  },
+  "LiberationMono": {
+   "trait": "度量兼容 Courier"
+  },
+  "Lilex": {
+   "trait": "现代连字字体"
+  },
+  "MartianMono": {
+   "trait": "Evil Martians 出品"
+  },
+  "Meslo": {
+   "trait": "Apple Menlo 衍生"
+  },
+  "Monaspace": {
+   "trait": "GitHub 出品 · 五变体"
+  },
+  "Monofur": {
+   "trait": "圆润复古风"
+  },
+  "Monoid": {
+   "trait": "连字 · 紧凑型"
+  },
+  "Mononoki": {
+   "trait": "字符高区分度"
+  },
+  "MPlus": {
+   "trait": "多字重 · 日文支持"
+  },
+  "Noto": {
+   "trait": "Google 泛语言字族"
+  },
+  "OpenDyslexic": {
+   "trait": "非等宽 · 阅读障碍友好"
+  },
+  "Overpass": {
+   "trait": "高速公路路牌风"
+  },
+  "ProFont": {
+   "trait": "复古像素编程"
+  },
+  "ProggyClean": {
+   "trait": "小字号优化"
+  },
+  "Recursive": {
+   "trait": "手绘多风格变体"
+  },
+  "RobotoMono": {
+   "trait": "Google 出品"
+  },
+  "ShareTechMono": {
+   "trait": "科技感方正字形"
+  },
+  "SourceCodePro": {
+   "trait": "Adobe",
+   "name": "Source Code Pro"
+  },
+  "SpaceMono": {
+   "trait": "方正个性字形"
+  },
+  "Terminus": {
+   "trait": "终端经典字形"
+  },
+  "Tinos": {
+   "trait": "非等宽 · 类 Times"
+  },
+  "Ubuntu": {
+   "trait": "非等宽 · Ubuntu 官方"
+  },
+  "UbuntuMono": {
+   "trait": "Ubuntu 官方等宽"
+  },
+  "UbuntuSans": {
+   "trait": "Ubuntu 新版字族"
+  },
+  "VictorMono": {
+   "trait": "手写",
+   "name": "Victor Mono"
+  },
+  "ZedMono": {
+   "trait": "Zed 出品 · 圆润"
+  },
+  "MapleMono": {
+   "stars": 29170,
+   "trait": "圆角等宽",
+   "name": "Maple Mono CN"
+  },
+  "LXGWWenKai": {
+   "stars": 26195,
+   "trait": "楷体 · 阅读/正文"
+  },
+  "NotoSerifSC": {
+   "stars": 9749,
+   "trait": "宋体 · 印刷/正文"
+  },
+  "NotoSansSC": {
+   "stars": 4090,
+   "trait": "黑体",
+   "name": "思源黑体"
+  },
+  "LXGWWenKaiScreen": {
+   "stars": 2176,
+   "trait": "楷体",
+   "name": "霞鹜文楷 Screen"
+  },
+  "SmileySans": {
+   "name": "得意黑",
+   "stars": 14897,
+   "trait": "窄斜黑体 · 标题/强调"
+  },
+  "SarasaGothic": {
+   "name": "更纱黑体",
+   "stars": 12848,
+   "trait": "等宽中英 2:1 · 终端/IDE"
+  },
+  "ArkPixel": {
+   "name": "方舟像素字体",
+   "stars": 4780,
+   "trait": "像素 · 复古游戏风"
+  },
+  "ZhuqueFangsong": {
+   "name": "朱雀仿宋",
+   "stars": 3543,
+   "trait": "仿宋 · 文学排版/正文"
+  },
+  "FusionPixel": {
+   "name": "缝合像素字体",
+   "stars": 3304,
+   "trait": "像素 · 泛中日韩"
   }
+ },
+ "front": {
+  "en": [
+   "JetBrainsMono",
+   "FiraCode",
+   "CascadiaCode",
+   "Iosevka",
+   "Hack",
+   "SourceCodePro",
+   "IBMPlexMono",
+   "VictorMono"
+  ],
+  "cjk": [
+   "MapleMono",
+   "LXGWWenKaiScreen",
+   "NotoSansSC"
+  ]
+ },
+ "slots": {
+  "cjk": [
+   "MapleMono",
+   "LXGWWenKai",
+   "LXGWWenKaiMono",
+   "LXGWWenKaiScreen",
+   "LXGWWenKaiMonoScreen",
+   "LXGWWenKaiGBScreen",
+   "LXGWWenKaiMonoGBScreen",
+   "NotoSansSC",
+   "NotoSerifSC",
+   "SmileySans",
+   "SarasaGothic",
+   "ArkPixel",
+   "ZhuqueFangsong",
+   "FusionPixel"
+  ]
+ }
 }

@@ -69,6 +69,18 @@ test.describe("first-run catalog download", () => {
     jsErrors.length = 0;
     expectNetworkFailures = false;
     collectJsErrors(page, jsErrors);
+    // Every test here configures a catalog, so the live GitHub stars
+    // refresh (round 5) fires on load. Keep it hermetic and quiet: a
+    // body without stargazers_count reads as "no data" (the handled
+    // offline state) and the browser logs no resource errors — real
+    // API answers (or its 403s) belong to no test.
+    await page.route("https://api.github.com/repos/**", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: "{}",
+      }),
+    );
   });
 
   test.afterEach(() => {
@@ -391,6 +403,95 @@ test.describe("first-run catalog download", () => {
       .evaluate((el) => getComputedStyle(el).fontFamily);
     expect(cellFont).toContain(cssA);
     await expect(page.locator("[data-stat='en']")).not.toHaveText("0");
+  });
+
+  test("live GitHub stars: fetched at startup, cached for offline launches", async ({
+    page,
+  }) => {
+    // Round 5, owner item 14. The catalog families are real manifest
+    // families (MapleMono / LXGWWenKaiScreen — CJK slot rows that
+    // display stars); their pinned upstream repos answer the startup
+    // fetch. A later launch with the API down shows the CACHED counts.
+    const starCounts: Record<string, number> = {
+      "subframe7536/maple-font": 32_000,
+      "lxgw/LxgwWenKai-Screen": 81_000,
+    };
+    let apiUp = true;
+    // Every response is 200 (a body without stargazers_count reads as
+    // "no data" without the browser logging a resource-error line).
+    await page.route("https://api.github.com/repos/**", (route) => {
+      if (!apiUp) {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ message: "rate limit exceeded" }),
+        });
+      }
+      const repo = new URL(route.request().url()).pathname
+        .replace(/^\/repos\//, "")
+        .replace(/\/$/, "");
+      const stars = starCounts[repo];
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(
+          stars === undefined ? {} : { stargazers_count: stars },
+        ),
+      });
+    });
+
+    const sim = await SimCatalog.create([
+      { family: "MapleMono", file: "MapleMonoCN-Regular.ttf", fontPath: FONT_A },
+      {
+        family: "LXGWWenKaiScreen",
+        file: "LXGWWenKaiScreen-Regular.ttf",
+        fontPath: FONT_B,
+      },
+    ]);
+    await sim.install(page);
+    await injectCatalogConfig(page);
+    await page.goto("/");
+    await expect(catalogDone(page)).toHaveText("2");
+
+    // The CJK slot lists both families (the slot split); their rows
+    // show the LIVE counts, not the curated seeds (29.2k / 2.2k).
+    await pointerClick(
+      page,
+      page.locator('[data-role="picker-cjk"] .kit-hd'),
+    );
+    const cjkPopup = page.locator('[data-picker-popup="cjk"]');
+    await expect(cjkPopup.locator(".kit-fp", { hasText: "Maple Mono CN" })).toBeVisible();
+    await expect(
+      cjkPopup.locator(".kit-fp", { hasText: "Maple Mono CN" }).locator(".kit-gh"),
+    ).toContainText("32.0k");
+    await expect(
+      cjkPopup
+        .locator(".kit-fp", { hasText: "霞鹜文楷 Screen" })
+        .locator(".kit-gh"),
+    ).toContainText("81.0k");
+
+    // The EN slot lists neither (separate catalogs per slot).
+    await pointerClick(
+      page,
+      page.locator('[data-role="picker-en"] .kit-hd'),
+    );
+    const enPopup = page.locator('[data-picker-popup="en"]');
+    await expect(enPopup.locator(".kit-fp", { hasText: "Maple Mono CN" })).toHaveCount(0);
+    await expect(enPopup.locator(".kit-fp", { hasText: "霞鹜文楷 Screen" })).toHaveCount(0);
+
+    // Offline launch: the API is down; the cached counts still show
+    // (never the stale seed, never nothing).
+    apiUp = false;
+    await page.reload();
+    await waitForFontsReady(page);
+    await expect(catalogDone(page)).toHaveText("2");
+    await pointerClick(
+      page,
+      page.locator('[data-role="picker-cjk"] .kit-hd'),
+    );
+    await expect(
+      cjkPopup.locator(".kit-fp", { hasText: "Maple Mono CN" }).locator(".kit-gh"),
+    ).toContainText("32.0k");
   });
 
   test("offline: the catalog is unavailable and local fonts work fully", async ({

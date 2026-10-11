@@ -23,7 +23,7 @@
     "security": {
       "csp": {
         "default-src": "'self'",
-        "connect-src": "ipc: http://ipc.localhost http://127.0.0.1:* http://localhost:*",
+        "connect-src": "ipc: http://ipc.localhost http://127.0.0.1:* http://localhost:* https://api.github.com",
         "img-src": "'self' blob: data:",
         "style-src": "'unsafe-inline' 'self'",
         "font-src": "'self' blob:",

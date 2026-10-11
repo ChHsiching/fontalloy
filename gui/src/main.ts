@@ -11,6 +11,7 @@ import { CatalogManager, setDefaultManager } from "./catalog/manager";
 import { createStorage } from "./platform/storage";
 import { readConfig } from "./platform/config";
 import { connectService } from "./service/synthesize";
+import { refreshStars } from "./catalog/stars";
 import { installUndoShortcuts } from "./history";
 import { store } from "./state";
 
@@ -39,6 +40,21 @@ mountContent(
 );
 mountStatsbar(app.querySelector<HTMLElement>(".statsbar-slot")!);
 
+// The fullscreen scene overlay never covers the custom top bar (round
+// 5, owner item 9): its host starts BELOW the bar, so the window
+// controls (minimize / maximize / close) stay visible and clickable
+// while a scene is zoomed. The bar's height is content-driven — track
+// it live rather than hard-coding a number.
+{
+  const topbar = app.querySelector<HTMLElement>(".topbar")!;
+  const zoomHost = app.querySelector<HTMLElement>(".zoom-host")!;
+  const syncBounds = (): void => {
+    zoomHost.style.top = `${topbar.offsetHeight}px`;
+  };
+  new ResizeObserver(syncBounds).observe(topbar);
+  syncBounds();
+}
+
 // Ctrl+Z / Cmd+Z triggers rule undo (issue #20); the selection undo
 // stack has its own click entry point in the batch editor.
 installUndoShortcuts();
@@ -52,6 +68,12 @@ mountBuildPanel();
 // nothing here may delay or block the workspace, and a failed probe
 // leaves a fully usable app with the reason as page text.
 void connectService();
+
+// Live GitHub stars (round 5): one bounded refresh per launch, from the
+// repos the catalog manifest pins; cached to storage for offline runs.
+// Fire-and-forget like every boot task — the curated seed shows until
+// (and unless) fresh counts land.
+void refreshStars();
 
 // The first-run catalog screen mounts last: the workspace must be fully
 // usable underneath it before any download starts (failures never block).

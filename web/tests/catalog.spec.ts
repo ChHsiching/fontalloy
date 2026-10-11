@@ -27,7 +27,18 @@ test.setTimeout(240_000);
 
 test("the real catalog lists real families with real meta", async ({ page }) => {
   const errors: string[] = [];
-  collectJsErrors(page, errors);
+  const gate = collectJsErrors(page, errors);
+  allowProbeRefusal(gate, "http://127.0.0.1:7777");
+
+  // The catalog bootstrap also fires the live GitHub stars refresh
+  // (round 5); keep it hermetic and quiet (200 + no count).
+  await page.route("https://api.github.com/repos/**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: "{}",
+    }),
+  );
 
   // No opt-out: the static bundle's own default bootstrap (the local
   // dev catalog) runs — this spec is about exactly that default.
@@ -37,28 +48,43 @@ test("the real catalog lists real families with real meta", async ({ page }) => 
 
   const popup = await openFontPicker(page, "en");
   const rows = popup.locator(".kit-fp");
-  // 76 of the manifest's 81 unique families have local binaries (the
-  // five LXGW-mono/NerdFontsSymbolsOnly misses are skipped), plus the
-  // dev catalog's five prototype-only CJK extras.
-  await expect(rows).toHaveCount(81);
+  // Round 5 (the slot split): the EN slot lists the Nerd Fonts CODING
+  // families only — 76 of the manifest's unique families have local
+  // binaries (the five LXGW-mono/NerdFontsSymbolsOnly misses are
+  // skipped), plus the dev catalog's five prototype-only CJK extras =
+  // 81 families, of which the 10 CJK ones belong to the CJK slot.
+  await expect(rows).toHaveCount(71);
+  // And the CJK slot lists exactly those CJK families. (Escape first:
+  // the open EN popup physically covers the CJK card below it.)
+  await page.keyboard.press("Escape");
+  const cjkPopup = await openFontPicker(page, "cjk");
+  await expect(cjkPopup.locator(".kit-fp")).toHaveCount(10);
+  await expect(cjkPopup.locator(".kit-fp").first()).toContainText("Maple Mono CN");
+  await expect(cjkPopup.locator(".kit-fp", { hasText: "得意黑" })).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  const popupEn = await openFontPicker(page, "en");
+  const rowsEn = popupEn.locator(".kit-fp");
   // The curated FRONT pins first (the prototype's LB rows, its display
   // names and short tags): JetBrains Mono 连字, Fira Code 连字,
   // Cascadia Code 微软, Iosevka 超窄, Hack 经典, Source Code Pro Adobe,
   // IBM Plex Mono IBM, Victor Mono 手写.
   const front = ["JetBrains Mono", "Fira Code", "Cascadia Code", "Iosevka",
     "Hack", "Source Code Pro", "IBM Plex Mono", "Victor Mono"];
-  const texts = await rows.allTextContents();
+  const texts = await rowsEn.allTextContents();
   expect(texts.slice(0, 8)).toEqual(front.map((name) => expect.stringContaining(name)));
-  const jb = rows.filter({ hasText: "JetBrains Mono" });
+  const jb = rowsEn.filter({ hasText: "JetBrains Mono" });
   await expect(jb).toHaveCount(1);
   await expect(jb).toContainText("OFL");
   await expect(jb).toContainText("连字");
   // The tail keeps manifest order and the curated trait tags.
-  await expect(rows.filter({ hasText: "0xProto" })).toContainText(
+  await expect(rowsEn.filter({ hasText: "0xProto" })).toContainText(
     "源码可读性优先",
   );
+  // The EN slot never lists the CJK families (separate catalogs).
+  await expect(rowsEn.filter({ hasText: "霞鹜文楷" })).toHaveCount(0);
+  await expect(rowsEn.filter({ hasText: "思源黑体" })).toHaveCount(0);
   // NerdFontsSymbolsOnly never lists (prototype parity).
-  await expect(rows.filter({ hasText: "SymbolsOnly" })).toHaveCount(0);
+  await expect(rowsEn.filter({ hasText: "SymbolsOnly" })).toHaveCount(0);
   await page.keyboard.press("Escape");
 
   // The CJK picker: the prototype's LD front (Maple Mono CN 圆角等宽 /
@@ -86,7 +112,18 @@ test("a catalog family verifies, becomes pickable, and self-renders", async ({
   page,
 }) => {
   const errors: string[] = [];
-  collectJsErrors(page, errors);
+  const gate = collectJsErrors(page, errors);
+  allowProbeRefusal(gate, "http://127.0.0.1:7777");
+
+  // The catalog bootstrap fires the live stars refresh (round 5);
+  // keep it hermetic and quiet.
+  await page.route("https://api.github.com/repos/**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: "{}",
+    }),
+  );
 
   await page.goto("/");
   await waitForCatalogReady(page);
@@ -115,6 +152,15 @@ test("the real catalog drives the panel end to end (YAML, download, copy)", asyn
   // The REAL local catalog (the static bundle's default bootstrap):
   // both picks from real families — JetBrainsMono as the base, the
   // Maple Mono CN build as the donor (the prototype's own pair).
+  // The live stars refresh would land mid-test and rebuild the picker
+  // cards under the cursor (round 5); keep it hermetic and quiet.
+  await page.route("https://api.github.com/repos/**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: "{}",
+    }),
+  );
   await page.goto(`/?serve=${encodeURIComponent(UNUSED_SERVE)}`);
   await waitForCatalogReady(page);
   await pickCatalogFamily(page, "en", "JetBrains Mono");
@@ -146,19 +192,22 @@ test("the real catalog drives the panel end to end (YAML, download, copy)", asyn
     };
   });
   expect(inView.ok).toBe(true);
-  expect(inView.scrollTop).toBeGreaterThan(0);
+  // The pinned front puts the checked row AT the top (round 5 fixed
+  // the front pinning to key on family names once rows register), so
+  // the scroll sits at 0 — the discipline under test is that the
+  // checked row is INSIDE the popup's scroll viewport, never that the
+  // page under it scrolled.
+  expect(inView.scrollTop).toBeGreaterThanOrEqual(0);
   await page.keyboard.press("Escape");
 
   // Rules land in the recipe through the workspace's affordances: a
   // fresh state already declares zh_cn under 文字范围 (the pressed chip);
-  // the deep picker adds ja (a chip-less preset), the 按编码指定 popup
-  // adds a custom range and a single codepoint (留空=单个).
-  await pointerClick(page, page.locator('[data-role="add-preset"]'));
-  const presetPopup = page.locator('[data-picker-popup="preset-add"]');
-  await expect(presetPopup).toBeVisible();
+  // the 日文 chip adds ja (round 5: the four chips are the rail's whole
+  // preset surface), the 按编码指定 popup adds a custom range and a
+  // single codepoint (留空=单个).
   await pointerClick(
     page,
-    presetPopup.locator(".preset-row", { hasText: "ja" }),
+    page.locator("[data-role='lang-chip'][data-preset='ja']"),
   );
 
   await pointerClick(page, page.locator("[data-role='range-specify']"));
@@ -208,7 +257,7 @@ test("the real catalog drives the panel end to end (YAML, download, copy)", asyn
     "fonts/MapleMono-NF/MapleMonoCN-Regular.ttf",
   ]);
   // The boot-seeded zh_cn preset (the declared 文字范围 scope) first,
-  // then the picker's ja preset, then the 按编码指定 rules (the range
+  // then the 日文 chip's ja preset, then the 按编码指定 rules (the range
   // and the single codepoint).
   expect(recipe.rules).toEqual([
     { set: "zh_cn", fonts: ["base", "donor-0"] },

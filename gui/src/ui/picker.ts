@@ -5,6 +5,7 @@ import {
 } from "../state";
 import { registerFontBytes } from "../fonts/registry";
 import { getDefaultManager } from "../catalog/manager";
+import { starsFor, subscribeStars } from "../catalog/stars";
 import { canPickWithDialog, pickLocalFonts } from "../platform/localfonts";
 import {
   cssFamily,
@@ -26,6 +27,8 @@ export interface PickerOptions {
 export interface FontPicker {
   open(): void;
   close(): void;
+  /** Detach the picker's store/star subscriptions (region teardown). */
+  destroy?(): void;
 }
 
 /** The shared hidden file input (one local-load flow at a time). */
@@ -88,10 +91,11 @@ function catalogNote(catalog: CatalogState): string | null {
  * Display metadata for a catalog family: license + variant from the
  * repo's catalog manifest (the honest in-repo source), overlaid with
  * the curated display data the validated prototype carries — display
- * names (Maple Mono CN / 霞鹜文楷 Screen / the spaced base names),
- * GitHub stars, and the Chinese trait tags (连字 / 楷体 / 圆角等宽 …) —
- * from data/curated-meta.json. Where the prototype had no curated tag
- * the manifest's own variant shows.
+ * names (Maple Mono CN / 霞鹜文楷 Screen / 思源黑体, the spaced base
+ * names), GitHub stars, and the Chinese trait tags (连字 / 楷体 /
+ * 圆角等宽 …) — from data/curated-meta.json. Star counts come through
+ * `starsFor` (round 5): the live startup fetch, falling back to the
+ * curated seed when offline.
  */
 const CURATED_META = curatedMeta.families as Record<
   string,
@@ -103,6 +107,17 @@ const CURATED_META = curatedMeta.families as Record<
 const CURATED_FRONT = (curatedMeta as {
   front: { en: string[]; cjk: string[] };
 }).front;
+
+/**
+ * The per-slot catalogs (round 5, owner item 2 — the prototype's BA/DA
+ * wiring): the EN slot lists the Nerd Fonts coding families, the CJK
+ * slot the CJK families. `slots.cjk` in curated-meta names the CJK
+ * families; every other family is an EN-slot family.
+ * NerdFontsSymbolsOnly never lists in either.
+ */
+const CJK_SLOT_FAMILIES = new Set(
+  (curatedMeta as { slots?: { cjk?: string[] } }).slots?.cjk ?? [],
+);
 
 /** The one family the prototype never lists (icon-only symbols build). */
 const EXCLUDED_FAMILIES = new Set(["NerdFontsSymbolsOnly"]);
@@ -116,12 +131,19 @@ const MANIFEST_META = new Map<string, FontMeta>(
         license: family.license_spdx
           .replace(/-1\.1$/, "")
           .replace(/-(no-)?RFN$/, ""),
-        stars: curated?.stars,
         trait: curated?.trait ?? family.variant,
       },
     ];
   }),
 );
+
+/** The meta line of one family (stars resolved live-first). */
+function familyMeta(family: string): FontMeta | undefined {
+  const base = MANIFEST_META.get(family);
+  const stars = starsFor(family);
+  if (base === undefined && stars === undefined) return undefined;
+  return { license: base?.license, stars, trait: base?.trait };
+}
 
 /**
  * A font picker (ADR-0004), assembled from the kit's PickerPopup: the
@@ -228,43 +250,47 @@ export function mountPicker(
     const { fonts, selected, catalog } = store.get();
     const selectedKey = selected[options.role];
 
-    // Catalog families (metadata-driven rows); the name text is the
-    // curated display name where the prototype carries one (else the
-    // metadata family), each row renders in its own font once the face
-    // is registered (ADR-0004). The role's curated front pins first
-    // (the prototype's LB/LD featured rows); NerdFontsSymbolsOnly
-    // never lists.
-    const catalogRows: PickerFont[] = catalog.families
-      .filter((family) => !EXCLUDED_FAMILIES.has(family.family))
-      .map((family) => {
+    // The role's OWN catalog (round 5, owner item 2): the EN slot lists
+    // the Nerd Fonts coding families, the CJK slot the CJK families —
+    // separate catalogs, exactly the prototype's BA/DA wiring. The
+    // curated front pins first (keyed on the FAMILY name — a registered
+    // family's row swaps its `cat:` id for the css key, so ids are not
+    // stable keys); NerdFontsSymbolsOnly never lists.
+    const slotFilter = (family: string): boolean =>
+      options.role === "cjk"
+        ? CJK_SLOT_FAMILIES.has(family)
+        : !CJK_SLOT_FAMILIES.has(family);
+    const slotEntries = catalog.families.filter(
+      (family) =>
+        !EXCLUDED_FAMILIES.has(family.family) &&
+        slotFilter(family.family),
+    );
+    const rowsByFamily = new Map(
+      slotEntries.map((family) => {
         const cssKey = catalog.registered[family.family] ?? null;
-        const available = family.status === "verified";
-        const curated = CURATED_META[family.family];
-        return {
-          id: cssKey ?? `cat:${family.family}`,
-          name: curated?.name ?? family.family,
-          family: cssKey ?? undefined,
-          meta: MANIFEST_META.get(family.family),
-          disabled: !available,
-          note: catalogTag(family),
-        };
-      });
+        return [
+          family.family,
+          {
+            id: cssKey ?? `cat:${family.family}`,
+            name: CURATED_META[family.family]?.name ?? family.family,
+            family: cssKey ?? undefined,
+            meta: familyMeta(family.family),
+            disabled: family.status !== "verified",
+            note: catalogTag(family),
+          } satisfies PickerFont,
+        ];
+      }),
+    );
     const frontIds = CURATED_FRONT[options.role] ?? [];
     const frontSet = new Set(frontIds);
-    const byCatalogId = new Map(
-      catalogRows
-        .filter((row) => row.id.startsWith("cat:"))
-        .map((row) => [row.id.slice(4), row]),
-    );
     const rows: PickerFont[] = [
       ...frontIds.flatMap((id) => {
-        const row = byCatalogId.get(id);
+        const row = rowsByFamily.get(id);
         return row === undefined ? [] : [row];
       }),
-      ...catalogRows.filter((row) => {
-        const catId = row.id.startsWith("cat:") ? row.id.slice(4) : row.id;
-        return !frontSet.has(catId);
-      }),
+      ...slotEntries
+        .filter((family) => !frontSet.has(family.family))
+        .map((family) => rowsByFamily.get(family.family)!),
     ];
 
     // Locally loaded fonts. Faces that entered the registry through the
@@ -338,6 +364,8 @@ export function mountPicker(
     popup.render(buildProps());
   }
   store.subscribe(rerender);
+  // Live star counts landing after startup re-render the rows in place.
+  const unsubscribeStars = subscribeStars(rerender);
   rerender();
 
   return {
@@ -346,5 +374,6 @@ export function mountPicker(
       popup.open();
     },
     close: () => popup.close(),
+    destroy: unsubscribeStars,
   };
 }
