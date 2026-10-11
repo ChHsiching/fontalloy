@@ -110,6 +110,27 @@ test("the real catalog drives the panel end to end (YAML, download, copy)", asyn
     "MapleMono",
   );
 
+  // Open-at-the-selection: the EN picker reopens with the checked row
+  // (JetBrainsMono, ~30 rows into the 76-family list) already scrolled
+  // into the popup's viewport — the scroll area scrolls, not the page.
+  const reopened = await openFontPicker(page, "en");
+  const inView = await reopened.evaluate((popup) => {
+    const area = popup.querySelector(".kit-pks");
+    const row = popup.querySelector(".kit-fp[aria-pressed='true']");
+    if (!(area instanceof HTMLElement) || !(row instanceof HTMLElement)) {
+      return { ok: false, scrollTop: -1 };
+    }
+    const a = area.getBoundingClientRect();
+    const r = row.getBoundingClientRect();
+    return {
+      ok: r.top >= a.top - 1 && r.bottom <= a.bottom + 1,
+      scrollTop: area.scrollTop,
+    };
+  });
+  expect(inView.ok).toBe(true);
+  expect(inView.scrollTop).toBeGreaterThan(0);
+  await page.keyboard.press("Escape");
+
   // Rail rules land in the recipe: a language preset for the donor, a
   // custom range for the base, a single codepoint override.
   await pointerClick(page, page.locator('[data-role="add-preset"]'));

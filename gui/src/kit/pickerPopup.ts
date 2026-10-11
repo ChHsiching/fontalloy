@@ -23,7 +23,10 @@
  * - positioning clamps to the app frame (never past the window edge),
  *   capping the height with internal scroll;
  * - rows self-render: the family name in its own font, the MetaLine,
- *   and a check mark on the selected row.
+ *   and a check mark on the selected row;
+ * - open-at-the-selection: when the popup opens with the current pick
+ *   in the list, the scroll area starts centered on the checked row
+ *   (never a page scroll — the rect math touches the scroll area only).
  */
 
 import { icon } from "./icons";
@@ -258,6 +261,27 @@ export function mountPickerPopup(
     renderStatus();
     popup!.classList.add("open");
     position();
+    revealSelected();
+  };
+
+  /**
+   * Open-at-the-selection: when the current pick is in the list, the
+   * scroll area starts centered on the checked row (the catalog list is
+   * far taller than the popup; the prototype's boot frame opens on its
+   * picked row). Rect-relative math against the scroll area only — a
+   * scrollIntoView here could also scroll the page under the popup.
+   */
+  const revealSelected = (): void => {
+    if (!scrollArea || props.selectedId === null) return;
+    const row = scrollArea.querySelector<HTMLElement>(
+      `[data-font-id="${CSS.escape(props.selectedId)}"]`,
+    );
+    if (!row) return;
+    const rowRect = row.getBoundingClientRect();
+    const areaRect = scrollArea.getBoundingClientRect();
+    const delta =
+      rowRect.top + rowRect.height / 2 - (areaRect.top + areaRect.height / 2);
+    if (delta !== 0) scrollArea.scrollTop += delta;
   };
 
   const renderRows = (): void => {
