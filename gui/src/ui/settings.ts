@@ -19,6 +19,10 @@ const STORE_KEY: Record<string, keyof SynthesisSettings> = {
 };
 
 export function mountSettings(root: HTMLElement): void {
+  // The prototype paces the three rows generously (its wrapper gap is
+  // 10px; round 4 errs a touch wider — cramped rows were an owner
+  // complaint). The chrome itself stays in the kit's mountSettingRow.
+  root.className = "settings-rows";
   const selects: Partial<Record<keyof SynthesisSettings, AppSelect>> = {};
 
   for (const topic of SETTINGS_TOPICS) {
