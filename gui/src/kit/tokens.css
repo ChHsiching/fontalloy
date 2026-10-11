@@ -1,0 +1,444 @@
+/*
+ * FontAlloy kit — design tokens as CSS custom properties.
+ *
+ * Every value extracted from the validated prototype (gui/prototype).
+ * tokens.ts carries the same values in typed form; keep the two in sync
+ * (the kit tests compare a sample of them).
+ */
+
+:root {
+  color-scheme: light;
+
+  /* Light palette: off-white page, white cards, teal #0f766e. */
+  --page: #f7f8fa;
+  --sf: #ffffff;
+  --sf2: #eef0f3;
+  --ink: #131720;
+  --ink2: #4a5262;
+  --ink3: #5f6878;
+  --ln: #dfe3e8;
+  --ln2: #c0c7d0;
+  --fb: #7a8290;
+  --ac: #0f766e;
+  --acs: #0d5f58;
+  --acsoft: #e6f5f3;
+  --acink: #ffffff;
+  --dgr: #c53030;
+  --dgrsoft: #fef0f0;
+  --focus: var(--ac);
+  --sh1: 0 1px 2px rgba(16, 20, 26, 0.04);
+  --sh2: 0 4px 14px rgba(16, 20, 26, 0.08);
+  --sh3: 0 20px 50px rgba(16, 20, 26, 0.16);
+
+  /* Motion — Apple-style critically damped springs. */
+  --spring: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --spring-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Character-grid cell size (driven by the consumer; 40px is the
+   * prototype's default). */
+  --cell: 40px;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Dark palette — the "teal on iron" signature. */
+  --page: #0b0d0f;
+  --sf: #14171a;
+  --sf2: #1b1f23;
+  --ink: #e4e8ec;
+  --ink2: #9aa4b0;
+  --ink3: #737f8c;
+  --ln: #24282e;
+  --ln2: #3e454e;
+  --fb: #4a5460;
+  --ac: #4ade9e;
+  --acs: #34d399;
+  --acsoft: #0c2822;
+  --acink: #0b0d0f;
+  --dgr: #f87171;
+  --dgrsoft: #2a1414;
+  --focus: var(--ac);
+  --sh1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --sh2: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --sh3: 0 24px 60px rgba(0, 0, 0, 0.65);
+}
+
+/* ---------- base (kit pages) ---------- */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--page);
+  color: var(--ink);
+  font-family: system-ui, "Segoe UI", "Microsoft YaHei", sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--ac);
+  color: var(--acink);
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.kit-num {
+  font-variant-numeric: tabular-nums;
+}
+
+.kit-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--ln2);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---------- scene chrome: terminal ---------- */
+
+/*
+ * Terminal palettes. The base (.kit-term) is the follow-theme case for
+ * the light app theme; [data-theme="dark"] flips it. data-t locks a
+ * named theme. tb background, tw text, tp prompt, tc cyan, td dim,
+ * ty yellow, th purple, tr red.
+ */
+.kit-term {
+  --tb: #f6f8fa;
+  --tw: #1f2328;
+  --tp: #1a7f37;
+  --tc: #0550ae;
+  --td: #59636e;
+  --ty: #9a6700;
+  --th: #8250df;
+  --tr: #cf222e;
+  background: var(--tb);
+  color: var(--tw);
+  border-radius: 9px;
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.75;
+}
+
+[data-theme="dark"] .kit-term {
+  --tb: #0d1117;
+  --tw: #e6edf3;
+  --tp: #7ee787;
+  --tc: #79c0ff;
+  --td: #8b949e;
+  --ty: #e3b341;
+  --th: #d2a8ff;
+  --tr: #ffa198;
+}
+
+.kit-term[data-t="github-light"] {
+  --tb: #f6f8fa; --tw: #1f2328; --tp: #1a7f37; --tc: #0550ae; --td: #59636e; --ty: #9a6700; --th: #8250df; --tr: #cf222e;
+}
+.kit-term[data-t="github-dark"] {
+  --tb: #0d1117; --tw: #e6edf3; --tp: #7ee787; --tc: #79c0ff; --td: #8b949e; --ty: #e3b341; --th: #d2a8ff; --tr: #ffa198;
+}
+.kit-term[data-t="one-light"] {
+  --tb: #fafafa; --tw: #383a42; --tp: #50a14f; --tc: #4078f2; --td: #a0a1a7; --ty: #c18401; --th: #a626a4; --tr: #e45649;
+}
+.kit-term[data-t="solarized-light"] {
+  --tb: #fdf6e3; --tw: #586e75; --tp: #859900; --tc: #268bd2; --td: #93a1a1; --ty: #b58900; --th: #6c71c4; --tr: #dc322f;
+}
+.kit-term[data-t="dracula"] {
+  --tb: #282a36; --tw: #f8f8f2; --tp: #50fa7b; --tc: #8be9fd; --td: #6272a4; --ty: #f1fa8c; --th: #ff79c6; --tr: #ff5555;
+}
+.kit-term[data-t="tokyonight"] {
+  --tb: #1a1b26; --tw: #c0caf5; --tp: #9ece6a; --tc: #7dcfff; --td: #565f89; --ty: #e0af68; --th: #bb9af7; --tr: #f7768e;
+}
+.kit-term[data-t="nord"] {
+  --tb: #2e3440; --tw: #eceff4; --tp: #a3be8c; --tc: #88c0d0; --td: #616e88; --ty: #ebcb8b; --th: #b48ead; --tr: #bf616a;
+}
+.kit-term[data-t="catppuccin"] {
+  --tb: #1e1e2e; --tw: #cdd6f4; --tp: #a6e3a1; --tc: #89dceb; --td: #6c7086; --ty: #f9e2af; --th: #f5c2e7; --tr: #f38ba8;
+}
+.kit-term[data-t="onedark"] {
+  --tb: #282c34; --tw: #abb2bf; --tp: #98c379; --tc: #61afef; --td: #5c6370; --ty: #e5c07b; --th: #c678dd; --tr: #e06c75;
+}
+.kit-term[data-t="solarized-dark"] {
+  --tb: #002b36; --tw: #93a1a1; --tp: #859900; --tc: #2aa198; --td: #586e75; --ty: #b58900; --th: #6c71c4; --tr: #dc322f;
+}
+.kit-term[data-t="everforest"] {
+  --tb: #2d353b; --tw: #d3c6aa; --tp: #83c092; --tc: #7fbbb3; --td: #859289; --ty: #dbbc7f; --th: #d699b6; --tr: #e67e80;
+}
+.kit-term[data-t="rose-pine"] {
+  --tb: #191724; --tw: #e0def4; --tp: #31748f; --tc: #9ccfd8; --td: #6e6a86; --ty: #ebbcba; --th: #c4a7e7; --tr: #eb6f92;
+}
+.kit-term[data-t="gruvbox"] {
+  --tb: #282828; --tw: #ebdbb2; --tp: #b8bb26; --tc: #83a598; --td: #928374; --ty: #fabd2f; --th: #d3869b; --tr: #fb4934;
+}
+
+.kit-term .t-p { color: var(--tp); }
+.kit-term .t-c { color: var(--tc); }
+.kit-term .t-d { color: var(--td); }
+.kit-term .t-y { color: var(--ty); }
+.kit-term .t-w { color: var(--tw); }
+.kit-term .t-h { color: var(--th); }
+.kit-term .t-r { color: var(--tr); }
+
+/* ---------- scene chrome: code editor ---------- */
+
+.kit-code {
+  font-size: 13px;
+  line-height: 1.8;
+  border-radius: 9px;
+  padding: 12px;
+  background: var(--sf);
+  border: 1px solid var(--ln);
+  color: var(--ink);
+}
+
+/* Follow-theme syntax tokens (app palette). */
+.kit-code .k { color: var(--syn-k, #7c3aad); }
+.kit-code .s { color: var(--syn-s, #3f7433); }
+.kit-code .n { color: var(--syn-n, #92510a); }
+.kit-code .t { color: var(--syn-t, #1e5a8a); }
+.kit-code .cm { color: var(--ink3); }
+
+[data-theme="dark"] .kit-code .k { color: #b794f6; }
+[data-theme="dark"] .kit-code .s { color: #86efac; }
+[data-theme="dark"] .kit-code .n { color: #fdba74; }
+[data-theme="dark"] .kit-code .t { color: #7dd3fc; }
+
+/* Locked editor themes set their own background and token colors. */
+.kit-code[data-ct] { color: #c9d1d9; }
+.kit-code[data-ct="vs-dark"] { background: #1e1e1e; }
+.kit-code[data-ct="vs-dark"] .k { color: #c586c0 !important; }
+.kit-code[data-ct="vs-dark"] .s { color: #ce9178 !important; }
+.kit-code[data-ct="vs-dark"] .n { color: #b5cea8 !important; }
+.kit-code[data-ct="vs-dark"] .t { color: #4ec9b0 !important; }
+.kit-code[data-ct="vs-dark"] .cm { color: #6a9955 !important; }
+
+.kit-code[data-ct="monokai"] { background: #272822; }
+.kit-code[data-ct="monokai"] .k { color: #f92672 !important; }
+.kit-code[data-ct="monokai"] .s { color: #e6db74 !important; }
+.kit-code[data-ct="monokai"] .n { color: #ae81ff !important; }
+.kit-code[data-ct="monokai"] .t { color: #66d9ef !important; }
+.kit-code[data-ct="monokai"] .cm { color: #75715e !important; }
+
+.kit-code[data-ct="dracula"] { background: #282a36; }
+.kit-code[data-ct="dracula"] .k { color: #ff79c6 !important; }
+.kit-code[data-ct="dracula"] .s { color: #f1fa8c !important; }
+.kit-code[data-ct="dracula"] .n { color: #bd93f9 !important; }
+.kit-code[data-ct="dracula"] .t { color: #8be9fd !important; }
+.kit-code[data-ct="dracula"] .cm { color: #6272a4 !important; }
+
+.kit-code[data-ct="tokyonight"] { background: #1a1b26; }
+.kit-code[data-ct="tokyonight"] .k { color: #bb9af7 !important; }
+.kit-code[data-ct="tokyonight"] .s { color: #9ece6a !important; }
+.kit-code[data-ct="tokyonight"] .n { color: #ff9e64 !important; }
+.kit-code[data-ct="tokyonight"] .t { color: #7aa2f7 !important; }
+.kit-code[data-ct="tokyonight"] .cm { color: #565f89 !important; }
+
+.kit-code[data-ct="gruvbox"] { background: #282828; }
+.kit-code[data-ct="gruvbox"] .k { color: #fb4934 !important; }
+.kit-code[data-ct="gruvbox"] .s { color: #b8bb26 !important; }
+.kit-code[data-ct="gruvbox"] .n { color: #d3869b !important; }
+.kit-code[data-ct="gruvbox"] .t { color: #83a598 !important; }
+.kit-code[data-ct="gruvbox"] .cm { color: #928374 !important; }
+
+.kit-code[data-ct="catppuccin"] { background: #1e1e2e; }
+.kit-code[data-ct="catppuccin"] .k { color: #cba6f7 !important; }
+.kit-code[data-ct="catppuccin"] .s { color: #a6e3a1 !important; }
+.kit-code[data-ct="catppuccin"] .n { color: #fab387 !important; }
+.kit-code[data-ct="catppuccin"] .t { color: #89b4fa !important; }
+.kit-code[data-ct="catppuccin"] .cm { color: #6c7086 !important; }
+
+.kit-code[data-ct="onedark"] { background: #282c34; }
+.kit-code[data-ct="onedark"] .k { color: #c678dd !important; }
+.kit-code[data-ct="onedark"] .s { color: #98c379 !important; }
+.kit-code[data-ct="onedark"] .n { color: #d19a66 !important; }
+.kit-code[data-ct="onedark"] .t { color: #61afef !important; }
+.kit-code[data-ct="onedark"] .cm { color: #5c6370 !important; }
+
+.kit-code[data-ct="solarized-dark"] { background: #002b36; }
+.kit-code[data-ct="solarized-dark"] .k { color: #859900 !important; }
+.kit-code[data-ct="solarized-dark"] .s { color: #2aa198 !important; }
+.kit-code[data-ct="solarized-dark"] .n { color: #d33682 !important; }
+.kit-code[data-ct="solarized-dark"] .t { color: #268bd2 !important; }
+.kit-code[data-ct="solarized-dark"] .cm { color: #586e75 !important; }
+
+.kit-code[data-ct="nord"] { background: #2e3440; }
+.kit-code[data-ct="nord"] .k { color: #81a1c1 !important; }
+.kit-code[data-ct="nord"] .s { color: #a3be8c !important; }
+.kit-code[data-ct="nord"] .n { color: #b48ead !important; }
+.kit-code[data-ct="nord"] .t { color: #88c0d0 !important; }
+.kit-code[data-ct="nord"] .cm { color: #616e88 !important; }
+
+/* ---------- scene chrome: document ---------- */
+
+.kit-doc {
+  font-size: 13.5px;
+  line-height: 1.7;
+}
+
+.kit-doc h2 {
+  font-size: 18px;
+  margin: 0 0 10px;
+  font-weight: 700;
+}
+
+.kit-doc h3 {
+  font-size: 15px;
+  margin: 14px 0 6px;
+  font-weight: 600;
+}
+
+.kit-doc p {
+  margin: 0 0 10px;
+}
+
+.kit-doc ul {
+  margin: 0 0 10px;
+  padding-left: 20px;
+}
+
+.kit-doc li {
+  margin-bottom: 4px;
+}
+
+.kit-doc blockquote {
+  margin: 10px 0;
+  padding: 8px 14px;
+  border-left: 3px solid var(--ac);
+  background: var(--acsoft);
+  border-radius: 0 8px 8px 0;
+  color: var(--ink2);
+}
+
+.kit-doc pre {
+  background: var(--page);
+  border: 1px solid var(--ln);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin: 10px 0;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-x: auto;
+}
+
+.kit-doc table {
+  border-collapse: collapse;
+  font-size: 12.5px;
+  margin: 10px 0;
+  width: 100%;
+}
+
+.kit-doc th,
+.kit-doc td {
+  border: 1px solid var(--ln);
+  padding: 5px 12px;
+  text-align: start;
+}
+
+.kit-doc th {
+  background: var(--sf2);
+  font-weight: 600;
+}
+
+.kit-doc code {
+  background: var(--sf2);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 12px;
+}
+
+/* ---------- animation system ---------- */
+
+/*
+ * Entrance animations always use fill-mode BACKWARDS — `both` retains
+ * the effect permanently and turns every block into a lasting stacking
+ * context that traps z-index portals inside it (prototype r31 lesson).
+ */
+@keyframes kit-pop-in {
+  from { opacity: 0; transform: scale(0.94) translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes kit-rise-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes kit-shimmer {
+  from { transform: translateX(-130%); }
+  to { transform: translateX(130%); }
+}
+
+@keyframes kit-num-pop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+
+/*
+ * Theme-switch transition killer (prototype r30): `[data-theme] *`
+ * selectors match permanently; instead JS parks a `.theming` class for
+ * two frames around the switch. Also gates JS-driven theme switches.
+ */
+.theming,
+.theming *,
+.theming *::before,
+.theming *::after {
+  transition: none !important;
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
