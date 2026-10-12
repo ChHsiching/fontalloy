@@ -376,6 +376,10 @@
    "name": "汇文明朝体修正",
    "stars": 262,
    "trait": "明朝体 · 古典"
+  },
+  "LxgwBrightCode": {
+   "stars": 256,
+   "trait": "等宽合体 · 楷体"
   }
  },
  "front": {
@@ -427,6 +431,7 @@
    "BizinGothic",
    "GuguruSansCode",
    "SourceHanCodeJP",
+   "LxgwBrightCode",
    "LxgwNeoXiHei",
    "LxgwNeoXiHeiCode",
    "LxgwNeoZhiSong",

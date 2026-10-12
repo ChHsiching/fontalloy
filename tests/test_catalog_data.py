@@ -51,6 +51,9 @@ EXPANSION_LICENSES: dict[str, str] = {
     "ChillRound": "OFL-1.1-RFN",
     "GlowSans": "MIT",
     "HuiwenMincho": "CC0-1.0",
+    # The 7z-only family the expansion originally skipped; onboarded
+    # when the fetch pipeline learned to extract .7z artifacts.
+    "LxgwBrightCode": "OFL-1.1-RFN",
 }
 
 #: New variants of already-cataloged families (wave 3): family/variant.
@@ -157,6 +160,36 @@ def test_ipa_families_carry_the_rename_rule(committed) -> None:
             assert entry.rfn and entry.rfn_names, family
 
 
+def test_lxgwbrightcode_ships_the_full_7z_matrix(committed) -> None:
+    """The family 7z extraction unlocks: Monaspace Argon × WenKai Lite,
+    upstream's variant matrix {base, GB, TC} × {plain, NF} pinned as six
+    .7z artifacts with self-computed checksums (upstream publishes no
+    checksums) and the Monaspace reserved names carried on every cut."""
+    entries = by_family(committed, "LxgwBrightCode")
+    assert {e.variant for e in entries} == {
+        "Standard", "GB", "TC", "NF", "NF-GB", "NF-TC"
+    }
+    for entry in entries:
+        assert entry.file.endswith(".7z"), entry.variant
+        assert entry.upstream_url == (
+            "https://github.com/lxgw/LxgwBright-Code/releases/download/"
+            f"v2.922/{entry.file}"
+        )
+        assert entry.checksum_source == "self-computed"
+        assert entry.sha256 is not None
+        assert entry.rfn
+        assert "Monaspace" in " ".join(entry.rfn_names)
+        assert entry.axes["cjk_width"] == "mono"
+        assert entry.axes["style"] == "kai"
+
+    icons = {e.axes["icons"] for e in entries}
+    regions = {e.axes["region"] for e in entries}
+    charsets = {e.axes.get("charset") for e in entries}
+    assert icons == {"plain", "nf"}
+    assert regions == {"SC", "TC"}
+    assert charsets == {None, "GB"}
+
+
 def _manifest_with_patch(tmp_path: Path, patch: dict) -> Path:
     """The committed manifest with entry 0's axes patched, on a copy of
     the licenses directory (license_file resolves against the manifest's
@@ -191,13 +224,15 @@ def test_notices_render_the_expansion_obligations() -> None:
     # The LXGW reserved-name carve-out covers ZhenKai's license file too.
     assert text.count("Reserved-name carve-out") >= 2
     # Every expansion family renders a section with its upstream pin.
-    for family in ("UDEVGothic", "HuiwenMincho", "SourceHanCodeJP", "GlowSans"):
+    for family in ("UDEVGothic", "HuiwenMincho", "SourceHanCodeJP", "GlowSans",
+                   "LxgwBrightCode"):
         assert f"### {family}" in text, family
     # ...and the vendored license texts are embedded once each.
     assert "### IPA-LxgwNeoXiHei.txt" in text
     assert "### MIT-GlowSans.txt" in text
     assert "### CC0-1.0.txt" in text
     assert "### OFL-1.1-SourceHanSans.txt" in text
+    assert "### OFL-1.1-LxgwBrightCode.txt" in text
 
 
 def test_notices_family_filter_rejects_unknown() -> None:
