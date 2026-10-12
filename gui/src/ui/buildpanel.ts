@@ -30,6 +30,8 @@
 import { synthStore, removeBuild, type BuildRow } from "../service/state";
 import { mountHelpPopover, type HelpPopover } from "../kit/helpPopover";
 import { brandMark } from "../kit/topBar";
+import { store } from "../state";
+import { variantDisplayName } from "./picker";
 
 /**
  * The pipeline stages (report-copy §1): the key drives the serve's
@@ -89,6 +91,27 @@ function basename(path: string | undefined): string {
   if (path === undefined) return "—";
   const parts = path.replace(/\\/g, "/").split("/");
   return parts[parts.length - 1] ?? path;
+}
+
+/**
+ * One report source's display name (round 8, owner item 7): the picked
+ * font's REAL variant name — the display family plus the cut's official
+ * label (「Maple Mono NF-CN」) — whenever the source maps onto a pick
+ * (its file basename matches, or its role names the current pick);
+ * the serve's file basename otherwise.
+ */
+function sourceName(id: string | undefined, path: string | undefined): string {
+  const { fonts, selected } = store.get();
+  const byFile = fonts.find(
+    (font) => font.path !== undefined && basename(font.path) === basename(path),
+  );
+  const roleKey =
+    id === "base" ? selected.en : id === "donor-0" ? selected.cjk : null;
+  const byRole =
+    roleKey !== null ? fonts.find((f) => f.cssFamily === roleKey) : undefined;
+  const font = byFile ?? byRole;
+  if (font !== undefined) return variantDisplayName(font);
+  return basename(path);
 }
 
 /**
@@ -253,7 +276,7 @@ function renderReport(
       sources.append(
         fact(
           label,
-          `${basename(source.path)} · ${fmt(source.codepoints)} 个码位`,
+          `${sourceName(source.id ?? source.role, source.path)} · ${fmt(source.codepoints)} 个码位`,
           key,
           helpAnchors,
         ),

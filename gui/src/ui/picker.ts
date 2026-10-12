@@ -8,15 +8,12 @@ import { registerFontBytes } from "../fonts/registry";
 import { getDefaultManager } from "../catalog/manager";
 import { starsFor, subscribeStars } from "../catalog/stars";
 import {
-  AXIS_HELP_ROWS,
-  chipAxes,
-  chipLabel,
+  TOKEN_HELP_ROWS,
   displayFamilies,
-  resolveVariant,
-  type AxisId,
+  variantCuts,
   type CatalogEntryLike,
   type DisplayFamily,
-  type VariantSelection,
+  type VariantCut,
 } from "../catalog/variantAxes";
 import { canPickWithDialog, pickLocalFonts } from "../platform/localfonts";
 import {
@@ -142,6 +139,9 @@ const FAMILY_GROUPS: Record<string, string[]> = (
   curatedMeta as { groups?: Record<string, string[]> }
 ).groups ?? {};
 
+/** The manifest's display families (static data; computed once). */
+const ALL_DISPLAYS: readonly DisplayFamily[] = displayFamilies(FAMILY_GROUPS);
+
 /** The one family the prototype never lists (icon-only symbols build). */
 const EXCLUDED_FAMILIES = new Set(["NerdFontsSymbolsOnly"]);
 
@@ -169,61 +169,57 @@ function familyMeta(family: string): FontMeta | undefined {
 }
 
 /**
- * The user-facing name of a loaded font: the CURATED display name for
- * catalog families (the manifest id MapleMono is a storage key, never
- * UI copy — the pickers' rows and rail cards already render the curated
- * "Maple Mono CN"), the parsed name-table family otherwise (local
- * files). The top bar's pair tags are the display consumer.
+ * The user-facing name of a loaded font (round 8, owner item 7): the
+ * variant's REAL NAME from the data — the display family's curated
+ * name plus the cut's official label (「Maple Mono NF-CN」) — never the
+ * family plus a hardcoded suffix. Local files keep their parsed name.
+ * The top bar's pair tags, the rail cards, and the report/message
+ * source names are the consumers.
  */
-export function curatedFamilyName(font: LoadedFont): string {
+export function variantDisplayName(font: LoadedFont): string {
   const catalogFamily = font.catalog?.family;
-  return (
-    (catalogFamily !== undefined ? CURATED_META[catalogFamily]?.name : undefined) ??
-    font.family
-  );
-}
-
-/** Split a chip id back into its axis and value. */
-function parseChipId(chipId: string): [AxisId | null, string] {
-  const sep = chipId.indexOf(":");
-  if (sep <= 0) return [null, ""];
-  return [chipId.slice(0, sep) as AxisId, chipId.slice(sep + 1)];
+  if (catalogFamily === undefined) return font.family;
+  const display = ALL_DISPLAYS.find((d) => d.families.includes(catalogFamily));
+  const base =
+    (display !== undefined ? CURATED_META[display.id]?.name : undefined) ??
+    CURATED_META[catalogFamily]?.name ??
+    font.family;
+  const cut =
+    display !== undefined
+      ? variantCuts(display).find(
+          (c) =>
+            c.entry.family === catalogFamily &&
+            c.entry.variant === font.catalog?.variant,
+        )
+      : undefined;
+  return cut && cut.label !== "标准" ? `${base} ${cut.label}` : base;
 }
 
 /**
- * The variant chips of one display row (round 7, redesigned the same
- * round): every contrasting axis value of the family, `on` ONLY when
- * the user explicitly selected it, `def` on the axis's default value
- * (the dim 默认 marker — 未选择变体时 = 家族默认), DISABLED when the
- * value cannot combine with the current selection (no such manifest
- * entry) or its member family is not fetched.
+ * The variant chips of one display row (round 8 final form, owner
+ * items 6+7): one chip per CUT — the distinct releases the manifest
+ * pins, labeled with the official proper nouns (NF / NF-CN / Mono /
+ * 屏幕版 …; the default cut reads 标准). The default cut renders
+ * PLAIN; the accent marks only the user's EXPLICIT pick. A cut whose
+ * member family is not fetched renders disabled with the 未下载 tag.
+ * Every chip is a real manifest entry, so impossible combinations
+ * never appear at all.
  */
 function rowChips(
-  display: DisplayFamily,
-  selection: VariantSelection,
+  cuts: readonly VariantCut[],
+  selectedCutId: string | null,
   statusOf: (family: string) => CatalogFamilyEntry | undefined,
 ): PickerChip[] {
-  const chips: PickerChip[] = [];
-  for (const { axis, values } of chipAxes(display)) {
-    const picked = selection[axis]; // explicit only — no implicit "on"
-    for (const value of values) {
-      const entry = resolveVariant(display, { ...selection, [axis]: value });
-      if (entry === null) {
-        // Impossible combination — grey it, never hide the axis.
-        chips.push({ id: `${axis}:${value}`, label: chipLabel(axis, value), disabled: true });
-        continue;
-      }
-      const verified = statusOf(entry.family)?.status === "verified";
-      chips.push({
-        id: `${axis}:${value}`,
-        label: chipLabel(axis, value),
-        on: picked === value,
-        def: values[0] === value,
-        disabled: !verified,
-      });
-    }
-  }
-  return chips;
+  return cuts.map((cut) => {
+    const verified = statusOf(cut.entry.family)?.status === "verified";
+    return {
+      id: cut.id,
+      label: cut.label,
+      on: selectedCutId === cut.id,
+      disabled: !verified,
+      tag: verified ? undefined : "未下载",
+    };
+  });
 }
 
 /**
@@ -353,8 +349,11 @@ export function mountPicker(
     });
   };
 
-  /** The live variant selection per display family (the chips' state). */
-  const variantSelections = new Map<string, VariantSelection>();
+  /**
+   * The live variant selection per display family (round 8: the
+   * explicitly picked CUT id — null/absent = the family's default cut).
+   */
+  const variantSelections = new Map<string, string>();
 
   const buildProps = (): PickerPopupProps => {
     const { fonts, selected, catalog } = store.get();
@@ -371,7 +370,7 @@ export function mountPicker(
     // curated front pins first (keyed on the DISPLAY id — a registered
     // family's row swaps its `cat:` id for the css key, so ids are not
     // stable keys); NerdFontsSymbolsOnly never lists.
-    const manifestDisplays = displayFamilies(FAMILY_GROUPS).filter(
+    const manifestDisplays = ALL_DISPLAYS.filter(
       (display) => !display.families.some((f) => EXCLUDED_FAMILIES.has(f)),
     );
     const covered = new Set(manifestDisplays.flatMap((d) => d.families));
@@ -401,15 +400,26 @@ export function mountPicker(
           .filter((s): s is CatalogFamilyEntry => s !== undefined);
         const anyVerified = memberStatus.some((s) => s.status === "verified");
         const rowNote = memberStatus.find((s) => s.status !== "verified");
-        const selection = variantSelections.get(display.id) ?? {};
-        const chips = rowChips(display, selection, statusOf);
+        // The cuts (round 8): one chip per distinct release; the ACTIVE
+        // cut is the explicit selection, else the family default. The
+        // row NAME carries the active cut's real name (item 7) — the
+        // list reads the family, a picked row reads its variant.
+        const cuts = variantCuts(display);
+        const selectedCutId = variantSelections.get(display.id) ?? null;
+        const activeCut =
+          cuts.find((cut) => cut.id === selectedCutId) ?? cuts[0] ?? null;
+        const chips = rowChips(cuts, selectedCutId, statusOf);
+        const baseName = CURATED_META[display.id]?.name ?? display.id;
+        const rowName =
+          activeCut !== null && activeCut.label !== "标准"
+            ? `${baseName} ${activeCut.label}`
+            : baseName;
         // Self-render + the checked state: the registration of the
-        // CURRENTLY resolved entry first (a chip pick registered the
+        // CURRENTLY active cut first (a chip pick registered the
         // variant's own face), the sweep's primary face as the fallback.
-        const active = resolveVariant(display, selection);
         const cssKey =
-          (active !== null
-            ? catalog.registered[`${active.family}::${active.variant}`]
+          (activeCut !== null
+            ? catalog.registered[`${activeCut.entry.family}::${activeCut.entry.variant}`]
             : undefined) ??
           catalog.registered[primaryFamily] ??
           null;
@@ -417,12 +427,12 @@ export function mountPicker(
           display.id,
           {
             id: cssKey ?? `cat:${display.id}`,
-            name: CURATED_META[display.id]?.name ?? display.id,
+            name: rowName,
             family: cssKey ?? undefined,
             meta: familyMeta(primaryFamily),
             disabled: !anyVerified,
             note: anyVerified ? undefined : (rowNote ? catalogTag(rowNote) : undefined),
-            chips: chips.length > 0 ? chips : undefined,
+            chips: chips.length > 1 ? chips : undefined,
             keywords: `${display.id} ${display.families.join(" ")}`,
           } satisfies PickerFont,
         ];
@@ -475,9 +485,9 @@ export function mountPicker(
       note: catalogNote(catalog),
       error,
       footer: { label: "加载本地字体文件", onClick: () => void openLocalFlow() },
-      // The picker-level variant help (round 7 redesign): ONE ? for the
-      // whole popup — one sentence plus a row per axis — instead of
-      // per-row machinery the owner could not read.
+      // The picker-level variant help (round 8 final form): ONE ? for
+      // the whole popup — one sentence plus the token table (the
+      // official proper nouns and their meanings).
       help: {
         title: "变体是什么",
         buttonLabel: "变体是什么",
@@ -485,10 +495,10 @@ export function mountPicker(
           const body = document.createElement("div");
           body.append(
             helpNote(
-              "同一款字体常有多个发行版本，称为变体；点击字体行下方的标签即可切换。带「默认」的是家族默认。",
+              "同一款字体常有多个发行版本，称为变体；点击字体行下方的标签即可切换。未选择时使用家族默认（标准）。",
             ),
           );
-          body.append(workedTable(["变体", "含义"], AXIS_HELP_ROWS));
+          body.append(workedTable(["标签", "含义"], TOKEN_HELP_ROWS));
           return body;
         },
       },
@@ -501,11 +511,12 @@ export function mountPicker(
             void selectReleaseFamily(display.id);
             return;
           }
-          const entry = resolveVariant(
-            display,
-            variantSelections.get(display.id) ?? {},
-          );
-          if (entry) void selectCatalogEntry(entry);
+          // The row's ACTIVE cut (explicit selection, else default).
+          const cuts = variantCuts(display);
+          const cut =
+            cuts.find((c) => c.id === variantSelections.get(display.id)) ??
+            cuts[0];
+          if (cut) void selectCatalogEntry(cut.entry);
           return;
         }
         store.set({
@@ -516,18 +527,21 @@ export function mountPicker(
         const displayId = displayByRowId.get(rowId);
         const display = displays.find((d) => d.id === displayId);
         if (!display) return;
-        const [axis, value] = parseChipId(chipId);
-        if (axis === null) return;
-        const selection = { ...(variantSelections.get(display.id) ?? {}) };
-        const axes = chipAxes(display).find((a) => a.axis === axis);
-        if (!axes) return;
-        // Clicking the selected value reverts that axis to its default.
-        if (selection[axis] === value) delete selection[axis];
-        else selection[axis] = value;
-        const entry = resolveVariant(display, selection);
-        if (entry === null) return; // impossible combination — never offered
-        variantSelections.set(display.id, selection);
-        void selectCatalogEntry(entry);
+        const cut = variantCuts(display).find((c) => c.id === chipId);
+        if (!cut) return;
+        // Clicking the selected cut reverts the family to its default.
+        if (variantSelections.get(display.id) === chipId) {
+          variantSelections.delete(display.id);
+        } else {
+          variantSelections.set(display.id, chipId);
+        }
+        // Load whatever is now active — the picked cut, or the family
+        // default the revert returns to.
+        const active =
+          variantCuts(display).find(
+            (c) => c.id === variantSelections.get(display.id),
+          ) ?? variantCuts(display)[0];
+        if (active) void selectCatalogEntry(active.entry);
       },
     };
   };

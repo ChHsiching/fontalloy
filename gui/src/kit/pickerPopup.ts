@@ -58,29 +58,29 @@ export interface PickerFont {
   /** Inline status tag for a disabled row (e.g. 下载中…). */
   note?: string;
   /**
-   * Variant chips (round 7): the typed axis values under the row's
-   * meta line — NF 图标 / 等宽 / 屏显优化 / 字库 / 字重. A chip is a
-   * span-button (the row itself is the <button>; nested buttons are
-   * invalid HTML); clicking it fires onChip instead of onPick. `on`
-   * marks the value the USER explicitly selected, `def` the axis's
-   * DEFAULT value (rendered with a dim 默认 marker — the round-7
-   * redesign: an unselected axis reads as 家族默认, never as a pressed
-   * chip), `disabled` an impossible combination or an unfetched member
-   * family.
+   * Variant chips (round 8 final form): one chip per CUT — the
+   * distinct releases the manifest pins, labeled with official proper
+   * nouns (NF / NF-CN / Mono / 屏幕版 …; the default reads 标准). A
+   * chip is a span-button (the row itself is the <button>; nested
+   * buttons are invalid HTML); clicking it fires onChip instead of
+   * onPick. `on` marks the cut the USER explicitly picked (accent);
+   * the default cut renders plain. `disabled` marks an unfetched
+   * member family — the chip then carries the 未下载 `tag`.
    */
   chips?: PickerChip[];
 }
 
 /** One variant chip of a picker row. */
 export interface PickerChip {
-  /** Stable key: `${axis}:${value}`. */
+  /** Stable key: the cut id (`${family}::${variant}`). */
   id: string;
   label: string;
-  /** The user explicitly selected this value (accent). */
+  /** The user explicitly selected this cut (accent). */
   on?: boolean;
-  /** This value is the axis's default (the dim 默认 marker). */
-  def?: boolean;
+  /** The cut's member family is not fetched (未下载 tag, no click). */
   disabled?: boolean;
+  /** Inline tag inside a disabled chip (未下载). */
+  tag?: string;
 }
 
 export interface PickerPopupProps {
@@ -342,19 +342,18 @@ export function mountPickerPopup(
           el.className =
             "kit-vchip" +
             (chip.on ? " on" : "") +
-            (chip.def && !chip.on ? " def" : "") +
             (chip.disabled ? " off" : "");
           el.dataset.chip = chip.id;
           el.setAttribute("role", "button");
           el.textContent = chip.label;
-          // The axis's default value carries the dim 默认 marker — the
-          // unselected state reads as 家族默认, not as a pressed chip.
-          if (chip.def) {
-            const def = document.createElement("span");
-            def.className = "kit-vchip-def";
-            def.textContent = "默认";
-            el.appendChild(def);
-            el.title = "家族默认";
+          // Round 8: an unfetched cut carries the 未下载 tag inline —
+          // the axis stays visible, the reason with it.
+          if (chip.disabled && chip.tag) {
+            const tag = document.createElement("span");
+            tag.className = "kit-vchip-tag";
+            tag.textContent = chip.tag;
+            el.appendChild(tag);
+            el.title = chip.tag;
           }
           if (!chip.disabled) {
             el.tabIndex = -1; // pointer-driven (the row is the key target)

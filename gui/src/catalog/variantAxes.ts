@@ -1,28 +1,38 @@
 /**
- * The variant-chip model (round 7, the catalog expansion): one FAMILY
- * ROW per typeface with typed variant chips — icons plain/NF, CJK
- * width mono/hw, region, charset, rendering, weight — computed off the
- * manifest mirror (`data/catalog.json`, whose entries carry an optional
- * `axes` object rendered from `assets/fonts.manifest.json`).
+ * The variant-cut model (round 7 chips, round 8 final form): one FAMILY
+ * ROW per typeface whose chips are its CUTS — the distinct releases the
+ * manifest actually pins (Maple NF / NF-CN, Noto Sans SC HW / Mono /
+ * Variable, the WenKai group's kai × mono × screen × GB members),
+ * labeled with the OFFICIAL proper nouns straight from the data
+ * (variant strings when they name the cut — NF, NF-CN, HW, Mono — else
+ * the contrasting axis tokens: Mono / SC / TC / 屏幕版 / GB).
  *
- * The chips are the research's observed publisher matrices (Maple
- * NF/NL/CN, Nerd Fonts icon-width naming, Sarasa Gothic/Mono/Term/
- * Fixed, Source Han Sans HW, yuru7's base/NF, LXGW's mono/screen/GB
- * cross product realized as separate repos): one axis value per chip,
- * values straight from the manifest's typed `axes`, impossible
- * combinations simply never resolve (the chip disables — exactly the
- * "no such row" rule).
+ * Round-8 rulings baked in (owner items 6+7):
+ *
+ * - WEIGHT IS NOT A CHIP, anywhere. Multi-weight families (WenKai
+ *   Light/Medium/Regular) collapse onto one cut; the canonical member
+ *   prefers the Regular-weight face.
+ * - The default cut renders PLAIN — no dashed ring, no 默认 marker.
+ *   Only an EXPLICIT pick carries the accent.
+ * - Every chip resolves to a real manifest entry, so an impossible
+ *   combination never appears (the round-7 greyed-out impossible chips
+ *   are gone by construction). A cut whose member family is not
+ *   fetched renders disabled with the 未下载 tag.
+ * - The cut's label doubles as the variant's REAL NAME: identity
+ *   surfaces (rail card, pair tags, picker header, report and message
+ *   source names) render `{family display name} {label}` — e.g.
+ *   「Maple Mono NF-CN」 — never family plus a hardcoded suffix.
  *
  * WenKai's six manifest families (kai × mono × screen × GB, separate
  * upstream repos) collapse onto ONE display row through the curated
  * `groups` table in curated-meta.json; the group's entries are the
  * member families' entries, and a chip resolves to the exact member's
- * {family, variant}.
+ * {family, variant} (recipe references keep that pair verbatim).
  */
 
 import catalogManifest from "../data/catalog.json";
 
-/** The typed axis ids the manifest carries (the chip taxonomy). */
+/** The typed axis ids the manifest carries (weight is data, not a chip). */
 export type AxisId =
   | "icons"
   | "ligature"
@@ -39,123 +49,15 @@ export type AxisValue = string;
 /** The `axes` object one manifest entry carries (all keys optional). */
 export type Axes = Partial<Record<AxisId, AxisValue>>;
 
-/**
- * The chip label vocabulary (round 7 redesign, owner item 2 — "看不懂"):
- * full Chinese terms only, real words per the report-copy style
- * (`fontalloy-notes/report-copy.md` §4). No raw axis ids ever render;
- * the only Latin that may appear is vendor casing the community
- * already uses (NF, GB, Term, Fixed, Light/Medium — §4.9).
- */
-const CHIP_LABELS: Record<string, string> = {
-  // icons (plain is the implicit default; it labels when contrasting)
-  "icons:plain": "无图标",
-  "icons:nf": "NF 图标",
-  "icons:nf-mono": "NF 图标（等宽）",
-  "icons:nf-propo": "NF 图标（比例）",
-  // ligature
-  "ligature:liga": "连字",
-  "ligature:nl": "无连字",
-  // cjk_width（中文字符宽度）
-  "cjk_width:prop": "比例",
-  "cjk_width:mono": "等宽",
-  "cjk_width:hw": "半宽",
-  "cjk_width:term": "Term（终端）",
-  "cjk_width:fixed": "Fixed（定宽）",
-  // region（简繁地区）
-  "region:SC": "简体中文",
-  "region:TC": "繁体中文",
-  "region:JP": "日文",
-  "region:KR": "韩文",
-  "region:HK": "香港",
-  // charset（收录字库）
-  "charset:full": "全集",
-  "charset:GB": "GB 字库",
-  "charset:Lite": "Lite 字库",
-  // rendering（屏显优化）
-  "rendering:print": "印刷",
-  "rendering:screen": "屏显优化",
-  // weight (values are the vendor's standard names, §4.9)
-  "weight:Thin": "Thin",
-  "weight:ExtraLight": "ExtraLight",
-  "weight:Light": "Light",
-  "weight:Regular": "Regular",
-  "weight:Medium": "Medium",
-  "weight:SemiBold": "SemiBold",
-  "weight:Bold": "Bold",
-  "weight:ExtraBold": "ExtraBold",
-  "weight:Black": "Black",
-};
-
-/** Chip label for one axis value (axis defaults fall back to the value). */
-export function chipLabel(axis: AxisId, value: AxisValue): string {
-  return CHIP_LABELS[`${axis}:${value}`] ?? value;
-}
-
-/**
- * The picker-level variant help (round 7): what a variant IS, one
- * sentence, plus one row per axis the chips can carry. The terms are
- * the report-copy vocabulary (图标 / 连字 / 宽度 / 地区 / 字库 / 用途 /
- * 字重) — never the axis ids.
- */
-export const AXIS_HELP_ROWS: ReadonlyArray<readonly [string, string]> = [
-  ["图标", "是否内置 Nerd Font 图标（NF 图标）"],
-  ["连字", "多个字符连写成一个字形"],
-  ["宽度", "中文字符按等宽还是比例占位"],
-  ["地区", "收录简体、繁体或日韩的字形"],
-  ["字库", "收录字符的范围（全集、GB 字库）"],
-  ["用途", "为屏幕显示或印刷优化"],
-  ["字重", "笔画的粗细（Light、Regular、Medium…）"],
-];
-
-/**
- * The axes that render as chips ONLY when the family carries more than
- * one value: a uniform axis (every entry SC, every entry sans) is the
- * row's identity, not a chip. `weight` is exempt: its values come from
- * the variant names of multi-weight families (WenKai Light/Medium).
- */
-const CONTRASTING_AXES: readonly AxisId[] = [
+/** The axes a cut's identity spans (weight NEVER — round 8). */
+const CUT_AXES: readonly AxisId[] = [
   "icons",
   "ligature",
   "cjk_width",
   "region",
   "charset",
   "rendering",
-  "weight",
 ];
-
-/**
- * The value an entry effectively carries on an axis: the recorded one,
- * else the axis's implicit default (a family with no width axes is the
- * proportional/plain cut). `weight` falls back to the variant name.
- */
-const AXIS_DEFAULTS: Partial<Record<AxisId, AxisValue>> = {
-  icons: "plain",
-  ligature: "liga",
-  cjk_width: "prop",
-  charset: "full",
-  rendering: "print",
-};
-
-/** The default value of an axis over a value list (weight prefers Regular). */
-function defaultValue(axis: AxisId, values: AxisValue[]): AxisValue {
-  if (axis === "weight" && values.includes("Regular")) return "Regular";
-  const fallback = AXIS_DEFAULTS[axis];
-  if (fallback !== undefined && values.includes(fallback)) return fallback;
-  return values[0]!;
-}
-
-/** The effective axes of one entry (defaults filled in). */
-function effectiveAxes(entry: CatalogEntryLike): Required<Pick<Axes, never>> & Axes {
-  return {
-    icons: AXIS_DEFAULTS.icons,
-    ligature: AXIS_DEFAULTS.ligature,
-    cjk_width: AXIS_DEFAULTS.cjk_width,
-    charset: AXIS_DEFAULTS.charset,
-    rendering: AXIS_DEFAULTS.rendering,
-    weight: entryWeight(entry),
-    ...entry.axes,
-  };
-}
 
 /** Manifest mirror entry as this module consumes it. */
 export interface CatalogEntryLike {
@@ -208,58 +110,26 @@ export function displayFamilies(groups: Record<string, string[]>): DisplayFamily
   return rows;
 }
 
-/** The values one axis takes over a row's entries, default-first. */
-export function axisValues(family: DisplayFamily, axis: AxisId): AxisValue[] {
-  const seen: AxisValue[] = [];
-  for (const entry of family.entries) {
-    const value = effectiveAxes(entry)[axis];
-    if (value !== undefined && !seen.includes(value)) seen.push(value);
-  }
-  if (seen.length === 0) return seen;
-  const head = defaultValue(axis, seen);
-  return [head, ...seen.filter((value) => value !== head)];
-}
+/* ---------------- the cut model ---------------- */
 
-/** The axes that render chips on one row (more than one value present). */
-export function chipAxes(family: DisplayFamily): Array<{ axis: AxisId; values: AxisValue[] }> {
-  return CONTRASTING_AXES.map((axis) => ({ axis, values: axisValues(family, axis) }))
-    .filter(({ values }) => values.length > 1);
-}
-
-/** One axis selection (at most one value per axis; none = the default). */
-export type VariantSelection = Partial<Record<AxisId, AxisValue>>;
-
-/**
- * Resolve a selection to the exact entry: the unique entry whose
- * EFFECTIVE axes agree with every selected value. Unselected axes take
- * the row's default value (first of `axisValues` — prop/plain/print/
- * full/Regular), so picking {mono} on the WenKai row yields the plain
- * mono cut, not the GB screen one. Returns null when no entry matches
- * (the impossible combination — the chip disables).
- */
-export function resolveVariant(
-  family: DisplayFamily,
-  selection: VariantSelection,
-): CatalogEntryLike | null {
-  const required: Partial<Record<AxisId, AxisValue>> = {};
-  for (const { axis, values } of chipAxes(family)) {
-    required[axis] = selection[axis] ?? values[0]!;
-  }
-  const matches = family.entries.filter((entry) => {
-    const effective = effectiveAxes(entry);
-    return (Object.keys(required) as AxisId[]).every(
-      (axis) => effective[axis] === required[axis],
-    );
-  });
-  return matches.length >= 1 ? (matches[0] as CatalogEntryLike) : null;
+/** One selectable cut of a display family (one chip on its row). */
+export interface VariantCut {
+  /** Stable id: `${family}::${variant}` of the canonical entry. */
+  id: string;
+  /** The official label (NF / NF-CN / Mono / 屏幕版 / 标准). */
+  label: string;
+  /** The exact manifest entry picking this cut resolves to. */
+  entry: CatalogEntryLike;
+  /** True when this cut is the row's default (the plain chip). */
+  def: boolean;
 }
 
 /**
  * The weight of an entry when the axes do not carry one: WenKai's
- * Light/Regular/Medium variants name it (the manifest's weight axis for
- * existing multi-weight families). Variant strings that are NOT weight
- * names (NF, Standard, GB, Plus …) are axis data, never weights — they
- * collapse to Regular so they cannot leak in as a phantom weight axis.
+ * Light/Regular/Medium variants name it. Variant strings that are NOT
+ * weight names (NF, Standard, GB, Plus …) are axis data, never weights
+ * — they collapse to Regular so they cannot leak in as a phantom cut
+ * axis.
  */
 const WEIGHT_NAMES: ReadonlySet<string> = new Set([
   "Thin",
@@ -278,3 +148,157 @@ export function entryWeight(entry: CatalogEntryLike): AxisValue {
   if (recorded !== undefined) return recorded;
   return WEIGHT_NAMES.has(entry.variant) ? entry.variant : "Regular";
 }
+
+/** The value an entry effectively carries on an axis (implicit defaults filled). */
+function effectiveAxis(entry: CatalogEntryLike, axis: AxisId): AxisValue | undefined {
+  if (axis === "weight") return entryWeight(entry);
+  const defaults: Partial<Record<AxisId, AxisValue>> = {
+    icons: "plain",
+    ligature: "liga",
+    cjk_width: "prop",
+    charset: "full",
+    rendering: "print",
+  };
+  return entry.axes?.[axis] ?? defaults[axis];
+}
+
+/**
+ * Variant strings that NAME the cut officially (used verbatim as the
+ * chip label). Weight names and the unmodified-cut names (Regular,
+ * Standard, Nerd Font) do not — the cut then derives its label from
+ * the contrasting axes.
+ */
+function isOfficialCutName(variant: string): boolean {
+  return (
+    variant !== "" &&
+    !WEIGHT_NAMES.has(variant) &&
+    variant !== "Standard" &&
+    variant !== "Nerd Font"
+  );
+}
+
+/** The official token one contrasting axis value contributes to a label. */
+const AXIS_TOKENS: Record<string, string> = {
+  "icons:nf": "NF",
+  "icons:plain": "无图标",
+  "ligature:nl": "NL",
+  "ligature:liga": "连字",
+  "cjk_width:mono": "Mono",
+  "cjk_width:hw": "HW",
+  "cjk_width:prop": "比例",
+  "rendering:screen": "屏幕版",
+  "rendering:print": "印刷",
+  "charset:GB": "GB",
+  "charset:Lite": "Lite",
+  "charset:full": "全集",
+};
+
+/**
+ * The cuts of one display family, DEFAULT FIRST: entries collapsed by
+ * their non-weight axes (WenKai Light/Medium/Regular are ONE cut whose
+ * canonical member prefers the Regular face), each labeled officially.
+ * Memoized per display id — the manifest mirror is static data.
+ */
+const cutCache = new Map<string, VariantCut[]>();
+
+export function variantCuts(family: DisplayFamily): VariantCut[] {
+  const cached = cutCache.get(family.id);
+  if (cached !== undefined) return cached;
+  const cuts = computeVariantCuts(family);
+  cutCache.set(family.id, cuts);
+  return cuts;
+}
+
+function computeVariantCuts(family: DisplayFamily): VariantCut[] {
+  if (family.entries.length === 0) return [];
+
+  // Collapse by the non-weight axis vector, keeping manifest order.
+  const buckets = new Map<string, CatalogEntryLike[]>();
+  for (const entry of family.entries) {
+    const key = CUT_AXES.map((axis) => effectiveAxis(entry, axis) ?? "").join("|");
+    const bucket = buckets.get(key);
+    if (bucket) bucket.push(entry);
+    else buckets.set(key, [entry]);
+  }
+  const canonical = [...buckets.values()].map(
+    (members) =>
+      members.find((m) => entryWeight(m) === "Regular") ?? members[0]!,
+  );
+
+  // The default vector: for every axis the cuts disagree on, the
+  // family's implicit default value (icons plain, width prop, charset
+  // full, rendering print, ligature liga; region has none — the
+  // manifest-first value leads).
+  const values = (axis: AxisId): AxisValue[] => {
+    const seen: AxisValue[] = [];
+    for (const entry of canonical) {
+      const value = effectiveAxis(entry, axis);
+      if (value !== undefined && !seen.includes(value)) seen.push(value);
+    }
+    return seen;
+  };
+  const contrasting = CUT_AXES.filter((axis) => values(axis).length > 1);
+  const implicit: Partial<Record<AxisId, AxisValue>> = {
+    icons: "plain",
+    ligature: "liga",
+    cjk_width: "prop",
+    charset: "full",
+    rendering: "print",
+  };
+  const defaultVector = new Map(
+    contrasting.map((axis) => {
+      const list = values(axis);
+      const preferred =
+        implicit[axis] !== undefined && list.includes(implicit[axis]!)
+          ? implicit[axis]!
+          : list[0]!;
+      return [axis, preferred];
+    }),
+  );
+
+  const defEntry =
+    canonical.find((entry) =>
+      contrasting.every(
+        (axis) => effectiveAxis(entry, axis) === defaultVector.get(axis),
+      ),
+    ) ?? canonical[0]!;
+
+  const cuts: VariantCut[] = canonical.map((entry) => {
+    // The official label: the variant string when it names the cut,
+    // else the tokens of the axes where this cut leaves the default.
+    const tokens = contrasting
+      .filter((axis) => effectiveAxis(entry, axis) !== defaultVector.get(axis))
+      .map((axis) => {
+        const value = effectiveAxis(entry, axis)!;
+        return AXIS_TOKENS[`${axis}:${value}`] ?? value;
+      });
+    const label = isOfficialCutName(entry.variant)
+      ? entry.variant
+      : tokens.length > 0
+        ? tokens.join(" ")
+        : "标准";
+    return {
+      id: `${entry.family}::${entry.variant}`,
+      label,
+      entry,
+      def: entry === defEntry,
+    };
+  });
+  // Default cut first, the rest in manifest order.
+  return [cuts.find((cut) => cut.def)!, ...cuts.filter((cut) => !cut.def)];
+}
+
+/**
+ * The picker-level variant help (round 8 final form): what a variant
+ * IS, one sentence, plus one row per token the chips can carry — the
+ * official proper nouns with their plain-word meanings. No weight row
+ * (the axis is not a chip).
+ */
+export const TOKEN_HELP_ROWS: ReadonlyArray<readonly [string, string]> = [
+  ["NF / NL", "内置 Nerd Font 图标 / 无连字的版本"],
+  ["Mono / HW", "中文字符按等宽或半宽占位"],
+  ["SC / TC / JP", "收录简体、繁体或日文地区字形"],
+  ["屏幕版", "为屏幕显示优化"],
+  ["GB / Lite", "收录字库的范围"],
+  ["标准", "家族默认版本（无标注）"],
+];

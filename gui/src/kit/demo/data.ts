@@ -25,21 +25,20 @@ export const EN_FONTS: readonly PickerFont[] = [
 export const CJK_FONTS: readonly PickerFont[] = [
   {
     id: "maple",
-    name: "Maple Mono CN",
+    name: "Maple Mono",
     family: "Microsoft YaHei",
     meta: { stars: 29170, license: "OFL-1.1", trait: "圆角等宽" },
-    // Round-7 variant chips: the axis's default value carries the dim
-    // 默认 marker (def), an explicitly picked one the accent (on).
+    // Round-8 variant chips: one chip per CUT with the official labels;
+    // the accent marks only the explicit pick (main.ts recomputes them
+    // live — the demo's row name carries the active cut's real name).
     chips: [
-      { id: "cjk_width:prop", label: "比例", def: true },
-      { id: "cjk_width:mono", label: "等宽" },
-      { id: "icons:plain", label: "无图标", def: true },
-      { id: "icons:nf", label: "NF 图标" },
+      { id: "MapleMono::NF", label: "NF" },
+      { id: "MapleMono::NF-CN", label: "NF-CN" },
     ],
   },
   {
     id: "lxgw",
-    name: "霞鹜文楷 Screen",
+    name: "霞鹜文楷",
     family: "Microsoft YaHei",
     meta: { stars: 2176, license: "OFL-1.1", trait: "楷体" },
   },

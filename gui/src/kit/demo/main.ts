@@ -168,13 +168,11 @@ const pickerEn: PickerPopup = mountPickerPopup(enHost, {
   },
 });
 
-/** The Maple row's live chip selection (axis → explicit value). */
+/** The Maple row's live chip selection (round 8: the picked CUT id). */
 const chipState = new Map<string, string>();
-const MAPLE_CHIPS: Array<{ axis: string; id: string; label: string }> = [
-  { axis: "cjk_width", id: "cjk_width:prop", label: "比例" },
-  { axis: "cjk_width", id: "cjk_width:mono", label: "等宽" },
-  { axis: "icons", id: "icons:plain", label: "无图标" },
-  { axis: "icons", id: "icons:nf", label: "NF 图标" },
+const MAPLE_CHIPS: Array<{ id: string; label: string }> = [
+  { id: "MapleMono::NF", label: "NF" },
+  { id: "MapleMono::NF-CN", label: "NF-CN" },
 ];
 
 /** CJK_FONTS with the Maple chips recomputed from the live selection. */
@@ -183,12 +181,14 @@ function cjkFonts() {
     font.id === "maple"
       ? {
           ...font,
-          chips: MAPLE_CHIPS.map(({ axis, id, label }, i) => ({
+          name:
+            chipState.get("maple") === MAPLE_CHIPS[1]!.id
+              ? "Maple Mono NF-CN"
+              : "Maple Mono",
+          chips: MAPLE_CHIPS.map(({ id, label }) => ({
             id,
             label,
-            // values[0] of each axis is its default (prop / plain).
-            def: i % 2 === 0,
-            on: chipState.get(axis) === id,
+            on: chipState.get("maple") === id,
           })),
         }
       : font,
@@ -216,12 +216,12 @@ const pickerCjk: PickerPopup = mountPickerPopup(cjkHost, {
   onChip: onDemoChip,
 });
 
-/** A demo chip click: toggle that axis's explicit selection and re-render. */
+/** A demo chip click: toggle the row's explicit cut selection and re-render. */
 function onDemoChip(_rowId: string, chipId: string): void {
   const chip = MAPLE_CHIPS.find((c) => c.id === chipId);
   if (!chip) return;
-  if (chipState.get(chip.axis) === chip.id) chipState.delete(chip.axis);
-  else chipState.set(chip.axis, chip.id);
+  if (chipState.get("maple") === chip.id) chipState.delete("maple");
+  else chipState.set("maple", chip.id);
   pickerCjk.render({
     role: "cjk",
     fonts: cjkFonts(),
@@ -297,16 +297,22 @@ interface DemoRule {
 }
 const DEMO_RULES: DemoRule[] = [
   { kind: "group", icon: "layers", text: "所有中文字符用中文字体" },
-  { kind: "block", icon: "tag", text: "Nerd Font用英文字体" },
+  { kind: "block", icon: "tag", text: "Nerd Font 用英文字体" },
   {
     kind: "range",
     icon: "range",
-    text: "一 至 龙 用中文字体",
-    suffix: "U+4E00 至 U+9F99",
+    // Round 8: the verbatim range sentence.
+    text: "U+4E00 一 - U+9F99 龙 用中文字体",
   },
 ];
 
-let soloCount = 2;
+/** The demo's single-character rules (the expandable group's children). */
+const DEMO_SOLOS = [
+  { cp: 0x4e2d, side: "中文" as const },
+  { cp: 0x6c38, side: "英文" as const },
+];
+
+let soloExpanded = false;
 
 function renderRules(): void {
   const fragment = document.createDocumentFragment();
@@ -321,16 +327,46 @@ function renderRules(): void {
       }),
     );
   }
-  if (soloCount > 0) fragment.appendChild(ruleSoloRow(soloCount));
-  if (DEMO_RULES.length === 0 && soloCount === 0) {
+  if (DEMO_SOLOS.length > 0) {
+    // Round 8: the dashed aggregate expands into its per-character rows.
+    fragment.appendChild(
+      ruleSoloRow(DEMO_SOLOS.length, {
+        expanded: soloExpanded,
+        onToggle: () => {
+          soloExpanded = !soloExpanded;
+          renderRules();
+        },
+      }),
+    );
+    if (soloExpanded) {
+      for (const [index, solo] of DEMO_SOLOS.entries()) {
+        const label = `U+${solo.cp
+          .toString(16)
+          .toUpperCase()
+          .padStart(4, "0")} ${String.fromCodePoint(solo.cp)} 用${solo.side}字体`;
+        fragment.appendChild(
+          ruleRow({
+            kind: "codepoint",
+            icon: "pen",
+            text: label,
+            onRemove: () => {
+              DEMO_SOLOS.splice(index, 1);
+              renderRules();
+            },
+          }),
+        );
+      }
+    }
+  }
+  if (DEMO_RULES.length === 0 && DEMO_SOLOS.length === 0) {
     fragment.appendChild(ruleEmptyState());
   }
   fragment.appendChild(
     undoAllButton(() => {
+      DEMO_SOLOS.length = 0;
       // The prototype's 全部恢复默认 clears EVERYTHING (block rules,
       // ranges, single-character overrides) — the empty state follows.
       DEMO_RULES.length = 0;
-      soloCount = 0;
       renderRules();
       live.textContent = "已全部恢复默认";
     }),
