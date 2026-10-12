@@ -34,7 +34,7 @@
 
 import { createHash } from "node:crypto";
 import { readFile, readdir } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -47,7 +47,13 @@ const MANIFEST_PATH = resolve(REPO_ROOT, "assets", "fonts.manifest.json");
 /**
  * Local font-byte candidates, in priority order: the env override, the
  * prototype checkout that lives in the sibling main worktree, then an
- * in-tree prototype branch checkout. The directory is only ever read.
+ * in-tree prototype branch checkout. The directories are only ever
+ * read. Since round 7 the repo's own fetch layout (`assets/fonts/`,
+ * filled by `fontalloy assets fetch [--family …]`) is ALSO scanned —
+ * flat files plus one level of extracted `<archive stem>/` face
+ * directories — so the 22 expansion families (yuru7 merges, the LXGW
+ * series, 寒蝉, Glow Sans, 汇文明朝体 …) serve in dev after a plain
+ * fetch, without touching the prototype checkout.
  */
 function fontDirCandidates() {
   const list = [];
@@ -55,15 +61,18 @@ function fontDirCandidates() {
   list.push(
     resolve(REPO_ROOT, "..", "fontalloy", "gui", "prototype", "fonts"),
     resolve(REPO_ROOT, "gui", "prototype", "fonts"),
+    resolve(REPO_ROOT, "assets", "fonts"),
   );
   return list;
 }
 
 /**
- * Manifest family -> the prototype's font binary. Most Nerd Font
+ * Manifest family -> the dev-served font binary. Most Nerd Font
  * families map mechanically (`<Family>NerdFont-Regular.ttf`); the
  * renamed ones and every CJK family are pinned explicitly so a wrong
- * guess can never ship silently.
+ * guess can never ship silently. The round-7 expansion families name
+ * the Regular face their pinned artifacts extract (`assets/fonts/
+ * <archive stem>/…` after `fontalloy assets fetch`).
  */
 const FILE_ALIASES = {
   AnonymousPro: "AnonymiceProNerdFont-Regular.ttf",
@@ -102,6 +111,29 @@ const FILE_ALIASES = {
   LXGWWenKaiScreen: "LXGWWenKaiScreen-Regular.ttf",
   NotoSansSC: "NotoSansSC-VF.ttf",
   NotoSerifSC: "SourceHanSerifSC-Regular.otf",
+  // Round-7 expansion families (served from the assets/fonts fetch
+  // layout; Regular faces of the pinned artifacts).
+  UDEVGothic: "UDEVGothic-Regular.ttf",
+  HackGen: "HackGen-Regular.ttf",
+  PlemolJP: "PlemolJP35ConsoleNF-Regular.ttf",
+  BizinGothic: "BizinGothic-Regular.ttf",
+  GuguruSansCode: "GuguruSansCodeConsole35NF-Regular.ttf",
+  SourceHanCodeJP: "SourceHanCodeJP.ttc",
+  LxgwNeoXiHei: "LXGWNeoXiHei.ttf",
+  LxgwNeoXiHeiCode: "NeoXiHeiCode-Regular.ttf",
+  LxgwNeoZhiSong: "LXGWNeoZhiSong.ttf",
+  Xiaolai: "Xiaolai-Regular.ttf",
+  XiaolaiMono: "XiaolaiMono-Regular.ttf",
+  LxgwWenKaiTC: "LXGWWenKaiTC-Regular.ttf",
+  LxgwWenKaiMonoTC: "LXGWWenKaiMonoTC-Regular.ttf",
+  LxgwZhenKai: "LXGWZhenKaiGB-Regular.ttf",
+  Yozai: "Yozai-Regular.ttf",
+  LxgwMarkerGothic: "LXGWMarkerGothic-Regular.ttf",
+  Chillkai: "ChillKai.ttf",
+  ChillRoundGothic: "ChillRoundGothic_Regular.otf",
+  ChillRound: "ChillRoundM.otf",
+  GlowSans: "GlowSansSC-Normal-Regular.otf",
+  HuiwenMincho: "Huiwenmincho-improved.otf",
 };
 
 /**
@@ -216,9 +248,7 @@ function resolveFamilyFile(family, available) {
     if (available.has(candidate)) return candidate;
   }
   return null;
-}
-
-/**
+}/**
  * @typedef {{family: string, variant: string | undefined, zip: string, zipSha256: string,
  *            zipBytes: Buffer, file: string, fileSha256: string}} CatalogFamily
  */
@@ -233,39 +263,75 @@ let catalogPromise = null;
  * tokens against the served file name — MapleMonoCN-Regular.ttf
  * carries the CN token, so it is the NF-CN variant.
  */
+/**
+ * Tie-break preference for otherwise-equal variant matches: the plain
+ * cut a dev layout serves by default (round 7: catalog.json sorts
+ * variants alphabetically, so a bare tie would pick e.g. HW over the
+ * Variable face the prototype actually ships).
+ */
+const CANONICAL_VARIANTS = ["Regular", "Variable", "Standard", "Light", "Medium"];
+
 function chooseVariant(family, file, manifest) {
   const variants = manifest.families.filter((e) => e.family === family);
   if (variants.length === 0) return undefined;
   if (variants.length === 1) return variants[0].variant;
   const lower = file.toLowerCase();
-  let best = variants[0];
+  const stemOf = (name) => name.replace(/\.[^.]+$/, "").toLowerCase();
+  // 1. The variant whose pinned FILE is exactly the served one.
+  const exact = variants.find((e) => stemOf(e.file) === stemOf(file));
+  if (exact) return exact.variant;
+  // 2. Token overlap of the variant's file stem with the served name.
+  let best = null;
   let bestScore = -1;
   for (const entry of variants) {
-    const stem = entry.file.replace(/\.[^.]+$/, "");
-    const tokens = stem
+    const tokens = stemOf(entry.file)
       .split(/[-_\s]+/)
-      .filter((t) => t && t.toLowerCase() !== family.toLowerCase());
-    const score = tokens.filter((t) => lower.includes(t.toLowerCase())).length;
+      .filter((t) => t && t !== family.toLowerCase());
+    const score = tokens.filter((t) => lower.includes(t)).length;
     if (score > bestScore) {
       bestScore = score;
       best = entry;
     }
   }
-  return best.variant;
+  if (bestScore > 0 && best) return best.variant;
+  // 3. Canonical plain-cut preference, else catalog order.
+  for (const name of CANONICAL_VARIANTS) {
+    const hit = variants.find((e) => e.variant === name);
+    if (hit) return hit.variant;
+  }
+  return variants[0].variant;
 }
 
 function buildCatalog() {
   catalogPromise ??= (async () => {
     const manifest = JSON.parse(await readFile(MANIFEST_PATH, "utf8"));
 
-    let dir = null;
+    // Every candidate directory that exists contributes its font files:
+    // the flat entries plus one level of subdirectories (the fetch
+    // layout extracts archive faces into `<archive stem>/`). A basename
+    // seen in an earlier directory wins (the priority order above).
+    /** @type {Map<string, string>} basename -> absolute path */
+    const available = new Map();
+    const foundDirs = [];
     for (const candidate of fontDirCandidates()) {
-      if (existsSync(candidate)) {
-        dir = candidate;
-        break;
+      if (!existsSync(candidate)) continue;
+      foundDirs.push(candidate);
+      const names = (await readdir(candidate)).filter((name) => !name.startsWith("."));
+      for (const name of names) {
+        const abs = resolve(candidate, name);
+        if (!/\.(ttf|otf|ttc|woff2?)$/i.test(name)) {
+          // A directory: scan one level down for extracted faces.
+          if (!existsSync(abs) || !statSync(abs).isDirectory()) continue;
+          for (const inner of await readdir(abs)) {
+            if (!/\.(ttf|otf|ttc|woff2?)$/i.test(inner)) continue;
+            if (!available.has(inner)) available.set(inner, resolve(abs, inner));
+          }
+          continue;
+        }
+        if (!available.has(name)) available.set(name, abs);
       }
     }
-    if (dir === null) {
+    if (foundDirs.length === 0) {
       console.warn(
         `[dev-catalog] no local fonts directory found (tried ${fontDirCandidates()
           .map((p) => `"${p}"`)
@@ -274,10 +340,6 @@ function buildCatalog() {
       return { families: [], misses: [] };
     }
 
-    const available = new Set(
-      (await readdir(dir)).filter((name) => /\.(ttf|otf|ttc|woff2?)$/i.test(name)),
-    );
-
     /** @type {CatalogFamily[]} */
     const families = [];
     /** @type {string[]} */
@@ -285,8 +347,8 @@ function buildCatalog() {
     const seen = new Set();
     for (const entry of manifest.families) {
       // One release family per manifest family id (the release schema is
-      // unique by family; the LXGW weight variants collapse onto the
-      // face the prototype actually ships).
+      // unique by family; the variant entries collapse onto the face the
+      // local layout actually carries — FILE_ALIASES pins it).
       if (seen.has(entry.family)) continue;
       seen.add(entry.family);
       const file = resolveFamilyFile(entry.family, available);
@@ -294,7 +356,7 @@ function buildCatalog() {
         misses.push(entry.family);
         continue;
       }
-      const data = await readFile(resolve(dir, file));
+      const data = await readFile(available.get(file));
       const zipBytes = makeZip([{ name: file, data }]);
       families.push({
         family: entry.family,
@@ -312,7 +374,7 @@ function buildCatalog() {
         misses.push(`${entry.family} (dev-only extra)`);
         continue;
       }
-      const data = await readFile(resolve(dir, entry.file));
+      const data = await readFile(available.get(entry.file));
       const zipBytes = makeZip([{ name: entry.file, data }]);
       families.push({
         family: entry.family,
@@ -324,7 +386,9 @@ function buildCatalog() {
       });
     }
     console.info(
-      `[dev-catalog] serving ${families.length} families (${seen.size} manifest + dev extras) from "${dir}"` +
+      `[dev-catalog] serving ${families.length} families (${seen.size} manifest + dev extras) from ${foundDirs
+        .map((p) => `"${p}"`)
+        .join(" + ")}` +
         (misses.length > 0 ? `; no local binary for: ${misses.join(", ")}` : ""),
     );
     return { families, misses };

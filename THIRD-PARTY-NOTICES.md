@@ -95,6 +95,22 @@ FontAlloy downloads the font families below from their pinned upstream releases 
 - Reserved Font Names: yes (names not enumerated upstream; see the family's license file). Merged/built outputs are Modified Versions and must not carry the reserved name.
 - License obligations: The Bitstream Vera license requires renamed derivatives: modified versions must be renamed, and the original name must not be used.
 
+### BizinGothic — NF
+
+- Upstream: https://github.com/yuru7/bizin-gothic/releases/download/v0.0.4/BizinGothicNF_v0.0.4.zip (tag v0.0.4)
+- Copyright: Copyright (c) 2022 Yuko Otawara, with Reserved Font Name "Bizin Gothic"; source fonts: Inconsolata (Copyright 2006 The Inconsolata Project Authors), BIZ UDGothic (Copyright 2022 The BIZ UDGothic Project Authors)
+- License: OFL-1.1-RFN
+- Reserved Font Names: 'Bizin Gothic'. Merged/built outputs are Modified Versions and must not carry these names.
+- License obligations: Modified Versions distributed under this license may not use the family's Reserved Font Name(s); the license and copyright notice must accompany every copy.
+
+### BizinGothic — Standard
+
+- Upstream: https://github.com/yuru7/bizin-gothic/releases/download/v0.0.4/BizinGothic_v0.0.4.zip (tag v0.0.4)
+- Copyright: Copyright (c) 2022 Yuko Otawara, with Reserved Font Name "Bizin Gothic"; source fonts: Inconsolata (Copyright 2006 The Inconsolata Project Authors), BIZ UDGothic (Copyright 2022 The BIZ UDGothic Project Authors)
+- License: OFL-1.1-RFN
+- Reserved Font Names: 'Bizin Gothic'. Merged/built outputs are Modified Versions and must not carry these names.
+- License obligations: Modified Versions distributed under this license may not use the family's Reserved Font Name(s); the license and copyright notice must accompany every copy.
+
 ### CascadiaCode — Nerd Font
 
 - Upstream: https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/CascadiaCode.zip (tag v3.5.1)
@@ -109,6 +125,30 @@ FontAlloy downloads the font families below from their pinned upstream releases 
 - Copyright: Copyright (c) 2019 - Present, Microsoft Corporation
 - License: OFL-1.1-RFN
 - Reserved Font Names: 'Cascadia Code'. Merged/built outputs are Modified Versions and must not carry these names.
+- License obligations: Modified Versions distributed under this license may not use the family's Reserved Font Name(s); the license and copyright notice must accompany every copy.
+
+### Chillkai — GB
+
+- Upstream: https://github.com/Warren2060/Chillkai/releases/download/v2.000/ChillKai.zip (tag v2.000)
+- Copyright: Copyright (c) 2018-2022 ChillType.
+- License: OFL-1.1-no-RFN
+- Reserved Font Names: none declared
+- License obligations: The license and copyright notice must accompany every copy; this family declares no Reserved Font Name.
+
+### ChillRound — Regular
+
+- Upstream: https://github.com/Warren2060/ChillRound/releases/download/v1.805/ChillRoundM_v1.805.zip (tag v1.805)
+- Copyright: © 2023 ChillType, with Reserved Font Names 'ChillRoundF' and 'ChillRoundM'; Copyright 2021 The Zen Maru Gothic Authors (https://github.com/googlefonts/zen-marugothic)
+- License: OFL-1.1-RFN
+- Reserved Font Names: 'ChillRoundF', 'ChillRoundM'. Merged/built outputs are Modified Versions and must not carry these names.
+- License obligations: Modified Versions distributed under this license may not use the family's Reserved Font Name(s); the license and copyright notice must accompany every copy.
+
+### ChillRoundGothic — Regular
+
+- Upstream: https://github.com/Warren2060/ChillRoundGothic/releases/download/v3.750/ChillRoundGothic.v3.75.zip (tag v3.750)
+- Copyright: © 2014-2021 Adobe, with Reserved Font Name 'Source'; © 2023 ChillType, with Reserved Font Name 'ChillRounded'
+- License: OFL-1.1-RFN
+- Reserved Font Names: 'Source', 'ChillRounded'. Merged/built outputs are Modified Versions and must not carry these names.
 - License obligations: Modified Versions distributed under this license may not use the family's Reserved Font Name(s); the license and copyright notice must accompany every copy.
 
 ### CodeNewRoman — Nerd Font
@@ -223,6 +263,14 @@ FontAlloy downloads the font families below from their pinned upstream releases 
 - Reserved Font Names: none declared
 - License obligations: The license and copyright notice must accompany every copy; this family declares no Reserved Font Name.
 
+### GlowSans — SC-Normal
+
+- Upstream: https://github.com/welai/glow-sans/releases/download/v0.93/GlowSansSC-Normal-v0.93.zip (tag v0.93)
+- Copyright: Glow Sans (c) 2021 Project Welai
+- License: MIT
+- Reserved Font Names: none declared
+- License obligations: MIT: the copyright notice and license must accompany copies.
+
 ### Go-Mono — Nerd Font
 
 - Upstream: https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/Go-Mono.zip (tag v3.5.1)
@@ -247,6 +295,14 @@ FontAlloy downloads the font families below from their pinned upstream releases 
 - Reserved Font Names: none declared
 - License obligations: The license and copyright notice must accompany every copy; this family declares no Reserved Font Name.
 
+### GuguruSansCode — NF
+
+- Upstream: https://github.com/yuru7/guguru-sans-code/releases/download/v0.0.3/GuguruSansCodeNF_v0.0.3.zip (tag v0.0.3)
+- Copyright: Copyright (c) 2025 Yuko Otawara, with Reserved Font Name "Guguru Sans Code"; source fonts: Google Sans Code, IBM Plex Sans JP
+- License: OFL-1.1-RFN
+- Reserved Font Names: 'Guguru Sans Code'. Merged/built outputs are Modified Versions and must not carry these names.
+- License obligations: Modified Versions distributed under this license may not use the family's Reserved Font Name(s); the license and copyright notice must accompany every copy.
+
 ### Hack — Nerd Font
 
 - Upstream: https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/Hack.zip (tag v3.5.1)
@@ -254,6 +310,22 @@ FontAlloy downloads the font families below from their pinned upstream releases 
 - License: Bitstream-Vera AND MIT
 - Reserved Font Names: none declared
 - License obligations: Both licenses apply: the Bitstream Vera license requires renamed derivatives, and MIT requires its notice accompany copies.
+
+### HackGen — NF
+
+- Upstream: https://github.com/yuru7/HackGen/releases/download/v2.10.0/HackGen_NF_v2.10.0.zip (tag v2.10.0)
+- Copyright: Copyright (c) 2019 Yuko Otawara, with Reserved Font Names "白源" and "HackGen"; source fonts: Hack (Copyright 2018 The Hack Project Authors), Gen Jyuu Gothic (Copyright (c) 2015 JIKASEI FONT KOUBOU)
+- License: OFL-1.1-RFN
+- Reserved Font Names: '白源', 'HackGen'. Merged/built outputs are Modified Versions and must not carry these names.
+- License obligations: Modified Versions distributed under this license may not use the family's Reserved Font Name(s); the license and copyright notice must accompany every copy.
+
+### HackGen — Standard
+
+- Upstream: https://github.com/yuru7/HackGen/releases/download/v2.10.0/HackGen_v2.10.0.zip (tag v2.10.0)
+- Copyright: Copyright (c) 2019 Yuko Otawara, with Reserved Font Names "白源" and "HackGen"; source fonts: Hack (Copyright 2018 The Hack Project Authors), Gen Jyuu Gothic (Copyright (c) 2015 JIKASEI FONT KOUBOU)
+- License: OFL-1.1-RFN
+- Reserved Font Names: '白源', 'HackGen'. Merged/built outputs are Modified Versions and must not carry these names.
+- License obligations: Modified Versions distributed under this license may not use the family's Reserved Font Name(s); the license and copyright notice must accompany every copy.
 
 ### Hasklig — Nerd Font
 
@@ -278,6 +350,14 @@ FontAlloy downloads the font families below from their pinned upstream releases 
 - License: OFL-1.1-RFN
 - Reserved Font Names: 'Hermit'. Merged/built outputs are Modified Versions and must not carry these names.
 - License obligations: Modified Versions distributed under this license may not use the family's Reserved Font Name(s); the license and copyright notice must accompany every copy.
+
+### HuiwenMincho — Regular
+
+- Upstream: https://github.com/bosswnx/huiwenmincho-improved/releases/download/20241203/Huiwenmincho-improved.otf (tag 20241203)
+- Copyright: Public Domain (the improved 汇文明朝体, CC0)
+- License: CC0-1.0
+- Reserved Font Names: none declared
+- License obligations: CC0 1.0 Universal: the author waives all copyright and related rights; no attribution or share-alike obligation applies (the license text travels anyway as the notice of record).
 
 ### iA-Writer — Nerd Font
 
@@ -383,6 +463,54 @@ FontAlloy downloads the font families below from their pinned upstream releases 
 - Reserved Font Names: none declared
 - License obligations: The license and copyright notice must accompany every copy; this family declares no Reserved Font Name.
 
+### LxgwMarkerGothic — Regular
+
+- Upstream: https://github.com/lxgw/LxgwMarkerGothic/releases/download/v1.003/LxgwMarkerGothic-v1.003.zip (tag v1.003)
+- Copyright: Copyright 2021-2026 The LXGW Marker Gothic Project Authors (https://github.com/lxgw/LxgwMarkerGothic)
+- License: OFL-1.1-no-RFN
+- Reserved Font Names: none declared
+- License obligations: The license and copyright notice must accompany every copy; this family declares no Reserved Font Name.
+
+### LxgwNeoXiHei — Plus
+
+- Upstream: https://github.com/lxgw/LxgwNeoXiHei/releases/download/v1.305/LXGWNeoXiHeiPlus.ttf (tag v1.305)
+- Copyright: Copyright (c) 2021-2026 LXGW; Information-technology Promotion Agency, Japan (IPA), 2003-2019
+- License: IPA
+- Reserved Font Names: '霞鹜新晰黑', 'LXGW Neo XiHei'. Merged/built outputs are Modified Versions and must not carry these names.
+- License obligations: The IPA Font License 1.0: redistribution is free, but a Derived Program may not use the Licensed Program's name as its program, font, or file name (clause 3(4)) — merged outputs must never carry the reserved names listed above, and the license text must accompany every copy.
+
+### LxgwNeoXiHei — Regular
+
+- Upstream: https://github.com/lxgw/LxgwNeoXiHei/releases/download/v1.305/LXGWNeoXiHei.ttf (tag v1.305)
+- Copyright: Copyright (c) 2021-2026 LXGW; Information-technology Promotion Agency, Japan (IPA), 2003-2019
+- License: IPA
+- Reserved Font Names: '霞鹜新晰黑', 'LXGW Neo XiHei'. Merged/built outputs are Modified Versions and must not carry these names.
+- License obligations: The IPA Font License 1.0: redistribution is free, but a Derived Program may not use the Licensed Program's name as its program, font, or file name (clause 3(4)) — merged outputs must never carry the reserved names listed above, and the license text must accompany every copy.
+
+### LxgwNeoXiHeiCode — Regular
+
+- Upstream: https://github.com/lxgw/NeoXiHei-Code/releases/download/v1.305/NeoXiHeiCode-Regular.ttf (tag v1.305)
+- Copyright: Copyright (c) 2023-2026 LXGW; M+ TESTFLIGHT 063a: Copyright (c) 2019 M+ FONTS PROJECT; IPA Gothic Ver.003.03: Copyright (c) Information-technology Promotion Agency, Japan (IPA), 2003-2011
+- License: IPA
+- Reserved Font Names: '霞鹜新晰黑 Code', 'NeoXiHei Code'. Merged/built outputs are Modified Versions and must not carry these names.
+- License obligations: The IPA Font License 1.0: redistribution is free, but a Derived Program may not use the Licensed Program's name as its program, font, or file name (clause 3(4)) — merged outputs must never carry the reserved names listed above, and the license text must accompany every copy.
+
+### LxgwNeoZhiSong — Plus
+
+- Upstream: https://github.com/lxgw/LxgwNeoZhiSong/releases/download/v1.067/LXGWNeoZhiSongPlus.ttf (tag v1.067)
+- Copyright: Copyright (c) 2023-2026 LXGW; Information-technology Promotion Agency, Japan (IPA), 2003-2019
+- License: IPA
+- Reserved Font Names: '霞鹜新致宋', 'LXGW Neo ZhiSong'. Merged/built outputs are Modified Versions and must not carry these names.
+- License obligations: The IPA Font License 1.0: redistribution is free, but a Derived Program may not use the Licensed Program's name as its program, font, or file name (clause 3(4)) — merged outputs must never carry the reserved names listed above, and the license text must accompany every copy.
+
+### LxgwNeoZhiSong — Regular
+
+- Upstream: https://github.com/lxgw/LxgwNeoZhiSong/releases/download/v1.067/LXGWNeoZhiSong.ttf (tag v1.067)
+- Copyright: Copyright (c) 2023-2026 LXGW; Information-technology Promotion Agency, Japan (IPA), 2003-2019
+- License: IPA
+- Reserved Font Names: '霞鹜新致宋', 'LXGW Neo ZhiSong'. Merged/built outputs are Modified Versions and must not carry these names.
+- License obligations: The IPA Font License 1.0: redistribution is free, but a Derived Program may not use the Licensed Program's name as its program, font, or file name (clause 3(4)) — merged outputs must never carry the reserved names listed above, and the license text must accompany every copy.
+
 ### LXGWWenKai — Light
 
 - Upstream: https://github.com/lxgw/LxgwWenKai/releases/download/v1.522/LXGWWenKai-Light.ttf (tag v1.522)
@@ -464,10 +592,35 @@ FontAlloy downloads the font families below from their pinned upstream releases 
 - License obligations: Modified Versions distributed under this license may not use the family's Reserved Font Name(s); the license and copyright notice must accompany every copy.
 - Reserved-name carve-out: LXGW's OFL reserves the names 霞鹜, 霞鶩, 落霞孤鹜, 落霞孤鶩 and LXGW, with an additional permission covering only Modified Versions recompiled from the Original Version without font source changes, or subsetted/web-converted versions for web delivery — explicitly NOT installable desktop fonts. FontAlloy merged outputs are installable desktop Modified Versions and must never carry these names (output names default to the fixed brand default, never source font names).
 
+### LxgwWenKaiMonoTC — Regular
+
+- Upstream: https://github.com/lxgw/LxgwWenkaiTC/releases/download/v1.522/LXGWWenKaiMonoTC-Regular.ttf (tag v1.522)
+- Copyright: Copyright 2022-2026 LXGW (https://github.com/lxgw/LxgwWenkaiTC); Copyright 2020 The Klee Project Authors (https://github.com/fontworks-fonts/Klee)
+- License: OFL-1.1-no-RFN
+- Reserved Font Names: none declared
+- License obligations: The license and copyright notice must accompany every copy; this family declares no Reserved Font Name.
+
 ### LXGWWenKaiScreen — Regular
 
 - Upstream: https://github.com/lxgw/LxgwWenKai-Screen/releases/download/v1.522/LXGWWenKaiScreen.ttf (tag v1.522)
 - Copyright: Copyright 2021-2026 LXGW (https://github.com/lxgw/LxgwWenKai-Screen)
+- License: OFL-1.1-RFN
+- Reserved Font Names: '霞鹜', '霞鶩', '落霞孤鹜', '落霞孤鶩', 'LXGW'. Merged/built outputs are Modified Versions and must not carry these names.
+- License obligations: Modified Versions distributed under this license may not use the family's Reserved Font Name(s); the license and copyright notice must accompany every copy.
+- Reserved-name carve-out: LXGW's OFL reserves the names 霞鹜, 霞鶩, 落霞孤鹜, 落霞孤鶩 and LXGW, with an additional permission covering only Modified Versions recompiled from the Original Version without font source changes, or subsetted/web-converted versions for web delivery — explicitly NOT installable desktop fonts. FontAlloy merged outputs are installable desktop Modified Versions and must never carry these names (output names default to the fixed brand default, never source font names).
+
+### LxgwWenKaiTC — Regular
+
+- Upstream: https://github.com/lxgw/LxgwWenkaiTC/releases/download/v1.522/LXGWWenKaiTC-Regular.ttf (tag v1.522)
+- Copyright: Copyright 2022-2026 LXGW (https://github.com/lxgw/LxgwWenkaiTC); Copyright 2020 The Klee Project Authors (https://github.com/fontworks-fonts/Klee)
+- License: OFL-1.1-no-RFN
+- Reserved Font Names: none declared
+- License obligations: The license and copyright notice must accompany every copy; this family declares no Reserved Font Name.
+
+### LxgwZhenKai — Regular
+
+- Upstream: https://github.com/lxgw/LxgwZhenKai/releases/download/v0.825/LXGWZhenKaiGB-Regular.ttf (tag v0.825)
+- Copyright: Copyright 2022-2026 LXGW (https://github.com/lxgw/LxgwZhenKai), with Reserved Font Names '霞鹜', '霞鶩', '落霞孤鹜', '落霞孤鶩' and 'LXGW' (installable-desktop carve-out: see the license file); Copyright 2020 The Klee Project Authors (https://github.com/fontworks-fonts/Klee)
 - License: OFL-1.1-RFN
 - Reserved Font Names: '霞鹜', '霞鶩', '落霞孤鹜', '落霞孤鶩', 'LXGW'. Merged/built outputs are Modified Versions and must not carry these names.
 - License obligations: Modified Versions distributed under this license may not use the family's Reserved Font Name(s); the license and copyright notice must accompany every copy.
@@ -560,6 +713,22 @@ FontAlloy downloads the font families below from their pinned upstream releases 
 - Reserved Font Names: none declared
 - License obligations: The license and copyright notice must accompany every copy; this family declares no Reserved Font Name.
 
+### NotoSansSC — HW
+
+- Upstream: https://github.com/adobe-fonts/source-han-sans/releases/download/2.005R/14_SourceHanSansHWSC.zip (tag 2.005R)
+- Copyright: Copyright 2014-2025 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source' — Source Han Sans HW SC (half-width)
+- License: OFL-1.1-RFN
+- Reserved Font Names: 'Source'. Merged/built outputs are Modified Versions and must not carry these names.
+- License obligations: Modified Versions distributed under this license may not use the family's Reserved Font Name(s); the license and copyright notice must accompany every copy.
+
+### NotoSansSC — Mono
+
+- Upstream: https://github.com/googlefonts/noto-cjk/releases/download/Sans2.004/13_NotoSansMonoCJKsc.zip (tag Sans2.004)
+- Copyright: Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source' — Noto Sans Mono CJK SC
+- License: OFL-1.1-RFN
+- Reserved Font Names: 'Source'. Merged/built outputs are Modified Versions and must not carry these names.
+- License obligations: Modified Versions distributed under this license may not use the family's Reserved Font Name(s); the license and copyright notice must accompany every copy.
+
 ### NotoSansSC — Variable
 
 - Upstream: https://raw.githubusercontent.com/google/fonts/a85815a42757630ce188fdad368c2dfc444d4773/ofl/notosanssc/NotoSansSC%5Bwght%5D.ttf (tag a85815a42757630ce188fdad368c2dfc444d4773)
@@ -591,6 +760,14 @@ FontAlloy downloads the font families below from their pinned upstream releases 
 - License: OFL-1.1-no-RFN OR LGPL-2.1-only
 - Reserved Font Names: none declared
 - License obligations: Dual-licensed (upstream's choice applies): the OFL terms above, or LGPL-2.1-only; the upstream license file states the choice.
+
+### PlemolJP — NF
+
+- Upstream: https://github.com/yuru7/plemoljp/releases/download/v3.1.0/PlemolJP_NF_v3.1.0.zip (tag v3.1.0)
+- Copyright: Copyright (c) 2021 Yuko Otawara, with Reserved Font Name "PlemolJP"; source fonts: IBM Plex Mono (Copyright (c) 2017 IBM Corp.), Hack (Copyright 2018 The Hack Project Authors), M+ CJK
+- License: OFL-1.1-RFN
+- Reserved Font Names: 'PlemolJP'. Merged/built outputs are Modified Versions and must not carry these names.
+- License obligations: Modified Versions distributed under this license may not use the family's Reserved Font Name(s); the license and copyright notice must accompany every copy.
 
 ### ProFont — Nerd Font
 
@@ -636,6 +813,14 @@ FontAlloy downloads the font families below from their pinned upstream releases 
 
 - Upstream: https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/SourceCodePro.zip (tag v3.5.1)
 - Copyright: Copyright 2010-2020 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'. All Rights Reserved. Source is a trademark of Adobe in the United States and/or other countries.
+- License: OFL-1.1-RFN
+- Reserved Font Names: 'Source'. Merged/built outputs are Modified Versions and must not carry these names.
+- License obligations: Modified Versions distributed under this license may not use the family's Reserved Font Name(s); the license and copyright notice must accompany every copy.
+
+### SourceHanCodeJP — Regular
+
+- Upstream: https://github.com/adobe-fonts/source-han-code-jp/releases/download/2.012R/SourceHanCodeJP.ttc (tag 2.012R)
+- Copyright: Copyright 2014-2020 Adobe Systems Incorporated (http://www.adobe.com/), with Reserved Font Name 'Source'; Source Code Pro by Paul D. Hunt
 - License: OFL-1.1-RFN
 - Reserved Font Names: 'Source'. Merged/built outputs are Modified Versions and must not carry these names.
 - License obligations: Modified Versions distributed under this license may not use the family's Reserved Font Name(s); the license and copyright notice must accompany every copy.
@@ -688,6 +873,22 @@ FontAlloy downloads the font families below from their pinned upstream releases 
 - Reserved Font Names: none declared
 - License obligations: The Ubuntu Font License 1.0: modified versions that are not substantially changed must be renamed to retain the original name plus a "derivative X" suffix; the licence text must accompany every copy.
 
+### UDEVGothic — NF
+
+- Upstream: https://github.com/yuru7/udev-gothic/releases/download/v2.2.0/UDEVGothic_NF_v2.2.0.zip (tag v2.2.0)
+- Copyright: Copyright (c) 2022 Yuko Otawara, with Reserved Font Name "UDEV Gothic"; source fonts: JetBrains Mono (Copyright 2020 The JetBrains Mono Project Authors), BIZ UDGothic (Copyright 2022 The BIZ UDGothic Project Authors)
+- License: OFL-1.1-RFN
+- Reserved Font Names: 'UDEV Gothic'. Merged/built outputs are Modified Versions and must not carry these names.
+- License obligations: Modified Versions distributed under this license may not use the family's Reserved Font Name(s); the license and copyright notice must accompany every copy.
+
+### UDEVGothic — Standard
+
+- Upstream: https://github.com/yuru7/udev-gothic/releases/download/v2.2.0/UDEVGothic_v2.2.0.zip (tag v2.2.0)
+- Copyright: Copyright (c) 2022 Yuko Otawara, with Reserved Font Name "UDEV Gothic"; source fonts: JetBrains Mono (Copyright 2020 The JetBrains Mono Project Authors), BIZ UDGothic (Copyright 2022 The BIZ UDGothic Project Authors)
+- License: OFL-1.1-RFN
+- Reserved Font Names: 'UDEV Gothic'. Merged/built outputs are Modified Versions and must not carry these names.
+- License obligations: Modified Versions distributed under this license may not use the family's Reserved Font Name(s); the license and copyright notice must accompany every copy.
+
 ### VictorMono — Nerd Font
 
 - Upstream: https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/VictorMono.zip (tag v3.5.1)
@@ -695,6 +896,30 @@ FontAlloy downloads the font families below from their pinned upstream releases 
 - License: OFL-1.1-no-RFN
 - Reserved Font Names: none declared
 - License obligations: The license and copyright notice must accompany every copy; this family declares no Reserved Font Name.
+
+### Xiaolai — Regular
+
+- Upstream: https://github.com/lxgw/kose-font/releases/download/v3.126/Xiaolai-Regular.ttf (tag v3.126)
+- Copyright: Copyright 2020-2024 LXGW (https://github.com/lxgw/kose-font); Copyright 2014 Nozomi Seto (https://ja.osdn.net/projects/setofont/)
+- License: OFL-1.1-no-RFN
+- Reserved Font Names: none declared
+- License obligations: The license and copyright notice must accompany every copy; this family declares no Reserved Font Name.
+
+### XiaolaiMono — Regular
+
+- Upstream: https://github.com/lxgw/kose-font/releases/download/v3.126/XiaolaiMono-Regular.ttf (tag v3.126)
+- Copyright: Copyright 2020-2024 LXGW (https://github.com/lxgw/kose-font); Copyright 2014 Nozomi Seto (https://ja.osdn.net/projects/setofont/)
+- License: OFL-1.1-no-RFN
+- Reserved Font Names: none declared
+- License obligations: The license and copyright notice must accompany every copy; this family declares no Reserved Font Name.
+
+### Yozai — Regular
+
+- Upstream: https://github.com/lxgw/yozai-font/releases/download/v0.868/Yozai-Regular.ttf (tag v0.868)
+- Copyright: Copyright 2020, 2024 LXGW (https://github.com/lxgw/yozai-font); Original Font Data Copyright (C) Y.OzVox (Y.Oz), the words containing "Y.Oz" and "YOz" are reserved as font names.
+- License: OFL-1.1-RFN
+- Reserved Font Names: 'Y.Oz', 'YOz'. Merged/built outputs are Modified Versions and must not carry these names.
+- License obligations: Modified Versions distributed under this license may not use the family's Reserved Font Name(s); the license and copyright notice must accompany every copy.
 
 ### ZedMono — Nerd Font
 
@@ -1103,6 +1328,132 @@ Creative Commons is not a party to its public licenses. Notwithstanding, Creativ
 Creative Commons may be contacted at creativecommons.org.
 ```
 
+### CC0-1.0.txt
+
+```text
+Creative Commons Legal Code
+
+CC0 1.0 Universal
+
+    CREATIVE COMMONS CORPORATION IS NOT A LAW FIRM AND DOES NOT PROVIDE
+    LEGAL SERVICES. DISTRIBUTION OF THIS DOCUMENT DOES NOT CREATE AN
+    ATTORNEY-CLIENT RELATIONSHIP. CREATIVE COMMONS PROVIDES THIS
+    INFORMATION ON AN "AS-IS" BASIS. CREATIVE COMMONS MAKES NO WARRANTIES
+    REGARDING THE USE OF THIS DOCUMENT OR THE INFORMATION OR WORKS
+    PROVIDED HEREUNDER, AND DISCLAIMS LIABILITY FOR DAMAGES RESULTING FROM
+    THE USE OF THIS DOCUMENT OR THE INFORMATION OR WORKS PROVIDED
+    HEREUNDER.
+
+Statement of Purpose
+
+The laws of most jurisdictions throughout the world automatically confer
+exclusive Copyright and Related Rights (defined below) upon the creator
+and subsequent owner(s) (each and all, an "owner") of an original work of
+authorship and/or a database (each, a "Work").
+
+Certain owners wish to permanently relinquish those rights to a Work for
+the purpose of contributing to a commons of creative, cultural and
+scientific works ("Commons") that the public can reliably and without fear
+of later claims of infringement build upon, modify, incorporate in other
+works, reuse and redistribute as freely as possible in any form whatsoever
+and for any purposes, including without limitation commercial purposes.
+These owners may contribute to the Commons to promote the ideal of a free
+culture and the further production of creative, cultural and scientific
+works, or to gain reputation or greater distribution for their Work in
+part through the use and efforts of others.
+
+For these and/or other purposes and motivations, and without any
+expectation of additional consideration or compensation, the person
+associating CC0 with a Work (the "Affirmer"), to the extent that he or she
+is an owner of Copyright and Related Rights in the Work, voluntarily
+elects to apply CC0 to the Work and publicly distribute the Work under its
+terms, with knowledge of his or her Copyright and Related Rights in the
+Work and the meaning and intended legal effect of CC0 on those rights.
+
+1. Copyright and Related Rights. A Work made available under CC0 may be
+protected by copyright and related or neighboring rights ("Copyright and
+Related Rights"). Copyright and Related Rights include, but are not
+limited to, the following:
+
+  i. the right to reproduce, adapt, distribute, perform, display,
+     communicate, and translate a Work;
+ ii. moral rights retained by the original author(s) and/or performer(s);
+iii. publicity and privacy rights pertaining to a person's image or
+     likeness depicted in a Work;
+ iv. rights protecting against unfair competition in regards to a Work,
+     subject to the limitations in paragraph 4(a), below;
+  v. rights protecting the extraction, dissemination, use and reuse of data
+     in a Work;
+ vi. database rights (such as those arising under Directive 96/9/EC of the
+     European Parliament and of the Council of 11 March 1996 on the legal
+     protection of databases, and under any national implementation
+     thereof, including any amended or successor version of such
+     directive); and
+vii. other similar, equivalent or corresponding rights throughout the
+     world based on applicable law or treaty, and any national
+     implementations thereof.
+
+2. Waiver. To the greatest extent permitted by, but not in contravention
+of, applicable law, Affirmer hereby overtly, fully, permanently,
+irrevocably and unconditionally waives, abandons, and surrenders all of
+Affirmer's Copyright and Related Rights and associated claims and causes
+of action, whether now known or unknown (including existing as well as
+future claims and causes of action), in the Work (i) in all territories
+worldwide, (ii) for the maximum duration provided by applicable law or
+treaty (including future time extensions), (iii) in any current or future
+medium and for any number of copies, and (iv) for any purpose whatsoever,
+including without limitation commercial, advertising or promotional
+purposes (the "Waiver"). Affirmer makes the Waiver for the benefit of each
+member of the public at large and to the detriment of Affirmer's heirs and
+successors, fully intending that such Waiver shall not be subject to
+revocation, rescission, cancellation, termination, or any other legal or
+equitable action to disrupt the quiet enjoyment of the Work by the public
+as contemplated by Affirmer's express Statement of Purpose.
+
+3. Public License Fallback. Should any part of the Waiver for any reason
+be judged legally invalid or ineffective under applicable law, then the
+Waiver shall be preserved to the maximum extent permitted taking into
+account Affirmer's express Statement of Purpose. In addition, to the
+extent the Waiver is so judged Affirmer hereby grants to each affected
+person a royalty-free, non transferable, non sublicensable, non exclusive,
+irrevocable and unconditional license to exercise Affirmer's Copyright and
+Related Rights in the Work (i) in all territories worldwide, (ii) for the
+maximum duration provided by applicable law or treaty (including future
+time extensions), (iii) in any current or future medium and for any number
+of copies, and (iv) for any purpose whatsoever, including without
+limitation commercial, advertising or promotional purposes (the
+"License"). The License shall be deemed effective as of the date CC0 was
+applied by Affirmer to the Work. Should any part of the License for any
+reason be judged legally invalid or ineffective under applicable law, such
+partial invalidity or ineffectiveness shall not invalidate the remainder
+of the License, and in such case Affirmer hereby affirms that he or she
+will not (i) exercise any of his or her remaining Copyright and Related
+Rights in the Work or (ii) assert any associated claims and causes of
+action with respect to the Work, in either case contrary to Affirmer's
+express Statement of Purpose.
+
+4. Limitations and Disclaimers.
+
+ a. No trademark or patent rights held by Affirmer are waived, abandoned,
+    surrendered, licensed or otherwise affected by this document.
+ b. Affirmer offers the Work as-is and makes no representations or
+    warranties of any kind concerning the Work, express, implied,
+    statutory or otherwise, including without limitation warranties of
+    title, merchantability, fitness for a particular purpose, non
+    infringement, or the absence of latent or other defects, accuracy, or
+    the present or absence of errors, whether or not discoverable, all to
+    the greatest extent permissible under applicable law.
+ c. Affirmer disclaims responsibility for clearing rights of other persons
+    that may apply to the Work or any use thereof, including without
+    limitation any person's Copyright and Related Rights in the Work.
+    Further, Affirmer disclaims responsibility for obtaining any necessary
+    consents, permissions or other rights required for any use of the
+    Work.
+ d. Affirmer understands and acknowledges that Creative Commons is not a
+    party to this document and has no duty or obligation with respect to
+    this CC0 or use of the Work.
+```
+
 ### Go-Mono.txt
 
 ```text
@@ -1192,6 +1543,405 @@ The Font Software may be sold as part of a larger software package but no copy o
 THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL BITSTREAM OR THE GNOME FOUNDATION BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM OTHER DEALINGS IN THE FONT SOFTWARE.
 
 Except as contained in this notice, the names of Gnome, the Gnome Foundation, and Bitstream Inc., shall not be used in advertising or otherwise to promote the sale, use or other dealings in this Font Software without prior written authorization from the Gnome Foundation or Bitstream Inc., respectively. For further information, contact: fonts at gnome dot org.
+```
+
+### IPA-LxgwNeoXiHei.txt
+
+```text
+# IPA Font License Agreement v1.0 <Japanese/English>
+
+* [For English, please click here.](#ipa-font-license-agreement-v10)
+* [汉译版请点击此处查看。](LICENSE_CHS.md)
+
+## IPAフォントライセンスv1.0
+
+許諾者は、この使用許諾（以下「本契約」といいます。）に定める条件の下で、許諾プログラム（1条に定義するところによります。）を提供します。受領者（1条に定義するところによります。）が、許諾プログラムを使用し、複製し、または頒布する行為、その他、本契約に定める権利の利用を行った場合、受領者は本契約に同意したものと見なします。
+
+### 第1条　用語の定義
+
+本契約において、次の各号に掲げる用語は、当該各号に定めるところによります。
+
+1. 「デジタル･フォント･プログラム」とは、フォントを含み、レンダリングしまたは表示するために用いられるコンピュータ・プログラムをいいます。
+2. 「許諾プログラム」とは、許諾者が本契約の下で許諾するデジタル･フォント･プログラムをいいます。
+3. 「派生プログラム」とは、許諾プログラムの一部または全部を、改変し、加除修正等し、入れ替え、その他翻案したデジタル･フォント･プログラムをいい、許諾プログラムの一部もしくは全部から文字情報を取り出し、またはデジタル･ドキュメント･ファイルからエンベッドされたフォントを取り出し、取り出された文字情報をそのまま、または改変をなして新たなデジタル・フォント・プログラムとして製作されたものを含みます。
+4. 「デジタル・コンテンツ」とは、デジタル・データ形式によってエンド・ユーザに提供される制作物のことをいい、動画・静止画等の映像コンテンツおよびテレビ番組等の放送コンテンツ、ならびに文字テキスト、画像、図形等を含んで構成された制作物を含みます。
+5. 「デジタル・ドキュメント・ファイル」とは、PDFファイルその他、各種ソフトウェア･プログラムによって製作されたデジタル・コンテンツであって、その中にフォントを表示するために許諾プログラムの全部または一部が埋め込まれた（エンベッドされた）ものをいいます。フォントが「エンベッドされた」とは、当該フォントが埋め込まれた特定の「デジタル・ドキュメント・ファイル」においてのみ表示されるために使用されている状態を指し、その特定の「デジタル・ドキュメント・ファイル」以外でフォントを表示するために使用できるデジタル・フォント・プログラムに含まれている場合と区別されます。
+6. 「コンピュータ｣とは、本契約においては、サーバを含みます。
+7. 「複製その他の利用」とは、複製、譲渡、頒布、貸与、公衆送信、上映、展示、翻案その他の利用をいいます。
+8. 「受領者」とは、許諾プログラムを本契約の下で受領した人をいい、受領者から許諾プログラムを受領した人を含みます。
+
+### 第2条　使用許諾の付与
+
+許諾者は受領者に対し、本契約の条項に従い、すべての国で、許諾プログラムを使用することを許諾します。ただし、許諾プログラムに存在する一切の権利はすべて許諾者が保有しています。本契約は、本契約で明示的に定められている場合を除き、いかなる意味においても、許諾者が保有する許諾プログラムに関する一切の権利および、いかなる商標、商号、もしくはサービス・マークに関する権利をも受領者に移転するものではありません。
+
+1. 受領者は本契約に定める条件に従い、許諾プログラムを任意の数のコンピュータにインストールし、当該コンピュータで使用することができます。
+2. 受領者はコンピュータにインストールされた許諾プログラムをそのまま、または改変を行ったうえで、印刷物およびデジタル・コンテンツにおいて、文字テキスト表現等として使用することができます。
+3. 受領者は前項の定めに従い作成した印刷物およびデジタル・コンテンツにつき、その商用・非商用の別、および放送、通信、各種記録メディアなどの媒体の形式を問わず、複製その他の利用をすることができます。
+4. 受領者がデジタル・ドキュメント・ファイルからエンベッドされたフォントを取り出して派生プログラムを作成した場合には、かかる派生プログラムは本契約に定める条件に従う必要があります。
+5. 許諾プログラムのエンベッドされたフォントがデジタル・ドキュメント・ファイル内のデジタル・コンテンツをレンダリングするためにのみ使用される場合において、受領者が当該デジタル・ドキュメント・ファイルを複製その他の利用をする場合には、受領者はかかる行為に関しては本契約の下ではいかなる義務をも負いません。
+6. 受領者は、3条2項の定めに従い、商用・非商用を問わず、許諾プログラムをそのままの状態で改変することなく複製して第三者への譲渡し、公衆送信し、その他の方法で再配布することができます(以下、「再配布」といいます。)。
+7. 受領者は、上記の許諾プログラムについて定められた条件と同様の条件に従って、派生プログラムを作成し、使用し、複製し、再配布することができます。ただし、受領者が派生プログラムを再配布する場合には、3条1項の定めに従うものとします。
+
+### 第3条　制限
+
+前条により付与された使用許諾は、以下の制限に服します。
+
+1. 派生プログラムが前条4項及び7項に基づき再配布される場合には、以下の全ての条件を満たさなければなりません。
+   * (1) 派生プログラムを再配布する際には、下記もまた、当該派生プログラムと一緒に再配布され、オンラインで提供され、または、郵送費・媒体及び取扱手数料の合計を超えない実費と引き換えに媒体を郵送する方法により提供されなければなりません。
+     * (a) 派生プログラムの写し; および
+     * (b) 派生プログラムを作成する過程でフォント開発プログラムによって作成された追加のファイルであって派生プログラムをさらに加工するにあたって利用できるファイルが存在すれば、当該ファイル
+   * (2) 派生プログラムの受領者が、派生プログラムを、このライセンスの下で最初にリリースされた許諾プログラム（以下、「オリジナル・プログラム」といいます。）に置き換えることができる方法を再配布するものとします。かかる方法は、オリジナル・ファイルからの差分ファイルの提供、または、派生プログラムをオリジナル・プログラムに置き換える方法を示す指示の提供などが考えられます。
+   * (3) 派生プログラムを、本契約書に定められた条件の下でライセンスしなければなりません。
+   * (4) 派生プログラムのプログラム名、フォント名またはファイル名として、許諾プログラムが用いているのと同一の名称、またはこれを含む名称を使用してはなりません。
+   * (5) 本項の要件を満たすためにオンラインで提供し、または媒体を郵送する方法で提供されるものは、その提供を希望するいかなる者によっても提供が可能です。
+2. 受領者が前条6項に基づき許諾プログラムを再配布する場合には、以下の全ての条件を満たさなければなりません。
+   * (1) 許諾プログラムの名称を変更してはなりません。
+   * (2) 許諾プログラムに加工その他の改変を加えてはなりません。
+   * (3) 本契約の写しを許諾プログラムに添付しなければなりません。
+3. 許諾プログラムは、現状有姿で提供されており、許諾プログラムまたは派生プログラムについて、許諾者は一切の明示または黙示の保証（権利の所在、非侵害、商品性、特定目的への適合性を含むがこれに限られません）を行いません。いかなる場合にも、その原因を問わず、契約上の責任か厳格責任か過失その他の不法行為責任かにかかわらず、また事前に通知されたか否かにかかわらず、許諾者は、許諾プログラムまたは派生プログラムのインストール、使用、複製その他の利用または本契約上の権利の行使によって生じた一切の損害（直接・間接・付随的・特別・拡大・懲罰的または結果的損害）（商品またはサービスの代替品の調達、システム障害から生じた損害、現存するデータまたはプログラムの紛失または破損、逸失利益を含むがこれに限られません）について責任を負いません。
+4. 許諾プログラムまたは派生プログラムのインストール、使用、複製その他の利用に関して、許諾者は技術的な質問や問い合わせ等に対する対応その他、いかなるユーザ・サポートをも行う義務を負いません。
+
+### 第4条　契約の終了
+
+1. 本契約の有効期間は、受領者が許諾プログラムを受領した時に開始し、受領者が許諾プログラムを何らかの方法で保持する限り続くものとします。
+2. 前項の定めにかかわらず、受領者が本契約に定める各条項に違反したときは、本契約は、何らの催告を要することなく、自動的に終了し、当該受領者はそれ以後、許諾プログラムおよび派生プログラムを一切使用しまたは複製その他の利用をすることができないものとします。ただし、かかる契約の終了は、当該違反した受領者から許諾プログラムまたは派生プログラムの配布を受けた受領者の権利に影響を及ぼすものではありません。
+
+### 第5条　準拠法
+
+1. IPAは、本契約の変更バージョンまたは新しいバージョンを公表することができます。その場合には、受領者は、許諾プログラムまたは派生プログラムの使用、複製その他の利用または再配布にあたり、本契約または変更後の契約のいずれかを選択することができます。その他、上記に記載されていない条項に関しては日本の著作権法および関連法規に従うものとします。
+2. 本契約は、日本法に基づき解釈されます。
+
+----------
+
+## IPA Font License Agreement v1.0
+
+The Licensor provides the Licensed Program (as defined in Article 1 below) under the terms of this license agreement (“Agreement”).  Any use, reproduction or distribution of the Licensed Program, or any exercise of rights under this Agreement by a Recipient (as defined in Article 1 below) constitutes the Recipient's acceptance of this Agreement. 
+
+### Article 1 (Definitions)
+
+1. “Digital Font Program” shall mean a computer program containing, or used to render or display fonts.
+2. “Licensed Program” shall mean a Digital Font Program licensed by the Licensor under this Agreement.
+3. “Derived Program” shall mean a Digital Font Program created as a result of a modification, addition, deletion, replacement or any other adaptation to or of a part or all of the Licensed Program, and includes a case where a Digital Font Program newly created by retrieving font information from a part or all of the Licensed Program or Embedded Fonts from a Digital Document File with or without modification of the retrieved font information. 
+4. “Digital Content” shall mean products provided to end users in the form of digital data, including video content, motion and/or still pictures, TV programs or other broadcasting content and products consisting of character text, pictures, photographic images, graphic symbols and/or the like.
+5. “Digital Document File” shall mean a PDF file or other Digital Content created by various software programs in which a part or all of the Licensed Program becomes embedded or contained in the file for the display of the font (“Embedded Fonts”).  Embedded Fonts are used only in the display of characters in the particular Digital Document File within which they are embedded, and shall be distinguished from those in any Digital Font Program, which may be used for display of characters outside that particular Digital Document File.
+6. “Computer” shall include a server in this Agreement.
+7. “Reproduction and Other Exploitation” shall mean reproduction, transfer, distribution, lease, public transmission, presentation, exhibition, adaptation and any other exploitation.
+8. “Recipient” shall mean anyone who receives the Licensed Program under this Agreement, including one that receives the Licensed Program from a Recipient.
+
+### Article 2 (Grant of License)
+
+The Licensor grants to the Recipient a license to use the Licensed Program in any and all countries in accordance with each of the provisions set forth in this Agreement. However, any and all rights underlying in the Licensed Program shall be held by the Licensor. In no sense is this Agreement intended to transfer any right relating to the Licensed Program held by the Licensor except as specifically set forth herein or any right relating to any trademark, trade name, or service mark to the Recipient.
+
+1. The Recipient may install the Licensed Program on any number of Computers and use the same in accordance with the provisions set forth in this Agreement.
+2. The Recipient may use the Licensed Program, with or without modification in printed materials or in Digital Content as an expression of character texts or the like.
+3. The Recipient may conduct Reproduction and Other Exploitation of the printed materials and Digital Content created in accordance with the preceding Paragraph, for commercial or non-commercial purposes and in any form of media including but not limited to broadcasting, communication and various recording media.
+4. If any Recipient extracts Embedded Fonts from a Digital Document File to create a Derived Program, such Derived Program shall be subject to the terms of this agreement.
+5. If any Recipient performs Reproduction or Other Exploitation of a Digital Document File in which Embedded Fonts of the Licensed Program are used only for rendering the Digital Content within such Digital Document File then such Recipient shall have no further obligations under this Agreement in relation to such actions.
+6. The Recipient may reproduce the Licensed Program as is without modification and transfer such copies, publicly transmit or otherwise redistribute the Licensed Program to a third party for commercial or non-commercial purposes (“Redistribute”), in accordance with the provisions set forth in Article 3 Paragraph 2.
+7. The Recipient may create, use, reproduce and/or Redistribute a Derived Program under the terms stated above for the Licensed Program: provided, that the Recipient shall follow the provisions set forth in Article 3 Paragraph 1 when Redistributing the Derived Program. 
+
+### Article 3 (Restriction)
+
+The license granted in the preceding Article shall be subject to the following restrictions:
+
+1. If a Derived Program is Redistributed pursuant to Paragraph 4 and 7 of the preceding Article, the following conditions must be met :
+   * (1) The following must be also Redistributed together with the Derived Program, or be made available online or by means of mailing mechanisms in exchange for a cost which does not exceed the total costs of postage, storage medium and handling fees:
+     * (a) a copy of the Derived Program; and
+     * (b) any additional file created by the font developing program in the course of creating the Derived Program that can be used for further modification of the Derived Program, if any. 
+   * (2) It is required to also Redistribute means to enable recipients of the Derived Program to replace the Derived Program with the Licensed Program first released under this License (the “Original Program”).  Such means may be to provide a difference file from the Original Program, or instructions setting out a method to replace the Derived Program with the Original Program. 
+   * (3) The Recipient must license the Derived Program under the terms and conditions of this Agreement.
+   * (4) No one may use or include the name of the Licensed Program as a program name, font name or file name of the Derived Program. 
+   * (5) Any material to be made available online or by means of mailing a medium to satisfy the requirements of this paragraph may be provided, verbatim, by any party wishing to do so.
+
+2. If the Recipient Redistributes the Licensed Program pursuant to Paragraph 6 of the preceding Article, the Recipient shall meet all of the following conditions:
+   * (1) The Recipient may not change the name of the Licensed Program.
+   * (2) The Recipient may not alter or otherwise modify the Licensed Program.
+   * (3) The Recipient must attach a copy of this Agreement to the Licensed Program.
+3. THIS LICENSED PROGRAM IS PROVIDED BY THE LICENSOR “AS IS” AND ANY EXPRESSED OR IMPLIED WARRANTY AS TO THE LICENSED PROGRAM OR ANY DERIVED PROGRAM, INCLUDING, BUT NOT LIMITED TO, WARRANTIES OF TITLE, NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE, ARE DISCLAIMED.  IN NO EVENT SHALL THE LICENSOR BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXTENDED, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO; PROCUREMENT OF SUBSTITUTED GOODS OR SERVICE; DAMAGES ARISING FROM SYSTEM FAILURE; LOSS OR CORRUPTION OF EXISTING DATA OR PROGRAM; LOST PROFITS), HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE INSTALLATION, USE, THE REPRODUCTION OR OTHER EXPLOITATION OF THE LICENSED PROGRAM OR ANY DERIVED PROGRAM OR THE EXERCISE OF ANY RIGHTS GRANTED HEREUNDER, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+4. The Licensor is under no obligation to respond to any technical questions or inquiries, or provide any other user support in connection with the installation, use or the Reproduction and Other Exploitation of the Licensed Program or Derived Programs thereof.
+
+### Article 4 (Termination of Agreement)
+
+1. The term of this Agreement shall begin from the time of receipt of the Licensed Program by the Recipient and shall continue as long as the Recipient retains any such Licensed Program in any way.
+2. Notwithstanding the provision set forth in the preceding Paragraph, in the event of the breach of any of the provisions set forth in this Agreement by the Recipient, this Agreement shall automatically terminate without any notice. In the case of such termination, the Recipient may not use or conduct Reproduction and Other Exploitation of the Licensed Program or a Derived Program: provided that such termination shall not affect any rights of any other Recipient receiving the Licensed Program or the Derived Program from such Recipient who breached this Agreement.
+
+### Article 5 (Governing Law)
+
+1. IPA may publish revised and/or new versions of this License.  In such an event, the Recipient may select either this Agreement or any subsequent version of the Agreement in using, conducting the Reproduction and Other Exploitation of, or Redistributing the Licensed Program or a Derived Program. Other matters not specified above shall be subject to the Copyright Law of Japan and other related laws and regulations of Japan.
+2. This Agreement shall be construed under the laws of Japan.
+```
+
+### IPA-LxgwNeoZhiSong.txt
+
+```text
+# IPA Font License Agreement v1.0 <Japanese/English>
+
+* [For English, please click here.](#ipa-font-license-agreement-v10)
+* [汉译版请点击此处查看。](LICENSE_CHS.md)
+
+## IPAフォントライセンスv1.0
+
+許諾者は、この使用許諾（以下「本契約」といいます。）に定める条件の下で、許諾プログラム（1条に定義するところによります。）を提供します。受領者（1条に定義するところによります。）が、許諾プログラムを使用し、複製し、または頒布する行為、その他、本契約に定める権利の利用を行った場合、受領者は本契約に同意したものと見なします。
+
+### 第1条　用語の定義
+
+本契約において、次の各号に掲げる用語は、当該各号に定めるところによります。
+
+1. 「デジタル･フォント･プログラム」とは、フォントを含み、レンダリングしまたは表示するために用いられるコンピュータ・プログラムをいいます。
+2. 「許諾プログラム」とは、許諾者が本契約の下で許諾するデジタル･フォント･プログラムをいいます。
+3. 「派生プログラム」とは、許諾プログラムの一部または全部を、改変し、加除修正等し、入れ替え、その他翻案したデジタル･フォント･プログラムをいい、許諾プログラムの一部もしくは全部から文字情報を取り出し、またはデジタル･ドキュメント･ファイルからエンベッドされたフォントを取り出し、取り出された文字情報をそのまま、または改変をなして新たなデジタル・フォント・プログラムとして製作されたものを含みます。
+4. 「デジタル・コンテンツ」とは、デジタル・データ形式によってエンド・ユーザに提供される制作物のことをいい、動画・静止画等の映像コンテンツおよびテレビ番組等の放送コンテンツ、ならびに文字テキスト、画像、図形等を含んで構成された制作物を含みます。
+5. 「デジタル・ドキュメント・ファイル」とは、PDFファイルその他、各種ソフトウェア･プログラムによって製作されたデジタル・コンテンツであって、その中にフォントを表示するために許諾プログラムの全部または一部が埋め込まれた（エンベッドされた）ものをいいます。フォントが「エンベッドされた」とは、当該フォントが埋め込まれた特定の「デジタル・ドキュメント・ファイル」においてのみ表示されるために使用されている状態を指し、その特定の「デジタル・ドキュメント・ファイル」以外でフォントを表示するために使用できるデジタル・フォント・プログラムに含まれている場合と区別されます。
+6. 「コンピュータ｣とは、本契約においては、サーバを含みます。
+7. 「複製その他の利用」とは、複製、譲渡、頒布、貸与、公衆送信、上映、展示、翻案その他の利用をいいます。
+8. 「受領者」とは、許諾プログラムを本契約の下で受領した人をいい、受領者から許諾プログラムを受領した人を含みます。
+
+### 第2条　使用許諾の付与
+
+許諾者は受領者に対し、本契約の条項に従い、すべての国で、許諾プログラムを使用することを許諾します。ただし、許諾プログラムに存在する一切の権利はすべて許諾者が保有しています。本契約は、本契約で明示的に定められている場合を除き、いかなる意味においても、許諾者が保有する許諾プログラムに関する一切の権利および、いかなる商標、商号、もしくはサービス・マークに関する権利をも受領者に移転するものではありません。
+
+1. 受領者は本契約に定める条件に従い、許諾プログラムを任意の数のコンピュータにインストールし、当該コンピュータで使用することができます。
+2. 受領者はコンピュータにインストールされた許諾プログラムをそのまま、または改変を行ったうえで、印刷物およびデジタル・コンテンツにおいて、文字テキスト表現等として使用することができます。
+3. 受領者は前項の定めに従い作成した印刷物およびデジタル・コンテンツにつき、その商用・非商用の別、および放送、通信、各種記録メディアなどの媒体の形式を問わず、複製その他の利用をすることができます。
+4. 受領者がデジタル・ドキュメント・ファイルからエンベッドされたフォントを取り出して派生プログラムを作成した場合には、かかる派生プログラムは本契約に定める条件に従う必要があります。
+5. 許諾プログラムのエンベッドされたフォントがデジタル・ドキュメント・ファイル内のデジタル・コンテンツをレンダリングするためにのみ使用される場合において、受領者が当該デジタル・ドキュメント・ファイルを複製その他の利用をする場合には、受領者はかかる行為に関しては本契約の下ではいかなる義務をも負いません。
+6. 受領者は、3条2項の定めに従い、商用・非商用を問わず、許諾プログラムをそのままの状態で改変することなく複製して第三者への譲渡し、公衆送信し、その他の方法で再配布することができます(以下、「再配布」といいます。)。
+7. 受領者は、上記の許諾プログラムについて定められた条件と同様の条件に従って、派生プログラムを作成し、使用し、複製し、再配布することができます。ただし、受領者が派生プログラムを再配布する場合には、3条1項の定めに従うものとします。
+
+### 第3条　制限
+
+前条により付与された使用許諾は、以下の制限に服します。
+
+1. 派生プログラムが前条4項及び7項に基づき再配布される場合には、以下の全ての条件を満たさなければなりません。
+   * (1) 派生プログラムを再配布する際には、下記もまた、当該派生プログラムと一緒に再配布され、オンラインで提供され、または、郵送費・媒体及び取扱手数料の合計を超えない実費と引き換えに媒体を郵送する方法により提供されなければなりません。
+     * (a) 派生プログラムの写し; および
+     * (b) 派生プログラムを作成する過程でフォント開発プログラムによって作成された追加のファイルであって派生プログラムをさらに加工するにあたって利用できるファイルが存在すれば、当該ファイル
+   * (2) 派生プログラムの受領者が、派生プログラムを、このライセンスの下で最初にリリースされた許諾プログラム（以下、「オリジナル・プログラム」といいます。）に置き換えることができる方法を再配布するものとします。かかる方法は、オリジナル・ファイルからの差分ファイルの提供、または、派生プログラムをオリジナル・プログラムに置き換える方法を示す指示の提供などが考えられます。
+   * (3) 派生プログラムを、本契約書に定められた条件の下でライセンスしなければなりません。
+   * (4) 派生プログラムのプログラム名、フォント名またはファイル名として、許諾プログラムが用いているのと同一の名称、またはこれを含む名称を使用してはなりません。
+   * (5) 本項の要件を満たすためにオンラインで提供し、または媒体を郵送する方法で提供されるものは、その提供を希望するいかなる者によっても提供が可能です。
+2. 受領者が前条6項に基づき許諾プログラムを再配布する場合には、以下の全ての条件を満たさなければなりません。
+   * (1) 許諾プログラムの名称を変更してはなりません。
+   * (2) 許諾プログラムに加工その他の改変を加えてはなりません。
+   * (3) 本契約の写しを許諾プログラムに添付しなければなりません。
+3. 許諾プログラムは、現状有姿で提供されており、許諾プログラムまたは派生プログラムについて、許諾者は一切の明示または黙示の保証（権利の所在、非侵害、商品性、特定目的への適合性を含むがこれに限られません）を行いません。いかなる場合にも、その原因を問わず、契約上の責任か厳格責任か過失その他の不法行為責任かにかかわらず、また事前に通知されたか否かにかかわらず、許諾者は、許諾プログラムまたは派生プログラムのインストール、使用、複製その他の利用または本契約上の権利の行使によって生じた一切の損害（直接・間接・付随的・特別・拡大・懲罰的または結果的損害）（商品またはサービスの代替品の調達、システム障害から生じた損害、現存するデータまたはプログラムの紛失または破損、逸失利益を含むがこれに限られません）について責任を負いません。
+4. 許諾プログラムまたは派生プログラムのインストール、使用、複製その他の利用に関して、許諾者は技術的な質問や問い合わせ等に対する対応その他、いかなるユーザ・サポートをも行う義務を負いません。
+
+### 第4条　契約の終了
+
+1. 本契約の有効期間は、受領者が許諾プログラムを受領した時に開始し、受領者が許諾プログラムを何らかの方法で保持する限り続くものとします。
+2. 前項の定めにかかわらず、受領者が本契約に定める各条項に違反したときは、本契約は、何らの催告を要することなく、自動的に終了し、当該受領者はそれ以後、許諾プログラムおよび派生プログラムを一切使用しまたは複製その他の利用をすることができないものとします。ただし、かかる契約の終了は、当該違反した受領者から許諾プログラムまたは派生プログラムの配布を受けた受領者の権利に影響を及ぼすものではありません。
+
+### 第5条　準拠法
+
+1. IPAは、本契約の変更バージョンまたは新しいバージョンを公表することができます。その場合には、受領者は、許諾プログラムまたは派生プログラムの使用、複製その他の利用または再配布にあたり、本契約または変更後の契約のいずれかを選択することができます。その他、上記に記載されていない条項に関しては日本の著作権法および関連法規に従うものとします。
+2. 本契約は、日本法に基づき解釈されます。
+
+----------
+
+## IPA Font License Agreement v1.0
+
+The Licensor provides the Licensed Program (as defined in Article 1 below) under the terms of this license agreement (“Agreement”).  Any use, reproduction or distribution of the Licensed Program, or any exercise of rights under this Agreement by a Recipient (as defined in Article 1 below) constitutes the Recipient's acceptance of this Agreement. 
+
+### Article 1 (Definitions)
+
+1. “Digital Font Program” shall mean a computer program containing, or used to render or display fonts.
+2. “Licensed Program” shall mean a Digital Font Program licensed by the Licensor under this Agreement.
+3. “Derived Program” shall mean a Digital Font Program created as a result of a modification, addition, deletion, replacement or any other adaptation to or of a part or all of the Licensed Program, and includes a case where a Digital Font Program newly created by retrieving font information from a part or all of the Licensed Program or Embedded Fonts from a Digital Document File with or without modification of the retrieved font information. 
+4. “Digital Content” shall mean products provided to end users in the form of digital data, including video content, motion and/or still pictures, TV programs or other broadcasting content and products consisting of character text, pictures, photographic images, graphic symbols and/or the like.
+5. “Digital Document File” shall mean a PDF file or other Digital Content created by various software programs in which a part or all of the Licensed Program becomes embedded or contained in the file for the display of the font (“Embedded Fonts”).  Embedded Fonts are used only in the display of characters in the particular Digital Document File within which they are embedded, and shall be distinguished from those in any Digital Font Program, which may be used for display of characters outside that particular Digital Document File.
+6. “Computer” shall include a server in this Agreement.
+7. “Reproduction and Other Exploitation” shall mean reproduction, transfer, distribution, lease, public transmission, presentation, exhibition, adaptation and any other exploitation.
+8. “Recipient” shall mean anyone who receives the Licensed Program under this Agreement, including one that receives the Licensed Program from a Recipient.
+
+### Article 2 (Grant of License)
+
+The Licensor grants to the Recipient a license to use the Licensed Program in any and all countries in accordance with each of the provisions set forth in this Agreement. However, any and all rights underlying in the Licensed Program shall be held by the Licensor. In no sense is this Agreement intended to transfer any right relating to the Licensed Program held by the Licensor except as specifically set forth herein or any right relating to any trademark, trade name, or service mark to the Recipient.
+
+1. The Recipient may install the Licensed Program on any number of Computers and use the same in accordance with the provisions set forth in this Agreement.
+2. The Recipient may use the Licensed Program, with or without modification in printed materials or in Digital Content as an expression of character texts or the like.
+3. The Recipient may conduct Reproduction and Other Exploitation of the printed materials and Digital Content created in accordance with the preceding Paragraph, for commercial or non-commercial purposes and in any form of media including but not limited to broadcasting, communication and various recording media.
+4. If any Recipient extracts Embedded Fonts from a Digital Document File to create a Derived Program, such Derived Program shall be subject to the terms of this agreement.
+5. If any Recipient performs Reproduction or Other Exploitation of a Digital Document File in which Embedded Fonts of the Licensed Program are used only for rendering the Digital Content within such Digital Document File then such Recipient shall have no further obligations under this Agreement in relation to such actions.
+6. The Recipient may reproduce the Licensed Program as is without modification and transfer such copies, publicly transmit or otherwise redistribute the Licensed Program to a third party for commercial or non-commercial purposes (“Redistribute”), in accordance with the provisions set forth in Article 3 Paragraph 2.
+7. The Recipient may create, use, reproduce and/or Redistribute a Derived Program under the terms stated above for the Licensed Program: provided, that the Recipient shall follow the provisions set forth in Article 3 Paragraph 1 when Redistributing the Derived Program. 
+
+### Article 3 (Restriction)
+
+The license granted in the preceding Article shall be subject to the following restrictions:
+
+1. If a Derived Program is Redistributed pursuant to Paragraph 4 and 7 of the preceding Article, the following conditions must be met :
+   * (1) The following must be also Redistributed together with the Derived Program, or be made available online or by means of mailing mechanisms in exchange for a cost which does not exceed the total costs of postage, storage medium and handling fees:
+     * (a) a copy of the Derived Program; and
+     * (b) any additional file created by the font developing program in the course of creating the Derived Program that can be used for further modification of the Derived Program, if any. 
+   * (2) It is required to also Redistribute means to enable recipients of the Derived Program to replace the Derived Program with the Licensed Program first released under this License (the “Original Program”).  Such means may be to provide a difference file from the Original Program, or instructions setting out a method to replace the Derived Program with the Original Program. 
+   * (3) The Recipient must license the Derived Program under the terms and conditions of this Agreement.
+   * (4) No one may use or include the name of the Licensed Program as a program name, font name or file name of the Derived Program. 
+   * (5) Any material to be made available online or by means of mailing a medium to satisfy the requirements of this paragraph may be provided, verbatim, by any party wishing to do so.
+
+2. If the Recipient Redistributes the Licensed Program pursuant to Paragraph 6 of the preceding Article, the Recipient shall meet all of the following conditions:
+   * (1) The Recipient may not change the name of the Licensed Program.
+   * (2) The Recipient may not alter or otherwise modify the Licensed Program.
+   * (3) The Recipient must attach a copy of this Agreement to the Licensed Program.
+3. THIS LICENSED PROGRAM IS PROVIDED BY THE LICENSOR “AS IS” AND ANY EXPRESSED OR IMPLIED WARRANTY AS TO THE LICENSED PROGRAM OR ANY DERIVED PROGRAM, INCLUDING, BUT NOT LIMITED TO, WARRANTIES OF TITLE, NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE, ARE DISCLAIMED.  IN NO EVENT SHALL THE LICENSOR BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXTENDED, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO; PROCUREMENT OF SUBSTITUTED GOODS OR SERVICE; DAMAGES ARISING FROM SYSTEM FAILURE; LOSS OR CORRUPTION OF EXISTING DATA OR PROGRAM; LOST PROFITS), HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE INSTALLATION, USE, THE REPRODUCTION OR OTHER EXPLOITATION OF THE LICENSED PROGRAM OR ANY DERIVED PROGRAM OR THE EXERCISE OF ANY RIGHTS GRANTED HEREUNDER, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+4. The Licensor is under no obligation to respond to any technical questions or inquiries, or provide any other user support in connection with the installation, use or the Reproduction and Other Exploitation of the Licensed Program or Derived Programs thereof.
+
+### Article 4 (Termination of Agreement)
+
+1. The term of this Agreement shall begin from the time of receipt of the Licensed Program by the Recipient and shall continue as long as the Recipient retains any such Licensed Program in any way.
+2. Notwithstanding the provision set forth in the preceding Paragraph, in the event of the breach of any of the provisions set forth in this Agreement by the Recipient, this Agreement shall automatically terminate without any notice. In the case of such termination, the Recipient may not use or conduct Reproduction and Other Exploitation of the Licensed Program or a Derived Program: provided that such termination shall not affect any rights of any other Recipient receiving the Licensed Program or the Derived Program from such Recipient who breached this Agreement.
+
+### Article 5 (Governing Law)
+
+1. IPA may publish revised and/or new versions of this License.  In such an event, the Recipient may select either this Agreement or any subsequent version of the Agreement in using, conducting the Reproduction and Other Exploitation of, or Redistributing the Licensed Program or a Derived Program. Other matters not specified above shall be subject to the Copyright Law of Japan and other related laws and regulations of Japan.
+2. This Agreement shall be construed under the laws of Japan.
+```
+
+### IPA-NeoXiHeiCode.txt
+
+```text
+﻿--------------------------------------------------
+IPA Font License Agreement v1.0 <Japanese/English>
+--------------------------------------------------
+
+IPAフォントライセンスv1.0
+
+許諾者は、この使用許諾（以下「本契約」といいます。）に定める条件の下で、許諾プログラム（1条に定義するところによります。）を提供します。受領者（1条に定義するところによります。）が、許諾プログラムを使用し、複製し、または頒布する行為、その他、本契約に定める権利の利用を行った場合、受領者は本契約に同意したものと見なします。
+
+
+第1条　用語の定義
+
+本契約において、次の各号に掲げる用語は、当該各号に定めるところによります。
+
+1.「デジタル･フォント･プログラム」とは、フォントを含み、レンダリングしまたは表示するために用いられるコンピュータ・プログラムをいいます。
+2.「許諾プログラム」とは、許諾者が本契約の下で許諾するデジタル･フォント･プログラムをいいます。
+3.「派生プログラム」とは、許諾プログラムの一部または全部を、改変し、加除修正等し、入れ替え、その他翻案したデジタル･フォント･プログラムをいい、許諾プログラムの一部もしくは全部から文字情報を取り出し、またはデジタル･ドキュメント･ファイルからエンベッドされたフォントを取り出し、取り出された文字情報をそのまま、または改変をなして新たなデジタル・フォント・プログラムとして製作されたものを含みます。
+4.「デジタル・コンテンツ」とは、デジタル・データ形式によってエンド・ユーザに提供される制作物のことをいい、動画・静止画等の映像コンテンツおよびテレビ番組等の放送コンテンツ、ならびに文字テキスト、画像、図形等を含んで構成された制作物を含みます。
+5.「デジタル・ドキュメント・ファイル」とは、PDFファイルその他、各種ソフトウェア･プログラムによって製作されたデジタル・コンテンツであって、その中にフォントを表示するために許諾プログラムの全部または一部が埋め込まれた（エンベッドされた）ものをいいます。フォントが「エンベッドされた」とは、当該フォントが埋め込まれた特定の「デジタル・ドキュメント・ファイル」においてのみ表示されるために使用されている状態を指し、その特定の「デジタル・ドキュメント・ファイル」以外でフォントを表示するために使用できるデジタル・フォント・プログラムに含まれている場合と区別されます。
+6.「コンピュータ｣とは、本契約においては、サーバを含みます。
+7.「複製その他の利用」とは、複製、譲渡、頒布、貸与、公衆送信、上映、展示、翻案その他の利用をいいます。
+8.「受領者」とは、許諾プログラムを本契約の下で受領した人をいい、受領者から許諾プログラムを受領した人を含みます。
+
+第２条 使用許諾の付与
+
+許諾者は受領者に対し、本契約の条項に従い、すべての国で、許諾プログラムを使用することを許諾します。ただし、許諾プログラムに存在する一切の権利はすべて許諾者が保有しています。本契約は、本契約で明示的に定められている場合を除き、いかなる意味においても、許諾者が保有する許諾プログラムに関する一切の権利および、いかなる商標、商号、もしくはサービス・マークに関する権利をも受領者に移転するものではありません。
+
+1.受領者は本契約に定める条件に従い、許諾プログラムを任意の数のコンピュータにインストールし、当該コンピュータで使用することができます。
+2.受領者はコンピュータにインストールされた許諾プログラムをそのまま、または改変を行ったうえで、印刷物およびデジタル・コンテンツにおいて、文字テキスト表現等として使用することができます。
+3.受領者は前項の定めに従い作成した印刷物およびデジタル・コンテンツにつき、その商用・非商用の別、および放送、通信、各種記録メディアなどの媒体の形式を問わず、複製その他の利用をすることができます。
+4.受領者がデジタル・ドキュメント・ファイルからエンベッドされたフォントを取り出して派生プログラムを作成した場合には、かかる派生プログラムは本契約に定める条件に従う必要があります。
+5.許諾プログラムのエンベッドされたフォントがデジタル・ドキュメント・ファイル内のデジタル・コンテンツをレンダリングするためにのみ使用される場合において、受領者が当該デジタル・ドキュメント・ファイルを複製その他の利用をする場合には、受領者はかかる行為に関しては本契約の下ではいかなる義務をも負いません。
+6.受領者は、3条2項の定めに従い、商用・非商用を問わず、許諾プログラムをそのままの状態で改変することなく複製して第三者への譲渡し、公衆送信し、その他の方法で再配布することができます(以下、「再配布」といいます。)。
+7.受領者は、上記の許諾プログラムについて定められた条件と同様の条件に従って、派生プログラムを作成し、使用し、複製し、再配布することができます。ただし、受領者が派生プログラムを再配布する場合には、3条1項の定めに従うものとします。
+
+第３条　制限
+
+前条により付与された使用許諾は、以下の制限に服します。
+
+1.派生プログラムが前条4項及び7項に基づき再配布される場合には、以下の全ての条件を満たさなければなりません。
+　(1)派生プログラムを再配布する際には、下記もまた、当該派生プログラムと一緒に再配布され、オンラインで提供され、または、郵送費・媒体及び取扱手数料の合計を超えない実費と引き換えに媒体を郵送する方法により提供されなければなりません。
+　　(a)派生プログラムの写し; および
+　　(b)派生プログラムを作成する過程でフォント開発プログラムによって作成された追加のファイルであって派生プログラムをさらに加工するにあたって利用できるファイルが存在すれば、当該ファイル
+　(2)派生プログラムの受領者が、派生プログラムを、このライセンスの下で最初にリリースされた許諾プログラム（以下、「オリジナル・プログラム」といいます。）に置き換えることができる方法を再配布するものとします。かかる方法は、オリジナル・ファイルからの差分ファイルの提供、または、派生プログラムをオリジナル・プログラムに置き換える方法を示す指示の提供などが考えられます。
+　(3)派生プログラムを、本契約書に定められた条件の下でライセンスしなければなりません。
+　(4)派生プログラムのプログラム名、フォント名またはファイル名として、許諾プログラムが用いているのと同一の名称、またはこれを含む名称を使用してはなりません。
+　(5)本項の要件を満たすためにオンラインで提供し、または媒体を郵送する方法で提供されるものは、その提供を希望するいかなる者によっても提供が可能です。
+2.受領者が前条6項に基づき許諾プログラムを再配布する場合には、以下の全ての条件を満たさなければなりません。
+　(1)許諾プログラムの名称を変更してはなりません。
+　(2)許諾プログラムに加工その他の改変を加えてはなりません。
+　(3)本契約の写しを許諾プログラムに添付しなければなりません。
+3.許諾プログラムは、現状有姿で提供されており、許諾プログラムまたは派生プログラムについて、許諾者は一切の明示または黙示の保証（権利の所在、非侵害、商品性、特定目的への適合性を含むがこれに限られません）を行いません。いかなる場合にも、その原因を問わず、契約上の責任か厳格責任か過失その他の不法行為責任かにかかわらず、また事前に通知されたか否かにかかわらず、許諾者は、許諾プログラムまたは派生プログラムのインストール、使用、複製その他の利用または本契約上の権利の行使によって生じた一切の損害（直接・間接・付随的・特別・拡大・懲罰的または結果的損害）（商品またはサービスの代替品の調達、システム障害から生じた損害、現存するデータまたはプログラムの紛失または破損、逸失利益を含むがこれに限られません）について責任を負いません。
+4.許諾プログラムまたは派生プログラムのインストール、使用、複製その他の利用に関して、許諾者は技術的な質問や問い合わせ等に対する対応その他、いかなるユーザ・サポートをも行う義務を負いません。
+
+第４条　契約の終了
+
+1.本契約の有効期間は、受領者が許諾プログラムを受領した時に開始し、受領者が許諾プログラムを何らかの方法で保持する限り続くものとします。
+2.前項の定めにかかわらず、受領者が本契約に定める各条項に違反したときは、本契約は、何らの催告を要することなく、自動的に終了し、当該受領者はそれ以後、許諾プログラムおよび派生プログラムを一切使用しまたは複製その他の利用をすることができないものとします。ただし、かかる契約の終了は、当該違反した受領者から許諾プログラムまたは派生プログラムの配布を受けた受領者の権利に影響を及ぼすものではありません。
+
+第５条　準拠法
+
+1.IPAは、本契約の変更バージョンまたは新しいバージョンを公表することができます。その場合には、受領者は、許諾プログラムまたは派生プログラムの使用、複製その他の利用または再配布にあたり、本契約または変更後の契約のいずれかを選択することができます。その他、上記に記載されていない条項に関しては日本の著作権法および関連法規に従うものとします。
+2.本契約は、日本法に基づき解釈されます。
+
+
+----------
+
+IPA Font License Agreement v1.0
+
+The Licensor provides the Licensed Program (as defined in Article 1 below) under the terms of this license agreement (“Agreement”).  Any use, reproduction or distribution of the Licensed Program, or any exercise of rights under this Agreement by a Recipient (as defined in Article 1 below) constitutes the Recipient's acceptance of this Agreement. 
+
+Article 1 (Definitions)
+1.“Digital Font Program” shall mean a computer program containing, or used to render or display fonts.
+2.“Licensed Program” shall mean a Digital Font Program licensed by the Licensor under this Agreement.
+3.“Derived Program” shall mean a Digital Font Program created as a result of a modification, addition, deletion, replacement or any other adaptation to or of a part or all of the Licensed Program, and includes a case where a Digital Font Program newly created by retrieving font information from a part or all of the Licensed Program or Embedded Fonts from a Digital Document File with or without modification of the retrieved font information. 
+4.“Digital Content” shall mean products provided to end users in the form of digital data, including video content, motion and/or still pictures, TV programs or other broadcasting content and products consisting of character text, pictures, photographic images, graphic symbols and/or the like.
+5.“Digital Document File” shall mean a PDF file or other Digital Content created by various software programs in which a part or all of the Licensed Program becomes embedded or contained in the file for the display of the font (“Embedded Fonts”).  Embedded Fonts are used only in the display of characters in the particular Digital Document File within which they are embedded, and shall be distinguished from those in any Digital Font Program, which may be used for display of characters outside that particular Digital Document File.
+6.“Computer” shall include a server in this Agreement.
+7.“Reproduction and Other Exploitation” shall mean reproduction, transfer, distribution, lease, public transmission, presentation, exhibition, adaptation and any other exploitation.
+8.“Recipient” shall mean anyone who receives the Licensed Program under this Agreement, including one that receives the Licensed Program from a Recipient.
+
+Article 2 (Grant of License)
+The Licensor grants to the Recipient a license to use the Licensed Program in any and all countries in accordance with each of the provisions set forth in this Agreement. However, any and all rights underlying in the Licensed Program shall be held by the Licensor. In no sense is this Agreement intended to transfer any right relating to the Licensed Program held by the Licensor except as specifically set forth herein or any right relating to any trademark, trade name, or service mark to the Recipient.
+
+1.The Recipient may install the Licensed Program on any number of Computers and use the same in accordance with the provisions set forth in this Agreement.
+2.The Recipient may use the Licensed Program, with or without modification in printed materials or in Digital Content as an expression of character texts or the like.
+3.The Recipient may conduct Reproduction and Other Exploitation of the printed materials and Digital Content created in accordance with the preceding Paragraph, for commercial or non-commercial purposes and in any form of media including but not limited to broadcasting, communication and various recording media.
+4.If any Recipient extracts Embedded Fonts from a Digital Document File to create a Derived Program, such Derived Program shall be subject to the terms of this agreement.
+5.If any Recipient performs Reproduction or Other Exploitation of a Digital Document File in which Embedded Fonts of the Licensed Program are used only for rendering the Digital Content within such Digital Document File then such Recipient shall have no further obligations under this Agreement in relation to such actions.
+6.The Recipient may reproduce the Licensed Program as is without modification and transfer such copies, publicly transmit or otherwise redistribute the Licensed Program to a third party for commercial or non-commercial purposes (“Redistribute”), in accordance with the provisions set forth in Article 3 Paragraph 2.
+7.The Recipient may create, use, reproduce and/or Redistribute a Derived Program under the terms stated above for the Licensed Program: provided, that the Recipient shall follow the provisions set forth in Article 3 Paragraph 1 when Redistributing the Derived Program. 
+
+Article 3 (Restriction)
+The license granted in the preceding Article shall be subject to the following restrictions:
+
+1.If a Derived Program is Redistributed pursuant to Paragraph 4 and 7 of the preceding Article, the following conditions must be met :
+　(1)The following must be also Redistributed together with the Derived Program, or be made available online or by means of mailing mechanisms in exchange for a cost which does not exceed the total costs of postage, storage medium and handling fees:
+　　(a)a copy of the Derived Program; and
+　　(b)any additional file created by the font developing program in the course of creating the Derived Program that can be used for further modification of the Derived Program, if any. 
+　(2)It is required to also Redistribute means to enable recipients of the Derived Program to replace the Derived Program with the Licensed Program first released under this License (the “Original Program”).  Such means may be to provide a difference file from the Original Program, or instructions setting out a method to replace the Derived Program with the Original Program. 
+　(3)The Recipient must license the Derived Program under the terms and conditions of this Agreement.
+　(4)No one may use or include the name of the Licensed Program as a program name, font name or file name of the Derived Program. 
+　(5)Any material to be made available online or by means of mailing a medium to satisfy the requirements of this paragraph may be provided, verbatim, by any party wishing to do so.
+2.If the Recipient Redistributes the Licensed Program pursuant to Paragraph 6 of the preceding Article, the Recipient shall meet all of the following conditions:
+　(1)The Recipient may not change the name of the Licensed Program.
+　(2)The Recipient may not alter or otherwise modify the Licensed Program.
+　(3)The Recipient must attach a copy of this Agreement to the Licensed Program.
+3.THIS LICENSED PROGRAM IS PROVIDED BY THE LICENSOR “AS IS” AND ANY EXPRESSED OR IMPLIED WARRANTY AS TO THE LICENSED PROGRAM OR ANY DERIVED PROGRAM, INCLUDING, BUT NOT LIMITED TO, WARRANTIES OF TITLE, NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE, ARE DISCLAIMED.  IN NO EVENT SHALL THE LICENSOR BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXTENDED, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO; PROCUREMENT OF SUBSTITUTED GOODS OR SERVICE; DAMAGES ARISING FROM SYSTEM FAILURE; LOSS OR CORRUPTION OF EXISTING DATA OR PROGRAM; LOST PROFITS), HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE INSTALLATION, USE, THE REPRODUCTION OR OTHER EXPLOITATION OF THE LICENSED PROGRAM OR ANY DERIVED PROGRAM OR THE EXERCISE OF ANY RIGHTS GRANTED HEREUNDER, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+4.The Licensor is under no obligation to respond to any technical questions or inquiries, or provide any other user support in connection with the installation, use or the Reproduction and Other Exploitation of the Licensed Program or Derived Programs thereof.
+
+Article 4 (Termination of Agreement)
+1.The term of this Agreement shall begin from the time of receipt of the Licensed Program by the Recipient and shall continue as long as the Recipient retains any such Licensed Program in any way.
+2.Notwithstanding the provision set forth in the preceding Paragraph, in the event of the breach of any of the provisions set forth in this Agreement by the Recipient, this Agreement shall automatically terminate without any notice. In the case of such termination, the Recipient may not use or conduct Reproduction and Other Exploitation of the Licensed Program or a Derived Program: provided that such termination shall not affect any rights of any other Recipient receiving the Licensed Program or the Derived Program from such Recipient who breached this Agreement.
+
+Article 5 (Governing Law)
+1.IPA may publish revised and/or new versions of this License.  In such an event, the Recipient may select either this Agreement or any subsequent version of the Agreement in using, conducting the Reproduction and Other Exploitation of, or Redistributing the Licensed Program or a Derived Program. Other matters not specified above shall be subject to the Copyright Law of Japan and other related laws and regulations of Japan.
+2.This Agreement shall be construed under the laws of Japan.
+```
+
+### MIT-GlowSans.txt
+
+```text
+MIT License
+
+Copyright © 2020, Celestial Phineas
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 ```
 
 ### MIT.txt
@@ -1302,6 +2052,626 @@ DISCLAIMER
 THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM OTHER DEALINGS IN THE FONT SOFTWARE.
 ```
 
+### OFL-1.1-BizinGothic.txt
+
+```text
+Copyright (c) 2022 Yuko Otawara,
+with Reserved Font Name "Bizin Gothic"
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is copied below, and is also available with a FAQ at:
+http://scripts.sil.org/OFL
+
+-----------------------------------------------------------
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+-----------------------------------------------------------
+
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font creation
+efforts of academic and linguistic communities, and to provide a free and
+open framework in which fonts may be shared and improved in partnership
+with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded,
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply
+to any document created using the fonts or their derivatives.
+
+DEFINITIONS
+"Font Software" refers to the set of files released by the Copyright
+Holder(s) under this license and clearly marked as such. This may
+include source files, build scripts and documentation.
+
+"Reserved Font Name" refers to any names specified as such after the
+copyright statement(s).
+
+"Original Version" refers to the collection of Font Software components as
+distributed by the Copyright Holder(s).
+
+"Modified Version" refers to any derivative made by adding to, deleting,
+or substituting -- in part or in whole -- any of the components of the
+Original Version, by changing formats or by porting the Font Software to a
+new environment.
+
+"Author" refers to any designer, engineer, programmer, technical
+writer or other person who contributed to the Font Software.
+
+PERMISSION & CONDITIONS
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of the Font Software, to use, study, copy, merge, embed, modify,
+redistribute, and sell modified and unmodified copies of the Font
+Software, subject to the following conditions:
+
+1) Neither the Font Software nor any of its individual components,
+in Original or Modified Versions, may be sold by itself.
+
+1) Original or Modified Versions of the Font Software may be bundled,
+redistributed and/or sold with any software, provided that each copy
+contains the above copyright notice and this license. These can be
+included either as stand-alone text files, human-readable headers or
+in the appropriate machine-readable metadata fields within text or
+binary files as long as those fields can be easily viewed by the user.
+
+1) No Modified Version of the Font Software may use the Reserved Font
+Name(s) unless explicit written permission is granted by the corresponding
+Copyright Holder. This restriction only applies to the primary font name as
+presented to the users.
+
+1) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+Software shall not be used to promote, endorse or advertise any
+Modified Version, except to acknowledge the contribution(s) of the
+Copyright Holder(s) and the Author(s) or with their explicit written
+permission.
+
+1) The Font Software, modified or unmodified, in part or in whole,
+must be distributed entirely under this license, and must not be
+distributed under any other license. The requirement for fonts to
+remain under this license does not apply to any document created
+using the Font Software.
+
+TERMINATION
+This license becomes null and void if any of the above conditions are
+not met.
+
+DISCLAIMER
+THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+OTHER DEALINGS IN THE FONT SOFTWARE.
+```
+
+### OFL-1.1-Chillkai.txt
+
+```text
+Copyright 2023 The ChillKai Project Authors
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is copied below, and is also available with a FAQ at:
+http://scripts.sil.org/OFL
+
+
+-----------------------------------------------------------
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+-----------------------------------------------------------
+
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font creation
+efforts of academic and linguistic communities, and to provide a free and
+open framework in which fonts may be shared and improved in partnership
+with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded, 
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply
+to any document created using the fonts or their derivatives.
+
+DEFINITIONS
+"Font Software" refers to the set of files released by the Copyright
+Holder(s) under this license and clearly marked as such. This may
+include source files, build scripts and documentation.
+
+"Reserved Font Name" refers to any names specified as such after the
+copyright statement(s).
+
+"Original Version" refers to the collection of Font Software components as
+distributed by the Copyright Holder(s).
+
+"Modified Version" refers to any derivative made by adding to, deleting,
+or substituting -- in part or in whole -- any of the components of the
+Original Version, by changing formats or by porting the Font Software to a
+new environment.
+
+"Author" refers to any designer, engineer, programmer, technical
+writer or other person who contributed to the Font Software.
+
+PERMISSION & CONDITIONS
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of the Font Software, to use, study, copy, merge, embed, modify,
+redistribute, and sell modified and unmodified copies of the Font
+Software, subject to the following conditions:
+
+1) Neither the Font Software nor any of its individual components,
+in Original or Modified Versions, may be sold by itself.
+
+2) Original or Modified Versions of the Font Software may be bundled,
+redistributed and/or sold with any software, provided that each copy
+contains the above copyright notice and this license. These can be
+included either as stand-alone text files, human-readable headers or
+in the appropriate machine-readable metadata fields within text or
+binary files as long as those fields can be easily viewed by the user.
+
+3) No Modified Version of the Font Software may use the Reserved Font
+Name(s) unless explicit written permission is granted by the corresponding
+Copyright Holder. This restriction only applies to the primary font name as
+presented to the users.
+
+4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+Software shall not be used to promote, endorse or advertise any
+Modified Version, except to acknowledge the contribution(s) of the
+Copyright Holder(s) and the Author(s) or with their explicit written
+permission.
+
+5) The Font Software, modified or unmodified, in part or in whole,
+must be distributed entirely under this license, and must not be
+distributed under any other license. The requirement for fonts to
+remain under this license does not apply to any document created
+using the Font Software.
+
+TERMINATION
+This license becomes null and void if any of the above conditions are
+not met.
+
+DISCLAIMER
+THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+OTHER DEALINGS IN THE FONT SOFTWARE.
+```
+
+### OFL-1.1-ChillRound.txt
+
+```text
+© 2023 ChillType, with Reserved Font Name 'ChillRoundF' 'ChillRoundM'.
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+
+This license is copied below, and is also available with a FAQ at:
+http://scripts.sil.org/OFL
+
+-----------------------------------------------------------
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+-----------------------------------------------------------
+
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font creation
+efforts of academic and linguistic communities, and to provide a free and
+open framework in which fonts may be shared and improved in partnership
+with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded, 
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply
+to any document created using the fonts or their derivatives.
+
+DEFINITIONS
+"Font Software" refers to the set of files released by the Copyright
+Holder(s) under this license and clearly marked as such. This may
+include source files, build scripts and documentation.
+
+"Reserved Font Name" refers to any names specified as such after the
+copyright statement(s).
+
+"Original Version" refers to the collection of Font Software components as
+distributed by the Copyright Holder(s).
+
+"Modified Version" refers to any derivative made by adding to, deleting,
+or substituting -- in part or in whole -- any of the components of the
+Original Version, by changing formats or by porting the Font Software to a
+new environment.
+
+"Author" refers to any designer, engineer, programmer, technical
+writer or other person who contributed to the Font Software.
+
+PERMISSION & CONDITIONS
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of the Font Software, to use, study, copy, merge, embed, modify,
+redistribute, and sell modified and unmodified copies of the Font
+Software, subject to the following conditions:
+
+1) Neither the Font Software nor any of its individual components,
+in Original or Modified Versions, may be sold by itself.
+
+2) Original or Modified Versions of the Font Software may be bundled,
+redistributed and/or sold with any software, provided that each copy
+contains the above copyright notice and this license. These can be
+included either as stand-alone text files, human-readable headers or
+in the appropriate machine-readable metadata fields within text or
+binary files as long as those fields can be easily viewed by the user.
+
+3) No Modified Version of the Font Software may use the Reserved Font
+Name(s) unless explicit written permission is granted by the corresponding
+Copyright Holder. This restriction only applies to the primary font name as
+presented to the users.
+
+4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+Software shall not be used to promote, endorse or advertise any
+Modified Version, except to acknowledge the contribution(s) of the
+Copyright Holder(s) and the Author(s) or with their explicit written
+permission.
+
+5) The Font Software, modified or unmodified, in part or in whole,
+must be distributed entirely under this license, and must not be
+distributed under any other license. The requirement for fonts to
+remain under this license does not apply to any document created
+using the Font Software.
+
+TERMINATION
+This license becomes null and void if any of the above conditions are
+not met.
+
+DISCLAIMER
+THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+OTHER DEALINGS IN THE FONT SOFTWARE.
+```
+
+### OFL-1.1-ChillRoundGothic.txt
+
+```text
+Copyright 2023 The ChillRoundGothic Project Authors
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is copied below, and is also available with a FAQ at:
+http://scripts.sil.org/OFL
+
+
+-----------------------------------------------------------
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+-----------------------------------------------------------
+
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font creation
+efforts of academic and linguistic communities, and to provide a free and
+open framework in which fonts may be shared and improved in partnership
+with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded, 
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply
+to any document created using the fonts or their derivatives.
+
+DEFINITIONS
+"Font Software" refers to the set of files released by the Copyright
+Holder(s) under this license and clearly marked as such. This may
+include source files, build scripts and documentation.
+
+"Reserved Font Name" refers to any names specified as such after the
+copyright statement(s).
+
+"Original Version" refers to the collection of Font Software components as
+distributed by the Copyright Holder(s).
+
+"Modified Version" refers to any derivative made by adding to, deleting,
+or substituting -- in part or in whole -- any of the components of the
+Original Version, by changing formats or by porting the Font Software to a
+new environment.
+
+"Author" refers to any designer, engineer, programmer, technical
+writer or other person who contributed to the Font Software.
+
+PERMISSION & CONDITIONS
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of the Font Software, to use, study, copy, merge, embed, modify,
+redistribute, and sell modified and unmodified copies of the Font
+Software, subject to the following conditions:
+
+1) Neither the Font Software nor any of its individual components,
+in Original or Modified Versions, may be sold by itself.
+
+2) Original or Modified Versions of the Font Software may be bundled,
+redistributed and/or sold with any software, provided that each copy
+contains the above copyright notice and this license. These can be
+included either as stand-alone text files, human-readable headers or
+in the appropriate machine-readable metadata fields within text or
+binary files as long as those fields can be easily viewed by the user.
+
+3) No Modified Version of the Font Software may use the Reserved Font
+Name(s) unless explicit written permission is granted by the corresponding
+Copyright Holder. This restriction only applies to the primary font name as
+presented to the users.
+
+4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+Software shall not be used to promote, endorse or advertise any
+Modified Version, except to acknowledge the contribution(s) of the
+Copyright Holder(s) and the Author(s) or with their explicit written
+permission.
+
+5) The Font Software, modified or unmodified, in part or in whole,
+must be distributed entirely under this license, and must not be
+distributed under any other license. The requirement for fonts to
+remain under this license does not apply to any document created
+using the Font Software.
+
+TERMINATION
+This license becomes null and void if any of the above conditions are
+not met.
+
+DISCLAIMER
+THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+OTHER DEALINGS IN THE FONT SOFTWARE.
+```
+
+### OFL-1.1-GuguruSansCode.txt
+
+```text
+Copyright (c) 2025 Yuko Otawara,
+with Reserved Font Name "Guguru Sans Code"
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is copied below, and is also available with a FAQ at:
+http://scripts.sil.org/OFL
+
+-----------------------------------------------------------
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+-----------------------------------------------------------
+
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font creation
+efforts of academic and linguistic communities, and to provide a free and
+open framework in which fonts may be shared and improved in partnership
+with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded,
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply
+to any document created using the fonts or their derivatives.
+
+DEFINITIONS
+"Font Software" refers to the set of files released by the Copyright
+Holder(s) under this license and clearly marked as such. This may
+include source files, build scripts and documentation.
+
+"Reserved Font Name" refers to any names specified as such after the
+copyright statement(s).
+
+"Original Version" refers to the collection of Font Software components as
+distributed by the Copyright Holder(s).
+
+"Modified Version" refers to any derivative made by adding to, deleting,
+or substituting -- in part or in whole -- any of the components of the
+Original Version, by changing formats or by porting the Font Software to a
+new environment.
+
+"Author" refers to any designer, engineer, programmer, technical
+writer or other person who contributed to the Font Software.
+
+PERMISSION & CONDITIONS
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of the Font Software, to use, study, copy, merge, embed, modify,
+redistribute, and sell modified and unmodified copies of the Font
+Software, subject to the following conditions:
+
+1) Neither the Font Software nor any of its individual components,
+in Original or Modified Versions, may be sold by itself.
+
+1) Original or Modified Versions of the Font Software may be bundled,
+redistributed and/or sold with any software, provided that each copy
+contains the above copyright notice and this license. These can be
+included either as stand-alone text files, human-readable headers or
+in the appropriate machine-readable metadata fields within text or
+binary files as long as those fields can be easily viewed by the user.
+
+1) No Modified Version of the Font Software may use the Reserved Font
+Name(s) unless explicit written permission is granted by the corresponding
+Copyright Holder. This restriction only applies to the primary font name as
+presented to the users.
+
+1) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+Software shall not be used to promote, endorse or advertise any
+Modified Version, except to acknowledge the contribution(s) of the
+Copyright Holder(s) and the Author(s) or with their explicit written
+permission.
+
+1) The Font Software, modified or unmodified, in part or in whole,
+must be distributed entirely under this license, and must not be
+distributed under any other license. The requirement for fonts to
+remain under this license does not apply to any document created
+using the Font Software.
+
+TERMINATION
+This license becomes null and void if any of the above conditions are
+not met.
+
+DISCLAIMER
+THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+OTHER DEALINGS IN THE FONT SOFTWARE.
+```
+
+### OFL-1.1-HackGen.txt
+
+```text
+# Licensing
+
+- Source fonts are licensed under SIL OPEN FONT LICENSE Version 1.1.
+  For more information, see "LICENSE_<FontName>" file contained in the "source" directory.
+- "白源/HackGen" are licensed under SIL OPEN FONT LICENSE Version 1.1.
+- Other source code, such as generating scripts, will use the MIT license.
+
+## "白源/HackGen" licensing
+
+Copyright (c) 2019, Yuko OTAWARA. with Reserved Font Name "白源", "HackGen"
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is copied below, and is also available with a FAQ at:
+https://scripts.sil.org/OFL
+
+
+-----------------------------------------------------------
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+-----------------------------------------------------------
+
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font creation
+efforts of academic and linguistic communities, and to provide a free and
+open framework in which fonts may be shared and improved in partnership
+with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded, 
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply
+to any document created using the fonts or their derivatives.
+
+DEFINITIONS
+"Font Software" refers to the set of files released by the Copyright
+Holder(s) under this license and clearly marked as such. This may
+include source files, build scripts and documentation.
+
+"Reserved Font Name" refers to any names specified as such after the
+copyright statement(s).
+
+"Original Version" refers to the collection of Font Software components as
+distributed by the Copyright Holder(s).
+
+"Modified Version" refers to any derivative made by adding to, deleting,
+or substituting -- in part or in whole -- any of the components of the
+Original Version, by changing formats or by porting the Font Software to a
+new environment.
+
+"Author" refers to any designer, engineer, programmer, technical
+writer or other person who contributed to the Font Software.
+
+PERMISSION & CONDITIONS
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of the Font Software, to use, study, copy, merge, embed, modify,
+redistribute, and sell modified and unmodified copies of the Font
+Software, subject to the following conditions:
+
+1) Neither the Font Software nor any of its individual components,
+in Original or Modified Versions, may be sold by itself.
+
+2) Original or Modified Versions of the Font Software may be bundled,
+redistributed and/or sold with any software, provided that each copy
+contains the above copyright notice and this license. These can be
+included either as stand-alone text files, human-readable headers or
+in the appropriate machine-readable metadata fields within text or
+binary files as long as those fields can be easily viewed by the user.
+
+3) No Modified Version of the Font Software may use the Reserved Font
+Name(s) unless explicit written permission is granted by the corresponding
+Copyright Holder. This restriction only applies to the primary font name as
+presented to the users.
+
+4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+Software shall not be used to promote, endorse or advertise any
+Modified Version, except to acknowledge the contribution(s) of the
+Copyright Holder(s) and the Author(s) or with their explicit written
+permission.
+
+5) The Font Software, modified or unmodified, in part or in whole,
+must be distributed entirely under this license, and must not be
+distributed under any other license. The requirement for fonts to
+remain under this license does not apply to any document created
+using the Font Software.
+
+TERMINATION
+This license becomes null and void if any of the above conditions are
+not met.
+
+DISCLAIMER
+THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+OTHER DEALINGS IN THE FONT SOFTWARE.
+
+## Other source licensing (MIT)
+
+Copyright (c) 2019 Yuko OTAWARA
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+```
+
 ### OFL-1.1-LXGW.txt
 
 ```text
@@ -1311,6 +2681,1030 @@ Copyright 2020 The Klee Project Authors (https://github.com/fontworks-fonts/Klee
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:
 https://openfontlicense.org
+
+
+-----------------------------------------------------------
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+-----------------------------------------------------------
+
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font creation
+efforts of academic and linguistic communities, and to provide a free and
+open framework in which fonts may be shared and improved in partnership
+with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded, 
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply
+to any document created using the fonts or their derivatives.
+
+DEFINITIONS
+"Font Software" refers to the set of files released by the Copyright
+Holder(s) under this license and clearly marked as such. This may
+include source files, build scripts and documentation.
+
+"Reserved Font Name" refers to any names specified as such after the
+copyright statement(s).
+
+"Original Version" refers to the collection of Font Software components as
+distributed by the Copyright Holder(s).
+
+"Modified Version" refers to any derivative made by adding to, deleting,
+or substituting -- in part or in whole -- any of the components of the
+Original Version, by changing formats or by porting the Font Software to a
+new environment.
+
+"Author" refers to any designer, engineer, programmer, technical
+writer or other person who contributed to the Font Software.
+
+PERMISSION & CONDITIONS
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of the Font Software, to use, study, copy, merge, embed, modify,
+redistribute, and sell modified and unmodified copies of the Font
+Software, subject to the following conditions:
+
+1) Neither the Font Software nor any of its individual components,
+in Original or Modified Versions, may be sold by itself.
+
+2) Original or Modified Versions of the Font Software may be bundled,
+redistributed and/or sold with any software, provided that each copy
+contains the above copyright notice and this license. These can be
+included either as stand-alone text files, human-readable headers or
+in the appropriate machine-readable metadata fields within text or
+binary files as long as those fields can be easily viewed by the user.
+
+3) No Modified Version of the Font Software may use the Reserved Font
+Name(s) unless explicit written permission is granted by the corresponding
+Copyright Holder. This restriction only applies to the primary font name as
+presented to the users.
+
+4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+Software shall not be used to promote, endorse or advertise any
+Modified Version, except to acknowledge the contribution(s) of the
+Copyright Holder(s) and the Author(s) or with their explicit written
+permission.
+
+5) The Font Software, modified or unmodified, in part or in whole,
+must be distributed entirely under this license, and must not be
+distributed under any other license. The requirement for fonts to
+remain under this license does not apply to any document created
+using the Font Software.
+
+TERMINATION
+This license becomes null and void if any of the above conditions are
+not met.
+
+DISCLAIMER
+THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+OTHER DEALINGS IN THE FONT SOFTWARE.
+```
+
+### OFL-1.1-LxgwMarkerGothic.txt
+
+```text
+Copyright 2021-2026 The LXGW Marker Gothic Project Authors (https://github.com/lxgw/LxgwMarkerGothic)
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is copied below, and is also available with a FAQ at:
+https://openfontlicense.org
+
+
+-----------------------------------------------------------
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+-----------------------------------------------------------
+
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font creation
+efforts of academic and linguistic communities, and to provide a free and
+open framework in which fonts may be shared and improved in partnership
+with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded, 
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply
+to any document created using the fonts or their derivatives.
+
+DEFINITIONS
+"Font Software" refers to the set of files released by the Copyright
+Holder(s) under this license and clearly marked as such. This may
+include source files, build scripts and documentation.
+
+"Reserved Font Name" refers to any names specified as such after the
+copyright statement(s).
+
+"Original Version" refers to the collection of Font Software components as
+distributed by the Copyright Holder(s).
+
+"Modified Version" refers to any derivative made by adding to, deleting,
+or substituting -- in part or in whole -- any of the components of the
+Original Version, by changing formats or by porting the Font Software to a
+new environment.
+
+"Author" refers to any designer, engineer, programmer, technical
+writer or other person who contributed to the Font Software.
+
+PERMISSION & CONDITIONS
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of the Font Software, to use, study, copy, merge, embed, modify,
+redistribute, and sell modified and unmodified copies of the Font
+Software, subject to the following conditions:
+
+1) Neither the Font Software nor any of its individual components,
+in Original or Modified Versions, may be sold by itself.
+
+2) Original or Modified Versions of the Font Software may be bundled,
+redistributed and/or sold with any software, provided that each copy
+contains the above copyright notice and this license. These can be
+included either as stand-alone text files, human-readable headers or
+in the appropriate machine-readable metadata fields within text or
+binary files as long as those fields can be easily viewed by the user.
+
+3) No Modified Version of the Font Software may use the Reserved Font
+Name(s) unless explicit written permission is granted by the corresponding
+Copyright Holder. This restriction only applies to the primary font name as
+presented to the users.
+
+4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+Software shall not be used to promote, endorse or advertise any
+Modified Version, except to acknowledge the contribution(s) of the
+Copyright Holder(s) and the Author(s) or with their explicit written
+permission.
+
+5) The Font Software, modified or unmodified, in part or in whole,
+must be distributed entirely under this license, and must not be
+distributed under any other license. The requirement for fonts to
+remain under this license does not apply to any document created
+using the Font Software.
+
+TERMINATION
+This license becomes null and void if any of the above conditions are
+not met.
+
+DISCLAIMER
+THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+OTHER DEALINGS IN THE FONT SOFTWARE.
+```
+
+### OFL-1.1-LXGWWenKaiTC.txt
+
+```text
+Copyright 2022-2026 The LXGW WenKai Project Authors (https://github.com/lxgw/LxgwWenkaiTC)
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is copied below, and is also available with a FAQ at:
+https://openfontlicense.org
+
+
+-----------------------------------------------------------
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+-----------------------------------------------------------
+
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font creation
+efforts of academic and linguistic communities, and to provide a free and
+open framework in which fonts may be shared and improved in partnership
+with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded, 
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply
+to any document created using the fonts or their derivatives.
+
+DEFINITIONS
+"Font Software" refers to the set of files released by the Copyright
+Holder(s) under this license and clearly marked as such. This may
+include source files, build scripts and documentation.
+
+"Reserved Font Name" refers to any names specified as such after the
+copyright statement(s).
+
+"Original Version" refers to the collection of Font Software components as
+distributed by the Copyright Holder(s).
+
+"Modified Version" refers to any derivative made by adding to, deleting,
+or substituting -- in part or in whole -- any of the components of the
+Original Version, by changing formats or by porting the Font Software to a
+new environment.
+
+"Author" refers to any designer, engineer, programmer, technical
+writer or other person who contributed to the Font Software.
+
+PERMISSION & CONDITIONS
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of the Font Software, to use, study, copy, merge, embed, modify,
+redistribute, and sell modified and unmodified copies of the Font
+Software, subject to the following conditions:
+
+1) Neither the Font Software nor any of its individual components,
+in Original or Modified Versions, may be sold by itself.
+
+2) Original or Modified Versions of the Font Software may be bundled,
+redistributed and/or sold with any software, provided that each copy
+contains the above copyright notice and this license. These can be
+included either as stand-alone text files, human-readable headers or
+in the appropriate machine-readable metadata fields within text or
+binary files as long as those fields can be easily viewed by the user.
+
+3) No Modified Version of the Font Software may use the Reserved Font
+Name(s) unless explicit written permission is granted by the corresponding
+Copyright Holder. This restriction only applies to the primary font name as
+presented to the users.
+
+4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+Software shall not be used to promote, endorse or advertise any
+Modified Version, except to acknowledge the contribution(s) of the
+Copyright Holder(s) and the Author(s) or with their explicit written
+permission.
+
+5) The Font Software, modified or unmodified, in part or in whole,
+must be distributed entirely under this license, and must not be
+distributed under any other license. The requirement for fonts to
+remain under this license does not apply to any document created
+using the Font Software.
+
+TERMINATION
+This license becomes null and void if any of the above conditions are
+not met.
+
+DISCLAIMER
+THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+OTHER DEALINGS IN THE FONT SOFTWARE.
+```
+
+### OFL-1.1-LXGWZhenKai.txt
+
+```text
+Copyright 2022-2026 LXGW (https://github.com/lxgw/LxgwZhenKai), with Reserved Font Name '霞鹜', '霞鶩', '落霞孤鹜', '落霞孤鶩' and 'LXGW'. [ADDITIONAL PERMISSION] The Reserved Font Names '霞鹜', '霞鶩', '落霞孤鹜', '落霞孤鶩' and 'LXGW' may continue to be used in Modified Versions recompiled from the Original Version, without modifications to the font source code; or in Modified Versions subsetted or converted to other formats (e.g., WOFF/WOFF2) solely for web font delivery, provided such Modified Versions are not made available as installable desktop fonts (e.g., on mainstream platforms like Google Fonts, or third-party non-commercial platforms recognized by the author @lxgw; other web font platforms please contact the author @lxgw for confirmation).
+Copyright 2020 The Klee Project Authors (https://github.com/fontworks-fonts/Klee)
+Copyright 2024 The Batang and Gungsuh Project Authors (https://github.com/googlefonts/batang)
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is copied below, and is also available with a FAQ at:
+https://openfontlicense.org
+
+
+-----------------------------------------------------------
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+-----------------------------------------------------------
+
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font creation
+efforts of academic and linguistic communities, and to provide a free and
+open framework in which fonts may be shared and improved in partnership
+with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded, 
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply
+to any document created using the fonts or their derivatives.
+
+DEFINITIONS
+"Font Software" refers to the set of files released by the Copyright
+Holder(s) under this license and clearly marked as such. This may
+include source files, build scripts and documentation.
+
+"Reserved Font Name" refers to any names specified as such after the
+copyright statement(s).
+
+"Original Version" refers to the collection of Font Software components as
+distributed by the Copyright Holder(s).
+
+"Modified Version" refers to any derivative made by adding to, deleting,
+or substituting -- in part or in whole -- any of the components of the
+Original Version, by changing formats or by porting the Font Software to a
+new environment.
+
+"Author" refers to any designer, engineer, programmer, technical
+writer or other person who contributed to the Font Software.
+
+PERMISSION & CONDITIONS
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of the Font Software, to use, study, copy, merge, embed, modify,
+redistribute, and sell modified and unmodified copies of the Font
+Software, subject to the following conditions:
+
+1) Neither the Font Software nor any of its individual components,
+in Original or Modified Versions, may be sold by itself.
+
+2) Original or Modified Versions of the Font Software may be bundled,
+redistributed and/or sold with any software, provided that each copy
+contains the above copyright notice and this license. These can be
+included either as stand-alone text files, human-readable headers or
+in the appropriate machine-readable metadata fields within text or
+binary files as long as those fields can be easily viewed by the user.
+
+3) No Modified Version of the Font Software may use the Reserved Font
+Name(s) unless explicit written permission is granted by the corresponding
+Copyright Holder. This restriction only applies to the primary font name as
+presented to the users.
+
+4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+Software shall not be used to promote, endorse or advertise any
+Modified Version, except to acknowledge the contribution(s) of the
+Copyright Holder(s) and the Author(s) or with their explicit written
+permission.
+
+5) The Font Software, modified or unmodified, in part or in whole,
+must be distributed entirely under this license, and must not be
+distributed under any other license. The requirement for fonts to
+remain under this license does not apply to any document created
+using the Font Software.
+
+TERMINATION
+This license becomes null and void if any of the above conditions are
+not met.
+
+DISCLAIMER
+THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+OTHER DEALINGS IN THE FONT SOFTWARE.
+```
+
+### OFL-1.1-NotoCJK.txt
+
+```text
+This Font Software is licensed under the SIL Open Font License,
+Version 1.1.
+
+This license is copied below, and is also available with a FAQ at:
+http://scripts.sil.org/OFL
+
+-----------------------------------------------------------
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+-----------------------------------------------------------
+
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font
+creation efforts of academic and linguistic communities, and to
+provide a free and open framework in which fonts may be shared and
+improved in partnership with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded,
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply to
+any document created using the fonts or their derivatives.
+
+DEFINITIONS
+"Font Software" refers to the set of files released by the Copyright
+Holder(s) under this license and clearly marked as such. This may
+include source files, build scripts and documentation.
+
+"Reserved Font Name" refers to any names specified as such after the
+copyright statement(s).
+
+"Original Version" refers to the collection of Font Software
+components as distributed by the Copyright Holder(s).
+
+"Modified Version" refers to any derivative made by adding to,
+deleting, or substituting -- in part or in whole -- any of the
+components of the Original Version, by changing formats or by porting
+the Font Software to a new environment.
+
+"Author" refers to any designer, engineer, programmer, technical
+writer or other person who contributed to the Font Software.
+
+PERMISSION & CONDITIONS
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of the Font Software, to use, study, copy, merge, embed,
+modify, redistribute, and sell modified and unmodified copies of the
+Font Software, subject to the following conditions:
+
+1) Neither the Font Software nor any of its individual components, in
+Original or Modified Versions, may be sold by itself.
+
+2) Original or Modified Versions of the Font Software may be bundled,
+redistributed and/or sold with any software, provided that each copy
+contains the above copyright notice and this license. These can be
+included either as stand-alone text files, human-readable headers or
+in the appropriate machine-readable metadata fields within text or
+binary files as long as those fields can be easily viewed by the user.
+
+3) No Modified Version of the Font Software may use the Reserved Font
+Name(s) unless explicit written permission is granted by the
+corresponding Copyright Holder. This restriction only applies to the
+primary font name as presented to the users.
+
+4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+Software shall not be used to promote, endorse or advertise any
+Modified Version, except to acknowledge the contribution(s) of the
+Copyright Holder(s) and the Author(s) or with their explicit written
+permission.
+
+5) The Font Software, modified or unmodified, in part or in whole,
+must be distributed entirely under this license, and must not be
+distributed under any other license. The requirement for fonts to
+remain under this license does not apply to any document created using
+the Font Software.
+
+TERMINATION
+This license becomes null and void if any of the above conditions are
+not met.
+
+DISCLAIMER
+THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+OTHER DEALINGS IN THE FONT SOFTWARE.
+```
+
+### OFL-1.1-PlemolJP.txt
+
+```text
+# Licensing
+
+- Source fonts are licensed under SIL OPEN FONT LICENSE Version 1.1.
+  For more information, see "LICENSE_<FontName>" file contained in the "source" directory.
+- "PlemolJP" are licensed under SIL OPEN FONT LICENSE Version 1.1.
+- Other source code, such as generating scripts, will use the MIT license.
+
+## "PlemolJP" licensing
+
+Copyright (c) 2021, Yuko OTAWARA. with Reserved Font Name "PlemolJP"
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is copied below, and is also available with a FAQ at:
+https://scripts.sil.org/OFL
+
+
+-----------------------------------------------------------
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+-----------------------------------------------------------
+
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font creation
+efforts of academic and linguistic communities, and to provide a free and
+open framework in which fonts may be shared and improved in partnership
+with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded, 
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply
+to any document created using the fonts or their derivatives.
+
+DEFINITIONS
+"Font Software" refers to the set of files released by the Copyright
+Holder(s) under this license and clearly marked as such. This may
+include source files, build scripts and documentation.
+
+"Reserved Font Name" refers to any names specified as such after the
+copyright statement(s).
+
+"Original Version" refers to the collection of Font Software components as
+distributed by the Copyright Holder(s).
+
+"Modified Version" refers to any derivative made by adding to, deleting,
+or substituting -- in part or in whole -- any of the components of the
+Original Version, by changing formats or by porting the Font Software to a
+new environment.
+
+"Author" refers to any designer, engineer, programmer, technical
+writer or other person who contributed to the Font Software.
+
+PERMISSION & CONDITIONS
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of the Font Software, to use, study, copy, merge, embed, modify,
+redistribute, and sell modified and unmodified copies of the Font
+Software, subject to the following conditions:
+
+1) Neither the Font Software nor any of its individual components,
+in Original or Modified Versions, may be sold by itself.
+
+2) Original or Modified Versions of the Font Software may be bundled,
+redistributed and/or sold with any software, provided that each copy
+contains the above copyright notice and this license. These can be
+included either as stand-alone text files, human-readable headers or
+in the appropriate machine-readable metadata fields within text or
+binary files as long as those fields can be easily viewed by the user.
+
+3) No Modified Version of the Font Software may use the Reserved Font
+Name(s) unless explicit written permission is granted by the corresponding
+Copyright Holder. This restriction only applies to the primary font name as
+presented to the users.
+
+4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+Software shall not be used to promote, endorse or advertise any
+Modified Version, except to acknowledge the contribution(s) of the
+Copyright Holder(s) and the Author(s) or with their explicit written
+permission.
+
+5) The Font Software, modified or unmodified, in part or in whole,
+must be distributed entirely under this license, and must not be
+distributed under any other license. The requirement for fonts to
+remain under this license does not apply to any document created
+using the Font Software.
+
+TERMINATION
+This license becomes null and void if any of the above conditions are
+not met.
+
+DISCLAIMER
+THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+OTHER DEALINGS IN THE FONT SOFTWARE.
+
+## Other source licensing (MIT)
+
+Copyright (c) 2021 Yuko OTAWARA
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+```
+
+### OFL-1.1-SourceHanCodeJP.txt
+
+```text
+This Font Software is licensed under the SIL Open Font License,
+Version 1.1.
+
+This license is copied below, and is also available with a FAQ at:
+http://scripts.sil.org/OFL
+
+-----------------------------------------------------------
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+-----------------------------------------------------------
+
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font
+creation efforts of academic and linguistic communities, and to
+provide a free and open framework in which fonts may be shared and
+improved in partnership with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded,
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply to
+any document created using the fonts or their derivatives.
+
+DEFINITIONS
+"Font Software" refers to the set of files released by the Copyright
+Holder(s) under this license and clearly marked as such. This may
+include source files, build scripts and documentation.
+
+"Reserved Font Name" refers to any names specified as such after the
+copyright statement(s).
+
+"Original Version" refers to the collection of Font Software
+components as distributed by the Copyright Holder(s).
+
+"Modified Version" refers to any derivative made by adding to,
+deleting, or substituting -- in part or in whole -- any of the
+components of the Original Version, by changing formats or by porting
+the Font Software to a new environment.
+
+"Author" refers to any designer, engineer, programmer, technical
+writer or other person who contributed to the Font Software.
+
+PERMISSION & CONDITIONS
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of the Font Software, to use, study, copy, merge, embed,
+modify, redistribute, and sell modified and unmodified copies of the
+Font Software, subject to the following conditions:
+
+1) Neither the Font Software nor any of its individual components, in
+Original or Modified Versions, may be sold by itself.
+
+2) Original or Modified Versions of the Font Software may be bundled,
+redistributed and/or sold with any software, provided that each copy
+contains the above copyright notice and this license. These can be
+included either as stand-alone text files, human-readable headers or
+in the appropriate machine-readable metadata fields within text or
+binary files as long as those fields can be easily viewed by the user.
+
+3) No Modified Version of the Font Software may use the Reserved Font
+Name(s) unless explicit written permission is granted by the
+corresponding Copyright Holder. This restriction only applies to the
+primary font name as presented to the users.
+
+4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+Software shall not be used to promote, endorse or advertise any
+Modified Version, except to acknowledge the contribution(s) of the
+Copyright Holder(s) and the Author(s) or with their explicit written
+permission.
+
+5) The Font Software, modified or unmodified, in part or in whole,
+must be distributed entirely under this license, and must not be
+distributed under any other license. The requirement for fonts to
+remain under this license does not apply to any document created using
+the Font Software.
+
+TERMINATION
+This license becomes null and void if any of the above conditions are
+not met.
+
+DISCLAIMER
+THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+OTHER DEALINGS IN THE FONT SOFTWARE.
+```
+
+### OFL-1.1-SourceHanSans.txt
+
+```text
+Copyright 2014-2025 Adobe (http://www.adobe.com/), with Reserved Font
+Name 'Source'. Source is a trademark of Adobe in the United States
+and/or other countries.
+
+This Font Software is licensed under the SIL Open Font License,
+Version 1.1.
+
+This license is copied below, and is also available with a FAQ at:
+http://scripts.sil.org/OFL
+
+-----------------------------------------------------------
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+-----------------------------------------------------------
+
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font
+creation efforts of academic and linguistic communities, and to
+provide a free and open framework in which fonts may be shared and
+improved in partnership with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded,
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply to
+any document created using the fonts or their derivatives.
+
+DEFINITIONS
+"Font Software" refers to the set of files released by the Copyright
+Holder(s) under this license and clearly marked as such. This may
+include source files, build scripts and documentation.
+
+"Reserved Font Name" refers to any names specified as such after the
+copyright statement(s).
+
+"Original Version" refers to the collection of Font Software
+components as distributed by the Copyright Holder(s).
+
+"Modified Version" refers to any derivative made by adding to,
+deleting, or substituting -- in part or in whole -- any of the
+components of the Original Version, by changing formats or by porting
+the Font Software to a new environment.
+
+"Author" refers to any designer, engineer, programmer, technical
+writer or other person who contributed to the Font Software.
+
+PERMISSION & CONDITIONS
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of the Font Software, to use, study, copy, merge, embed,
+modify, redistribute, and sell modified and unmodified copies of the
+Font Software, subject to the following conditions:
+
+1) Neither the Font Software nor any of its individual components, in
+Original or Modified Versions, may be sold by itself.
+
+2) Original or Modified Versions of the Font Software may be bundled,
+redistributed and/or sold with any software, provided that each copy
+contains the above copyright notice and this license. These can be
+included either as stand-alone text files, human-readable headers or
+in the appropriate machine-readable metadata fields within text or
+binary files as long as those fields can be easily viewed by the user.
+
+3) No Modified Version of the Font Software may use the Reserved Font
+Name(s) unless explicit written permission is granted by the
+corresponding Copyright Holder. This restriction only applies to the
+primary font name as presented to the users.
+
+4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+Software shall not be used to promote, endorse or advertise any
+Modified Version, except to acknowledge the contribution(s) of the
+Copyright Holder(s) and the Author(s) or with their explicit written
+permission.
+
+5) The Font Software, modified or unmodified, in part or in whole,
+must be distributed entirely under this license, and must not be
+distributed under any other license. The requirement for fonts to
+remain under this license does not apply to any document created using
+the Font Software.
+
+TERMINATION
+This license becomes null and void if any of the above conditions are
+not met.
+
+DISCLAIMER
+THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+OTHER DEALINGS IN THE FONT SOFTWARE.
+```
+
+### OFL-1.1-UDEVGothic.txt
+
+```text
+# Licensing
+
+- Source fonts are licensed under SIL OPEN FONT LICENSE Version 1.1.
+  For more information, see "LICENSE_<FontName>" file contained in the "source" directory.
+- "UDEV Gothic" are licensed under SIL OPEN FONT LICENSE Version 1.1.
+
+## "UDEV Gothic" licensing
+
+Copyright (c) 2022 Yuko OTAWARA. with Reserved Font Name "UDEV Gothic"
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is copied below, and is also available with a FAQ at:
+https://scripts.sil.org/OFL
+
+
+-----------------------------------------------------------
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+-----------------------------------------------------------
+
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font creation
+efforts of academic and linguistic communities, and to provide a free and
+open framework in which fonts may be shared and improved in partnership
+with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded, 
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply
+to any document created using the fonts or their derivatives.
+
+DEFINITIONS
+"Font Software" refers to the set of files released by the Copyright
+Holder(s) under this license and clearly marked as such. This may
+include source files, build scripts and documentation.
+
+"Reserved Font Name" refers to any names specified as such after the
+copyright statement(s).
+
+"Original Version" refers to the collection of Font Software components as
+distributed by the Copyright Holder(s).
+
+"Modified Version" refers to any derivative made by adding to, deleting,
+or substituting -- in part or in whole -- any of the components of the
+Original Version, by changing formats or by porting the Font Software to a
+new environment.
+
+"Author" refers to any designer, engineer, programmer, technical
+writer or other person who contributed to the Font Software.
+
+PERMISSION & CONDITIONS
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of the Font Software, to use, study, copy, merge, embed, modify,
+redistribute, and sell modified and unmodified copies of the Font
+Software, subject to the following conditions:
+
+1) Neither the Font Software nor any of its individual components,
+in Original or Modified Versions, may be sold by itself.
+
+2) Original or Modified Versions of the Font Software may be bundled,
+redistributed and/or sold with any software, provided that each copy
+contains the above copyright notice and this license. These can be
+included either as stand-alone text files, human-readable headers or
+in the appropriate machine-readable metadata fields within text or
+binary files as long as those fields can be easily viewed by the user.
+
+3) No Modified Version of the Font Software may use the Reserved Font
+Name(s) unless explicit written permission is granted by the corresponding
+Copyright Holder. This restriction only applies to the primary font name as
+presented to the users.
+
+4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+Software shall not be used to promote, endorse or advertise any
+Modified Version, except to acknowledge the contribution(s) of the
+Copyright Holder(s) and the Author(s) or with their explicit written
+permission.
+
+5) The Font Software, modified or unmodified, in part or in whole,
+must be distributed entirely under this license, and must not be
+distributed under any other license. The requirement for fonts to
+remain under this license does not apply to any document created
+using the Font Software.
+
+TERMINATION
+This license becomes null and void if any of the above conditions are
+not met.
+
+DISCLAIMER
+THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+OTHER DEALINGS IN THE FONT SOFTWARE.
+```
+
+### OFL-1.1-Xiaolai.txt
+
+```text
+Copyright 2020-2024 LXGW (https://github.com/lxgw/kose-font)
+Copyright 2014 Nozomi Seto (https://ja.osdn.net/projects/setofont/)
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is copied below, and is also available with a FAQ at:
+http://scripts.sil.org/OFL
+
+
+-----------------------------------------------------------
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+-----------------------------------------------------------
+
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font creation
+efforts of academic and linguistic communities, and to provide a free and
+open framework in which fonts may be shared and improved in partnership
+with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded, 
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply
+to any document created using the fonts or their derivatives.
+
+DEFINITIONS
+"Font Software" refers to the set of files released by the Copyright
+Holder(s) under this license and clearly marked as such. This may
+include source files, build scripts and documentation.
+
+"Reserved Font Name" refers to any names specified as such after the
+copyright statement(s).
+
+"Original Version" refers to the collection of Font Software components as
+distributed by the Copyright Holder(s).
+
+"Modified Version" refers to any derivative made by adding to, deleting,
+or substituting -- in part or in whole -- any of the components of the
+Original Version, by changing formats or by porting the Font Software to a
+new environment.
+
+"Author" refers to any designer, engineer, programmer, technical
+writer or other person who contributed to the Font Software.
+
+PERMISSION & CONDITIONS
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of the Font Software, to use, study, copy, merge, embed, modify,
+redistribute, and sell modified and unmodified copies of the Font
+Software, subject to the following conditions:
+
+1) Neither the Font Software nor any of its individual components,
+in Original or Modified Versions, may be sold by itself.
+
+2) Original or Modified Versions of the Font Software may be bundled,
+redistributed and/or sold with any software, provided that each copy
+contains the above copyright notice and this license. These can be
+included either as stand-alone text files, human-readable headers or
+in the appropriate machine-readable metadata fields within text or
+binary files as long as those fields can be easily viewed by the user.
+
+3) No Modified Version of the Font Software may use the Reserved Font
+Name(s) unless explicit written permission is granted by the corresponding
+Copyright Holder. This restriction only applies to the primary font name as
+presented to the users.
+
+4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+Software shall not be used to promote, endorse or advertise any
+Modified Version, except to acknowledge the contribution(s) of the
+Copyright Holder(s) and the Author(s) or with their explicit written
+permission.
+
+5) The Font Software, modified or unmodified, in part or in whole,
+must be distributed entirely under this license, and must not be
+distributed under any other license. The requirement for fonts to
+remain under this license does not apply to any document created
+using the Font Software.
+
+TERMINATION
+This license becomes null and void if any of the above conditions are
+not met.
+
+DISCLAIMER
+THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+OTHER DEALINGS IN THE FONT SOFTWARE.
+```
+
+### OFL-1.1-Yozai.txt
+
+```text
+Copyright 2020, 2024 LXGW (https://github.com/lxgw/yozai-font)
+Copyright (c) 2021-03-07, Y.Oz (Y.OzVox) (http://yozvox.web.fc2.com), words containing "Y.Oz" or "YOz" are reserved as font names.
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is copied below, and is also available with a FAQ at:
+http://scripts.sil.org/OFL
 
 
 -----------------------------------------------------------

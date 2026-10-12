@@ -111,6 +111,38 @@
       "version": "v3.5.1"
     },
     {
+      "axes": {
+        "cjk_width": "mono",
+        "icons": "nf",
+        "region": "JP",
+        "style": "sans"
+      },
+      "family": "BizinGothic",
+      "file": "BizinGothicNF_v0.0.4.zip",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/BizinGothicNF_v0.0.4",
+      "rfn": true,
+      "upstream_url": "https://github.com/yuru7/bizin-gothic/releases/download/v0.0.4/BizinGothicNF_v0.0.4.zip",
+      "variant": "NF",
+      "version": "v0.0.4"
+    },
+    {
+      "axes": {
+        "cjk_width": "mono",
+        "icons": "plain",
+        "region": "JP",
+        "style": "sans"
+      },
+      "family": "BizinGothic",
+      "file": "BizinGothic_v0.0.4.zip",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/BizinGothic_v0.0.4",
+      "rfn": true,
+      "upstream_url": "https://github.com/yuru7/bizin-gothic/releases/download/v0.0.4/BizinGothic_v0.0.4.zip",
+      "variant": "Standard",
+      "version": "v0.0.4"
+    },
+    {
       "family": "CascadiaCode",
       "file": "CascadiaCode.zip",
       "license_spdx": "OFL-1.1-RFN",
@@ -129,6 +161,48 @@
       "upstream_url": "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/CascadiaMono.zip",
       "variant": "Nerd Font",
       "version": "v3.5.1"
+    },
+    {
+      "axes": {
+        "charset": "GB",
+        "region": "SC",
+        "style": "kai"
+      },
+      "family": "Chillkai",
+      "file": "ChillKai.zip",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/ChillKai",
+      "rfn": false,
+      "upstream_url": "https://github.com/Warren2060/Chillkai/releases/download/v2.000/ChillKai.zip",
+      "variant": "GB",
+      "version": "v2.000"
+    },
+    {
+      "axes": {
+        "style": "round"
+      },
+      "family": "ChillRound",
+      "file": "ChillRoundM_v1.805.zip",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/ChillRoundM_v1.805",
+      "rfn": true,
+      "upstream_url": "https://github.com/Warren2060/ChillRound/releases/download/v1.805/ChillRoundM_v1.805.zip",
+      "variant": "Regular",
+      "version": "v1.805"
+    },
+    {
+      "axes": {
+        "region": "SC",
+        "style": "round"
+      },
+      "family": "ChillRoundGothic",
+      "file": "ChillRoundGothic.v3.75.zip",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/ChillRoundGothic.v3.75",
+      "rfn": true,
+      "upstream_url": "https://github.com/Warren2060/ChillRoundGothic/releases/download/v3.750/ChillRoundGothic.v3.75.zip",
+      "variant": "Regular",
+      "version": "v3.750"
     },
     {
       "family": "CodeNewRoman",
@@ -271,6 +345,20 @@
       "version": "v3.5.1"
     },
     {
+      "axes": {
+        "region": "SC",
+        "style": "sans"
+      },
+      "family": "GlowSans",
+      "file": "GlowSansSC-Normal-v0.93.zip",
+      "license_spdx": "MIT",
+      "path_hint": "fonts/GlowSansSC-Normal-v0.93",
+      "rfn": false,
+      "upstream_url": "https://github.com/welai/glow-sans/releases/download/v0.93/GlowSansSC-Normal-v0.93.zip",
+      "variant": "SC-Normal",
+      "version": "v0.93"
+    },
+    {
       "family": "Go-Mono",
       "file": "Go-Mono.zip",
       "license_spdx": "BSD-3-Clause-Clear",
@@ -301,6 +389,22 @@
       "version": "v3.5.1"
     },
     {
+      "axes": {
+        "cjk_width": "mono",
+        "icons": "nf",
+        "region": "JP",
+        "style": "sans"
+      },
+      "family": "GuguruSansCode",
+      "file": "GuguruSansCodeNF_v0.0.3.zip",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/GuguruSansCodeNF_v0.0.3",
+      "rfn": true,
+      "upstream_url": "https://github.com/yuru7/guguru-sans-code/releases/download/v0.0.3/GuguruSansCodeNF_v0.0.3.zip",
+      "variant": "NF",
+      "version": "v0.0.3"
+    },
+    {
       "family": "Hack",
       "file": "Hack.zip",
       "license_spdx": "Bitstream-Vera AND MIT",
@@ -309,6 +413,38 @@
       "upstream_url": "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/Hack.zip",
       "variant": "Nerd Font",
       "version": "v3.5.1"
+    },
+    {
+      "axes": {
+        "cjk_width": "mono",
+        "icons": "nf",
+        "region": "JP",
+        "style": "sans"
+      },
+      "family": "HackGen",
+      "file": "HackGen_NF_v2.10.0.zip",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/HackGen_NF_v2.10.0",
+      "rfn": true,
+      "upstream_url": "https://github.com/yuru7/HackGen/releases/download/v2.10.0/HackGen_NF_v2.10.0.zip",
+      "variant": "NF",
+      "version": "v2.10.0"
+    },
+    {
+      "axes": {
+        "cjk_width": "mono",
+        "icons": "plain",
+        "region": "JP",
+        "style": "sans"
+      },
+      "family": "HackGen",
+      "file": "HackGen_v2.10.0.zip",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/HackGen_v2.10.0",
+      "rfn": true,
+      "upstream_url": "https://github.com/yuru7/HackGen/releases/download/v2.10.0/HackGen_v2.10.0.zip",
+      "variant": "Standard",
+      "version": "v2.10.0"
     },
     {
       "family": "Hasklig",
@@ -339,6 +475,20 @@
       "upstream_url": "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/Hermit.zip",
       "variant": "Nerd Font",
       "version": "v3.5.1"
+    },
+    {
+      "axes": {
+        "region": "SC",
+        "style": "serif"
+      },
+      "family": "HuiwenMincho",
+      "file": "Huiwenmincho-improved.otf",
+      "license_spdx": "CC0-1.0",
+      "path_hint": "fonts/Huiwenmincho-improved",
+      "rfn": false,
+      "upstream_url": "https://github.com/bosswnx/huiwenmincho-improved/releases/download/20241203/Huiwenmincho-improved.otf",
+      "variant": "Regular",
+      "version": "20241203"
     },
     {
       "family": "iA-Writer",
@@ -471,6 +621,97 @@
       "version": "v3.5.1"
     },
     {
+      "axes": {
+        "style": "marker"
+      },
+      "family": "LxgwMarkerGothic",
+      "file": "LxgwMarkerGothic-v1.003.zip",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/LxgwMarkerGothic-v1.003",
+      "rfn": false,
+      "upstream_url": "https://github.com/lxgw/LxgwMarkerGothic/releases/download/v1.003/LxgwMarkerGothic-v1.003.zip",
+      "variant": "Regular",
+      "version": "v1.003"
+    },
+    {
+      "axes": {
+        "charset": "full",
+        "region": "SC",
+        "style": "sans"
+      },
+      "family": "LxgwNeoXiHei",
+      "file": "LXGWNeoXiHeiPlus.ttf",
+      "license_spdx": "IPA",
+      "path_hint": "fonts/LXGWNeoXiHeiPlus",
+      "rfn": true,
+      "upstream_url": "https://github.com/lxgw/LxgwNeoXiHei/releases/download/v1.305/LXGWNeoXiHeiPlus.ttf",
+      "variant": "Plus",
+      "version": "v1.305"
+    },
+    {
+      "axes": {
+        "region": "SC",
+        "style": "sans"
+      },
+      "family": "LxgwNeoXiHei",
+      "file": "LXGWNeoXiHei.ttf",
+      "license_spdx": "IPA",
+      "path_hint": "fonts/LXGWNeoXiHei",
+      "rfn": true,
+      "upstream_url": "https://github.com/lxgw/LxgwNeoXiHei/releases/download/v1.305/LXGWNeoXiHei.ttf",
+      "variant": "Regular",
+      "version": "v1.305"
+    },
+    {
+      "axes": {
+        "cjk_width": "mono",
+        "region": "SC",
+        "style": "sans"
+      },
+      "family": "LxgwNeoXiHeiCode",
+      "file": "NeoXiHeiCode-Regular.ttf",
+      "license_spdx": "IPA",
+      "path_hint": "fonts/NeoXiHeiCode-Regular",
+      "rfn": true,
+      "upstream_url": "https://github.com/lxgw/NeoXiHei-Code/releases/download/v1.305/NeoXiHeiCode-Regular.ttf",
+      "variant": "Regular",
+      "version": "v1.305"
+    },
+    {
+      "axes": {
+        "charset": "full",
+        "region": "SC",
+        "style": "serif"
+      },
+      "family": "LxgwNeoZhiSong",
+      "file": "LXGWNeoZhiSongPlus.ttf",
+      "license_spdx": "IPA",
+      "path_hint": "fonts/LXGWNeoZhiSongPlus",
+      "rfn": true,
+      "upstream_url": "https://github.com/lxgw/LxgwNeoZhiSong/releases/download/v1.067/LXGWNeoZhiSongPlus.ttf",
+      "variant": "Plus",
+      "version": "v1.067"
+    },
+    {
+      "axes": {
+        "region": "SC",
+        "style": "serif"
+      },
+      "family": "LxgwNeoZhiSong",
+      "file": "LXGWNeoZhiSong.ttf",
+      "license_spdx": "IPA",
+      "path_hint": "fonts/LXGWNeoZhiSong",
+      "rfn": true,
+      "upstream_url": "https://github.com/lxgw/LxgwNeoZhiSong/releases/download/v1.067/LXGWNeoZhiSong.ttf",
+      "variant": "Regular",
+      "version": "v1.067"
+    },
+    {
+      "axes": {
+        "region": "SC",
+        "style": "kai",
+        "weight": "Light"
+      },
       "family": "LXGWWenKai",
       "file": "LXGWWenKai-Light.ttf",
       "license_spdx": "OFL-1.1-RFN",
@@ -481,6 +722,11 @@
       "version": "v1.522"
     },
     {
+      "axes": {
+        "region": "SC",
+        "style": "kai",
+        "weight": "Medium"
+      },
       "family": "LXGWWenKai",
       "file": "LXGWWenKai-Medium.ttf",
       "license_spdx": "OFL-1.1-RFN",
@@ -491,6 +737,11 @@
       "version": "v1.522"
     },
     {
+      "axes": {
+        "region": "SC",
+        "style": "kai",
+        "weight": "Regular"
+      },
       "family": "LXGWWenKai",
       "file": "LXGWWenKai-Regular.ttf",
       "license_spdx": "OFL-1.1-RFN",
@@ -501,6 +752,12 @@
       "version": "v1.522"
     },
     {
+      "axes": {
+        "charset": "GB",
+        "region": "SC",
+        "rendering": "screen",
+        "style": "kai"
+      },
       "family": "LXGWWenKaiGBScreen",
       "file": "LXGWWenKaiGBScreen.ttf",
       "license_spdx": "OFL-1.1-RFN",
@@ -511,6 +768,12 @@
       "version": "v1.522"
     },
     {
+      "axes": {
+        "cjk_width": "mono",
+        "region": "SC",
+        "style": "kai",
+        "weight": "Light"
+      },
       "family": "LXGWWenKaiMono",
       "file": "LXGWWenKaiMono-Light.ttf",
       "license_spdx": "OFL-1.1-RFN",
@@ -521,6 +784,12 @@
       "version": "v1.522"
     },
     {
+      "axes": {
+        "cjk_width": "mono",
+        "region": "SC",
+        "style": "kai",
+        "weight": "Medium"
+      },
       "family": "LXGWWenKaiMono",
       "file": "LXGWWenKaiMono-Medium.ttf",
       "license_spdx": "OFL-1.1-RFN",
@@ -531,6 +800,12 @@
       "version": "v1.522"
     },
     {
+      "axes": {
+        "cjk_width": "mono",
+        "region": "SC",
+        "style": "kai",
+        "weight": "Regular"
+      },
       "family": "LXGWWenKaiMono",
       "file": "LXGWWenKaiMono-Regular.ttf",
       "license_spdx": "OFL-1.1-RFN",
@@ -541,6 +816,13 @@
       "version": "v1.522"
     },
     {
+      "axes": {
+        "charset": "GB",
+        "cjk_width": "mono",
+        "region": "SC",
+        "rendering": "screen",
+        "style": "kai"
+      },
       "family": "LXGWWenKaiMonoGBScreen",
       "file": "LXGWWenKaiMonoGBScreen.ttf",
       "license_spdx": "OFL-1.1-RFN",
@@ -551,6 +833,12 @@
       "version": "v1.522"
     },
     {
+      "axes": {
+        "cjk_width": "mono",
+        "region": "SC",
+        "rendering": "screen",
+        "style": "kai"
+      },
       "family": "LXGWWenKaiMonoScreen",
       "file": "LXGWWenKaiMonoScreen.ttf",
       "license_spdx": "OFL-1.1-RFN",
@@ -561,6 +849,26 @@
       "version": "v1.522"
     },
     {
+      "axes": {
+        "cjk_width": "mono",
+        "region": "TC",
+        "style": "kai"
+      },
+      "family": "LxgwWenKaiMonoTC",
+      "file": "LXGWWenKaiMonoTC-Regular.ttf",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/LXGWWenKaiMonoTC-Regular",
+      "rfn": false,
+      "upstream_url": "https://github.com/lxgw/LxgwWenkaiTC/releases/download/v1.522/LXGWWenKaiMonoTC-Regular.ttf",
+      "variant": "Regular",
+      "version": "v1.522"
+    },
+    {
+      "axes": {
+        "region": "SC",
+        "rendering": "screen",
+        "style": "kai"
+      },
       "family": "LXGWWenKaiScreen",
       "file": "LXGWWenKaiScreen.ttf",
       "license_spdx": "OFL-1.1-RFN",
@@ -571,6 +879,38 @@
       "version": "v1.522"
     },
     {
+      "axes": {
+        "region": "TC",
+        "style": "kai"
+      },
+      "family": "LxgwWenKaiTC",
+      "file": "LXGWWenKaiTC-Regular.ttf",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/LXGWWenKaiTC-Regular",
+      "rfn": false,
+      "upstream_url": "https://github.com/lxgw/LxgwWenkaiTC/releases/download/v1.522/LXGWWenKaiTC-Regular.ttf",
+      "variant": "Regular",
+      "version": "v1.522"
+    },
+    {
+      "axes": {
+        "charset": "GB",
+        "region": "SC",
+        "style": "kai"
+      },
+      "family": "LxgwZhenKai",
+      "file": "LXGWZhenKaiGB-Regular.ttf",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/LXGWZhenKaiGB-Regular",
+      "rfn": true,
+      "upstream_url": "https://github.com/lxgw/LxgwZhenKai/releases/download/v0.825/LXGWZhenKaiGB-Regular.ttf",
+      "variant": "Regular",
+      "version": "v0.825"
+    },
+    {
+      "axes": {
+        "icons": "nf"
+      },
       "family": "MapleMono",
       "file": "MapleMono-NF.zip",
       "license_spdx": "OFL-1.1-no-RFN",
@@ -581,6 +921,11 @@
       "version": "v7.9"
     },
     {
+      "axes": {
+        "cjk_width": "mono",
+        "icons": "nf",
+        "region": "SC"
+      },
       "family": "MapleMono",
       "file": "MapleMono-NF-CN.zip",
       "license_spdx": "OFL-1.1-no-RFN",
@@ -681,6 +1026,40 @@
       "version": "v3.5.1"
     },
     {
+      "axes": {
+        "cjk_width": "hw",
+        "region": "SC",
+        "style": "sans"
+      },
+      "family": "NotoSansSC",
+      "file": "14_SourceHanSansHWSC.zip",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/14_SourceHanSansHWSC",
+      "rfn": true,
+      "upstream_url": "https://github.com/adobe-fonts/source-han-sans/releases/download/2.005R/14_SourceHanSansHWSC.zip",
+      "variant": "HW",
+      "version": "2.005R"
+    },
+    {
+      "axes": {
+        "cjk_width": "mono",
+        "region": "SC",
+        "style": "sans"
+      },
+      "family": "NotoSansSC",
+      "file": "13_NotoSansMonoCJKsc.zip",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/13_NotoSansMonoCJKsc",
+      "rfn": true,
+      "upstream_url": "https://github.com/googlefonts/noto-cjk/releases/download/Sans2.004/13_NotoSansMonoCJKsc.zip",
+      "variant": "Mono",
+      "version": "Sans2.004"
+    },
+    {
+      "axes": {
+        "region": "SC",
+        "style": "sans"
+      },
       "family": "NotoSansSC",
       "file": "NotoSansSC[wght].ttf",
       "license_spdx": "OFL-1.1-RFN",
@@ -691,6 +1070,10 @@
       "version": "a85815a42757630ce188fdad368c2dfc444d4773"
     },
     {
+      "axes": {
+        "region": "SC",
+        "style": "serif"
+      },
       "family": "NotoSerifSC",
       "file": "NotoSerifSC[wght].ttf",
       "license_spdx": "OFL-1.1-no-RFN",
@@ -719,6 +1102,22 @@
       "upstream_url": "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/Overpass.zip",
       "variant": "Nerd Font",
       "version": "v3.5.1"
+    },
+    {
+      "axes": {
+        "cjk_width": "mono",
+        "icons": "nf",
+        "region": "JP",
+        "style": "sans"
+      },
+      "family": "PlemolJP",
+      "file": "PlemolJP_NF_v3.1.0.zip",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/PlemolJP_NF_v3.1.0",
+      "rfn": true,
+      "upstream_url": "https://github.com/yuru7/plemoljp/releases/download/v3.1.0/PlemolJP_NF_v3.1.0.zip",
+      "variant": "NF",
+      "version": "v3.1.0"
     },
     {
       "family": "ProFont",
@@ -781,6 +1180,21 @@
       "version": "v3.5.1"
     },
     {
+      "axes": {
+        "cjk_width": "mono",
+        "region": "JP",
+        "style": "sans"
+      },
+      "family": "SourceHanCodeJP",
+      "file": "SourceHanCodeJP.ttc",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/SourceHanCodeJP",
+      "rfn": true,
+      "upstream_url": "https://github.com/adobe-fonts/source-han-code-jp/releases/download/2.012R/SourceHanCodeJP.ttc",
+      "variant": "Regular",
+      "version": "2.012R"
+    },
+    {
       "family": "SpaceMono",
       "file": "SpaceMono.zip",
       "license_spdx": "OFL-1.1-no-RFN",
@@ -841,6 +1255,38 @@
       "version": "v3.5.1"
     },
     {
+      "axes": {
+        "cjk_width": "mono",
+        "icons": "nf",
+        "region": "JP",
+        "style": "sans"
+      },
+      "family": "UDEVGothic",
+      "file": "UDEVGothic_NF_v2.2.0.zip",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/UDEVGothic_NF_v2.2.0",
+      "rfn": true,
+      "upstream_url": "https://github.com/yuru7/udev-gothic/releases/download/v2.2.0/UDEVGothic_NF_v2.2.0.zip",
+      "variant": "NF",
+      "version": "v2.2.0"
+    },
+    {
+      "axes": {
+        "cjk_width": "mono",
+        "icons": "plain",
+        "region": "JP",
+        "style": "sans"
+      },
+      "family": "UDEVGothic",
+      "file": "UDEVGothic_v2.2.0.zip",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/UDEVGothic_v2.2.0",
+      "rfn": true,
+      "upstream_url": "https://github.com/yuru7/udev-gothic/releases/download/v2.2.0/UDEVGothic_v2.2.0.zip",
+      "variant": "Standard",
+      "version": "v2.2.0"
+    },
+    {
       "family": "VictorMono",
       "file": "VictorMono.zip",
       "license_spdx": "OFL-1.1-no-RFN",
@@ -849,6 +1295,49 @@
       "upstream_url": "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/VictorMono.zip",
       "variant": "Nerd Font",
       "version": "v3.5.1"
+    },
+    {
+      "axes": {
+        "region": "SC",
+        "style": "kai"
+      },
+      "family": "Xiaolai",
+      "file": "Xiaolai-Regular.ttf",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/Xiaolai-Regular",
+      "rfn": false,
+      "upstream_url": "https://github.com/lxgw/kose-font/releases/download/v3.126/Xiaolai-Regular.ttf",
+      "variant": "Regular",
+      "version": "v3.126"
+    },
+    {
+      "axes": {
+        "cjk_width": "mono",
+        "region": "SC",
+        "style": "kai"
+      },
+      "family": "XiaolaiMono",
+      "file": "XiaolaiMono-Regular.ttf",
+      "license_spdx": "OFL-1.1-no-RFN",
+      "path_hint": "fonts/XiaolaiMono-Regular",
+      "rfn": false,
+      "upstream_url": "https://github.com/lxgw/kose-font/releases/download/v3.126/XiaolaiMono-Regular.ttf",
+      "variant": "Regular",
+      "version": "v3.126"
+    },
+    {
+      "axes": {
+        "region": "SC",
+        "style": "kai"
+      },
+      "family": "Yozai",
+      "file": "Yozai-Regular.ttf",
+      "license_spdx": "OFL-1.1-RFN",
+      "path_hint": "fonts/Yozai-Regular",
+      "rfn": true,
+      "upstream_url": "https://github.com/lxgw/yozai-font/releases/download/v0.868/Yozai-Regular.ttf",
+      "variant": "Regular",
+      "version": "v0.868"
     },
     {
       "family": "ZedMono",

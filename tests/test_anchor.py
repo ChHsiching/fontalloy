@@ -87,11 +87,14 @@ def anchor_pair(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, Path]:
         json.dumps({"schema": manifest["schema"], "families": families}),
         encoding="utf-8",
     )
+    # Every license file the FILTERED manifest references (round 7:
+    # NotoSansSC gained Mono/HW variants with their own license files).
     (root / "licenses").mkdir()
-    shutil.copy(
-        _REPO_ROOT / "assets" / "licenses" / "OFL-1.1.txt",
-        root / "licenses" / "OFL-1.1.txt",
-    )
+    for entry in families:
+        shutil.copy(
+            _REPO_ROOT / "assets" / entry["license_file"],
+            root / entry["license_file"],
+        )
 
     try:
         fetch_catalog(root / "fonts.manifest.json", _CACHE)

@@ -87,6 +87,18 @@ _LICENSE_NOTES: dict[str, str] = {
         "Dual-licensed (upstream's choice applies): the OFL terms above, or"
         " LGPL-2.1-only; the upstream license file states the choice."
     ),
+    "IPA": (
+        "The IPA Font License 1.0: redistribution is free, but a Derived"
+        " Program may not use the Licensed Program's name as its program,"
+        " font, or file name (clause 3(4)) — merged outputs must never"
+        " carry the reserved names listed above, and the license text must"
+        " accompany every copy."
+    ),
+    "CC0-1.0": (
+        "CC0 1.0 Universal: the author waives all copyright and related"
+        " rights; no attribution or share-alike obligation applies (the"
+        " license text travels anyway as the notice of record)."
+    ),
 }
 
 #: Extra per-license note for LXGW's modified OFL: the reserved-name
@@ -99,6 +111,12 @@ _LXGW_CARVE_OUT = (
     "installable desktop fonts. FontAlloy merged outputs are installable "
     "desktop Modified Versions and must never carry these names (output "
     "names default to the fixed brand default, never source font names)."
+)
+
+#: The license files that carry LXGW's modified-OFL carve-out (the
+#: reserved-name list above; one file per family, same clause).
+_LXGW_CARVE_OUT_FILES = frozenset(
+    {"OFL-1.1-LXGW.txt", "OFL-1.1-LXGWZhenKai.txt"}
 )
 
 
@@ -211,7 +229,7 @@ def _render_family(entry: CatalogEntry) -> list[str]:
     note = _LICENSE_NOTES.get(entry.license_spdx)
     if note:
         lines.append(f"- License obligations: {note}")
-    if entry.license_file.name == "OFL-1.1-LXGW.txt":
+    if entry.license_file.name in _LXGW_CARVE_OUT_FILES:
         lines.append(f"- Reserved-name carve-out: {_LXGW_CARVE_OUT}")
     lines.append("")
     return lines

@@ -18,9 +18,9 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from fontalloy_core.errors import CatalogError
 
@@ -48,6 +48,23 @@ REQUIRED_FIELDS = (
 #: checksum still needs computing and pinning (fetch refuses them loudly).
 CHECKSUM_SOURCES = ("upstream-published", "self-computed", "pending")
 
+#: The typed variant axes an entry may carry (round 7, the catalog
+#: expansion): the publisher matrices the pickers render as variant
+#: chips — icons (plain / Nerd Fonts cuts), ligatures, CJK width,
+#: typographic style, region, charset, rendering, weight. Purely
+#: display metadata for the GUI's chip model; the pipeline itself never
+#: reads them, but the manifest validates them so a typo cannot ship.
+AXIS_IDS = (
+    "icons",
+    "ligature",
+    "cjk_width",
+    "style",
+    "region",
+    "charset",
+    "rendering",
+    "weight",
+)
+
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _FONT_SUFFIXES = (".ttf", ".otf", ".ttc")
 
@@ -68,6 +85,9 @@ class CatalogEntry:
     copyright: str | None
     license_file: Path  # resolved against the manifest's directory
     checksum_source: str
+    #: The typed variant axes (round 7), when the entry carries them —
+    #: display metadata for the pickers' variant chips. Empty when absent.
+    axes: Mapping[str, str] = field(default_factory=dict)
 
     @property
     def pending(self) -> bool:
@@ -207,6 +227,8 @@ def _load_entry(raw: Any, index: int, root: Path) -> CatalogEntry:
             f"{where} ({family}): license file not found: {license_file_raw}"
         )
 
+    axes = _load_axes(raw.get("axes"), family)
+
     return CatalogEntry(
         family=family,
         variant=variant,
@@ -220,7 +242,37 @@ def _load_entry(raw: Any, index: int, root: Path) -> CatalogEntry:
         copyright=copyright_,
         license_file=license_file,
         checksum_source=checksum_source,
+        axes=axes,
     )
+
+
+def _load_axes(raw: Any, family: str) -> Mapping[str, str]:
+    """Validate the optional typed variant axes of one entry.
+
+    Absent is fine (pre-round-7 entries and axis-free cuts); present but
+    malformed is a hard error, exactly like every other manifest field:
+    unknown axis ids or non-string values would silently corrupt the
+    pickers' variant chips.
+    """
+    if raw is None:
+        return {}
+    where = f"manifest entry for {family!r}"
+    if not isinstance(raw, dict) or not raw:
+        raise CatalogError(
+            f"{where}: field 'axes' must be a non-empty object of "
+            "axis id -> value or absent"
+        )
+    for key, value in raw.items():
+        if key not in AXIS_IDS:
+            raise CatalogError(
+                f"{where}: unknown variant axis {key!r} "
+                f"(known axes: {', '.join(AXIS_IDS)})"
+            )
+        if not isinstance(value, str) or not value.strip():
+            raise CatalogError(
+                f"{where}: axis {key!r} must be a non-empty string, got {value!r}"
+            )
+    return dict(raw)
 
 
 def _string(value: Any, where: str, field: str, *, allow_empty: bool = False) -> str:

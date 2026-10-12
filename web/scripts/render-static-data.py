@@ -60,8 +60,9 @@ def render_catalog() -> dict:
     manifest = json.loads(
         (REPO_ROOT / "assets" / "fonts.manifest.json").read_text(encoding="utf-8")
     )
-    families = [
-        {
+    families = []
+    for entry in manifest["families"]:
+        family = {
             "family": entry["family"],
             "variant": entry["variant"],
             "version": entry["version"],
@@ -75,8 +76,12 @@ def render_catalog() -> dict:
             # owner/repo from it for the picker's live GitHub stars.
             "upstream_url": entry.get("upstream_url"),
         }
-        for entry in manifest["families"]
-    ]
+        # The typed variant axes (round 7): the pickers' variant chips
+        # compute off these (icons/NF, mono/hw, region, charset,
+        # rendering, weight). Absent on axis-free cuts.
+        if entry.get("axes"):
+            family["axes"] = entry["axes"]
+        families.append(family)
     families.sort(key=lambda f: (f["family"].lower(), f["variant"].lower()))
     return {"schema": manifest["schema"], "families": families}
 

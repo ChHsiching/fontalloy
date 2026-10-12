@@ -160,6 +160,50 @@
    "checksum_source": "upstream-published"
   },
   {
+   "family": "BizinGothic",
+   "variant": "NF",
+   "file": "BizinGothicNF_v0.0.4.zip",
+   "version": "v0.0.4",
+   "upstream_url": "https://github.com/yuru7/bizin-gothic/releases/download/v0.0.4/BizinGothicNF_v0.0.4.zip",
+   "sha256": "027982bfbd535d411f03f7bf603545493516eb51a98b49616053e926b9211215",
+   "license_spdx": "OFL-1.1-RFN",
+   "rfn": true,
+   "rfn_names": [
+    "Bizin Gothic"
+   ],
+   "copyright": "Copyright (c) 2022 Yuko Otawara, with Reserved Font Name \"Bizin Gothic\"; source fonts: Inconsolata (Copyright 2006 The Inconsolata Project Authors), BIZ UDGothic (Copyright 2022 The BIZ UDGothic Project Authors)",
+   "license_file": "licenses/OFL-1.1-BizinGothic.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "icons": "nf",
+    "cjk_width": "mono",
+    "style": "sans",
+    "region": "JP"
+   }
+  },
+  {
+   "family": "BizinGothic",
+   "variant": "Standard",
+   "file": "BizinGothic_v0.0.4.zip",
+   "version": "v0.0.4",
+   "upstream_url": "https://github.com/yuru7/bizin-gothic/releases/download/v0.0.4/BizinGothic_v0.0.4.zip",
+   "sha256": "e9d01c6ba56161c8a68e2998b71508110e2d70742512f6dafde1a569b0fbf877",
+   "license_spdx": "OFL-1.1-RFN",
+   "rfn": true,
+   "rfn_names": [
+    "Bizin Gothic"
+   ],
+   "copyright": "Copyright (c) 2022 Yuko Otawara, with Reserved Font Name \"Bizin Gothic\"; source fonts: Inconsolata (Copyright 2006 The Inconsolata Project Authors), BIZ UDGothic (Copyright 2022 The BIZ UDGothic Project Authors)",
+   "license_file": "licenses/OFL-1.1-BizinGothic.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "icons": "plain",
+    "cjk_width": "mono",
+    "style": "sans",
+    "region": "JP"
+   }
+  },
+  {
    "family": "CascadiaCode",
    "variant": "Nerd Font",
    "file": "CascadiaCode.zip",
@@ -190,6 +234,66 @@
    "copyright": "Copyright (c) 2019 - Present, Microsoft Corporation",
    "license_file": "licenses/OFL-1.1.txt",
    "checksum_source": "upstream-published"
+  },
+  {
+   "family": "Chillkai",
+   "variant": "GB",
+   "file": "ChillKai.zip",
+   "version": "v2.000",
+   "upstream_url": "https://github.com/Warren2060/Chillkai/releases/download/v2.000/ChillKai.zip",
+   "sha256": "b2224fb5443ca933a5654f74c51b1c57724f9ee84e1fc5dbbd09a0201f3e86a8",
+   "license_spdx": "OFL-1.1-no-RFN",
+   "rfn": false,
+   "rfn_names": [],
+   "copyright": "Copyright (c) 2018-2022 ChillType.",
+   "license_file": "licenses/OFL-1.1-Chillkai.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "style": "kai",
+    "region": "SC",
+    "charset": "GB"
+   }
+  },
+  {
+   "family": "ChillRound",
+   "variant": "Regular",
+   "file": "ChillRoundM_v1.805.zip",
+   "version": "v1.805",
+   "upstream_url": "https://github.com/Warren2060/ChillRound/releases/download/v1.805/ChillRoundM_v1.805.zip",
+   "sha256": "197018fdce5436fc99d8874d32c5b4702b2cc595006d2d341fb3542b6b5779bd",
+   "license_spdx": "OFL-1.1-RFN",
+   "rfn": true,
+   "rfn_names": [
+    "ChillRoundF",
+    "ChillRoundM"
+   ],
+   "copyright": "© 2023 ChillType, with Reserved Font Names 'ChillRoundF' and 'ChillRoundM'; Copyright 2021 The Zen Maru Gothic Authors (https://github.com/googlefonts/zen-marugothic)",
+   "license_file": "licenses/OFL-1.1-ChillRound.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "style": "round"
+   }
+  },
+  {
+   "family": "ChillRoundGothic",
+   "variant": "Regular",
+   "file": "ChillRoundGothic.v3.75.zip",
+   "version": "v3.750",
+   "upstream_url": "https://github.com/Warren2060/ChillRoundGothic/releases/download/v3.750/ChillRoundGothic.v3.75.zip",
+   "sha256": "41a19d998d59948e5045278bec224b0e541b88ab4a054beb5b3ba5fe1b639917",
+   "license_spdx": "OFL-1.1-RFN",
+   "rfn": true,
+   "rfn_names": [
+    "Source",
+    "ChillRounded"
+   ],
+   "copyright": "© 2014-2021 Adobe, with Reserved Font Name 'Source'; © 2023 ChillType, with Reserved Font Name 'ChillRounded'",
+   "license_file": "licenses/OFL-1.1-ChillRoundGothic.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "style": "round",
+    "region": "SC"
+   }
   },
   {
    "family": "CodeNewRoman",
@@ -393,6 +497,24 @@
    "checksum_source": "upstream-published"
   },
   {
+   "family": "GlowSans",
+   "variant": "SC-Normal",
+   "file": "GlowSansSC-Normal-v0.93.zip",
+   "version": "v0.93",
+   "upstream_url": "https://github.com/welai/glow-sans/releases/download/v0.93/GlowSansSC-Normal-v0.93.zip",
+   "sha256": "aa2e1fdb20337113a1d2670b695bfee83910eefa2e48f51c704e5f4a9f8ec9f1",
+   "license_spdx": "MIT",
+   "rfn": false,
+   "rfn_names": [],
+   "copyright": "Glow Sans (c) 2021 Project Welai",
+   "license_file": "licenses/MIT-GlowSans.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "style": "sans",
+    "region": "SC"
+   }
+  },
+  {
    "family": "Go-Mono",
    "variant": "Nerd Font",
    "file": "Go-Mono.zip",
@@ -435,6 +557,28 @@
    "checksum_source": "upstream-published"
   },
   {
+   "family": "GuguruSansCode",
+   "variant": "NF",
+   "file": "GuguruSansCodeNF_v0.0.3.zip",
+   "version": "v0.0.3",
+   "upstream_url": "https://github.com/yuru7/guguru-sans-code/releases/download/v0.0.3/GuguruSansCodeNF_v0.0.3.zip",
+   "sha256": "9187a246df76a4e44d1a6094babefb4e64b74c189bc7c1a776218870509fd65c",
+   "license_spdx": "OFL-1.1-RFN",
+   "rfn": true,
+   "rfn_names": [
+    "Guguru Sans Code"
+   ],
+   "copyright": "Copyright (c) 2025 Yuko Otawara, with Reserved Font Name \"Guguru Sans Code\"; source fonts: Google Sans Code, IBM Plex Sans JP",
+   "license_file": "licenses/OFL-1.1-GuguruSansCode.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "icons": "nf",
+    "cjk_width": "mono",
+    "style": "sans",
+    "region": "JP"
+   }
+  },
+  {
    "family": "Hack",
    "variant": "Nerd Font",
    "file": "Hack.zip",
@@ -447,6 +591,52 @@
    "copyright": "Copyright (c) 2018 Source Foundry Authors",
    "license_file": "licenses/Hack.txt",
    "checksum_source": "upstream-published"
+  },
+  {
+   "family": "HackGen",
+   "variant": "NF",
+   "file": "HackGen_NF_v2.10.0.zip",
+   "version": "v2.10.0",
+   "upstream_url": "https://github.com/yuru7/HackGen/releases/download/v2.10.0/HackGen_NF_v2.10.0.zip",
+   "sha256": "f8abd483d5edfad88a78ed511978f43c83b43c48e364aa29ebe4a68217474428",
+   "license_spdx": "OFL-1.1-RFN",
+   "rfn": true,
+   "rfn_names": [
+    "白源",
+    "HackGen"
+   ],
+   "copyright": "Copyright (c) 2019 Yuko Otawara, with Reserved Font Names \"白源\" and \"HackGen\"; source fonts: Hack (Copyright 2018 The Hack Project Authors), Gen Jyuu Gothic (Copyright (c) 2015 JIKASEI FONT KOUBOU)",
+   "license_file": "licenses/OFL-1.1-HackGen.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "icons": "nf",
+    "cjk_width": "mono",
+    "style": "sans",
+    "region": "JP"
+   }
+  },
+  {
+   "family": "HackGen",
+   "variant": "Standard",
+   "file": "HackGen_v2.10.0.zip",
+   "version": "v2.10.0",
+   "upstream_url": "https://github.com/yuru7/HackGen/releases/download/v2.10.0/HackGen_v2.10.0.zip",
+   "sha256": "ed182e2a4b95792d94dea7932f6b45280b5ae353651be249d5f6b7867b788db7",
+   "license_spdx": "OFL-1.1-RFN",
+   "rfn": true,
+   "rfn_names": [
+    "白源",
+    "HackGen"
+   ],
+   "copyright": "Copyright (c) 2019 Yuko Otawara, with Reserved Font Names \"白源\" and \"HackGen\"; source fonts: Hack (Copyright 2018 The Hack Project Authors), Gen Jyuu Gothic (Copyright (c) 2015 JIKASEI FONT KOUBOU)",
+   "license_file": "licenses/OFL-1.1-HackGen.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "icons": "plain",
+    "cjk_width": "mono",
+    "style": "sans",
+    "region": "JP"
+   }
   },
   {
    "family": "Hasklig",
@@ -491,6 +681,41 @@
     "Hermit"
    ],
    "copyright": "Copyright (c) 2013, Pablo Caro <me AT pcaro DOT es> - http://pcaro.es/",
+   "license_file": "licenses/OFL-1.1.txt",
+   "checksum_source": "upstream-published"
+  },
+  {
+   "family": "HuiwenMincho",
+   "variant": "Regular",
+   "file": "Huiwenmincho-improved.otf",
+   "version": "20241203",
+   "upstream_url": "https://github.com/bosswnx/huiwenmincho-improved/releases/download/20241203/Huiwenmincho-improved.otf",
+   "sha256": "1c491750613de17d007ef9b8b4937b15cdaaa936a6ae2485c5dc0cee200fb044",
+   "license_spdx": "CC0-1.0",
+   "rfn": false,
+   "rfn_names": [],
+   "copyright": "Public Domain (the improved 汇文明朝体, CC0)",
+   "license_file": "licenses/CC0-1.0.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "style": "serif",
+    "region": "SC"
+   }
+  },
+  {
+   "family": "iA-Writer",
+   "variant": "Nerd Font",
+   "file": "iA-Writer.zip",
+   "version": "v3.5.1",
+   "upstream_url": "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/iA-Writer.zip",
+   "sha256": "f2b0e17f138b8d827c0dcd0fc58988bfc6f60bab8217fee5679c4840eed5cb2a",
+   "license_spdx": "OFL-1.1-RFN",
+   "rfn": true,
+   "rfn_names": [
+    "iA Writer",
+    "Plex"
+   ],
+   "copyright": "Copyright © 2018 Information Architects Inc. with Reserved Font Name \"iA Writer\"",
    "license_file": "licenses/OFL-1.1.txt",
    "checksum_source": "upstream-published"
   },
@@ -669,18 +894,484 @@
    "checksum_source": "upstream-published"
   },
   {
-   "family": "MPlus",
-   "variant": "Nerd Font",
-   "file": "MPlus.zip",
-   "version": "v3.5.1",
-   "upstream_url": "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/MPlus.zip",
-   "sha256": "c0efad350173d02c439c8c384dbb18206dcfca4049c260a1e13879feb6ea4981",
+   "family": "LxgwMarkerGothic",
+   "variant": "Regular",
+   "file": "LxgwMarkerGothic-v1.003.zip",
+   "version": "v1.003",
+   "upstream_url": "https://github.com/lxgw/LxgwMarkerGothic/releases/download/v1.003/LxgwMarkerGothic-v1.003.zip",
+   "sha256": "858f40c1b0a4c62a2949a13a071bfbc0075a096ab84b85a3f783688547f57444",
    "license_spdx": "OFL-1.1-no-RFN",
    "rfn": false,
    "rfn_names": [],
-   "copyright": "Copyright 2021 The M+ FONTS Project Authors (https://github.com/coz-m/MPLUS_FONTS)",
+   "copyright": "Copyright 2021-2026 The LXGW Marker Gothic Project Authors (https://github.com/lxgw/LxgwMarkerGothic)",
+   "license_file": "licenses/OFL-1.1-LxgwMarkerGothic.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "style": "marker"
+   }
+  },
+  {
+   "family": "LxgwNeoXiHei",
+   "variant": "Plus",
+   "file": "LXGWNeoXiHeiPlus.ttf",
+   "version": "v1.305",
+   "upstream_url": "https://github.com/lxgw/LxgwNeoXiHei/releases/download/v1.305/LXGWNeoXiHeiPlus.ttf",
+   "sha256": "68261add407bd795c040fe662b7e21e5a766acc9a534c393473f8a972c5ed224",
+   "license_spdx": "IPA",
+   "rfn": true,
+   "rfn_names": [
+    "霞鹜新晰黑",
+    "LXGW Neo XiHei"
+   ],
+   "copyright": "Copyright (c) 2021-2026 LXGW; Information-technology Promotion Agency, Japan (IPA), 2003-2019",
+   "license_file": "licenses/IPA-LxgwNeoXiHei.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "style": "sans",
+    "region": "SC",
+    "charset": "full"
+   }
+  },
+  {
+   "family": "LxgwNeoXiHei",
+   "variant": "Regular",
+   "file": "LXGWNeoXiHei.ttf",
+   "version": "v1.305",
+   "upstream_url": "https://github.com/lxgw/LxgwNeoXiHei/releases/download/v1.305/LXGWNeoXiHei.ttf",
+   "sha256": "893cfbec604768f03785ab4f369508de68c274273359a5cadee17e2852975d5c",
+   "license_spdx": "IPA",
+   "rfn": true,
+   "rfn_names": [
+    "霞鹜新晰黑",
+    "LXGW Neo XiHei"
+   ],
+   "copyright": "Copyright (c) 2021-2026 LXGW; Information-technology Promotion Agency, Japan (IPA), 2003-2019",
+   "license_file": "licenses/IPA-LxgwNeoXiHei.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "style": "sans",
+    "region": "SC"
+   }
+  },
+  {
+   "family": "LxgwNeoXiHeiCode",
+   "variant": "Regular",
+   "file": "NeoXiHeiCode-Regular.ttf",
+   "version": "v1.305",
+   "upstream_url": "https://github.com/lxgw/NeoXiHei-Code/releases/download/v1.305/NeoXiHeiCode-Regular.ttf",
+   "sha256": "c87b95ba5894829bd4b692a79fbf2622e4425e724507c2bf786200f442b62c2f",
+   "license_spdx": "IPA",
+   "rfn": true,
+   "rfn_names": [
+    "霞鹜新晰黑 Code",
+    "NeoXiHei Code"
+   ],
+   "copyright": "Copyright (c) 2023-2026 LXGW; M+ TESTFLIGHT 063a: Copyright (c) 2019 M+ FONTS PROJECT; IPA Gothic Ver.003.03: Copyright (c) Information-technology Promotion Agency, Japan (IPA), 2003-2011",
+   "license_file": "licenses/IPA-NeoXiHeiCode.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "cjk_width": "mono",
+    "style": "sans",
+    "region": "SC"
+   }
+  },
+  {
+   "family": "LxgwNeoZhiSong",
+   "variant": "Plus",
+   "file": "LXGWNeoZhiSongPlus.ttf",
+   "version": "v1.067",
+   "upstream_url": "https://github.com/lxgw/LxgwNeoZhiSong/releases/download/v1.067/LXGWNeoZhiSongPlus.ttf",
+   "sha256": "639595c65001872d0da16dacaeb7de3ba396c64c37b70a16feb1536091bb6c1f",
+   "license_spdx": "IPA",
+   "rfn": true,
+   "rfn_names": [
+    "霞鹜新致宋",
+    "LXGW Neo ZhiSong"
+   ],
+   "copyright": "Copyright (c) 2023-2026 LXGW; Information-technology Promotion Agency, Japan (IPA), 2003-2019",
+   "license_file": "licenses/IPA-LxgwNeoZhiSong.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "style": "serif",
+    "region": "SC",
+    "charset": "full"
+   }
+  },
+  {
+   "family": "LxgwNeoZhiSong",
+   "variant": "Regular",
+   "file": "LXGWNeoZhiSong.ttf",
+   "version": "v1.067",
+   "upstream_url": "https://github.com/lxgw/LxgwNeoZhiSong/releases/download/v1.067/LXGWNeoZhiSong.ttf",
+   "sha256": "32b398f9c6278c4ed34f413077add2c2f3c84034d463af2b9cb98f12c4c2c6cd",
+   "license_spdx": "IPA",
+   "rfn": true,
+   "rfn_names": [
+    "霞鹜新致宋",
+    "LXGW Neo ZhiSong"
+   ],
+   "copyright": "Copyright (c) 2023-2026 LXGW; Information-technology Promotion Agency, Japan (IPA), 2003-2019",
+   "license_file": "licenses/IPA-LxgwNeoZhiSong.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "style": "serif",
+    "region": "SC"
+   }
+  },
+  {
+   "family": "LXGWWenKai",
+   "variant": "Light",
+   "file": "LXGWWenKai-Light.ttf",
+   "version": "v1.522",
+   "upstream_url": "https://github.com/lxgw/LxgwWenKai/releases/download/v1.522/LXGWWenKai-Light.ttf",
+   "sha256": "526ec70cbb0118e871d481f8179e03ff045f0e4d72d080dcca87950c4ab27cca",
+   "license_spdx": "OFL-1.1-RFN",
+   "rfn": true,
+   "rfn_names": [
+    "霞鹜",
+    "霞鶩",
+    "落霞孤鹜",
+    "落霞孤鶩",
+    "LXGW"
+   ],
+   "copyright": "Copyright 2021-2026 LXGW (https://github.com/lxgw/LxgwWenKai); Copyright 2020 The Klee Project Authors (https://github.com/fontworks-fonts/Klee)",
+   "license_file": "licenses/OFL-1.1-LXGW.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "style": "kai",
+    "region": "SC",
+    "weight": "Light"
+   }
+  },
+  {
+   "family": "LXGWWenKai",
+   "variant": "Medium",
+   "file": "LXGWWenKai-Medium.ttf",
+   "version": "v1.522",
+   "upstream_url": "https://github.com/lxgw/LxgwWenKai/releases/download/v1.522/LXGWWenKai-Medium.ttf",
+   "sha256": "d4bdeb38a39151d74d084cba5090f8cb7d20bf83eedb78c35939ae70b9f4e3f6",
+   "license_spdx": "OFL-1.1-RFN",
+   "rfn": true,
+   "rfn_names": [
+    "霞鹜",
+    "霞鶩",
+    "落霞孤鹜",
+    "落霞孤鶩",
+    "LXGW"
+   ],
+   "copyright": "Copyright 2021-2026 LXGW (https://github.com/lxgw/LxgwWenKai); Copyright 2020 The Klee Project Authors (https://github.com/fontworks-fonts/Klee)",
+   "license_file": "licenses/OFL-1.1-LXGW.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "style": "kai",
+    "region": "SC",
+    "weight": "Medium"
+   }
+  },
+  {
+   "family": "LXGWWenKai",
+   "variant": "Regular",
+   "file": "LXGWWenKai-Regular.ttf",
+   "version": "v1.522",
+   "upstream_url": "https://github.com/lxgw/LxgwWenKai/releases/download/v1.522/LXGWWenKai-Regular.ttf",
+   "sha256": "39ad71264b588165b469e35e6afb162a378dacd1f95348160240ba9038ac3009",
+   "license_spdx": "OFL-1.1-RFN",
+   "rfn": true,
+   "rfn_names": [
+    "霞鹜",
+    "霞鶩",
+    "落霞孤鹜",
+    "落霞孤鶩",
+    "LXGW"
+   ],
+   "copyright": "Copyright 2021-2026 LXGW (https://github.com/lxgw/LxgwWenKai); Copyright 2020 The Klee Project Authors (https://github.com/fontworks-fonts/Klee)",
+   "license_file": "licenses/OFL-1.1-LXGW.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "style": "kai",
+    "region": "SC",
+    "weight": "Regular"
+   }
+  },
+  {
+   "family": "LXGWWenKaiGBScreen",
+   "variant": "Regular",
+   "file": "LXGWWenKaiGBScreen.ttf",
+   "version": "v1.522",
+   "upstream_url": "https://github.com/lxgw/LxgwWenKai-Screen/releases/download/v1.522/LXGWWenKaiGBScreen.ttf",
+   "sha256": "23ec023913e1851925eb94462c4b0ccd1d78bb89533745aaa8cc682ccd339dc0",
+   "license_spdx": "OFL-1.1-RFN",
+   "rfn": true,
+   "rfn_names": [
+    "霞鹜",
+    "霞鶩",
+    "落霞孤鹜",
+    "落霞孤鶩",
+    "LXGW"
+   ],
+   "copyright": "Copyright 2022-2026 LXGW (https://github.com/lxgw/LxgwWenKaiGB)",
+   "license_file": "licenses/OFL-1.1-LXGW.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "charset": "GB",
+    "rendering": "screen",
+    "style": "kai",
+    "region": "SC"
+   }
+  },
+  {
+   "family": "LXGWWenKaiMono",
+   "variant": "Light",
+   "file": "LXGWWenKaiMono-Light.ttf",
+   "version": "v1.522",
+   "upstream_url": "https://github.com/lxgw/LxgwWenKai/releases/download/v1.522/LXGWWenKaiMono-Light.ttf",
+   "sha256": "e4d22716a148d4ee820b9a4f63886a1d52dd68b4fa5826cc5e2dec55977f7930",
+   "license_spdx": "OFL-1.1-RFN",
+   "rfn": true,
+   "rfn_names": [
+    "霞鹜",
+    "霞鶩",
+    "落霞孤鹜",
+    "落霞孤鶩",
+    "LXGW"
+   ],
+   "copyright": "Copyright 2021-2026 LXGW (https://github.com/lxgw/LxgwWenKai); Copyright 2020 The Klee Project Authors (https://github.com/fontworks-fonts/Klee)",
+   "license_file": "licenses/OFL-1.1-LXGW.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "cjk_width": "mono",
+    "style": "kai",
+    "region": "SC",
+    "weight": "Light"
+   }
+  },
+  {
+   "family": "LXGWWenKaiMono",
+   "variant": "Medium",
+   "file": "LXGWWenKaiMono-Medium.ttf",
+   "version": "v1.522",
+   "upstream_url": "https://github.com/lxgw/LxgwWenKai/releases/download/v1.522/LXGWWenKaiMono-Medium.ttf",
+   "sha256": "7a674f448b15a1b3df781c3498973d77f71d270788f7f921080c1344e9d739e1",
+   "license_spdx": "OFL-1.1-RFN",
+   "rfn": true,
+   "rfn_names": [
+    "霞鹜",
+    "霞鶩",
+    "落霞孤鹜",
+    "落霞孤鶩",
+    "LXGW"
+   ],
+   "copyright": "Copyright 2021-2026 LXGW (https://github.com/lxgw/LxgwWenKai); Copyright 2020 The Klee Project Authors (https://github.com/fontworks-fonts/Klee)",
+   "license_file": "licenses/OFL-1.1-LXGW.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "cjk_width": "mono",
+    "style": "kai",
+    "region": "SC",
+    "weight": "Medium"
+   }
+  },
+  {
+   "family": "LXGWWenKaiMono",
+   "variant": "Regular",
+   "file": "LXGWWenKaiMono-Regular.ttf",
+   "version": "v1.522",
+   "upstream_url": "https://github.com/lxgw/LxgwWenKai/releases/download/v1.522/LXGWWenKaiMono-Regular.ttf",
+   "sha256": "bc068e4e395c396f2909ffdfac3a3751578b73ed3d64a79c9c31bfa84e43debe",
+   "license_spdx": "OFL-1.1-RFN",
+   "rfn": true,
+   "rfn_names": [
+    "霞鹜",
+    "霞鶩",
+    "落霞孤鹜",
+    "落霞孤鶩",
+    "LXGW"
+   ],
+   "copyright": "Copyright 2021-2026 LXGW (https://github.com/lxgw/LxgwWenKai); Copyright 2020 The Klee Project Authors (https://github.com/fontworks-fonts/Klee)",
+   "license_file": "licenses/OFL-1.1-LXGW.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "cjk_width": "mono",
+    "style": "kai",
+    "region": "SC",
+    "weight": "Regular"
+   }
+  },
+  {
+   "family": "LXGWWenKaiMonoGBScreen",
+   "variant": "Regular",
+   "file": "LXGWWenKaiMonoGBScreen.ttf",
+   "version": "v1.522",
+   "upstream_url": "https://github.com/lxgw/LxgwWenKai-Screen/releases/download/v1.522/LXGWWenKaiMonoGBScreen.ttf",
+   "sha256": "294ad0fcc597f93c555cb866bb827f38acd0479c0372c42b18bc0e93bd6434e4",
+   "license_spdx": "OFL-1.1-RFN",
+   "rfn": true,
+   "rfn_names": [
+    "霞鹜",
+    "霞鶩",
+    "落霞孤鹜",
+    "落霞孤鶩",
+    "LXGW"
+   ],
+   "copyright": "Copyright 2022-2026 LXGW (https://github.com/lxgw/LxgwWenKaiGB)",
+   "license_file": "licenses/OFL-1.1-LXGW.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "cjk_width": "mono",
+    "charset": "GB",
+    "rendering": "screen",
+    "style": "kai",
+    "region": "SC"
+   }
+  },
+  {
+   "family": "LXGWWenKaiMonoScreen",
+   "variant": "Regular",
+   "file": "LXGWWenKaiMonoScreen.ttf",
+   "version": "v1.522",
+   "upstream_url": "https://github.com/lxgw/LxgwWenKai-Screen/releases/download/v1.522/LXGWWenKaiMonoScreen.ttf",
+   "sha256": "758bf0e7fceddeae425fa3f5b792aa3e80428856b9f37d21355e0e4295135e9d",
+   "license_spdx": "OFL-1.1-RFN",
+   "rfn": true,
+   "rfn_names": [
+    "霞鹜",
+    "霞鶩",
+    "落霞孤鹜",
+    "落霞孤鶩",
+    "LXGW"
+   ],
+   "copyright": "Copyright 2021-2026 LXGW (https://github.com/lxgw/LxgwWenKai-Screen)",
+   "license_file": "licenses/OFL-1.1-LXGW.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "cjk_width": "mono",
+    "rendering": "screen",
+    "style": "kai",
+    "region": "SC"
+   }
+  },
+  {
+   "family": "LxgwWenKaiMonoTC",
+   "variant": "Regular",
+   "file": "LXGWWenKaiMonoTC-Regular.ttf",
+   "version": "v1.522",
+   "upstream_url": "https://github.com/lxgw/LxgwWenkaiTC/releases/download/v1.522/LXGWWenKaiMonoTC-Regular.ttf",
+   "sha256": "04f1e24faab8108075a74fb27ad81de4a3f80b1510fe993993c19b00eb1b3945",
+   "license_spdx": "OFL-1.1-no-RFN",
+   "rfn": false,
+   "rfn_names": [],
+   "copyright": "Copyright 2022-2026 LXGW (https://github.com/lxgw/LxgwWenkaiTC); Copyright 2020 The Klee Project Authors (https://github.com/fontworks-fonts/Klee)",
+   "license_file": "licenses/OFL-1.1-LXGWWenKaiTC.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "cjk_width": "mono",
+    "style": "kai",
+    "region": "TC"
+   }
+  },
+  {
+   "family": "LXGWWenKaiScreen",
+   "variant": "Regular",
+   "file": "LXGWWenKaiScreen.ttf",
+   "version": "v1.522",
+   "upstream_url": "https://github.com/lxgw/LxgwWenKai-Screen/releases/download/v1.522/LXGWWenKaiScreen.ttf",
+   "sha256": "cd1a6fa39c4ea42fd8f4e289945789b0e510cf7016435640f8893cdad9b220f3",
+   "license_spdx": "OFL-1.1-RFN",
+   "rfn": true,
+   "rfn_names": [
+    "霞鹜",
+    "霞鶩",
+    "落霞孤鹜",
+    "落霞孤鶩",
+    "LXGW"
+   ],
+   "copyright": "Copyright 2021-2026 LXGW (https://github.com/lxgw/LxgwWenKai-Screen)",
+   "license_file": "licenses/OFL-1.1-LXGW.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "rendering": "screen",
+    "style": "kai",
+    "region": "SC"
+   }
+  },
+  {
+   "family": "LxgwWenKaiTC",
+   "variant": "Regular",
+   "file": "LXGWWenKaiTC-Regular.ttf",
+   "version": "v1.522",
+   "upstream_url": "https://github.com/lxgw/LxgwWenkaiTC/releases/download/v1.522/LXGWWenKaiTC-Regular.ttf",
+   "sha256": "b1a0795862c1415bf3f393ea50b2a4ea6275012cf5bad3f94feeb1222f555731",
+   "license_spdx": "OFL-1.1-no-RFN",
+   "rfn": false,
+   "rfn_names": [],
+   "copyright": "Copyright 2022-2026 LXGW (https://github.com/lxgw/LxgwWenkaiTC); Copyright 2020 The Klee Project Authors (https://github.com/fontworks-fonts/Klee)",
+   "license_file": "licenses/OFL-1.1-LXGWWenKaiTC.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "style": "kai",
+    "region": "TC"
+   }
+  },
+  {
+   "family": "LxgwZhenKai",
+   "variant": "Regular",
+   "file": "LXGWZhenKaiGB-Regular.ttf",
+   "version": "v0.825",
+   "upstream_url": "https://github.com/lxgw/LxgwZhenKai/releases/download/v0.825/LXGWZhenKaiGB-Regular.ttf",
+   "sha256": "40876902a7ce25268ab710ad8fe6e2b63bc002aa4b68d22fd45fc1243726ced5",
+   "license_spdx": "OFL-1.1-RFN",
+   "rfn": true,
+   "rfn_names": [
+    "霞鹜",
+    "霞鶩",
+    "落霞孤鹜",
+    "落霞孤鶩",
+    "LXGW"
+   ],
+   "copyright": "Copyright 2022-2026 LXGW (https://github.com/lxgw/LxgwZhenKai), with Reserved Font Names '霞鹜', '霞鶩', '落霞孤鹜', '落霞孤鶩' and 'LXGW' (installable-desktop carve-out: see the license file); Copyright 2020 The Klee Project Authors (https://github.com/fontworks-fonts/Klee)",
+   "license_file": "licenses/OFL-1.1-LXGWZhenKai.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "style": "kai",
+    "region": "SC",
+    "charset": "GB"
+   }
+  },
+  {
+   "family": "MapleMono",
+   "variant": "NF",
+   "file": "MapleMono-NF.zip",
+   "version": "v7.9",
+   "upstream_url": "https://github.com/subframe7536/maple-font/releases/download/v7.9/MapleMono-NF.zip",
+   "sha256": "59098b87c895d871635d37680e88000ae2b2b25b55428195b228ec589e35fb89",
+   "license_spdx": "OFL-1.1-no-RFN",
+   "rfn": false,
+   "rfn_names": [],
+   "copyright": "Copyright 2022 The Maple Mono Project Authors (https://github.com/subframe7536/maple-font)",
    "license_file": "licenses/OFL-1.1.txt",
-   "checksum_source": "upstream-published"
+   "checksum_source": "upstream-published",
+   "axes": {
+    "icons": "nf"
+   }
+  },
+  {
+   "family": "MapleMono",
+   "variant": "NF-CN",
+   "file": "MapleMono-NF-CN.zip",
+   "version": "v7.9",
+   "upstream_url": "https://github.com/subframe7536/maple-font/releases/download/v7.9/MapleMono-NF-CN.zip",
+   "sha256": "af913b6322905348b3f50e4397fedc35b3a880db5effcce7969003051dcd3e94",
+   "license_spdx": "OFL-1.1-no-RFN",
+   "rfn": false,
+   "rfn_names": [],
+   "copyright": "Copyright 2022 The Maple Mono Project Authors (https://github.com/subframe7536/maple-font)",
+   "license_file": "licenses/OFL-1.1.txt",
+   "checksum_source": "upstream-published",
+   "axes": {
+    "icons": "nf",
+    "cjk_width": "mono",
+    "region": "SC"
+   }
   },
   {
    "family": "MartianMono",
@@ -771,6 +1462,20 @@
    "checksum_source": "upstream-published"
   },
   {
+   "family": "MPlus",
+   "variant": "Nerd Font",
+   "file": "MPlus.zip",
+   "version": "v3.5.1",
+   "upstream_url": "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/MPlus.zip",
+   "sha256": "c0efad350173d02c439c8c384dbb18206dcfca4049c260a1e13879feb6ea4981",
+   "license_spdx": "OFL-1.1-no-RFN",
+   "rfn": false,
+   "rfn_names": [],
+   "copyright": "Copyright 2021 The M+ FONTS Project Authors (https://github.com/coz-m/MPLUS_FONTS)",
+   "license_file": "licenses/OFL-1.1.txt",
+   "checksum_source": "upstream-published"
+  },
+  {
    "family": "NerdFontsSymbolsOnly",
    "variant": "Nerd Font",
    "file": "NerdFontsSymbolsOnly.zip",
@@ -799,6 +1504,86 @@
    "checksum_source": "upstream-published"
   },
   {
+   "family": "NotoSansSC",
+   "variant": "HW",
+   "file": "14_SourceHanSansHWSC.zip",
+   "version": "2.005R",
+   "upstream_url": "https://github.com/adobe-fonts/source-han-sans/releases/download/2.005R/14_SourceHanSansHWSC.zip",
+   "sha256": "30f3ffbd06ea0168093916d8f2d86e90645112280e48d44d73807dcc235cc00f",
+   "license_spdx": "OFL-1.1-RFN",
+   "rfn": true,
+   "rfn_names": [
+    "Source"
+   ],
+   "copyright": "Copyright 2014-2025 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source' — Source Han Sans HW SC (half-width)",
+   "license_file": "licenses/OFL-1.1-SourceHanSans.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "cjk_width": "hw",
+    "style": "sans",
+    "region": "SC"
+   }
+  },
+  {
+   "family": "NotoSansSC",
+   "variant": "Mono",
+   "file": "13_NotoSansMonoCJKsc.zip",
+   "version": "Sans2.004",
+   "upstream_url": "https://github.com/googlefonts/noto-cjk/releases/download/Sans2.004/13_NotoSansMonoCJKsc.zip",
+   "sha256": "e252c39994f8a278676507600a955663c23c24a7827dc63a4300b2f7b427cd5d",
+   "license_spdx": "OFL-1.1-RFN",
+   "rfn": true,
+   "rfn_names": [
+    "Source"
+   ],
+   "copyright": "Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source' — Noto Sans Mono CJK SC",
+   "license_file": "licenses/OFL-1.1-NotoCJK.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "cjk_width": "mono",
+    "style": "sans",
+    "region": "SC"
+   }
+  },
+  {
+   "family": "NotoSansSC",
+   "variant": "Variable",
+   "file": "NotoSansSC[wght].ttf",
+   "version": "a85815a42757630ce188fdad368c2dfc444d4773",
+   "upstream_url": "https://raw.githubusercontent.com/google/fonts/a85815a42757630ce188fdad368c2dfc444d4773/ofl/notosanssc/NotoSansSC%5Bwght%5D.ttf",
+   "sha256": "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da",
+   "license_spdx": "OFL-1.1-RFN",
+   "rfn": true,
+   "rfn_names": [
+    "Source"
+   ],
+   "copyright": "Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'",
+   "license_file": "licenses/OFL-1.1.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "style": "sans",
+    "region": "SC"
+   }
+  },
+  {
+   "family": "NotoSerifSC",
+   "variant": "Variable",
+   "file": "NotoSerifSC[wght].ttf",
+   "version": "8b0a1d0f5983c89bc2b93f1b5fb55f9e252744b5",
+   "upstream_url": "https://raw.githubusercontent.com/google/fonts/8b0a1d0f5983c89bc2b93f1b5fb55f9e252744b5/ofl/notoserifsc/NotoSerifSC%5Bwght%5D.ttf",
+   "sha256": "050080d9255a86808f2945bffac582b31ef32bc36411ce29563b4961670c66f9",
+   "license_spdx": "OFL-1.1-no-RFN",
+   "rfn": false,
+   "rfn_names": [],
+   "copyright": "Copyright 2012 Google Inc. All Rights Reserved.",
+   "license_file": "licenses/OFL-1.1.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "style": "serif",
+    "region": "SC"
+   }
+  },
+  {
    "family": "OpenDyslexic",
    "variant": "Nerd Font",
    "file": "OpenDyslexic.zip",
@@ -825,6 +1610,28 @@
    "copyright": "Copyright 2015 Red Hat, Inc.",
    "license_file": "licenses/Overpass.txt",
    "checksum_source": "upstream-published"
+  },
+  {
+   "family": "PlemolJP",
+   "variant": "NF",
+   "file": "PlemolJP_NF_v3.1.0.zip",
+   "version": "v3.1.0",
+   "upstream_url": "https://github.com/yuru7/plemoljp/releases/download/v3.1.0/PlemolJP_NF_v3.1.0.zip",
+   "sha256": "015142b7ce4fb497ea6eb14567c435b69450eb5028fb7d29c032d1ffb3854abb",
+   "license_spdx": "OFL-1.1-RFN",
+   "rfn": true,
+   "rfn_names": [
+    "PlemolJP"
+   ],
+   "copyright": "Copyright (c) 2021 Yuko Otawara, with Reserved Font Name \"PlemolJP\"; source fonts: IBM Plex Mono (Copyright (c) 2017 IBM Corp.), Hack (Copyright 2018 The Hack Project Authors), M+ CJK",
+   "license_file": "licenses/OFL-1.1-PlemolJP.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "icons": "nf",
+    "cjk_width": "mono",
+    "style": "sans",
+    "region": "JP"
+   }
   },
   {
    "family": "ProFont",
@@ -915,6 +1722,27 @@
    "checksum_source": "upstream-published"
   },
   {
+   "family": "SourceHanCodeJP",
+   "variant": "Regular",
+   "file": "SourceHanCodeJP.ttc",
+   "version": "2.012R",
+   "upstream_url": "https://github.com/adobe-fonts/source-han-code-jp/releases/download/2.012R/SourceHanCodeJP.ttc",
+   "sha256": "f430938b1056e79ff60cf422876e3bbbd348f578d38ff643074e2d6992cd95f5",
+   "license_spdx": "OFL-1.1-RFN",
+   "rfn": true,
+   "rfn_names": [
+    "Source"
+   ],
+   "copyright": "Copyright 2014-2020 Adobe Systems Incorporated (http://www.adobe.com/), with Reserved Font Name 'Source'; Source Code Pro by Paul D. Hunt",
+   "license_file": "licenses/OFL-1.1-SourceHanCodeJP.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "cjk_width": "mono",
+    "style": "sans",
+    "region": "JP"
+   }
+  },
+  {
    "family": "SpaceMono",
    "variant": "Nerd Font",
    "file": "SpaceMono.zip",
@@ -1002,6 +1830,50 @@
    "checksum_source": "upstream-published"
   },
   {
+   "family": "UDEVGothic",
+   "variant": "NF",
+   "file": "UDEVGothic_NF_v2.2.0.zip",
+   "version": "v2.2.0",
+   "upstream_url": "https://github.com/yuru7/udev-gothic/releases/download/v2.2.0/UDEVGothic_NF_v2.2.0.zip",
+   "sha256": "45faeef7b5d8bc591bcc5887a2ca0c5fb9028066f18a5a52cd6f10b7d655ba37",
+   "license_spdx": "OFL-1.1-RFN",
+   "rfn": true,
+   "rfn_names": [
+    "UDEV Gothic"
+   ],
+   "copyright": "Copyright (c) 2022 Yuko Otawara, with Reserved Font Name \"UDEV Gothic\"; source fonts: JetBrains Mono (Copyright 2020 The JetBrains Mono Project Authors), BIZ UDGothic (Copyright 2022 The BIZ UDGothic Project Authors)",
+   "license_file": "licenses/OFL-1.1-UDEVGothic.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "icons": "nf",
+    "cjk_width": "mono",
+    "style": "sans",
+    "region": "JP"
+   }
+  },
+  {
+   "family": "UDEVGothic",
+   "variant": "Standard",
+   "file": "UDEVGothic_v2.2.0.zip",
+   "version": "v2.2.0",
+   "upstream_url": "https://github.com/yuru7/udev-gothic/releases/download/v2.2.0/UDEVGothic_v2.2.0.zip",
+   "sha256": "c104c171f6ed8922ca52d74cd915a271e427f1e884e51431aae71d99e8b3b47b",
+   "license_spdx": "OFL-1.1-RFN",
+   "rfn": true,
+   "rfn_names": [
+    "UDEV Gothic"
+   ],
+   "copyright": "Copyright (c) 2022 Yuko Otawara, with Reserved Font Name \"UDEV Gothic\"; source fonts: JetBrains Mono (Copyright 2020 The JetBrains Mono Project Authors), BIZ UDGothic (Copyright 2022 The BIZ UDGothic Project Authors)",
+   "license_file": "licenses/OFL-1.1-UDEVGothic.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "icons": "plain",
+    "cjk_width": "mono",
+    "style": "sans",
+    "region": "JP"
+   }
+  },
+  {
    "family": "VictorMono",
    "variant": "Nerd Font",
    "file": "VictorMono.zip",
@@ -1016,6 +1888,64 @@
    "checksum_source": "upstream-published"
   },
   {
+   "family": "Xiaolai",
+   "variant": "Regular",
+   "file": "Xiaolai-Regular.ttf",
+   "version": "v3.126",
+   "upstream_url": "https://github.com/lxgw/kose-font/releases/download/v3.126/Xiaolai-Regular.ttf",
+   "sha256": "e2f68daf0e72777a8cf58bc83de1b98634b251e537ddbfca24b0ae50d1802da2",
+   "license_spdx": "OFL-1.1-no-RFN",
+   "rfn": false,
+   "rfn_names": [],
+   "copyright": "Copyright 2020-2024 LXGW (https://github.com/lxgw/kose-font); Copyright 2014 Nozomi Seto (https://ja.osdn.net/projects/setofont/)",
+   "license_file": "licenses/OFL-1.1-Xiaolai.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "style": "kai",
+    "region": "SC"
+   }
+  },
+  {
+   "family": "XiaolaiMono",
+   "variant": "Regular",
+   "file": "XiaolaiMono-Regular.ttf",
+   "version": "v3.126",
+   "upstream_url": "https://github.com/lxgw/kose-font/releases/download/v3.126/XiaolaiMono-Regular.ttf",
+   "sha256": "802b658db492e02ae5b659f5b56d7d4ef8f77609515bdcc82f462ae912888c33",
+   "license_spdx": "OFL-1.1-no-RFN",
+   "rfn": false,
+   "rfn_names": [],
+   "copyright": "Copyright 2020-2024 LXGW (https://github.com/lxgw/kose-font); Copyright 2014 Nozomi Seto (https://ja.osdn.net/projects/setofont/)",
+   "license_file": "licenses/OFL-1.1-Xiaolai.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "cjk_width": "mono",
+    "style": "kai",
+    "region": "SC"
+   }
+  },
+  {
+   "family": "Yozai",
+   "variant": "Regular",
+   "file": "Yozai-Regular.ttf",
+   "version": "v0.868",
+   "upstream_url": "https://github.com/lxgw/yozai-font/releases/download/v0.868/Yozai-Regular.ttf",
+   "sha256": "25071998a0fe6a72f54c235e714986d259633e5ff670b1a2b5e264387f3316ac",
+   "license_spdx": "OFL-1.1-RFN",
+   "rfn": true,
+   "rfn_names": [
+    "Y.Oz",
+    "YOz"
+   ],
+   "copyright": "Copyright 2020, 2024 LXGW (https://github.com/lxgw/yozai-font); Original Font Data Copyright (C) Y.OzVox (Y.Oz), the words containing \"Y.Oz\" and \"YOz\" are reserved as font names.",
+   "license_file": "licenses/OFL-1.1-Yozai.txt",
+   "checksum_source": "self-computed",
+   "axes": {
+    "style": "kai",
+    "region": "SC"
+   }
+  },
+  {
    "family": "ZedMono",
    "variant": "Nerd Font",
    "file": "ZedMono.zip",
@@ -1028,281 +1958,6 @@
    "copyright": "Copyright 2015-2021, Renzhi Li (aka. Belleve Invis, belleve@typeof.net)",
    "license_file": "licenses/OFL-1.1.txt",
    "checksum_source": "upstream-published"
-  },
-  {
-   "family": "iA-Writer",
-   "variant": "Nerd Font",
-   "file": "iA-Writer.zip",
-   "version": "v3.5.1",
-   "upstream_url": "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/iA-Writer.zip",
-   "sha256": "f2b0e17f138b8d827c0dcd0fc58988bfc6f60bab8217fee5679c4840eed5cb2a",
-   "license_spdx": "OFL-1.1-RFN",
-   "rfn": true,
-   "rfn_names": [
-    "iA Writer",
-    "Plex"
-   ],
-   "copyright": "Copyright © 2018 Information Architects Inc. with Reserved Font Name \"iA Writer\"",
-   "license_file": "licenses/OFL-1.1.txt",
-   "checksum_source": "upstream-published"
-  },
-  {
-   "family": "MapleMono",
-   "variant": "NF",
-   "file": "MapleMono-NF.zip",
-   "version": "v7.9",
-   "upstream_url": "https://github.com/subframe7536/maple-font/releases/download/v7.9/MapleMono-NF.zip",
-   "sha256": "59098b87c895d871635d37680e88000ae2b2b25b55428195b228ec589e35fb89",
-   "license_spdx": "OFL-1.1-no-RFN",
-   "rfn": false,
-   "rfn_names": [],
-   "copyright": "Copyright 2022 The Maple Mono Project Authors (https://github.com/subframe7536/maple-font)",
-   "license_file": "licenses/OFL-1.1.txt",
-   "checksum_source": "upstream-published"
-  },
-  {
-   "family": "MapleMono",
-   "variant": "NF-CN",
-   "file": "MapleMono-NF-CN.zip",
-   "version": "v7.9",
-   "upstream_url": "https://github.com/subframe7536/maple-font/releases/download/v7.9/MapleMono-NF-CN.zip",
-   "sha256": "af913b6322905348b3f50e4397fedc35b3a880db5effcce7969003051dcd3e94",
-   "license_spdx": "OFL-1.1-no-RFN",
-   "rfn": false,
-   "rfn_names": [],
-   "copyright": "Copyright 2022 The Maple Mono Project Authors (https://github.com/subframe7536/maple-font)",
-   "license_file": "licenses/OFL-1.1.txt",
-   "checksum_source": "upstream-published"
-  },
-  {
-   "family": "LXGWWenKai",
-   "variant": "Light",
-   "file": "LXGWWenKai-Light.ttf",
-   "version": "v1.522",
-   "upstream_url": "https://github.com/lxgw/LxgwWenKai/releases/download/v1.522/LXGWWenKai-Light.ttf",
-   "sha256": "526ec70cbb0118e871d481f8179e03ff045f0e4d72d080dcca87950c4ab27cca",
-   "license_spdx": "OFL-1.1-RFN",
-   "rfn": true,
-   "rfn_names": [
-    "霞鹜",
-    "霞鶩",
-    "落霞孤鹜",
-    "落霞孤鶩",
-    "LXGW"
-   ],
-   "copyright": "Copyright 2021-2026 LXGW (https://github.com/lxgw/LxgwWenKai); Copyright 2020 The Klee Project Authors (https://github.com/fontworks-fonts/Klee)",
-   "license_file": "licenses/OFL-1.1-LXGW.txt",
-   "checksum_source": "self-computed"
-  },
-  {
-   "family": "LXGWWenKai",
-   "variant": "Regular",
-   "file": "LXGWWenKai-Regular.ttf",
-   "version": "v1.522",
-   "upstream_url": "https://github.com/lxgw/LxgwWenKai/releases/download/v1.522/LXGWWenKai-Regular.ttf",
-   "sha256": "39ad71264b588165b469e35e6afb162a378dacd1f95348160240ba9038ac3009",
-   "license_spdx": "OFL-1.1-RFN",
-   "rfn": true,
-   "rfn_names": [
-    "霞鹜",
-    "霞鶩",
-    "落霞孤鹜",
-    "落霞孤鶩",
-    "LXGW"
-   ],
-   "copyright": "Copyright 2021-2026 LXGW (https://github.com/lxgw/LxgwWenKai); Copyright 2020 The Klee Project Authors (https://github.com/fontworks-fonts/Klee)",
-   "license_file": "licenses/OFL-1.1-LXGW.txt",
-   "checksum_source": "self-computed"
-  },
-  {
-   "family": "LXGWWenKai",
-   "variant": "Medium",
-   "file": "LXGWWenKai-Medium.ttf",
-   "version": "v1.522",
-   "upstream_url": "https://github.com/lxgw/LxgwWenKai/releases/download/v1.522/LXGWWenKai-Medium.ttf",
-   "sha256": "d4bdeb38a39151d74d084cba5090f8cb7d20bf83eedb78c35939ae70b9f4e3f6",
-   "license_spdx": "OFL-1.1-RFN",
-   "rfn": true,
-   "rfn_names": [
-    "霞鹜",
-    "霞鶩",
-    "落霞孤鹜",
-    "落霞孤鶩",
-    "LXGW"
-   ],
-   "copyright": "Copyright 2021-2026 LXGW (https://github.com/lxgw/LxgwWenKai); Copyright 2020 The Klee Project Authors (https://github.com/fontworks-fonts/Klee)",
-   "license_file": "licenses/OFL-1.1-LXGW.txt",
-   "checksum_source": "self-computed"
-  },
-  {
-   "family": "LXGWWenKaiMono",
-   "variant": "Light",
-   "file": "LXGWWenKaiMono-Light.ttf",
-   "version": "v1.522",
-   "upstream_url": "https://github.com/lxgw/LxgwWenKai/releases/download/v1.522/LXGWWenKaiMono-Light.ttf",
-   "sha256": "e4d22716a148d4ee820b9a4f63886a1d52dd68b4fa5826cc5e2dec55977f7930",
-   "license_spdx": "OFL-1.1-RFN",
-   "rfn": true,
-   "rfn_names": [
-    "霞鹜",
-    "霞鶩",
-    "落霞孤鹜",
-    "落霞孤鶩",
-    "LXGW"
-   ],
-   "copyright": "Copyright 2021-2026 LXGW (https://github.com/lxgw/LxgwWenKai); Copyright 2020 The Klee Project Authors (https://github.com/fontworks-fonts/Klee)",
-   "license_file": "licenses/OFL-1.1-LXGW.txt",
-   "checksum_source": "self-computed"
-  },
-  {
-   "family": "LXGWWenKaiMono",
-   "variant": "Regular",
-   "file": "LXGWWenKaiMono-Regular.ttf",
-   "version": "v1.522",
-   "upstream_url": "https://github.com/lxgw/LxgwWenKai/releases/download/v1.522/LXGWWenKaiMono-Regular.ttf",
-   "sha256": "bc068e4e395c396f2909ffdfac3a3751578b73ed3d64a79c9c31bfa84e43debe",
-   "license_spdx": "OFL-1.1-RFN",
-   "rfn": true,
-   "rfn_names": [
-    "霞鹜",
-    "霞鶩",
-    "落霞孤鹜",
-    "落霞孤鶩",
-    "LXGW"
-   ],
-   "copyright": "Copyright 2021-2026 LXGW (https://github.com/lxgw/LxgwWenKai); Copyright 2020 The Klee Project Authors (https://github.com/fontworks-fonts/Klee)",
-   "license_file": "licenses/OFL-1.1-LXGW.txt",
-   "checksum_source": "self-computed"
-  },
-  {
-   "family": "LXGWWenKaiMono",
-   "variant": "Medium",
-   "file": "LXGWWenKaiMono-Medium.ttf",
-   "version": "v1.522",
-   "upstream_url": "https://github.com/lxgw/LxgwWenKai/releases/download/v1.522/LXGWWenKaiMono-Medium.ttf",
-   "sha256": "7a674f448b15a1b3df781c3498973d77f71d270788f7f921080c1344e9d739e1",
-   "license_spdx": "OFL-1.1-RFN",
-   "rfn": true,
-   "rfn_names": [
-    "霞鹜",
-    "霞鶩",
-    "落霞孤鹜",
-    "落霞孤鶩",
-    "LXGW"
-   ],
-   "copyright": "Copyright 2021-2026 LXGW (https://github.com/lxgw/LxgwWenKai); Copyright 2020 The Klee Project Authors (https://github.com/fontworks-fonts/Klee)",
-   "license_file": "licenses/OFL-1.1-LXGW.txt",
-   "checksum_source": "self-computed"
-  },
-  {
-   "family": "LXGWWenKaiScreen",
-   "variant": "Regular",
-   "file": "LXGWWenKaiScreen.ttf",
-   "version": "v1.522",
-   "upstream_url": "https://github.com/lxgw/LxgwWenKai-Screen/releases/download/v1.522/LXGWWenKaiScreen.ttf",
-   "sha256": "cd1a6fa39c4ea42fd8f4e289945789b0e510cf7016435640f8893cdad9b220f3",
-   "license_spdx": "OFL-1.1-RFN",
-   "rfn": true,
-   "rfn_names": [
-    "霞鹜",
-    "霞鶩",
-    "落霞孤鹜",
-    "落霞孤鶩",
-    "LXGW"
-   ],
-   "copyright": "Copyright 2021-2026 LXGW (https://github.com/lxgw/LxgwWenKai-Screen)",
-   "license_file": "licenses/OFL-1.1-LXGW.txt",
-   "checksum_source": "self-computed"
-  },
-  {
-   "family": "LXGWWenKaiMonoScreen",
-   "variant": "Regular",
-   "file": "LXGWWenKaiMonoScreen.ttf",
-   "version": "v1.522",
-   "upstream_url": "https://github.com/lxgw/LxgwWenKai-Screen/releases/download/v1.522/LXGWWenKaiMonoScreen.ttf",
-   "sha256": "758bf0e7fceddeae425fa3f5b792aa3e80428856b9f37d21355e0e4295135e9d",
-   "license_spdx": "OFL-1.1-RFN",
-   "rfn": true,
-   "rfn_names": [
-    "霞鹜",
-    "霞鶩",
-    "落霞孤鹜",
-    "落霞孤鶩",
-    "LXGW"
-   ],
-   "copyright": "Copyright 2021-2026 LXGW (https://github.com/lxgw/LxgwWenKai-Screen)",
-   "license_file": "licenses/OFL-1.1-LXGW.txt",
-   "checksum_source": "self-computed"
-  },
-  {
-   "family": "LXGWWenKaiGBScreen",
-   "variant": "Regular",
-   "file": "LXGWWenKaiGBScreen.ttf",
-   "version": "v1.522",
-   "upstream_url": "https://github.com/lxgw/LxgwWenKai-Screen/releases/download/v1.522/LXGWWenKaiGBScreen.ttf",
-   "sha256": "23ec023913e1851925eb94462c4b0ccd1d78bb89533745aaa8cc682ccd339dc0",
-   "license_spdx": "OFL-1.1-RFN",
-   "rfn": true,
-   "rfn_names": [
-    "霞鹜",
-    "霞鶩",
-    "落霞孤鹜",
-    "落霞孤鶩",
-    "LXGW"
-   ],
-   "copyright": "Copyright 2022-2026 LXGW (https://github.com/lxgw/LxgwWenKaiGB)",
-   "license_file": "licenses/OFL-1.1-LXGW.txt",
-   "checksum_source": "self-computed"
-  },
-  {
-   "family": "LXGWWenKaiMonoGBScreen",
-   "variant": "Regular",
-   "file": "LXGWWenKaiMonoGBScreen.ttf",
-   "version": "v1.522",
-   "upstream_url": "https://github.com/lxgw/LxgwWenKai-Screen/releases/download/v1.522/LXGWWenKaiMonoGBScreen.ttf",
-   "sha256": "294ad0fcc597f93c555cb866bb827f38acd0479c0372c42b18bc0e93bd6434e4",
-   "license_spdx": "OFL-1.1-RFN",
-   "rfn": true,
-   "rfn_names": [
-    "霞鹜",
-    "霞鶩",
-    "落霞孤鹜",
-    "落霞孤鶩",
-    "LXGW"
-   ],
-   "copyright": "Copyright 2022-2026 LXGW (https://github.com/lxgw/LxgwWenKaiGB)",
-   "license_file": "licenses/OFL-1.1-LXGW.txt",
-   "checksum_source": "self-computed"
-  },
-  {
-   "family": "NotoSansSC",
-   "variant": "Variable",
-   "file": "NotoSansSC[wght].ttf",
-   "version": "a85815a42757630ce188fdad368c2dfc444d4773",
-   "upstream_url": "https://raw.githubusercontent.com/google/fonts/a85815a42757630ce188fdad368c2dfc444d4773/ofl/notosanssc/NotoSansSC%5Bwght%5D.ttf",
-   "sha256": "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da",
-   "license_spdx": "OFL-1.1-RFN",
-   "rfn": true,
-   "rfn_names": [
-    "Source"
-   ],
-   "copyright": "Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'",
-   "license_file": "licenses/OFL-1.1.txt",
-   "checksum_source": "self-computed"
-  },
-  {
-   "family": "NotoSerifSC",
-   "variant": "Variable",
-   "file": "NotoSerifSC[wght].ttf",
-   "version": "8b0a1d0f5983c89bc2b93f1b5fb55f9e252744b5",
-   "upstream_url": "https://raw.githubusercontent.com/google/fonts/8b0a1d0f5983c89bc2b93f1b5fb55f9e252744b5/ofl/notoserifsc/NotoSerifSC%5Bwght%5D.ttf",
-   "sha256": "050080d9255a86808f2945bffac582b31ef32bc36411ce29563b4961670c66f9",
-   "license_spdx": "OFL-1.1-no-RFN",
-   "rfn": false,
-   "rfn_names": [],
-   "copyright": "Copyright 2012 Google Inc. All Rights Reserved.",
-   "license_file": "licenses/OFL-1.1.txt",
-   "checksum_source": "self-computed"
   }
  ]
 }
