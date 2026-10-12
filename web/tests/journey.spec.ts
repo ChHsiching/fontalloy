@@ -288,7 +288,7 @@ test("J11 Web 目标 — detection, picks, preset, live merge, report, download,
       await waitForCatalogReady(page);
     });
 
-    await step("J11.3 picks: JetBrains Mono row + Maple Mono NF-CN via the 等宽 chip", async () => {
+    await step("J11.3 picks: JetBrains Mono row + Maple Mono NF-CN via the variant chip", async () => {
       await pickFlagshipPair(page);
       await expect(
         page.locator(".topbar [data-role='synthesize']"),

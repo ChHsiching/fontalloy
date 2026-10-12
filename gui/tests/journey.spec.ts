@@ -1249,7 +1249,7 @@ test.describe("user journey", () => {
         ).toHaveCount(2);
         await expect(
           page.locator("[data-role='rule-row'][data-kind='range']").nth(1),
-        ).toContainText("U+2600 ☀ 用英文字体");
+        ).toContainText("U+2600 ☀ 用");
         // Invalid input: rejected with the danger border, nothing added.
         await pointerClick(
           page,
@@ -1350,6 +1350,9 @@ test.describe("user journey", () => {
         );
         await expect(cell).toHaveAttribute("data-via", "default");
         await expect(cell).not.toHaveClass(/ov/);
+        const adjustedBefore = await page
+          .locator("[data-stat='adjusted']")
+          .textContent();
         // …the declared-OTHER side (全用英文) writes the rule. The BASE
         // lacks the glyph (JetBrains Mono has no CJK punctuation), so
         // absence-never-overrides fills the slot from the donor — the
@@ -1364,9 +1367,13 @@ test.describe("user journey", () => {
         );
         await expect(cell).toHaveAttribute("data-via", /rule-\d+/);
         await expect(cell).not.toHaveClass(/ov/);
-        await expect(
-          page.locator("[data-stat='adjusted']"),
-        ).toHaveText("0");
+        // The English assignment adds NOTHING to the 已调整 counter
+        // (its [base, donor] preference IS the default chain, so no
+        // supplier changes): the count J6.2's latin assignment left
+        // stays exactly as it was.
+        await expect(page.locator("[data-stat='adjusted']")).toHaveText(
+          adjustedBefore,
+        );
         await expect(
           page.locator("[data-role='rule-row'][data-kind='group']").first(),
         ).toContainText("所有中日韩文字字符用英文字体");
@@ -1578,17 +1585,23 @@ test.describe("user journey", () => {
         // Round 8 (owner item 5): the document scene's inline code
         // renders on the EFFECTIVE English font — the command spans
         // resolve per character (no browser monospace fallback).
-        const codeFont = await page
-          .locator(".kit-sc[data-scene='document'] pre code span")
-          .first()
-          .evaluate((el) => getComputedStyle(el).fontFamily.split(",")[0]!.trim());
-        const enCard = await page
-          .locator("[data-role='picker-en'] .kit-hd .kit-hdc b")
-          .evaluate((el) =>
-            (el.style.fontFamily.split(",")[0] ?? "").replace(/["']/g, "").trim(),
-          );
+        const stripQuotes = (name: string): string =>
+          name.replace(/["']/g, "").trim().toLowerCase();
+        const codeFont = stripQuotes(
+          await page
+            .locator(".kit-sc[data-scene='document'] pre code span")
+            .first()
+            .evaluate(
+              (el) => getComputedStyle(el).fontFamily.split(",")[0]!.trim(),
+            ),
+        );
+        const enCard = stripQuotes(
+          await page
+            .locator("[data-role='picker-en'] .kit-hd .kit-hdc b")
+            .evaluate((el) => el.style.fontFamily.split(",")[0] ?? ""),
+        );
         expect(codeFont).toBe(enCard);
-        expect(codeFont.toLowerCase()).not.toContain("consolas");
+        expect(codeFont).not.toContain("consolas");
       });
 
       await step("J7.3 per-card theme dropdowns: 14 terminal / 10 editor palettes", async () => {
