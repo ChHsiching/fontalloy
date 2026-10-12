@@ -288,6 +288,10 @@ export class CatalogManager {
         // file the sidecar's --font-dir already scans. Null in browser
         // storage — the synthesize flow falls back to the listing match.
         path: this.deps.storage.absPath?.(`${dir}/${primary.file}`) ?? undefined,
+        // The catalog identity (round 6): the synthesize flow names the
+        // manifest family + variant in the recipe when the service can
+        // resolve it, instead of a bare file name.
+        catalog: { family: family.family, variant: family.variant ?? null },
       });
       if (opts.silent) {
         // The sweep collects these and patches the store once at the end.

@@ -22,7 +22,7 @@ import { synthStore } from "../service/state";
 import { buildWorkspaceDraft, connectService } from "../service/synthesize";
 import { buildCommand, recipeFileName, recipeYaml } from "../recipe/yaml";
 import { validateDraft } from "../recipe/validate";
-import type { Preset } from "../recipe/model";
+import type { FontSlot, Preset } from "../recipe/model";
 import presetsJson from "../data/presets.json";
 import catalogManifest from "../data/catalog.json";
 
@@ -33,7 +33,7 @@ const PRESETS = presetsJson.presets as Preset[];
  * on-disk path when it has one (Tauri catalog storage / file dialog),
  * else — for catalog families — the `fontalloy assets fetch` layout
  * hint seeded with the stored face's file name (the old builder's
- * convention: the user completes the exact face name they fetched).
+ * convention: the user completes the exact face they fetched).
  * Local browser files have no path: null (a stated validation problem,
  * never an invented one).
  */
@@ -51,17 +51,22 @@ function recipePathHint(font: LoadedFont | undefined): string | null {
  * The no-service draft from the workspace state: null only while a PICK
  * is missing; a picked font whose path cannot be resolved (a local
  * browser file) contributes an empty path so validation names it
- * precisely (缺少字体文件路径), never a silent gap.
+ * precisely (缺少字体文件路径), never a silent gap. The CLI panel stays
+ * path-based (round 6 ruling): a YAML someone runs by hand names files
+ * they can see, not a manifest they must fetch first — the catalog
+ * reference form is the connected service's contract.
  */
 function workspaceCliDraft(): ReturnType<typeof buildWorkspaceDraft> | null {
   const { fonts, selected } = store.get();
   const en = fonts.find((f) => f.cssFamily === selected.en);
   const cjk = fonts.find((f) => f.cssFamily === selected.cjk);
   if (!en || !cjk) return null;
-  return buildWorkspaceDraft({
-    en: recipePathHint(en) ?? "",
-    cjk: recipePathHint(cjk) ?? "",
+  const slot = (font: LoadedFont): FontSlot => ({
+    catalog: null,
+    path: recipePathHint(font) ?? "",
+    face: null,
   });
+  return buildWorkspaceDraft({ en: slot(en), cjk: slot(cjk) });
 }
 
 /* ---------------- the panel singleton ---------------- */
@@ -210,7 +215,11 @@ export function mountCliPanel(): void {
     // Without both picks there is no recipe at all: the YAML preview
     // stays empty and the problems state what is missing.
     const draft =
-      cachedDraft ?? buildWorkspaceDraft({ en: "", cjk: "" });
+      cachedDraft ??
+      buildWorkspaceDraft({
+        en: { catalog: null, path: "", face: null },
+        cjk: { catalog: null, path: "", face: null },
+      });
     yamlText = recipeYaml(draft);
     yamlPre.textContent = cachedDraft === null ? "" : yamlText;
     commandCode.textContent = buildCommand(draft);

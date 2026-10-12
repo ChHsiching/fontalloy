@@ -52,6 +52,17 @@ export const DEFAULT_SETTINGS: SynthesisSettings = {
 /** How a font face entered the registry (local file vs catalog download). */
 export type FontOrigin = "local" | "catalog";
 
+/**
+ * The catalog identity of a downloaded font (round 6): the manifest
+ * family + variant the recipe's catalog-family reference names. Only
+ * catalog-origin fonts carry it; local files resolve to paths.
+ */
+export interface FontCatalogIdentity {
+  family: string;
+  /** The manifest variant (null when the release metadata carried none). */
+  variant: string | null;
+}
+
 /** One font face registered through the FontFace(arrayBuffer) path. */
 export interface LoadedFont {
   /** CSS font-family key the face is registered under (the parsed family). */
@@ -69,6 +80,8 @@ export interface LoadedFont {
    * flow then resolves the path against the service's font listing.
    */
   path?: string;
+  /** The catalog identity (manifest family + variant), for catalog picks. */
+  catalog?: FontCatalogIdentity;
   /** Sorted covered codepoints from the cmap table. */
   codepoints: number[];
 }

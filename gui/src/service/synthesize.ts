@@ -9,13 +9,13 @@
  */
 
 import { store, type LoadedFont } from "../state";
-import { defaultDraft } from "../recipe/model";
+import { defaultDraft, type FontSlot } from "../recipe/model";
 import { recipeJson } from "../recipe/json";
 import { applySettingsToDraft, fileFaceSlots } from "../recipe/settings";
 import { applyRulesToDraft } from "../precedence/serialize";
 import { saveArtifact } from "../platform/artifacts";
 import { isTauri, readConfig, serveProbeAddress } from "../platform/config";
-import { ServeClient, type FaceDocument } from "./client";
+import { ServeClient, type CatalogDocument, type FaceDocument } from "./client";
 import {
   addBuild,
   patchBuild,
@@ -100,7 +100,14 @@ export async function connectService(): Promise<void> {
     // /health answered but /fonts failed: builds still work for fonts
     // with known paths; path resolution will report what it misses.
   }
-  patchService({ status: "connected", client, fontsIndex, error: undefined });
+  let catalogIndex = null;
+  try {
+    catalogIndex = await client.catalog();
+  } catch {
+    // Same tolerance: without the catalog index, catalog picks resolve
+    // through the path flow (the basename match against /fonts).
+  }
+  patchService({ status: "connected", client, fontsIndex, catalogIndex, error: undefined });
 }
 
 /** Basename of a path, Windows or POSIX separators. */
@@ -140,6 +147,20 @@ async function refreshFontsIndex(): Promise<void> {
   }
 }
 
+/** The /catalog document, fetching it once when the connect-time probe
+ *  did not land (round 6: catalog-family reference resolution). */
+async function ensureCatalogIndex(): Promise<CatalogDocument | null> {
+  const { client, catalogIndex } = synthStore.get().service;
+  if (catalogIndex !== null || client === null) return catalogIndex;
+  try {
+    const doc = await client.catalog();
+    patchService({ catalogIndex: doc });
+    return doc;
+  } catch {
+    return null;
+  }
+}
+
 async function resolveFontPathWithRefresh(
   font: LoadedFont,
 ): Promise<string | null> {
@@ -175,19 +196,19 @@ export function selectedPicks(): {
 }
 
 /**
- * The workspace's recipe draft for the given pick paths. `faces` is the
+ * The workspace's recipe draft for the given font slots. `faces` is the
  * service's /fonts index when one is connected (weight-slot selection);
  * empty degrades the weight selection to the default — normalization
  * needs no face data.
  */
 export function buildWorkspaceDraft(
-  paths: { en: string; cjk: string },
+  slots: { en: FontSlot; cjk: FontSlot },
   faces: readonly FaceDocument[] = [],
 ): ReturnType<typeof defaultDraft> {
   const { rules, settings, outputFamily } = store.get();
   const draft = defaultDraft();
-  draft.base = { catalog: null, path: paths.en, face: null };
-  draft.donors = [{ catalog: null, path: paths.cjk, face: null }];
+  draft.base = slots.en;
+  draft.donors = [slots.cjk];
   // The top bar's font-name field is the recipe's output family.
   draft.output.family = outputFamily || "ChHsich";
   // The SAME rule state the preview grid resolves (issue #18): the
@@ -195,14 +216,68 @@ export function buildWorkspaceDraft(
   applyRulesToDraft(draft, rules);
   // The synthesis settings (issue #19): baseline / CJK width land in
   // the normalization block, the weight merge mode in the weights
-  // selection (face data from the service's own /fonts index).
+  // selection (face data from the service's own /fonts index; a
+  // catalog-family reference has no listing entry, so the selection
+  // degrades to the default — nearest matching).
   applySettingsToDraft(
     draft,
     settings,
-    fileFaceSlots(faces, paths.en),
-    fileFaceSlots(faces, paths.cjk),
+    fileFaceSlots(faces, slots.en.catalog ? "" : slots.en.path),
+    fileFaceSlots(faces, slots.cjk.catalog ? "" : slots.cjk.path),
   );
   return draft;
+}
+
+/**
+ * The recipe slot for one picked font (round 6). Order matters:
+ *
+ * 1. The PATH form whenever the service's own /fonts listing can see
+ *    the file — the serve vouches for that path, and a bare path is
+ *    always buildable. (A serve started from a repository checkout
+ *    answers /catalog with the repo manifest whose artifacts are NOT
+ *    fetched; preferring the catalog form there would submit a
+ *    reference that dies with "not fetched" while a working path
+ *    exists.)
+ * 2. The CATALOG-FAMILY reference — `{family, variant}` naming what
+ *    the manifest pins — for catalog picks the listing CANNOT see (the
+ *    owner's serve over the fetched layout: assets/fonts/<Family>/
+ *    extracted faces, which the top-level /fonts scan skips). The BASE
+ *    is narrowed by a `pattern` (the exact picked face; a ttf output
+ *    carries one face and the artifact's zip holds several), the DONOR
+ *    references the whole variant (its faces pool into nearest weight
+ *    matching).
+ *
+ * Null when neither form resolves (the caller's inline failure).
+ */
+async function resolvePickSlot(
+  font: LoadedFont,
+  role: "base" | "donor",
+): Promise<FontSlot | null> {
+  const path = await resolveFontPathWithRefresh(font);
+  if (path !== null) return { catalog: null, path, face: null };
+  if (font.origin === "catalog" && font.catalog) {
+    const doc = await ensureCatalogIndex();
+    const family = doc?.families.find((f) => f.family === font.catalog!.family);
+    if (family && family.variants.length > 0) {
+      const variants = family.variants.map((v) => v.variant);
+      const variant =
+        font.catalog.variant !== null && variants.includes(font.catalog.variant)
+          ? font.catalog.variant
+          : variants.length === 1
+            ? variants[0]!
+            : null;
+      if (variant !== null) {
+        const slot: FontSlot = {
+          catalog: { family: font.catalog.family, variant },
+          path: "",
+          face: null,
+        };
+        if (role === "base") slot.pattern = font.fileName;
+        return slot;
+      }
+    }
+  }
+  return null;
 }
 
 function newBuildRow(family: string): BuildRow {
@@ -245,27 +320,29 @@ export async function synthesize(): Promise<void> {
     return;
   }
 
-  // Resolve both fonts to on-disk paths BEFORE submitting — the recipe
-  // names files, and a font the service cannot see must fail here, as
-  // inline text, instead of as a build that dies for a cryptic reason.
-  const enPath = await resolveFontPathWithRefresh(en);
-  const cjkPath = await resolveFontPathWithRefresh(cjk);
-  if (enPath === null) {
+  // Resolve both picks to recipe slots BEFORE submitting — catalog
+  // picks become catalog-family references the service resolves against
+  // its own manifest; everything else names an on-disk path, and a font
+  // the service cannot see must fail here, as inline text, instead of
+  // as a build that dies for a cryptic reason.
+  const enSlot = await resolvePickSlot(en, "base");
+  const cjkSlot = await resolvePickSlot(cjk, "donor");
+  if (enSlot === null) {
     fail(`无法定位字体文件路径：${en.fileName}（服务目录中不存在）。`);
     return;
   }
-  if (cjkPath === null) {
+  if (cjkSlot === null) {
     fail(`无法定位字体文件路径：${cjk.fileName}（服务目录中不存在）。`);
     return;
   }
 
   // The SAME draft the no-service CLI panel builds (issue #22's
-  // absorption): base + donor paths, the rail's rule state, the
+  // absorption): the two font slots, the rail's rule state, the
   // settings — one recipe model for the service and the YAML alike.
   const faces = synthStore.get().service.fontsIndex?.families.flatMap(
     (family) => family.faces,
   ) ?? [];
-  const draft = buildWorkspaceDraft({ en: enPath, cjk: cjkPath }, faces);
+  const draft = buildWorkspaceDraft({ en: enSlot, cjk: cjkSlot }, faces);
 
   const client = service.client;
   let submitted;

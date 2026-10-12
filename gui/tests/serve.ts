@@ -102,14 +102,26 @@ function defaultServeBin(): string {
 }
 
 /** Spawn a real `fontalloy serve` over `fontsDir` (ephemeral port). */
-export function spawnServeOverFonts(fontsDir: string): Promise<{
+export function spawnServeOverFonts(
+  fontsDir: string,
+  extraArgs: readonly string[] = [],
+): Promise<{
   url: string;
   dispose: () => Promise<void>;
 }> {
   const bin = process.env.FONTALLOY_SERVE_BIN ?? defaultServeBin();
   const child: ChildProcess = spawn(
     bin,
-    ["serve", "--port", "0", "--allow-origin", devOrigin, "--font-dir", fontsDir],
+    [
+      "serve",
+      "--port",
+      "0",
+      "--allow-origin",
+      devOrigin,
+      "--font-dir",
+      fontsDir,
+      ...extraArgs,
+    ],
     { cwd: repoRoot, stdio: ["ignore", "pipe", "pipe"] },
   );
   const url = new Promise<string>((resolvePromise, rejectPromise) => {

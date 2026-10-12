@@ -219,12 +219,40 @@ function resolveFamilyFile(family, available) {
 }
 
 /**
- * @typedef {{family: string, zip: string, zipSha256: string, zipBytes: Buffer,
- *            file: string, fileSha256: string}} CatalogFamily
+ * @typedef {{family: string, variant: string | undefined, zip: string, zipSha256: string,
+ *            zipBytes: Buffer, file: string, fileSha256: string}} CatalogFamily
  */
 
 /** @type {Promise<{families: CatalogFamily[], misses: string[]}> | null} */
 let catalogPromise = null;
+
+/**
+ * The manifest VARIANT a served file belongs to (round 6): one-entry
+ * families answer directly; multi-variant families (MapleMono NF vs
+ * NF-CN) disambiguate by matching the variant zip's distinguishing
+ * tokens against the served file name — MapleMonoCN-Regular.ttf
+ * carries the CN token, so it is the NF-CN variant.
+ */
+function chooseVariant(family, file, manifest) {
+  const variants = manifest.families.filter((e) => e.family === family);
+  if (variants.length === 0) return undefined;
+  if (variants.length === 1) return variants[0].variant;
+  const lower = file.toLowerCase();
+  let best = variants[0];
+  let bestScore = -1;
+  for (const entry of variants) {
+    const stem = entry.file.replace(/\.[^.]+$/, "");
+    const tokens = stem
+      .split(/[-_\s]+/)
+      .filter((t) => t && t.toLowerCase() !== family.toLowerCase());
+    const score = tokens.filter((t) => lower.includes(t.toLowerCase())).length;
+    if (score > bestScore) {
+      bestScore = score;
+      best = entry;
+    }
+  }
+  return best.variant;
+}
 
 function buildCatalog() {
   catalogPromise ??= (async () => {
@@ -270,6 +298,7 @@ function buildCatalog() {
       const zipBytes = makeZip([{ name: file, data }]);
       families.push({
         family: entry.family,
+        variant: chooseVariant(entry.family, file, manifest),
         zip: `${entry.family.replace(/\s+/g, "")}.zip`,
         zipSha256: sha256hex(zipBytes),
         zipBytes,
@@ -311,6 +340,7 @@ function releaseDocument(families, baseUrl) {
       origins: [{ id: "dev", base_url: baseUrl }],
       families: families.map((f) => ({
         family: f.family,
+        ...(f.variant === undefined ? {} : { variant: f.variant }),
         zip: f.zip,
         sha256: f.zipSha256,
         files: [{ file: f.file, sha256: f.fileSha256 }],

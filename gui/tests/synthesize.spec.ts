@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { writeFile, copyFile, mkdtemp } from "node:fs/promises";
+import { writeFile, copyFile, mkdtemp, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve, basename } from "node:path";
 import { readFileSync } from "node:fs";
@@ -9,7 +9,7 @@ import {
   startServeFixture,
   type ServeFixture,
 } from "./serve";
-import { SimCatalog, injectCatalogConfig } from "./catalog-fixtures";
+import { SimCatalog, injectCatalogConfig, makeZip, sha256hex } from "./catalog-fixtures";
 import {
   assertNoJsErrors,
   collectJsErrors,
@@ -123,10 +123,12 @@ test.describe("sidecar synthesize", () => {
       await pointerClick(page, synthesize);
 
       // The build panel appears with a visible stage, then completes.
+      // Round 6: stage names follow report-copy §1 (规划字重 / 移植字形 /
+      // 改写名称表 …), and a running build with no stage yet says 正在合成.
       const panel = page.locator('[data-testid="build-panel"]');
       await expect(panel).toBeVisible();
       await expect(panel.locator("[data-build-stage]").first()).toHaveText(
-        /(读取字体|规划槽位|解析规则|嫁接字形|重写表|保存|生成报告|完成|排队中)/,
+        /(读取字体|规划字重|解析规则|移植字形|改写名称表|保存输出|生成报告|完成|排队中|正在合成)/,
       );
       await expect(panel.locator("[data-build-stage]").first()).toHaveText(
         "完成",
@@ -136,6 +138,30 @@ test.describe("sidecar synthesize", () => {
       // The artifact was saved and states where, as page text.
       await expect(panel).toContainText("已保存");
       expect(saved.length).toBe(1);
+
+      // Round 6: at save EVERY stepper step is lit-solid (never
+      // all-gray) — the model is upcoming faint / current active /
+      // done lit-solid.
+      const stepStates = await panel
+        .locator(".build-step")
+        .evaluateAll((steps) =>
+          steps.map((step) => ({
+            passed: step.classList.contains("is-passed"),
+            current: step.classList.contains("is-current"),
+            failed: step.classList.contains("is-failed"),
+          })),
+        );
+      expect(stepStates.length).toBe(7);
+      for (const state of stepStates) {
+        expect(state.passed).toBe(true);
+        expect(state.current).toBe(false);
+        expect(state.failed).toBe(false);
+      }
+      // The ONE current-stage line is gone once settled (it shows only
+      // while a stage is actually current).
+      await expect(
+        panel.locator("[data-build-stage-line]").first(),
+      ).toBeHidden();
 
       // The saved artifact parses as a font: sfnt magic, the output
       // family, and the merged coverage read back from its cmap.
@@ -148,18 +174,19 @@ test.describe("sidecar synthesize", () => {
       expect(meta.family).toBe("ChHsich");
       expect(meta.codepoints.length).toBe(30_026);
 
-      // The verification report renders from the machine JSON.
+      // The verification report renders from the machine JSON, under
+      // the report-copy §3.1 labels (round 6).
       await expect(panel).toContainText("验证报告");
-      await expect(panel).toContainText("码位总数");
+      await expect(panel).toContainText("参与合并的码位");
       await expect(panel).toContainText("30,026");
-      await expect(panel).toContainText("来自基底");
+      await expect(panel).toContainText("基底提供");
       await expect(panel).toContainText("26");
-      await expect(panel).toContainText("来自供体");
+      await expect(panel).toContainText("供体补充");
       await expect(panel).toContainText("30,000");
       // v2 sections: coverage scope and before/after metrics render too.
-      await expect(panel).toContainText("覆盖范围");
-      await expect(panel).toContainText("度量对比");
-      await expect(panel).toContainText("行高未触动");
+      await expect(panel).toContainText("覆盖检查");
+      await expect(panel).toContainText("字体尺寸对比");
+      await expect(panel).toContainText("行高保持不变");
       await expect(panel).toContainText("fontalloy/verification-report");
 
       // An open-overlay screenshot of the completed build: the panel with
@@ -325,8 +352,7 @@ test.describe("sidecar synthesize", () => {
 
   test("the minimal path: two REAL catalog fonts picked, no other settings, builds and saves", async ({
     page,
-  }) => {
-    // Real-shape fonts take a real while to graft (~40s on this
+  }) => {    // Real-shape fonts take a real while to graft (~40s on this
     // machine); the suite's 30s default cannot cover the full merge.
     test.setTimeout(180_000);
     // Round 5, owner item 7 — the flagship flow, exactly as an owner
@@ -421,7 +447,6 @@ test.describe("sidecar synthesize", () => {
       await pointerClick(page, synthesize);
 
       const panel = page.locator('[data-testid="build-panel"]');
-      await expect(panel).toBeVisible();
       await expect(
         panel.locator("[data-build-stage]").first(),
       ).toHaveText("完成", { timeout: 60_000 });
@@ -438,6 +463,192 @@ test.describe("sidecar synthesize", () => {
       expect(meta.family).toBe("ChHsich");
       // JetBrains Mono NF (~4.4k+) and Maple Mono CN hanzi both present.
       expect(meta.codepoints.length).toBeGreaterThan(6_000);
+      expect(meta.codepoints).toContain(0x4e2d); // 中
+      expect(meta.codepoints).toContain(0xe0b0); // a Nerd Font powerline glyph
+    } finally {
+      await service.dispose();
+    }
+  });
+
+  // Round 6, owner item 5 — the P0: catalog-picked fonts must submit
+  // CATALOG-FAMILY references, not bare file names. The owner's serve
+  // (:7777) runs with a manifest over the FETCHED catalog layout
+  // (assets/fonts/<Family>/<faces>.ttf + the pinned zips); its /fonts
+  // top-level scan does not list the extracted faces, so the old
+  // basename matching died with 无法定位字体文件路径. This test builds
+  // exactly that layout and proves the flow green end to end.
+  test("catalog picks submit catalog-family references against a manifest serve", async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    const real = realCatalogFontPaths();
+
+    // The owner's layout: assets/fonts.manifest.json + LICENSE +
+    // per-variant zips and their extracted faces beside them.
+    const root = await mkdtemp(resolve(tmpdir(), "fontalloy-catalogref-"));
+    const assetsDir = resolve(root, "assets");
+    const fontsDir = resolve(assetsDir, "fonts");
+    await mkdir(resolve(fontsDir, "JetBrainsMono"), { recursive: true });
+    await mkdir(resolve(fontsDir, "MapleMono-NF-CN"), { recursive: true });
+    const baseFace = "JetBrainsMonoNerdFont-Regular.ttf";
+    const donorFace = "MapleMono-NF-CN-Regular.ttf";
+    await copyFile(real.base, resolve(fontsDir, "JetBrainsMono", baseFace));
+    await copyFile(real.donor, resolve(fontsDir, "MapleMono-NF-CN", donorFace));
+    const baseBytes = readFileSync(real.base);
+    const donorBytes = readFileSync(real.donor);
+    const baseZip = makeZip([{ name: baseFace, data: baseBytes }]);
+    const donorZip = makeZip([{ name: donorFace, data: donorBytes }]);
+    await writeFile(resolve(fontsDir, "JetBrainsMono.zip"), baseZip);
+    await writeFile(resolve(fontsDir, "MapleMono-NF-CN.zip"), donorZip);
+    await writeFile(
+      resolve(assetsDir, "LICENSE.txt"),
+      "Test-only license placeholder.\n",
+    );
+    const entry = (family: string, variant: string, file: string, sha: string) => ({
+      family,
+      variant,
+      file,
+      version: "v3.5.1",
+      upstream_url: "file://localhost/catalog",
+      sha256: sha,
+      license_spdx: "OFL-1.1-no-RFN",
+      rfn: false,
+      rfn_names: [],
+      copyright: null,
+      license_file: "LICENSE.txt",
+      checksum_source: "self-computed",
+    });
+    await writeFile(
+      resolve(assetsDir, "fonts.manifest.json"),
+      JSON.stringify(
+        {
+          schema: "fontalloy/font-catalog@v1",
+          families: [
+            entry("JetBrainsMono", "Nerd Font", "JetBrainsMono.zip", sha256hex(baseZip)),
+            entry("MapleMono", "NF-CN", "MapleMono-NF-CN.zip", sha256hex(donorZip)),
+          ],
+        },
+        null,
+        1,
+      ),
+    );
+    const service = await spawnServeOverFonts(fontsDir, [
+      "--manifest",
+      resolve(assetsDir, "fonts.manifest.json"),
+    ]);
+
+    const saved: string[] = [];
+    const saveDir = await mkdtemp(resolve(tmpdir(), "fontalloy-save-"));
+    try {
+      // The catalog release names the manifest variants (round 6), so
+      // the GUI can emit {family, variant} references.
+      const sim = await SimCatalog.create([
+        { family: "JetBrainsMono", variant: "Nerd Font", file: baseFace, fontPath: real.base },
+        { family: "MapleMono", variant: "NF-CN", file: donorFace, fontPath: real.donor },
+      ]);
+      await sim.install(page);
+      await injectCatalogConfig(page);
+      const serveUrl = await service.url;
+      await page.addInitScript((serve: string) => {
+        const config = window as unknown as {
+          __FONTALLOY_CONFIG__: Record<string, unknown>;
+        };
+        config.__FONTALLOY_CONFIG__.serveUrl = serve;
+      }, serveUrl);
+      await page.route("https://api.github.com/repos/**", (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ stargazers_count: 1234 }),
+        }),
+      );
+      await page.exposeFunction(
+        "__fontalloyTestSave",
+        async (name: string, bytesB64: string): Promise<string | null> => {
+          const bytes = Buffer.from(bytesB64, "base64");
+          const target = resolve(saveDir, name);
+          await writeFile(target, bytes);
+          saved.push(target);
+          return target;
+        },
+      );
+      await page.addInitScript(() => {
+        const config = window as unknown as {
+          __FONTALLOY_CONFIG__: Record<string, unknown>;
+        };
+        config.__FONTALLOY_CONFIG__.saveArtifact = async (
+          name: string,
+          bytes: Uint8Array,
+        ): Promise<{ saved: boolean; path: string | null }> => {
+          const b64 = btoa(
+            Array.from(bytes, (b) => String.fromCharCode(b)).join(""),
+          );
+          const path = await window.__fontalloyTestSave(name, b64);
+          return path === null ? { saved: false, path: null } : { saved: true, path };
+        };
+      });
+      collectJsErrors(page, jsErrors);
+      await page.goto("/");
+      await waitForFontsReady(page);
+      await expect(page.locator(".catalog-screen")).toBeHidden({
+        timeout: 30_000,
+      });
+
+      await pointerClick(page, page.locator('[data-role="picker-en"] .kit-hd'));
+      await pointerClick(
+        page,
+        page
+          .locator('[data-picker-popup="en"] .kit-fp', { hasText: "JetBrains Mono" })
+          .first(),
+      );
+      await pointerClick(page, page.locator('[data-role="picker-cjk"] .kit-hd'));
+      await pointerClick(
+        page,
+        page
+          .locator('[data-picker-popup="cjk"] .kit-fp', { hasText: "Maple Mono CN" })
+          .first(),
+      );
+      await waitForFontsReady(page);
+
+      // The submission body names the catalog families — the base
+      // narrowed to the picked face, the donor the whole variant.
+      const bodyPromise = page
+        .waitForRequest(
+          (request) =>
+            request.method() === "POST" &&
+            new URL(request.url()).pathname.endsWith("/builds"),
+        )
+        .then((request) => request.postDataJSON() as Record<string, unknown>);
+      const synthesize = page.locator(".topbar [data-role='synthesize']");
+      await expect(synthesize).toHaveAttribute("aria-disabled", "false");
+      await pointerClick(page, synthesize);
+      const body = await bodyPromise;
+      expect(body.base).toEqual({
+        family: "JetBrainsMono",
+        variant: "Nerd Font",
+        pattern: baseFace,
+      });
+      expect(body.donors).toEqual([
+        { family: "MapleMono", variant: "NF-CN" },
+      ]);
+
+      const panel = page.locator('[data-testid="build-panel"]');
+      await expect(panel).toBeVisible();
+      await expect(
+        panel.locator("[data-build-stage]").first(),
+      ).toHaveText("完成", { timeout: 120_000 });
+      await expect(panel).toContainText("已保存");
+      expect(saved.length).toBe(1);
+
+      // The saved artifact parses as the merged font (中 + a Nerd Font
+      // powerline glyph — the manifest-resolved sources both grafted).
+      const bytes = readFileSync(saved[0]!);
+      expect(bytes[0]).toBe(0x00);
+      expect(bytes[1]).toBe(0x01);
+      const meta = parseFontMeta(
+        new Uint8Array(bytes).buffer as ArrayBuffer,
+      );
+      expect(meta.family).toBe("ChHsich");
       expect(meta.codepoints).toContain(0x4e2d); // 中
       expect(meta.codepoints).toContain(0xe0b0); // a Nerd Font powerline glyph
     } finally {

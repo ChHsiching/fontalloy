@@ -258,13 +258,15 @@ test("the real catalog drives the panel end to end (YAML, download, copy)", asyn
   ]);
   // The boot-seeded zh_cn preset (the declared 文字范围 scope) first,
   // then the 日文 chip's ja preset, then the 按编码指定 rules (the range
-  // and the single codepoint).
+  // and the single codepoint). Round 6: side assignments carry the
+  // [side, other] preference lists — "用X字体" means X first, the other
+  // font filling what X lacks.
   expect(recipe.rules).toEqual([
     { set: "zh_cn", fonts: ["base", "donor-0"] },
     { set: "ja", fonts: ["base", "donor-0"] },
-    { range: "0x2100-0x214F", fonts: ["base"] },
+    { range: "0x2100-0x214F", fonts: ["base", "donor-0"] },
     // 留空=单个: a one-codepoint range (the popup's single form).
-    { range: "0x4E2D-0x4E2D", fonts: ["base"] },
+    { range: "0x4E2D-0x4E2D", fonts: ["base", "donor-0"] },
   ]);
   expect(recipe.normalization).toEqual({
     mode: "optical",

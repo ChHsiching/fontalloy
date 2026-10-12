@@ -40,6 +40,14 @@ export interface ReleaseFamily {
   zip: string;
   sha256: string;
   files: ReleaseFile[];
+  /**
+   * The manifest VARIANT this family's zip carries (round 6), when the
+   * release metadata names it: the recipe's catalog-family reference
+   * needs it to disambiguate families with several variants (MapleMono
+   * NF vs NF-CN). Optional and additive — older documents carry none
+   * and consumers degrade (no catalog reference emission).
+   */
+  variant?: string;
 }
 
 export interface CatalogRelease {
@@ -141,7 +149,17 @@ function loadFamilies(raw: unknown): ReleaseFamily[] {
     }
     seenFamilies.add(family);
     seenZips.add(zip);
-    families.push({ family, zip, sha256: zipSha, files: loadFiles(entry.files, here) });
+    const variant =
+      entry.variant === undefined
+        ? undefined
+        : string(entry.variant, `${here} field 'variant'`);
+    families.push({
+      family,
+      zip,
+      sha256: zipSha,
+      files: loadFiles(entry.files, here),
+      ...(variant === undefined ? {} : { variant }),
+    });
   });
   return families;
 }

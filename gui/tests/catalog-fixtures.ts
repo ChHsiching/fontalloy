@@ -118,6 +118,12 @@ export function makeZip(entries: ZipEntryInput[]): Buffer {
 export interface SimFamilySpec {
   /** Metadata family display name (what the pickers list). */
   family: string;
+  /**
+   * The manifest variant (round 6): carried into the release document
+   * so the GUI can emit `{family, variant}` catalog references. A
+   * family with several variants REQUIRES one in the recipe.
+   */
+  variant?: string;
   /** Face file name inside the family zip. */
   file: string;
   /** Real host font binary backing the face (font binaries never enter git). */
@@ -128,6 +134,7 @@ export interface SimFamilySpec {
 
 export interface SimFamily {
   family: string;
+  variant?: string;
   zip: string;
   zipSha256: string;
   zipBytes: Buffer;
@@ -159,6 +166,7 @@ export class SimCatalog {
       ]);
       families.push({
         family: spec.family,
+        variant: spec.variant,
         zip: `${spec.family.replace(/\s+/g, "")}.zip`,
         zipSha256: sha256hex(zipBytes),
         zipBytes,
@@ -166,7 +174,8 @@ export class SimCatalog {
       });
     }
     // Mirrors the real schema (fontalloy/catalog-release@v1): ordered
-    // origins, then per-family zip + face checksums.
+    // origins, then per-family zip + face checksums. `variant` is the
+    // round-6 additive field (older documents carry none).
     const release = {
       schema: "fontalloy/catalog-release@v1",
       tag: "font-catalog-test",
@@ -176,6 +185,7 @@ export class SimCatalog {
       ],
       families: families.map((f) => ({
         family: f.family,
+        ...(f.variant === undefined ? {} : { variant: f.variant }),
         zip: f.zip,
         sha256: f.zipSha256,
         files: f.files.map((x) => ({ file: x.file, sha256: x.sha256 })),

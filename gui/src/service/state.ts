@@ -11,6 +11,7 @@
 
 import { createStore } from "../state";
 import type {
+  CatalogDocument,
   FontsDocument,
   ReportDocument,
   ServeClient,
@@ -35,6 +36,13 @@ export interface ServiceState {
   client: ServeClient | null;
   /** The /fonts listing captured at connect time (path resolution). */
   fontsIndex: FontsDocument | null;
+  /**
+   * The /catalog document (round 6): the manifest families the service
+   * can resolve catalog-family recipe references against. Null when no
+   * fetch has completed (a serve without a manifest answers an empty
+   * family list — catalog picks then resolve through the path flow).
+   */
+  catalogIndex: CatalogDocument | null;
 }
 
 export type BuildRowStatus =
@@ -75,6 +83,7 @@ export const synthStore = createStore<SynthesisState>({
     url: null,
     client: null,
     fontsIndex: null,
+    catalogIndex: null,
   },
   builds: [],
 });

@@ -1,5 +1,5 @@
 import { parseFontMeta } from "./sfnt";
-import { store, type LoadedFont } from "../state";
+import { store, type FontCatalogIdentity, type LoadedFont } from "../state";
 
 export interface LoadResult {
   font: LoadedFont;
@@ -21,6 +21,12 @@ export interface RegisterOptions {
    * layout; the Tauri file dialog). Recipes reference it verbatim.
    */
   path?: string;
+  /**
+   * The catalog identity (manifest family + variant, round 6): carried
+   * on the LoadedFont so the synthesize flow can emit a catalog-family
+   * recipe reference instead of a bare file name.
+   */
+  catalog?: FontCatalogIdentity;
   /**
    * When true the FontFace is added WITHOUT awaiting load(): the browser
    * lazily loads the face the first time something renders in it (the
@@ -70,6 +76,7 @@ export async function registerFontBytes(
     fileName: options.fileName,
     origin: options.origin,
     path: options.path,
+    catalog: options.catalog,
     codepoints: meta.codepoints,
   };
   if (!options.silent) {

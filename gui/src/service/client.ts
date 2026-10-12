@@ -37,6 +37,19 @@ export interface FontsDocument {
   skipped: string[];
 }
 
+/** One variant of a manifest family (`GET /catalog`). */
+export interface CatalogVariantDocument {
+  variant: string;
+  version?: string;
+  file: string;
+}
+
+/** `GET /catalog` — the manifest the service resolves catalog refs against. */
+export interface CatalogDocument {
+  manifest?: string;
+  families: Array<{ family: string; variants: CatalogVariantDocument[] }>;
+}
+
 /** `GET /builds/{id}` — the job document, the progress endpoint. */
 export interface BuildDocument {
   id: string;
@@ -161,6 +174,11 @@ export class ServeClient {
 
   fonts(): Promise<FontsDocument> {
     return this.getJson<FontsDocument>("/fonts");
+  }
+
+  /** The manifest's families (`/catalog`); an empty list without one. */
+  catalog(): Promise<CatalogDocument> {
+    return this.getJson<CatalogDocument>("/catalog");
   }
 
   build(id: string): Promise<BuildDocument> {

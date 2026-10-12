@@ -14,18 +14,6 @@
  * section.
  */
 
-/** One catalog entry as statically rendered at build time. */
-export interface CatalogEntry {
-  family: string;
-  variant: string;
-  version: string;
-  file: string;
-  /** Where `fontalloy assets fetch` unpacks this artifact. */
-  path_hint: string;
-  license_spdx: string;
-  rfn: boolean;
-}
-
 /** One fc-lang preset as statically rendered at build time. */
 export interface PresetSubBlock {
   name: string;
@@ -38,14 +26,37 @@ export interface Preset {
   sub_blocks: PresetSubBlock[];
 }
 
-/** A selected font (the base or one donor), catalog-backed but path-based. */
+/**
+ * A catalog-family reference (round 6): how a catalog-picked font
+ * enters a recipe — `{family, variant}` naming what the committed
+ * manifest pins, optionally narrowed by a bare-filename `pattern`
+ * (the picked face, for the base whose ttf output is single-face).
+ * Only local files emit paths.
+ */
+export interface CatalogRef {
+  family: string;
+  /** The manifest variant (omitted from the recipe when null). */
+  variant: string | null;
+}
+
+/** A selected font (the base or one donor): a path or a catalog family. */
 export interface FontSlot {
-  /** The catalog entry picked in the builder (display + provenance). */
-  catalog: CatalogEntry | null;
-  /** Recipe-relative font file path — what the YAML actually writes. */
+  /**
+   * The catalog identity when the pick came from the catalog (round 6):
+   * the recipe then names `{family, variant[, pattern]}` instead of a
+   * path — the service resolves it against its own manifest and the
+   * fetched, sha256-verified catalog.
+   */
+  catalog: CatalogRef | null;
+  /** Recipe-relative font file path — what local picks write. */
   path: string;
   /** TTC face index (`null` = not a collection reference). */
   face: number | null;
+  /**
+   * Bare-filename glob narrowing the catalog artifact (the picked
+   * face); meaningful only with `catalog`.
+   */
+  pattern?: string;
 }
 
 export type RuleTarget =
@@ -108,8 +119,19 @@ export interface RecipeDraft {
 export const DEFAULT_OPTICAL_RATIO = 1.23;
 export const DEFAULT_WIDTH_FACTOR = 2;
 
-/** The recipe font-reference string: `path` or the compact `path#face`. */
-export function fontRef(slot: FontSlot): string {
+/**
+ * The recipe font reference: a path string (`path` or the compact
+ * `path#face`), or the catalog-family mapping `{family, variant,
+ * pattern}` when the slot names a catalog pick (round 6) — the exact
+ * schema `fontalloy_core` parses for both forms.
+ */
+export function fontRef(slot: FontSlot): string | Record<string, unknown> {
+  if (slot.catalog !== null) {
+    const ref: Record<string, unknown> = { family: slot.catalog.family };
+    if (slot.catalog.variant !== null) ref.variant = slot.catalog.variant;
+    if (slot.pattern !== undefined) ref.pattern = slot.pattern;
+    return ref;
+  }
   return slot.face === null ? slot.path : `${slot.path}#${slot.face}`;
 }
 
@@ -143,14 +165,13 @@ export function availableRefs(draft: RecipeDraft): string[] {
 
 /** Human label for a font ref, for the rule editor rows. */
 export function refLabel(draft: RecipeDraft, ref: string): string {
+  const slotLabel = (slot: FontSlot | undefined): string | null =>
+    slot?.catalog
+      ? `${slot.catalog.family} ${slot.catalog.variant ?? ""}`.trim()
+      : null;
   if (ref === "base") {
-    return draft.base.catalog
-      ? `base · ${draft.base.catalog.family} ${draft.base.catalog.variant}`
-      : "base · 基底字体";
+    return `base · ${slotLabel(draft.base) ?? "基底字体"}`;
   }
   const index = Number(ref.slice("donor-".length));
-  const slot = draft.donors[index];
-  return slot?.catalog
-    ? `${ref} · ${slot.catalog.family} ${slot.catalog.variant}`
-    : `${ref} · 供体 ${index + 1}`;
+  return `${ref} · ${slotLabel(draft.donors[index]) ?? `供体 ${index + 1}`}`;
 }
