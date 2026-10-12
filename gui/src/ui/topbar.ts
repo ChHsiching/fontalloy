@@ -3,6 +3,7 @@ import { synthStore } from "../service/state";
 import { synthesize, synthesizeReady } from "../service/synthesize";
 import { mountTopBar, type TopBar } from "../kit/topBar";
 import { applyStoredThemePreference } from "../kit/theme";
+import { curatedFamilyName } from "./picker";
 import { openCliPanel } from "./noservice";
 import { mountWindowControls } from "./wincontrols";
 import { isTauri } from "../platform/config";
@@ -132,7 +133,9 @@ export function mountTopbar(root: HTMLElement): TopBar {
     const label = (key: string | null): string => {
       const font = fonts.find((f) => f.cssFamily === key);
       // Empty picks hide their tag (the kit's set() treats "" as absent).
-      return font ? font.family : "";
+      // Catalog picks render their CURATED display name — the same name
+      // the picker rows and rail cards carry, never the raw manifest id.
+      return font ? curatedFamilyName(font) : "";
     };
     topBar.setPair(label(selected.en), label(selected.cjk));
     // The service state and the pick pair both feed the enablement.

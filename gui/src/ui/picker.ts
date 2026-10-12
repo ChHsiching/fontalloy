@@ -2,6 +2,7 @@ import {
   store,
   type CatalogFamilyEntry,
   type CatalogState,
+  type LoadedFont,
 } from "../state";
 import { registerFontBytes } from "../fonts/registry";
 import { getDefaultManager } from "../catalog/manager";
@@ -163,6 +164,21 @@ function familyMeta(family: string): FontMeta | undefined {
   const stars = starsFor(family);
   if (base === undefined && stars === undefined) return undefined;
   return { license: base?.license, stars, trait: base?.trait };
+}
+
+/**
+ * The user-facing name of a loaded font: the CURATED display name for
+ * catalog families (the manifest id MapleMono is a storage key, never
+ * UI copy — the pickers' rows and rail cards already render the curated
+ * "Maple Mono CN"), the parsed name-table family otherwise (local
+ * files). The top bar's pair tags are the display consumer.
+ */
+export function curatedFamilyName(font: LoadedFont): string {
+  const catalogFamily = font.catalog?.family;
+  return (
+    (catalogFamily !== undefined ? CURATED_META[catalogFamily]?.name : undefined) ??
+    font.family
+  );
 }
 
 /** Split a chip id back into its axis and value. */
