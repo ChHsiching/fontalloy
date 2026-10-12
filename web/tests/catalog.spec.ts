@@ -107,7 +107,11 @@ test("the real catalog lists real families with real meta", async ({ page }) => 
     expect.stringContaining("LXGW WenKai"),
     expect.stringContaining("Noto Sans SC"),
   ]);
-  expect(cjkTexts.filter((row) => row.includes("LXGW WenKai"))).toHaveLength(1);
+  // Exactly ONE WenKai GROUP row: the TC families are their own rows,
+  // so match the row whose NAME is exactly the group base.
+  expect(
+    cjkTexts.filter((row) => row.startsWith("LXGW WenKai") && !row.startsWith("LXGW WenKai ")),
+  ).toHaveLength(1);
   const maple = cjk.locator(".kit-fp", { hasText: "29.2k" });
   await expect(maple).toContainText("Maple Mono");
   await expect(maple).toContainText("圆角等宽");
@@ -143,7 +147,7 @@ test("a catalog family verifies, becomes pickable, and self-renders", async ({
   // The first family in release order verifies quickly; picking it
   // loads the REAL font (its face registers through the storage path)
   // and the card renders the family name in its own typeface.
-  await pickCatalogFamily(page, "en", "0xProto", 240_000);
+  await pickCatalogFamily(page, "en", "0xProto", 240_000, "0xProto Nerd Font");
   const name = page.locator('[data-role="picker-en"] .kit-hd b');
   // Round 9: the card reads the face's own name-table string.
   await expect(name).toHaveText("0xProto Nerd Font");
