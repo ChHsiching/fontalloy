@@ -39,45 +39,73 @@ export type AxisValue = string;
 /** The `axes` object one manifest entry carries (all keys optional). */
 export type Axes = Partial<Record<AxisId, AxisValue>>;
 
-/** The chip label vocabulary (UI copy is Chinese by convention). */
+/**
+ * The chip label vocabulary (round 7 redesign, owner item 2 — "看不懂"):
+ * full Chinese terms only, real words per the report-copy style
+ * (`fontalloy-notes/report-copy.md` §4). No raw axis ids ever render;
+ * the only Latin that may appear is vendor casing the community
+ * already uses (NF, GB, Term, Fixed, Light/Medium — §4.9).
+ */
 const CHIP_LABELS: Record<string, string> = {
   // icons (plain is the implicit default; it labels when contrasting)
   "icons:plain": "无图标",
-  "icons:nf": "NF图标",
-  "icons:nf-mono": "NF等宽",
-  "icons:nf-propo": "NF比例",
+  "icons:nf": "NF 图标",
+  "icons:nf-mono": "NF 图标（等宽）",
+  "icons:nf-propo": "NF 图标（比例）",
   // ligature
   "ligature:liga": "连字",
   "ligature:nl": "无连字",
-  // cjk_width
+  // cjk_width（中文字符宽度）
   "cjk_width:prop": "比例",
   "cjk_width:mono": "等宽",
   "cjk_width:hw": "半宽",
-  "cjk_width:term": "Term",
-  "cjk_width:fixed": "Fixed",
-  // region
+  "cjk_width:term": "Term（终端）",
+  "cjk_width:fixed": "Fixed（定宽）",
+  // region（简繁地区）
   "region:SC": "简体中文",
   "region:TC": "繁体中文",
   "region:JP": "日文",
   "region:KR": "韩文",
   "region:HK": "香港",
-  // charset
+  // charset（收录字库）
   "charset:full": "全集",
-  "charset:GB": "GB",
-  "charset:Lite": "Lite",
-  // rendering
+  "charset:GB": "GB 字库",
+  "charset:Lite": "Lite 字库",
+  // rendering（屏显优化）
   "rendering:print": "印刷",
-  "rendering:screen": "屏显",
-  // weight (values are the standard names)
+  "rendering:screen": "屏显优化",
+  // weight (values are the vendor's standard names, §4.9)
+  "weight:Thin": "Thin",
+  "weight:ExtraLight": "ExtraLight",
   "weight:Light": "Light",
+  "weight:Regular": "Regular",
   "weight:Medium": "Medium",
+  "weight:SemiBold": "SemiBold",
   "weight:Bold": "Bold",
+  "weight:ExtraBold": "ExtraBold",
+  "weight:Black": "Black",
 };
 
 /** Chip label for one axis value (axis defaults fall back to the value). */
 export function chipLabel(axis: AxisId, value: AxisValue): string {
   return CHIP_LABELS[`${axis}:${value}`] ?? value;
 }
+
+/**
+ * The picker-level variant help (round 7): what a variant IS, one
+ * sentence, plus one row per axis the chips can carry. The terms are
+ * the report-copy vocabulary (图标 / 连字 / 宽度 / 地区 / 字库 / 用途 /
+ * 字重) — never the axis ids.
+ */
+export const AXIS_HELP_ROWS: ReadonlyArray<readonly [string, string]> = [
+  ["图标", "是否内置 Nerd Font 图标（NF 图标）"],
+  ["连字", "多个字符连写成一个字形"],
+  ["宽度", "中文字符按等宽还是比例占位"],
+  ["地区", "收录简体、繁体或日韩的字形"],
+  ["字库", "收录字符的范围（全集、GB 字库）"],
+  ["用途", "为屏幕显示或印刷优化"],
+  ["字重", "笔画的粗细（Light、Regular、Medium…）"],
+];
 
 /**
  * The axes that render as chips ONLY when the family carries more than

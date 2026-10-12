@@ -28,6 +28,14 @@ export const CJK_FONTS: readonly PickerFont[] = [
     name: "Maple Mono CN",
     family: "Microsoft YaHei",
     meta: { stars: 29170, license: "OFL-1.1", trait: "圆角等宽" },
+    // Round-7 variant chips: the axis's default value carries the dim
+    // 默认 marker (def), an explicitly picked one the accent (on).
+    chips: [
+      { id: "cjk_width:prop", label: "比例", def: true },
+      { id: "cjk_width:mono", label: "等宽" },
+      { id: "icons:plain", label: "无图标", def: true },
+      { id: "icons:nf", label: "NF 图标" },
+    ],
   },
   {
     id: "lxgw",

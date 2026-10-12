@@ -90,7 +90,15 @@ export function mountHelpPopover(props: HelpPopoverProps): HelpPopover {
     setOpen(false);
   });
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && open) setOpen(false);
+    if (e.key === "Escape" && open) {
+      // One layer per press (round 7): this Escape closes the help
+      // ONLY. stopImmediatePropagation keeps later-registered handlers
+      // (the host surface underneath — e.g. an open picker popup) from
+      // also closing; earlier-registered ones have already had their
+      // turn and closed their own layer.
+      e.stopImmediatePropagation();
+      setOpen(false);
+    }
   });
 
   return {

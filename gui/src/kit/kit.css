@@ -718,10 +718,18 @@
 }
 
 /* Search header — outside the scroll, sticky at the popup's top. */
-.kit-pk .kit-q {
-  flex: none;
-  width: calc(100% - 16px);
+/* The search header row (round 7): the field plus, when the consumer
+ * supplies one, the picker-level variant ? anchor at its right. */
+.kit-pk .kit-qrow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin: 8px 8px 6px;
+}
+
+.kit-pk .kit-q {
+  flex: 1;
+  min-width: 0;
   background: var(--page);
   border: 1px solid var(--ln2);
   border-radius: 8px;
@@ -867,10 +875,13 @@
   height: 14px;
 }
 
-/* Variant chips (round 7): the typed axis values under the row's meta
- * line. Span-buttons (the row itself is the <button>); the accent tint
- * marks the selected cut of each axis, grey an unfetched or impossible
- * combination. Small like the meta line (10px), one flex-wrap row. */
+/* Variant chips (round 7, redesigned same round — owner item 2
+ * "看不懂"): the typed axis values under the row's meta line, full
+ * Chinese labels. Span-buttons (the row itself is the <button>); the
+ * accent tint marks the value the USER picked, the dim 默认 marker the
+ * axis's default (家族默认 — never a pressed look), grey an unfetched
+ * or impossible combination. Small like the meta line (10px), one
+ * flex-wrap row. */
 .kit-fp .kit-fp-chips {
   display: flex;
   flex-wrap: wrap;
@@ -903,6 +914,22 @@
   border-color: var(--ac);
   background: var(--acsoft);
   color: var(--ink);
+}
+
+/* The axis's default value: dashed and quiet — the unselected state
+ * reads as 家族默认, visibly distinct from a picked (accent) chip. */
+.kit-vchip.def {
+  border-style: dashed;
+}
+
+.kit-vchip .kit-vchip-def {
+  margin-left: 4px;
+  font-size: 9px;
+  color: var(--ink3);
+}
+
+.kit-vchip.on .kit-vchip-def {
+  color: var(--ac);
 }
 
 .kit-vchip.off {

@@ -134,11 +134,27 @@ const section = (title: string): HTMLElement => {
 const enHost = section("英文字体");
 const cjkHost = section("中文字体");
 
+/** The round-7 picker-level variant help (demo presence). */
+const PICKER_HELP = {
+  title: "变体是什么",
+  buttonLabel: "变体是什么",
+  build: () => {
+    const body = document.createElement("div");
+    const p = document.createElement("p");
+    p.className = "kit-sub";
+    p.textContent =
+      "同一款字体常有多个发行版本，称为变体；点击字体行下方的标签即可切换。带「默认」的是家族默认。";
+    body.append(p);
+    return body;
+  },
+};
+
 const pickerEn: PickerPopup = mountPickerPopup(enHost, {
   role: "en",
   fonts: EN_FONTS,
   selectedId: state.enId,
   footer: { label: "加载本地字体文件", onClick: () => (live.textContent = "演示环境未接入文件选择") },
+  help: PICKER_HELP,
   onPick: (id) => {
     state.enId = id;
     topBar.setPair(enName(), cjkName());
@@ -152,23 +168,69 @@ const pickerEn: PickerPopup = mountPickerPopup(enHost, {
   },
 });
 
+/** The Maple row's live chip selection (axis → explicit value). */
+const chipState = new Map<string, string>();
+const MAPLE_CHIPS: Array<{ axis: string; id: string; label: string }> = [
+  { axis: "cjk_width", id: "cjk_width:prop", label: "比例" },
+  { axis: "cjk_width", id: "cjk_width:mono", label: "等宽" },
+  { axis: "icons", id: "icons:plain", label: "无图标" },
+  { axis: "icons", id: "icons:nf", label: "NF 图标" },
+];
+
+/** CJK_FONTS with the Maple chips recomputed from the live selection. */
+function cjkFonts() {
+  return CJK_FONTS.map((font) =>
+    font.id === "maple"
+      ? {
+          ...font,
+          chips: MAPLE_CHIPS.map(({ axis, id, label }, i) => ({
+            id,
+            label,
+            // values[0] of each axis is its default (prop / plain).
+            def: i % 2 === 0,
+            on: chipState.get(axis) === id,
+          })),
+        }
+      : font,
+  );
+}
+
 const pickerCjk: PickerPopup = mountPickerPopup(cjkHost, {
   role: "cjk",
-  fonts: CJK_FONTS,
+  fonts: cjkFonts(),
   selectedId: state.cjkId,
   footer: { label: "加载本地字体文件", onClick: () => (live.textContent = "演示环境未接入文件选择") },
+  help: PICKER_HELP,
   onPick: (id) => {
     state.cjkId = id;
     topBar.setPair(enName(), cjkName());
     pickerCjk.render({
       role: "cjk",
-      fonts: CJK_FONTS,
+      fonts: cjkFonts(),
       selectedId: state.cjkId,
       footer: { label: "加载本地字体文件", onClick: () => (live.textContent = "演示环境未接入文件选择") },
       onPick: (next) => pickerOnPickCjk(next),
+      onChip: onDemoChip,
     });
   },
+  onChip: onDemoChip,
 });
+
+/** A demo chip click: toggle that axis's explicit selection and re-render. */
+function onDemoChip(_rowId: string, chipId: string): void {
+  const chip = MAPLE_CHIPS.find((c) => c.id === chipId);
+  if (!chip) return;
+  if (chipState.get(chip.axis) === chip.id) chipState.delete(chip.axis);
+  else chipState.set(chip.axis, chip.id);
+  pickerCjk.render({
+    role: "cjk",
+    fonts: cjkFonts(),
+    selectedId: state.cjkId,
+    footer: { label: "加载本地字体文件", onClick: () => (live.textContent = "演示环境未接入文件选择") },
+    onPick: (next) => pickerOnPickCjk(next),
+    onChip: onDemoChip,
+  });
+}
 
 function pickerOnPickEn(id: string): void {
   state.enId = id;

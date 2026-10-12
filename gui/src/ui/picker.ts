@@ -8,6 +8,7 @@ import { registerFontBytes } from "../fonts/registry";
 import { getDefaultManager } from "../catalog/manager";
 import { starsFor, subscribeStars } from "../catalog/stars";
 import {
+  AXIS_HELP_ROWS,
   chipAxes,
   chipLabel,
   displayFamilies,
@@ -26,6 +27,7 @@ import {
   type PickerPopup,
   type PickerPopupProps,
 } from "../kit/pickerPopup";
+import { helpNote, workedTable } from "../kit/helpPopover";
 import type { FontMeta } from "../kit/metaLine";
 import catalogManifest from "../data/catalog.json";
 import curatedMeta from "../data/curated-meta.json";
@@ -189,11 +191,12 @@ function parseChipId(chipId: string): [AxisId | null, string] {
 }
 
 /**
- * The variant chips of one display row (round 7): every contrasting
- * axis value of the family, ON when selected, DISABLED when the value
- * cannot combine with the current selection (no such manifest entry) or
- * its member family is not fetched. The default value of each axis
- * carries no chip state — it is the row's plain cut.
+ * The variant chips of one display row (round 7, redesigned the same
+ * round): every contrasting axis value of the family, `on` ONLY when
+ * the user explicitly selected it, `def` on the axis's default value
+ * (the dim 默认 marker — 未选择变体时 = 家族默认), DISABLED when the
+ * value cannot combine with the current selection (no such manifest
+ * entry) or its member family is not fetched.
  */
 function rowChips(
   display: DisplayFamily,
@@ -202,7 +205,7 @@ function rowChips(
 ): PickerChip[] {
   const chips: PickerChip[] = [];
   for (const { axis, values } of chipAxes(display)) {
-    const active = selection[axis] ?? values[0]!;
+    const picked = selection[axis]; // explicit only — no implicit "on"
     for (const value of values) {
       const entry = resolveVariant(display, { ...selection, [axis]: value });
       if (entry === null) {
@@ -214,7 +217,8 @@ function rowChips(
       chips.push({
         id: `${axis}:${value}`,
         label: chipLabel(axis, value),
-        on: active === value,
+        on: picked === value,
+        def: values[0] === value,
         disabled: !verified,
       });
     }
@@ -471,6 +475,23 @@ export function mountPicker(
       note: catalogNote(catalog),
       error,
       footer: { label: "加载本地字体文件", onClick: () => void openLocalFlow() },
+      // The picker-level variant help (round 7 redesign): ONE ? for the
+      // whole popup — one sentence plus a row per axis — instead of
+      // per-row machinery the owner could not read.
+      help: {
+        title: "变体是什么",
+        buttonLabel: "变体是什么",
+        build: () => {
+          const body = document.createElement("div");
+          body.append(
+            helpNote(
+              "同一款字体常有多个发行版本，称为变体；点击字体行下方的标签即可切换。带「默认」的是家族默认。",
+            ),
+          );
+          body.append(workedTable(["变体", "含义"], AXIS_HELP_ROWS));
+          return body;
+        },
+      },
       onPick: (id) => {
         if (id.startsWith("cat:")) {
           const display = displays.find((d) => `cat:${d.id}` === id);

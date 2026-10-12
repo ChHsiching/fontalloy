@@ -28,6 +28,7 @@
  */
 
 import { icon } from "./icons";
+import { mountHelpPopover } from "./helpPopover";
 import { metaLine, type FontMeta } from "./metaLine";
 
 /** CSS font-family value, quoted safely for names with spaces/quotes. */
@@ -58,11 +59,14 @@ export interface PickerFont {
   note?: string;
   /**
    * Variant chips (round 7): the typed axis values under the row's
-   * meta line — NF图标 / 等宽 / 屏显 / GB / weights. A chip is a
+   * meta line — NF 图标 / 等宽 / 屏显优化 / 字库 / 字重. A chip is a
    * span-button (the row itself is the <button>; nested buttons are
    * invalid HTML); clicking it fires onChip instead of onPick. `on`
-   * marks the selected value of its axis, `disabled` an impossible
-   * combination or an unfetched member family.
+   * marks the value the USER explicitly selected, `def` the axis's
+   * DEFAULT value (rendered with a dim 默认 marker — the round-7
+   * redesign: an unselected axis reads as 家族默认, never as a pressed
+   * chip), `disabled` an impossible combination or an unfetched member
+   * family.
    */
   chips?: PickerChip[];
 }
@@ -72,7 +76,10 @@ export interface PickerChip {
   /** Stable key: `${axis}:${value}`. */
   id: string;
   label: string;
+  /** The user explicitly selected this value (accent). */
   on?: boolean;
+  /** This value is the axis's default (the dim 默认 marker). */
+  def?: boolean;
   disabled?: boolean;
 }
 
@@ -102,9 +109,26 @@ export interface PickerPopupProps {
   error?: string | null;
   /** Footer action (加载本地字体文件) — outside the scroll area. */
   footer?: { label: string; onClick(): void };
+  /**
+   * The picker-level variant help (round 7 redesign): when present, a
+   * single ? anchor rides the search header — one place per picker
+   * explaining what the rows' variant chips mean, instead of per-row
+   * machinery. Mounted once at mount; destroyed with the picker.
+   */
+  help?: PickerHelpProps;
   onPick(id: string): void;
   /** A variant chip was clicked (round 7); falls back to onPick. */
   onChip?(rowId: string, chipId: string): void;
+}
+
+/** The picker-level variant help's content (chrome is the kit's). */
+export interface PickerHelpProps {
+  /** Popover heading (h5) — e.g. 变体是什么. */
+  title: string;
+  /** aria-label for the circular ? button. */
+  buttonLabel: string;
+  /** Build the popover body (static content, built once). */
+  build(): HTMLElement;
 }
 
 export interface PickerPopup {
@@ -157,7 +181,11 @@ export function mountPickerPopup(
   popup.setAttribute("role", "listbox");
   popup.setAttribute("aria-label", "字体列表");
 
-  // Search header — outside the scroll area (a header, not a row).
+  // Search header — outside the scroll area (a header, not a row). The
+  // variant help's ? anchor (when props carry one) rides the same
+  // header row, to the field's right — one per picker, never per row.
+  const searchRow = document.createElement("div");
+  searchRow.className = "kit-qrow";
   const searchInput = document.createElement("input");
   searchInput.type = "search";
   searchInput.className = "kit-q";
@@ -169,7 +197,20 @@ export function mountPickerPopup(
     clearTimeout(debounce);
     debounce = setTimeout(() => renderRows(), 120);
   });
-  popup.appendChild(searchInput);
+  searchRow.appendChild(searchInput);
+  const variantHelp = initial.help
+    ? mountHelpPopover({
+        // Role-scoped: every picker (en + cjk) mounts its own help, and
+        // two body-level popups must never share one walker id.
+        id: `picker-variants-${initial.role}`,
+        title: initial.help.title,
+        buttonLabel: initial.help.buttonLabel,
+        width: 340,
+        build: initial.help.build,
+      })
+    : null;
+  if (variantHelp) searchRow.appendChild(variantHelp.anchor);
+  popup.appendChild(searchRow);
 
   // Inner scroll area — the only scrolling child.
   const scrollArea = document.createElement("div");
@@ -298,10 +339,23 @@ export function mountPickerPopup(
         chips.className = "kit-fp-chips";
         for (const chip of font.chips) {
           const el = document.createElement("span");
-          el.className = "kit-vchip" + (chip.on ? " on" : "") + (chip.disabled ? " off" : "");
+          el.className =
+            "kit-vchip" +
+            (chip.on ? " on" : "") +
+            (chip.def && !chip.on ? " def" : "") +
+            (chip.disabled ? " off" : "");
           el.dataset.chip = chip.id;
           el.setAttribute("role", "button");
           el.textContent = chip.label;
+          // The axis's default value carries the dim 默认 marker — the
+          // unselected state reads as 家族默认, not as a pressed chip.
+          if (chip.def) {
+            const def = document.createElement("span");
+            def.className = "kit-vchip-def";
+            def.textContent = "默认";
+            el.appendChild(def);
+            el.title = "家族默认";
+          }
           if (!chip.disabled) {
             el.tabIndex = -1; // pointer-driven (the row is the key target)
             el.addEventListener("click", (e) => {
@@ -427,7 +481,13 @@ export function mountPickerPopup(
   document.addEventListener(
     "keydown",
     (e) => {
-      if (e.key === "Escape" && open) close();
+      if (e.key === "Escape" && open) {
+        // One layer per press: an open help popover inside this picker
+        // consumes the Escape first (its own handler closes it); the
+        // picker itself stays for the next press.
+        if (variantHelp?.popup.classList.contains("open")) return;
+        close();
+      }
     },
     { signal },
   );
@@ -457,6 +517,7 @@ export function mountPickerPopup(
       open = false;
       openPickers.delete(handle);
       listeners.abort();
+      variantHelp?.popup.remove();
       el.remove();
     },
   };

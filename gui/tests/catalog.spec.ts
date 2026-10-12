@@ -116,6 +116,10 @@ test.describe("first-run catalog download", () => {
     await expect(familyStatus(page, "Alloy Sans")).toHaveText("已完成");
     await expect(familyStatus(page, "Alloy Serif")).toHaveText("下载中");
     await expect(familyStatus(page, "Alloy Mono")).toHaveText("等待下载");
+    // Round 7 (logo adoption): the panel head carries the brand mark.
+    await expect(
+      screen(page).locator(".catalog-title .kit-brand-mark"),
+    ).toBeVisible();
 
     openGate();
     await expect(screen(page)).toBeHidden();
@@ -536,22 +540,28 @@ test.describe("first-run catalog download", () => {
     const wenkai = cjkPopup.locator(".kit-fp", { hasText: "霞鹜文楷" });
     await expect(wenkai).toHaveCount(1);
 
-    // The chip vocabulary: the weight axis (Regular on by default), the
-    // mono width, the screen rendering, the GB charset.
+    // The chip vocabulary (round 7 redesign): full-Chinese labels, the
+    // axis's default value carrying the dim 默认 marker (def) — never a
+    // pressed look — and the weight axis, mono width, screen rendering,
+    // GB charset as chips.
     const chip = (id: string) => wenkai.locator(`.kit-vchip[data-chip='${id}']`);
-    await expect(chip("weight:Regular")).toHaveClass(/on/);
+    await expect(chip("weight:Regular")).toHaveClass(/def/);
+    await expect(chip("weight:Regular")).not.toHaveClass(/on/);
+    await expect(chip("weight:Regular")).toContainText("默认");
     await expect(chip("weight:Light")).toBeVisible();
     await expect(chip("weight:Medium")).toBeVisible();
     // Un-fetched members (no local binary served) are DISABLED, not gone.
     await expect(chip("cjk_width:mono")).toHaveClass(/off/);
     await expect(chip("charset:GB")).toHaveClass(/off/);
     await expect(chip("cjk_width:mono")).toHaveAttribute("aria-disabled", "true");
-    // The fetched 屏显 cut is enabled and off (the default is the plain cut).
+    // The fetched 屏显优化 cut is enabled and neutral (the default is
+    // the plain 印刷 cut, marked def, not on).
     await expect(chip("rendering:screen")).not.toHaveClass(/off/);
     await expect(chip("rendering:screen")).not.toHaveClass(/on/);
+    await expect(chip("rendering:print")).toHaveClass(/def/);
 
-    // Clicking 屏显 resolves EXACTLY the Screen member family; the chip
-    // turns on, the popup stays open, and the donor pair shows the
+    // Clicking 屏显优化 resolves EXACTLY the Screen member family; the
+    // chip turns on, the popup stays open, and the donor pair shows the
     // Screen family's CURATED display name (the top-bar pair tags render
     // the same curated names the picker rows and rail cards carry).
     await pointerClick(page, chip("rendering:screen"));
@@ -562,11 +572,13 @@ test.describe("first-run catalog download", () => {
     await expect(cjkPopup).toBeVisible();
 
     // A multi-variant single family (yuru7's UDEVGothic: Standard + NF)
-    // renders its icons chip; the plain cut is the default.
+    // renders its icons chip; the plain cut is the default (def).
     const udev = cjkPopup.locator(".kit-fp", { hasText: "UDEV Gothic" });
     await expect(udev).toHaveCount(1);
     await expect(udev.locator(".kit-vchip[data-chip='icons:nf']")).toBeVisible();
-    await expect(udev.locator(".kit-vchip[data-chip='icons:plain']")).toHaveClass(/on/);
+    await expect(
+      udev.locator(".kit-vchip[data-chip='icons:plain']"),
+    ).toHaveClass(/def/);
   });
 
   test("offline: the catalog is unavailable and local fonts work fully", async ({
