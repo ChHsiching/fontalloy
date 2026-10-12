@@ -290,6 +290,10 @@ export function mountRulesSection(root: HTMLElement): void {
             soloExpanded = !soloExpanded;
             render();
           },
+          // Round 9 (owner item 6): the aggregate's OWN × deletes the
+          // whole single-character group in ONE undoable mutation.
+          onRemove: () =>
+            mutateRules(rules.filter((rule) => rule.target.kind !== "codepoint")),
         }),
       );
       if (soloExpanded) {
