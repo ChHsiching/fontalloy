@@ -222,20 +222,22 @@ async function pickFlagshipPair(page: Page): Promise<void> {
   ).toHaveText(/JetBrains/, { timeout: 20_000 });
   await page.keyboard.press("Escape");
 
-  // CJK: the Maple row narrowed to NF-CN through the 等宽 chip.
+  // CJK: the Maple row narrowed to its NF-CN cut through the variant
+  // chip (round 8: per-cut chips with official labels; the identity
+  // reads the variant's REAL name).
   const cjk = await openFontPicker(page, "cjk");
   const mapleRow = cjk.locator(".kit-fp").filter({
-    has: page.locator(".kit-nm", { hasText: /^Maple Mono CN$/ }),
+    has: page.locator(".kit-nm", { hasText: /^Maple Mono$/ }),
   });
   await mapleRow.scrollIntoViewIfNeeded();
   await rawClick(
     page,
-    mapleRow.locator(".kit-vchip[data-chip='cjk_width:mono']"),
+    mapleRow.locator(".kit-vchip[data-chip='MapleMono::NF-CN']"),
   );
   await waitForFontsReady(page);
   await expect(
     page.locator("[data-role='font-pair'] [data-pair='donor']"),
-  ).toHaveText(/Maple Mono/, { timeout: 20_000 });
+  ).toHaveText("Maple Mono NF-CN", { timeout: 20_000 });
   await page.keyboard.press("Escape");
 }
 

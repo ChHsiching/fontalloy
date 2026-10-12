@@ -510,18 +510,22 @@ test.describe("precedence editing", () => {
     ).toHaveAttribute("data-via", "rule-0");
 
     // The char is donor-carried: the donor side's button hides, and
-    // 用英文字体 declares a base-first preference the base CANNOT
-    // supply (absence never overrides) — the donor keeps rendering it,
-    // now THROUGH the rule (round 6: the preference list names the
-    // other pick second, so via credits the rule) and the ov dot marks
-    // the declared side ≠ the default.
+    // 用英文字体 could never take effect (the base font lacks the
+    // codepoint; absence never overrides) — round 8 (owner item 1):
+    // the button renders DISABLED with the plain-words reason visible
+    // the moment the popup opens, and clicking it does nothing.
     await expect(popup.locator("[data-role='char-donor']")).toBeHidden();
-    await expect(popup.locator("[data-role='char-base']")).toBeVisible();
-    await pointerClick(page, popup.locator("[data-role='char-base']"));
+    const baseBtn = popup.locator("[data-role='char-base']");
+    await expect(baseBtn).toBeVisible();
+    await expect(baseBtn).toBeDisabled();
+    await expect(
+      popup.locator("[data-role='char-base-reason']"),
+    ).toHaveText("英文字体不含此码位");
+    await pointerClick(page, baseBtn);
     const cell = page.locator(".charmap-grid .kit-cell[data-cp='U+4E2D']");
     await expect(cell).toHaveAttribute("data-winner", "donor-0");
-    await expect(cell).toHaveAttribute("data-via", /rule-\d+/);
-    await expect(cell).toHaveClass(/ov/);
+    await expect(cell).toHaveAttribute("data-via", "rule-0");
+    await expect(page.locator("[data-role='rule-solo']")).toHaveCount(0);
 
     // Live update, no reload: same pager state, sibling cell untouched
     // (丮 U+4E2E is a rare han OUTSIDE the seeded zh_cn scope — it keeps
@@ -533,14 +537,14 @@ test.describe("precedence editing", () => {
       page.locator(".charmap-grid .kit-cell[data-cp='U+4E2E']"),
     ).toHaveAttribute("data-via", "default");
 
-    // The dashed summary counts the single-character override, and its
-    // removal (the popup's 恢复默认) clears it.
-    await expect(page.locator("[data-role='rule-solo']")).toHaveText(/单个字符1/);
-    await pointerClick(page, cell);
-    await expect(popup.locator("[data-role='char-reset']")).toBeVisible();
-    await pointerClick(page, popup.locator("[data-role='char-reset']"));
-    await expect(cell).toHaveAttribute("data-via", "rule-0");
+    // No override was written (the disabled button did nothing), so
+    // the dashed single-character summary stays absent and the popup
+    // offers no 恢复默认 (nothing to restore).
     await expect(page.locator("[data-role='rule-solo']")).toHaveCount(0);
+    await pointerClick(page, cell);
+    await expect(popup.locator("[data-role='char-reset']")).toBeHidden();
+    await page.keyboard.press("Escape");
+    await expect(popup).toBeHidden();
   });
 
   /* --------------------------------------------------------------- */
@@ -567,18 +571,25 @@ test.describe("precedence editing", () => {
     const blockRow = page.locator("[data-role='rule-row'][data-kind='block']");
     await expect(blockRow).toHaveText(/基本拉丁用中文字体/);
 
-    // A custom range reads with the character sentence + dim U+ suffix.
+    // A custom range reads the round-8 VERBATIM sentence (U+… glyph -
+    // U+… glyph, then the side).
     await addRangeRule(page, "0x4E10", "0x4E13", "donor");
     const rangeRow = page.locator("[data-role='rule-row'][data-kind='range']");
-    await expect(rangeRow).toHaveText(/用中文字体/);
-    await expect(rangeRow.locator(".kit-us")).toHaveText(
-      "U+4E10 至 U+4E13",
-    );
+    await expect(rangeRow).toContainText("U+4E10 丐 - U+4E13 专 用中文字体");
 
-    // A single-codepoint rule collapses into the dashed summary row.
-    await gotoCjkPage(page);
-    await setCodepointSide(page, "U+4E20", "base");
-    await expect(page.locator("[data-role='rule-solo']")).toHaveText(/单个字符1/);
+    // A single-codepoint rule collapses into the dashed summary row
+    // (round 8: spaced count; the base holds only ASCII, so the
+    // override happens on a both-covered cell in the latin view).
+    await pointerClick(
+      page,
+      page.locator(".kit-cat-g[data-group='latin-europe']"),
+    );
+    await pointerClick(
+      page,
+      page.locator(".kit-cat-s[data-block='basic-latin']"),
+    );
+    await setCodepointSide(page, "U+0043", "base");
+    await expect(page.locator("[data-role='rule-solo']")).toHaveText(/单个字符 1/);
 
     // The range row's delete × removes exactly that rule.
     await pointerClick(page, rangeRow.locator("[data-role='remove-rule']"));

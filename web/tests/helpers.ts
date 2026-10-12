@@ -215,6 +215,9 @@ export async function pickCatalogFamily(
   role: "en" | "cjk",
   family: string,
   timeout = 240_000,
+  /** What the rail CARD must read after the pick, when the variant's
+   *  real name differs from the row's family name (round 8, item 7). */
+  cardName?: string,
 ): Promise<void> {
   const popup = await openFontPicker(page, role);
   await page.waitForFunction(
@@ -260,10 +263,10 @@ export async function pickCatalogFamily(
   await page.mouse.move(x, y);
   await page.mouse.click(x, y);
   await page.waitForFunction(
-    ({ role, family }) =>
+    ({ role, card }) =>
       (document.querySelector(`[data-role="picker-${role}"] .kit-hd b`)
-        ?.textContent ?? "") === family,
-    { role, family },
+        ?.textContent ?? "") === card,
+    { role, card: cardName ?? family },
     { timeout: 10_000 },
   );
   await page.keyboard.press("Escape");

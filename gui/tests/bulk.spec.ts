@@ -212,10 +212,7 @@ test.describe("multi-select, batch operations, undo", () => {
     // rule 0).
     await expect.poll(() => summaryRowCount(page)).toBe(1);
     const row = page.locator("[data-role='rule-row'][data-kind='range']");
-    await expect(row).toContainText("用中文字体");
-    await expect(row.locator(".kit-us")).toHaveText(
-      "U+4E10 至 U+4E13",
-    );
+    await expect(row).toContainText("U+4E10 丐 - U+4E13 专 用中文字体");
     for (const cp of run) {
       const cell = page.locator(`.charmap-grid .kit-cell[data-cp='${cp}']`);
       await expect(cell).toHaveAttribute("data-winner", "donor-0");
@@ -338,7 +335,7 @@ test.describe("multi-select, batch operations, undo", () => {
       await expect(cell).toHaveAttribute("data-kind", "fill");
     }
     // The dashed summary counts the four single-character overrides.
-    await expect(page.locator("[data-role='rule-solo']")).toHaveText(/单个字符4/);
+    await expect(page.locator("[data-role='rule-solo']")).toHaveText(/单个字符 4/);
 
     // And the same Ctrl+Z round-trip: the grid returns exactly.
     await page.keyboard.press("Control+z");

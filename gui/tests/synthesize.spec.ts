@@ -441,7 +441,7 @@ test.describe("sidecar synthesize", () => {
       await pointerClick(
         page,
         page
-          .locator('[data-picker-popup="cjk"] .kit-fp', { hasText: "Maple Mono CN" })
+          .locator('[data-picker-popup="cjk"] .kit-fp', { hasText: "Maple Mono" })
           .first(),
       );
       await waitForFontsReady(page);
@@ -465,7 +465,7 @@ test.describe("sidecar synthesize", () => {
         new Uint8Array(bytes).buffer as ArrayBuffer,
       );
       expect(meta.family).toBe("ChHsich");
-      // JetBrains Mono NF (~4.4k+) and Maple Mono CN hanzi both present.
+      // JetBrains Mono NF (~4.4k+) and the Maple donor hanzi both present.
       expect(meta.codepoints.length).toBeGreaterThan(6_000);
       expect(meta.codepoints).toContain(0x4e2d); // 中
       expect(meta.codepoints).toContain(0xe0b0); // a Nerd Font powerline glyph
@@ -609,7 +609,7 @@ test.describe("sidecar synthesize", () => {
       await pointerClick(
         page,
         page
-          .locator('[data-picker-popup="cjk"] .kit-fp', { hasText: "Maple Mono CN" })
+          .locator('[data-picker-popup="cjk"] .kit-fp', { hasText: "Maple Mono" })
           .first(),
       );
       await waitForFontsReady(page);

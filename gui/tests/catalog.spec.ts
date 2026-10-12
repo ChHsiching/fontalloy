@@ -466,9 +466,9 @@ test.describe("first-run catalog download", () => {
       page.locator('[data-role="picker-cjk"] .kit-hd'),
     );
     const cjkPopup = page.locator('[data-picker-popup="cjk"]');
-    await expect(cjkPopup.locator(".kit-fp", { hasText: "Maple Mono CN" })).toBeVisible();
+    await expect(cjkPopup.locator(".kit-fp", { hasText: "Maple Mono" })).toBeVisible();
     await expect(
-      cjkPopup.locator(".kit-fp", { hasText: "Maple Mono CN" }).locator(".kit-gh"),
+      cjkPopup.locator(".kit-fp", { hasText: "Maple Mono" }).locator(".kit-gh"),
     ).toContainText("32.0k");
     await expect(
       cjkPopup.locator(".kit-fp", { hasText: "霞鹜文楷" }).locator(".kit-gh"),
@@ -480,7 +480,7 @@ test.describe("first-run catalog download", () => {
       page.locator('[data-role="picker-en"] .kit-hd'),
     );
     const enPopup = page.locator('[data-picker-popup="en"]');
-    await expect(enPopup.locator(".kit-fp", { hasText: "Maple Mono CN" })).toHaveCount(0);
+    await expect(enPopup.locator(".kit-fp", { hasText: "Maple Mono" })).toHaveCount(0);
     await expect(enPopup.locator(".kit-fp", { hasText: "霞鹜文楷" })).toHaveCount(0);
 
     // Offline launch: the API is down; the cached counts still show
@@ -494,18 +494,21 @@ test.describe("first-run catalog download", () => {
       page.locator('[data-role="picker-cjk"] .kit-hd'),
     );
     await expect(
-      cjkPopup.locator(".kit-fp", { hasText: "Maple Mono CN" }).locator(".kit-gh"),
+      cjkPopup.locator(".kit-fp", { hasText: "Maple Mono" }).locator(".kit-gh"),
     ).toContainText("32.0k");
   });
 
-  test("variant chips: one WenKai row, chips resolve to the exact manifest family", async ({
+  test("variant chips: one WenKai row, per-cut chips with official labels", async ({
     page,
   }) => {
-    // Round 7. WenKai's six manifest families (kai × mono × screen × GB,
-    // separate upstream repos) collapse onto ONE 霞鹜文楷 row; its typed
-    // chips come from the manifest's axes. The sim serves two members
-    // (the plain and Screen cuts) — the un-fetched members' chips render
-    // disabled, never hidden.
+    // Round 8 (owner items 6+7). WenKai's six manifest families (kai ×
+    // mono × screen × GB, separate upstream repos) collapse onto ONE
+    // 霞鹜文楷 row whose chips are its CUTS — the distinct releases the
+    // manifest pins, labeled with official proper nouns. The WEIGHT
+    // axis is deleted everywhere (Light/Medium/Regular collapse into
+    // one cut); the default cut reads 标准 with NO 默认 marker and NO
+    // dashed ring; an unfetched member family's chip greys out with the
+    // 未下载 tag. The sim serves the plain and Screen cuts only.
     const sim = await SimCatalog.create([
       {
         family: "LXGWWenKai",
@@ -540,45 +543,59 @@ test.describe("first-run catalog download", () => {
     const wenkai = cjkPopup.locator(".kit-fp", { hasText: "霞鹜文楷" });
     await expect(wenkai).toHaveCount(1);
 
-    // The chip vocabulary (round 7 redesign): full-Chinese labels, the
-    // axis's default value carrying the dim 默认 marker (def) — never a
-    // pressed look — and the weight axis, mono width, screen rendering,
-    // GB charset as chips.
+    // One chip per CUT — six over the group (the three weights of the
+    // plain and mono families collapse; NO weight chip ever renders).
     const chip = (id: string) => wenkai.locator(`.kit-vchip[data-chip='${id}']`);
-    await expect(chip("weight:Regular")).toHaveClass(/def/);
-    await expect(chip("weight:Regular")).not.toHaveClass(/on/);
-    await expect(chip("weight:Regular")).toContainText("默认");
-    await expect(chip("weight:Light")).toBeVisible();
-    await expect(chip("weight:Medium")).toBeVisible();
-    // Un-fetched members (no local binary served) are DISABLED, not gone.
-    await expect(chip("cjk_width:mono")).toHaveClass(/off/);
-    await expect(chip("charset:GB")).toHaveClass(/off/);
-    await expect(chip("cjk_width:mono")).toHaveAttribute("aria-disabled", "true");
-    // The fetched 屏显优化 cut is enabled and neutral (the default is
-    // the plain 印刷 cut, marked def, not on).
-    await expect(chip("rendering:screen")).not.toHaveClass(/off/);
-    await expect(chip("rendering:screen")).not.toHaveClass(/on/);
-    await expect(chip("rendering:print")).toHaveClass(/def/);
+    await expect(wenkai.locator(".kit-vchip")).toHaveCount(6);
+    for (const id of ["LXGWWenKai::Regular", "LXGWWenKaiMono::Regular"]) {
+      await expect(chip(id)).toBeVisible();
+    }
+    // The default cut: 标准, PLAIN (no 默认 marker, no dashed ring,
+    // never a pressed look).
+    const base = chip("LXGWWenKai::Regular");
+    await expect(base).toHaveText(/^标准/);
+    await expect(base).not.toContainText("默认");
+    await expect(base).not.toHaveClass(/def|on/);
+    // The mono cut carries the official label.
+    await expect(chip("LXGWWenKaiMono::Regular")).toHaveText(/^Mono/);
+    // Un-fetched members render the 未下载 tag inline, never hidden.
+    const mono = chip("LXGWWenKaiMono::Regular");
+    await expect(mono).toHaveClass(/off/);
+    await expect(mono).toHaveAttribute("aria-disabled", "true");
+    await expect(mono).toContainText("未下载");
+    // The fetched 屏幕版 cut is enabled and neutral (标准 is the
+    // default; nothing is picked yet).
+    const screen = chip("LXGWWenKaiScreen::Regular");
+    await expect(screen).toHaveText(/^屏幕版/);
+    await expect(screen).not.toHaveClass(/off/);
+    await expect(screen).not.toHaveClass(/on/);
 
-    // Clicking 屏显优化 resolves EXACTLY the Screen member family; the
-    // chip turns on, the popup stays open, and the donor pair shows the
-    // Screen family's CURATED display name (the top-bar pair tags render
-    // the same curated names the picker rows and rail cards carry).
-    await pointerClick(page, chip("rendering:screen"));
+    // Clicking 屏幕版 resolves EXACTLY the Screen member family; the
+    // chip turns on, the popup stays open, and the donor pair shows
+    // the variant's REAL name (the family plus the cut's official
+    // label — never family+hardcoded-suffix).
+    await pointerClick(page, screen);
     await expect(
       page.locator("[data-role='font-pair'] [data-pair='donor']"),
-    ).toHaveText("霞鹜文楷 Screen");
-    await expect(chip("rendering:screen")).toHaveClass(/on/);
+    ).toHaveText("霞鹜文楷 屏幕版");
+    await expect(screen).toHaveClass(/on/);
+    await expect(base).not.toHaveClass(/on/);
     await expect(cjkPopup).toBeVisible();
 
-    // A multi-variant single family (yuru7's UDEVGothic: Standard + NF)
-    // renders its icons chip; the plain cut is the default (def).
+    // A multi-cut single family (yuru7's UDEVGothic: Standard + NF)
+    // renders 标准 / NF. The 未下载 state is FAMILY-level (the release
+    // carries a family's whole variant set), so a verified family's
+    // cuts are all pickable — the WenKai row above pins the un-fetched
+    // member families' 未下载 tags.
     const udev = cjkPopup.locator(".kit-fp", { hasText: "UDEV Gothic" });
     await expect(udev).toHaveCount(1);
-    await expect(udev.locator(".kit-vchip[data-chip='icons:nf']")).toBeVisible();
+    await expect(udev.locator(".kit-vchip")).toHaveCount(2);
+    const udevNf = udev.locator(".kit-vchip[data-chip='UDEVGothic::NF']");
+    await expect(udevNf).toHaveText(/^NF$/);
+    await expect(udevNf).not.toHaveClass(/off|on/);
     await expect(
-      udev.locator(".kit-vchip[data-chip='icons:plain']"),
-    ).toHaveClass(/def/);
+      udev.locator(".kit-vchip[data-chip='UDEVGothic::Standard']"),
+    ).toHaveText(/^标准$/);
   });
 
   test("offline: the catalog is unavailable and local fonts work fully", async ({

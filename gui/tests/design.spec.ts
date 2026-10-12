@@ -278,13 +278,15 @@ test.describe("action bar rule wiring", () => {
   });
 
   // Round 6, owner item 4 — the P0: with the REAL catalog pair
-  // (JetBrainsMono Nerd Font base, Maple Mono CN donor) the base covers
+  // (JetBrainsMono Nerd Font base, Maple Mono donor) the base covers
   // ~nothing of the CJK group, so a base-side assignment used to leave
   // the grid looking dead (absence never overrides kept every winner
   // at the default and the old adjusted discipline compared winners).
   // The assignment now carries the [side, other] preference list (the
-  // rule supplies through the donor: via credits it) and the ov dot
-  // keys on the DECLARED side (see precedence/resolve.ts isAdjusted).
+  // rule supplies through the donor: via credits it). Round 8: the ov
+  // dot keys on the EFFECTIVE winner (see precedence/resolve.ts
+  // isAdjusted) — a declaration whose font lacks the codepoint never
+  // moves the winner, so such cells carry no dot (the dot = 实际生效).
   test("the CJK group assignment visibly rules the grid with the real catalog pair", async ({
     page,
   }) => {
@@ -315,23 +317,27 @@ test.describe("action bar rule wiring", () => {
       /所有中日韩文字字符用英文字体/,
     );
     await expect(groupButton("全用英文")).toHaveAttribute("aria-pressed", "true");
-    // The grid updates: the covering rule's via, the ov dot (declared
-    // base ≠ the no-rule default donor) — and the winner stays the
-    // merge truth (the English font lacks the glyphs; the preference
+    // The grid updates: the covering rule's via — and the winner stays
+    // the merge truth (the English font lacks the glyphs; the preference
     // list fills through the Chinese font, exactly what the merge does).
+    // Round 8: the winner did NOT change, so no dot — the dot means
+    // 实际生效. In fact NO codepoint flips (an English assignment's
+    // [base, donor] preference IS the default chain), so the 已调整
+    // counter stays at 0.
     await expect(cell).toHaveAttribute("data-via", /rule-\d+/);
     await expect(cell).toHaveAttribute("data-winner", "donor-0");
-    await expect(cell).toHaveClass(/ov/);
-    // The status bar's 已调整 counter agrees (it counts the same
-    // discipline as the dot).
-    const adjusted = await page.locator("[data-stat='adjusted']").textContent();
-    expect(Number((adjusted ?? "0").replace(/,/g, ""))).toBeGreaterThan(0);
+    await expect(cell).not.toHaveClass(/ov/);
+    await expect(page.locator("[data-stat='adjusted']")).toHaveText("0");
 
-    // Assigning the side the group already carries by default writes
-    // the rule but no dots appear (nothing changed).
+    // Assigning the side the group already carries by default writes the
+    // rule; only the codepoints BOTH fonts cover flip suppliers (the
+    // fullwidth braces the EN base holds) — the donor-only 、 stays
+    // undotted while the counter rises.
     await pointerClick(page, groupButton("全用中文"));
     await expect(cell).toHaveAttribute("data-via", /rule-\d+/);
     await expect(cell).not.toHaveClass(/ov/);
+    const adjusted = await page.locator("[data-stat='adjusted']").textContent();
+    expect(Number((adjusted ?? "0").replace(/,/g, ""))).toBeGreaterThan(0);
 
     // Two Ctrl+Z revert both assignments (英文 then 中文) to the boot
     // state: the preset default supplies again, no dot.
@@ -444,9 +450,10 @@ test.describe("action bar rule wiring", () => {
     await pointerClick(page, side.locator(".kit-cso[data-value='donor']"));
     await pointerClick(page, popup.locator("[data-role='range-add']"));
     await expect.poll(() => summaryRowCount(page)).toBe(1);
+    // Round 8: the verbatim single-codepoint sentence.
     await expect(
-      page.locator("[data-role='rule-row'][data-kind='range'] .kit-us"),
-    ).toHaveText("U+0041");
+      page.locator("[data-role='rule-row'][data-kind='range']"),
+    ).toContainText("U+0041 A 用中文字体");
     await expect(
       page.locator(".charmap-grid .kit-cell[data-cp='U+0041']"),
     ).toHaveAttribute("data-winner", "donor-0");
@@ -558,9 +565,10 @@ test.describe("action bar rule wiring", () => {
     await expect(popup.locator("[data-role='char-reset']")).toBeHidden();
 
     // The popup anchors to another cell without closing in between.
-    // U+4E00 is donor-only: the donor carries it, the base button shows,
-    // and an override to the base side would be inert (absence never
-    // overrides) — so exercise the override on a codepoint BOTH hold.
+    // U+4E00 is donor-only: the donor carries it, and the base button
+    // shows DISABLED with the reason attached (round 8, owner item 1 —
+    // an override the base font cannot supply is never a working
+    // action; the reason is visible the moment the popup opens).
     await pointerClick(page, page.locator(".kit-cat-g[data-group='cjk']"));
     await pointerClick(
       page,
@@ -575,7 +583,12 @@ test.describe("action bar rule wiring", () => {
       "来自 AlloyDonor",
     );
     await expect(popup.locator("[data-role='char-donor']")).toBeHidden();
-    await expect(popup.locator("[data-role='char-base']")).toBeVisible();
+    const inertBase = popup.locator("[data-role='char-base']");
+    await expect(inertBase).toBeVisible();
+    await expect(inertBase).toBeDisabled();
+    await expect(
+      popup.locator("[data-role='char-base-reason']"),
+    ).toHaveText("英文字体不含此码位");
     await expect(popup.locator("[data-role='char-reset']")).toBeHidden();
 
     // Back on the Latin view: 用中文字体 on the base-carried A — the
@@ -600,7 +613,7 @@ test.describe("action bar rule wiring", () => {
     ).toHaveAttribute("data-kind", "override");
 
     // The dashed single-character summary counts it.
-    await expect(page.locator("[data-role='rule-solo']")).toHaveText(/单个字符1/);
+    await expect(page.locator("[data-role='rule-solo']")).toHaveText(/单个字符 1/);
 
     // 恢复默认 reverts to the deeper layers.
     await pointerClick(

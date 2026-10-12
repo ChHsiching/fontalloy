@@ -66,7 +66,7 @@ test("the real catalog lists real families with real meta", async ({ page }) => 
   await expect(
     cjkPopup.locator(".kit-fp", { hasText: "霞鹜新晰黑" }),
   ).toHaveCount(1);
-  await expect(cjkPopup.locator(".kit-fp").first()).toContainText("Maple Mono CN");
+  await expect(cjkPopup.locator(".kit-fp").first()).toContainText("Maple Mono");
   await expect(cjkPopup.locator(".kit-fp", { hasText: "得意黑" })).toHaveCount(1);
   await page.keyboard.press("Escape");
   const popupEn = await openFontPicker(page, "en");
@@ -94,7 +94,7 @@ test("the real catalog lists real families with real meta", async ({ page }) => 
   await expect(rowsEn.filter({ hasText: "SymbolsOnly" })).toHaveCount(0);
   await page.keyboard.press("Escape");
 
-  // The CJK picker: the prototype's LD front (Maple Mono CN 圆角等宽 /
+  // The CJK picker: the prototype's LD front (Maple Mono 圆角等宽 /
   // 霞鹜文楷 楷体 / 思源黑体 黑体) with its star counts, and the
   // five prototype-only CJK families the dev catalog serves. (Round 7:
   // WenKai's manifest families collapse onto ONE 霞鹜文楷 group row
@@ -102,13 +102,13 @@ test("the real catalog lists real families with real meta", async ({ page }) => 
   const cjk = await openFontPicker(page, "cjk");
   const cjkTexts = await cjk.locator(".kit-fp").allTextContents();
   expect(cjkTexts.slice(0, 3)).toEqual([
-    expect.stringContaining("Maple Mono CN"),
+    expect.stringContaining("Maple Mono"),
     expect.stringContaining("霞鹜文楷"),
     expect.stringContaining("思源黑体"),
   ]);
   expect(cjkTexts.filter((row) => row.includes("霞鹜文楷"))).toHaveLength(1);
   const maple = cjk.locator(".kit-fp", { hasText: "29.2k" });
-  await expect(maple).toContainText("Maple Mono CN");
+  await expect(maple).toContainText("Maple Mono");
   await expect(maple).toContainText("圆角等宽");
   for (const name of ["得意黑", "更纱黑体", "方舟像素字体", "缝合像素字体", "朱雀仿宋"]) {
     await expect(cjk.locator(".kit-fp").filter({ hasText: name })).toHaveCount(1);
@@ -161,7 +161,7 @@ test("the real catalog drives the panel end to end (YAML, download, copy)", asyn
 
   // The REAL local catalog (the static bundle's default bootstrap):
   // both picks from real families — JetBrainsMono as the base, the
-  // Maple Mono CN build as the donor (the prototype's own pair).
+  // Maple build as the donor (the prototype's own pair).
   // The live stars refresh would land mid-test and rebuild the picker
   // cards under the cursor (round 5); keep it hermetic and quiet.
   await page.route("https://api.github.com/repos/**", (route) =>
@@ -174,7 +174,9 @@ test("the real catalog drives the panel end to end (YAML, download, copy)", asyn
   await page.goto(`/?serve=${encodeURIComponent(UNUSED_SERVE)}`);
   await waitForCatalogReady(page);
   await pickCatalogFamily(page, "en", "JetBrains Mono");
-  await pickCatalogFamily(page, "cjk", "Maple Mono CN");
+  // The row reads the family name; the CARD then reads the picked
+  // variant's real name (the default cut is the NF release).
+  await pickCatalogFamily(page, "cjk", "Maple Mono", 240_000, "Maple Mono NF");
 
   // The pair tags carry both picks as plain text — the CURATED display
   // names (the same ones the picker rows and rail cards render; the raw
@@ -182,8 +184,10 @@ test("the real catalog drives the panel end to end (YAML, download, copy)", asyn
   await expect(page.locator(".topbar [data-pair='base']")).toHaveText(
     "JetBrains Mono",
   );
+  // Round 8 (owner item 7): the pair tag carries the variant's REAL
+  // name — the row's default cut is the NF release.
   await expect(page.locator(".topbar [data-pair='donor']")).toHaveText(
-    "Maple Mono CN",
+    "Maple Mono NF",
   );
 
   // Open-at-the-selection: the EN picker reopens with the checked row

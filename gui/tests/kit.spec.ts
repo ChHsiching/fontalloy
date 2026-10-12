@@ -55,7 +55,7 @@ test.describe("kit demo page", () => {
     );
     const pair = page.locator('[data-role="font-pair"] .kit-tag');
     await expect(pair.nth(0)).toHaveText("JetBrains Mono");
-    await expect(pair.nth(1)).toHaveText("Maple Mono CN");
+    await expect(pair.nth(1)).toHaveText("Maple Mono");
   });
 
   test("theme toggle: 3-state cycle with the effective icon and persistence", async ({
@@ -342,7 +342,7 @@ test.describe("kit demo page", () => {
     const rows = popup.locator(".kit-fp");
     await expect(rows).toHaveCount(3);
 
-    const maple = rows.filter({ hasText: "Maple Mono CN" });
+    const maple = rows.filter({ hasText: "Maple Mono" });
     // Meta line: formatted stars, stripped license, trait — plain text.
     await expect(maple.locator(".kit-meta")).toHaveText("29.2kOFL圆角等宽");
     await expect(maple.locator(".kit-gh")).toContainText("29.2k");
@@ -697,12 +697,28 @@ test.describe("kit demo page", () => {
     await expect(rows.first()).toHaveAttribute("data-kind", "group");
     await expect(rows.first()).toContainText("所有中文字符用中文字体");
     await expect(rows.first().locator(".kit-rl-ic svg")).toBeVisible();
-    const rangeRow = rows.filter({ hasText: "一 至 龙" });
-    await expect(rangeRow.locator(".kit-us")).toHaveText("U+4E00 至 U+9F99");
-    // The dashed single-character aggregate with its count.
+    // Round 8: the range row reads the VERBATIM sentence.
+    const rangeRow = rows.filter({ hasText: "U+4E00 一 - U+9F99 龙 用中文字体" });
+    await expect(rangeRow).toHaveCount(1);
+    // The dashed single-character aggregate with its count (spaced).
     const solo = rules.locator('[data-role="rule-solo"]');
     await expect(solo).toHaveClass(/dashed/);
-    await expect(solo).toHaveText("单个字符2");
+    await expect(solo).toHaveText("单个字符 2");
+    await expect(solo).toHaveAttribute("aria-expanded", "false");
+
+    // Round 8 (owner item 3): the aggregate EXPANDS into its
+    // per-character rows, each removable on its own.
+    await pointerClick(page, solo);
+    await expect(solo).toHaveAttribute("aria-expanded", "true");
+    const soloRows = rules.locator('[data-role="rule-row"][data-kind="codepoint"]');
+    await expect(soloRows).toHaveCount(2);
+    await expect(soloRows.first()).toContainText("U+4E2D 中 用中文字体");
+    await expect(soloRows.nth(1)).toContainText("U+6C38 永 用英文字体");
+    await pointerClick(page, soloRows.first().locator('[data-role="remove-rule"]'));
+    await expect(soloRows).toHaveCount(1);
+    await expect(solo).toHaveText("单个字符 1");
+    await pointerClick(page, solo); // collapse again
+    await expect(solo).toHaveAttribute("aria-expanded", "false");
 
     // Removing every row keeps the solo aggregate; 全部恢复默认 then
     // clears everything and the prototype's empty state reads verbatim.
@@ -730,7 +746,7 @@ test.describe("kit demo page", () => {
       /^U\+[0-9A-F]{4,6}$/,
     );
     await expect(popup.locator('[data-role="char-from"]')).toContainText(
-      "来自 Maple Mono CN",
+      "来自 Maple Mono",
     );
     // Anchored at the cell (below or flipped above, within its width).
     const cellBox = (await cell.boundingBox())!;
