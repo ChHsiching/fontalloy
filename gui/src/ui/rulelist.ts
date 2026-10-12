@@ -8,13 +8,16 @@
  *   recipe/core only, never in this UI);
  * - 自定义规则 (mountRulesSection): the human sentence list —
  *   `{子类}用英文字体` block rows (merged to `所有{组}字符用…` when a
- *   whole group agrees), `永 至 A 用英文字体` range rows with their dim
- *   `U+… 至 U+…` suffix, the dashed `单个字符 N` summary, and the
- *   全部恢复默认 reset. Editing happens through the workspace's own
- *   affordances (the toolbar segments, the char popup, the 按编码指定
- *   popup, the preset chips) — every one of them writes the same rule
- *   state through `mutateRules`, so one undo entry covers each change
- *   and Ctrl+Z / the toolbar's 撤销 steps them back.
+ *   whole group agrees), range rows in the round-8 VERBATIM form
+ *   (`U+827A 艺 - U+828F 芏 用中文字体`; a single-codepoint range reads
+ *   `U+827A 艺 用中文字体`), the dashed `单个字符 N` summary — round 8:
+ *   an EXPANDABLE group whose children are the per-character rows in
+ *   the same verbatim form — and the 全部恢复默认 reset. Editing
+ *   happens through the workspace's own affordances (the toolbar
+ *   segments, the char popup, the 按编码指定 popup, the preset chips)
+ *   — every one of them writes the same rule state through
+ *   `mutateRules`, so one undo entry covers each change and Ctrl+Z /
+ *   the toolbar's 撤销 steps them back.
  */
 
 import { store } from "../state";
@@ -30,6 +33,7 @@ import { ruleEmptyState, ruleRow, ruleSoloRow } from "../kit/ruleRows";
 import { ALL_BLOCKS, BLOCK_GROUPS, type UnicodeBlock } from "../unicode/blocks";
 import presetsData from "../data/presets.json";
 import { liveNotice } from "./live";
+import { formatCp } from "./charmap";
 
 /* ------------------------- store patches ---------------------------- */
 
@@ -158,6 +162,11 @@ function isExactBlockRule(rule: EditorRule, block: UnicodeBlock): boolean {
 const sideLabel = (side: "base" | "donor"): string =>
   side === "base" ? "英文" : "中文";
 
+/** The verbatim codepoint label: `U+827A 艺` (round 8, owner item 3). */
+function cpLabel(cp: number): string {
+  return `${formatCp(cp)} ${String.fromCodePoint(cp)}`;
+}
+
 /**
  * The block-assignment summaries: per group, the blocks explicitly
  * assigned (exact single-font range rules). A group whose every block
@@ -214,11 +223,15 @@ function blockSummaryRows(rules: readonly EditorRule[]): HTMLElement[] {
 
 /**
  * The 自定义规则 section: the summary sentence list (block
- * assignments, custom ranges, the dashed single-character summary) and
- * the 全部恢复默认 reset — one mutation each, all through the shared
- * rule state. Empty: 暂无自定义规则。 (preset rules live in the 文字范围
- * chips, not here).
+ * assignments, custom ranges, the dashed single-character summary —
+ * round 8: an expandable group) and the 全部恢复默认 reset — one
+ * mutation each, all through the shared rule state. Empty: 暂无自定义
+ * 规则。 (preset rules live in the 文字范围 chips, not here).
  */
+
+/** The solo group's expansion state (persists across re-renders). */
+let soloExpanded = false;
+
 export function mountRulesSection(root: HTMLElement): void {
   const list = document.createElement("div");
   list.className = "kit-rules";
@@ -247,24 +260,16 @@ export function mountRulesSection(root: HTMLElement): void {
       };
       const side = ruleSide(rule);
       if (side === "") continue; // not a side rule the UI can state
-      const c1 = String.fromCodePoint(target.start);
-      const c2 = String.fromCodePoint(target.end);
-      const chars = target.start === target.end ? c1 : `${c1} 至 ${c2}`;
       const lo = Math.min(target.start, target.end);
       const hi = Math.max(target.start, target.end);
-      const suffix =
-        lo === hi
-          ? `U+${lo.toString(16).toUpperCase().padStart(4, "0")}`
-          : `U+${lo.toString(16).toUpperCase().padStart(4, "0")} 至 U+${hi
-              .toString(16)
-              .toUpperCase()
-              .padStart(4, "0")}`;
+      // The round-8 verbatim sentence: 「U+827A 艺 - U+828F 芏 用中文字体」
+      // (a single-codepoint range drops the dash half).
+      const chars = lo === hi ? cpLabel(lo) : `${cpLabel(lo)} - ${cpLabel(hi)}`;
       items.push(
         ruleRow({
           kind: "range",
           icon: "range",
           text: `${chars} 用${sideLabel(side)}字体`,
-          suffix,
           onRemove: () => removeRule(rule.id),
         }),
       );
@@ -278,7 +283,31 @@ export function mountRulesSection(root: HTMLElement): void {
     }
     for (const row of items) fragment.appendChild(row);
     if (codepointRules.length > 0) {
-      fragment.appendChild(ruleSoloRow(codepointRules.length));
+      fragment.appendChild(
+        ruleSoloRow(codepointRules.length, {
+          expanded: soloExpanded,
+          onToggle: () => {
+            soloExpanded = !soloExpanded;
+            render();
+          },
+        }),
+      );
+      if (soloExpanded) {
+        // The group's children: each single-character rule as its own
+        // verbatim row (「U+827A 艺 用中文字体」), removable one by one.
+        for (const rule of codepointRules) {
+          const side = ruleSide(rule);
+          const cp = (rule.target as { cp: number }).cp;
+          fragment.appendChild(
+            ruleRow({
+              kind: "codepoint",
+              icon: "pen",
+              text: `${cpLabel(cp)} 用${side === "" ? "英文" : sideLabel(side)}字体`,
+              onRemove: () => removeRule(rule.id),
+            }),
+          );
+        }
+      }
     }
     // 全部恢复默认: clears block assignments, custom ranges, and
     // single-character overrides in ONE undoable mutation (the preset
