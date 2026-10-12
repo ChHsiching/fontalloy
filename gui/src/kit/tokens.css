@@ -389,6 +389,15 @@ select {
   overflow-x: auto;
 }
 
+/* Round 8 (owner item 5): the document scene's inline code renders on
+ * the EFFECTIVE English font — every character span carries its own
+ * resolved family (sceneContent's codeBlock), so the UA's pre/code
+ * monospace default must never win. */
+.kit-doc pre,
+.kit-doc code {
+  font-family: inherit;
+}
+
 .kit-doc table {
   border-collapse: collapse;
   font-size: 12.5px;

@@ -13,7 +13,11 @@
  *   the UI font (narrower) and collapse across span boundaries, both of
  *   which misalign monospace columns (docker ps table);
  * - the code scene tokenizes keywords / strings / numbers / types /
- *   comments for the editor theme classes (k / s / n / t / cm).
+ *   comments for the editor theme classes (k / s / n / t / cm);
+ * - the document scene's inline code (`<pre><code>`) resolves per
+ *   character through the same `resolveFont` (round 8: the commands
+ *   render in the EFFECTIVE English font, never the browser's
+ *   monospace fallback).
  */
 
 /** CSS font stack for one character (the effective merge preview). */
@@ -262,6 +266,31 @@ export function buildDocument(props: SceneContentProps = {}): HTMLElement {
     return p;
   };
 
+  /**
+   * Inline code (round 8, owner item 5): the `<pre><code>` bodies
+   * resolve PER CHARACTER through the same `resolveFont` the prose
+   * uses — the commands render in the EFFECTIVE English font, never
+   * the browser's monospace fallback (the spans carry their families;
+   * tokens.css resets the UA's pre/code monospace default).
+   */
+  const codeBlock = (text: string): HTMLElement => {
+    const pre = document.createElement("pre");
+    const code = document.createElement("code");
+    for (const ch of text) {
+      if (ch === "\n") {
+        code.appendChild(document.createTextNode("\n"));
+        continue;
+      }
+      const span = document.createElement("span");
+      span.textContent = ch === " " ? "\u00A0" : ch;
+      span.style.fontFamily = resolve(ch);
+      applySpanAttrs(span, ch, props.spanAttrs);
+      code.appendChild(span);
+    }
+    pre.appendChild(code);
+    return pre;
+  };
+
   const el = (tag: string, html?: string): HTMLElement => {
     const node = document.createElement(tag);
     if (html !== undefined) node.innerHTML = html;
@@ -288,9 +317,8 @@ export function buildDocument(props: SceneContentProps = {}): HTMLElement {
   );
   doc.appendChild(el("h3", "命令行"));
   doc.appendChild(
-    el(
-      "pre",
-      "<code>fontalloy build --base JetBrainsMono --cjk MapleMonoCN\nfontalloy export recipe.yaml</code>",
+    codeBlock(
+      "fontalloy build --base JetBrainsMono --cjk MapleMonoCN\nfontalloy export recipe.yaml",
     ),
   );
   doc.appendChild(el("h3", "支持的语言"));
@@ -311,7 +339,7 @@ export function buildDocument(props: SceneContentProps = {}): HTMLElement {
       richText("合成后的字体包含 Nerd Font 的图标字符，可在终端提示符和状态栏中使用："),
     );
     doc.appendChild(
-      el("pre", "<code>❯ git:(main) ✔  docker: running  ⚡ 99.97%</code>"),
+      codeBlock("❯ git:(main) ✔  docker: running  ⚡ 99.97%"),
     );
     doc.appendChild(el("h3", "常见问题"));
     doc.appendChild(
