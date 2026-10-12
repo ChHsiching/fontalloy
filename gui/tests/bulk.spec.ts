@@ -415,7 +415,11 @@ test.describe("multi-select, batch operations, undo", () => {
     await expect(page.locator("[data-stat='missing']")).toHaveText(
       (universe - 90).toLocaleString("en-US"),
     );
-    await expect(page.locator("[data-stat='coverage']")).toHaveText("0.10");
+    // The coverage percent derives from the same universe (round 7: the
+    // 图标 Material sub-block widened it to the SMP PUA-A plane).
+    await expect(page.locator("[data-stat='coverage']")).toHaveText(
+      ((100 * 90) / universe).toFixed(2),
+    );
 
     // Basic Latin: the SAME totals (the prototype's counters never
     // change with the browsing category).

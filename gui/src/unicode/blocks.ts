@@ -42,10 +42,13 @@ export interface UnicodeBlock {
   /**
    * Curated enumeration intervals (round 6, the 图标 group): when a
    * block's browsable content is a CURATED subset of its raw envelope
-   * (the Nerd Font PUA allocations — 22 disjoint ranges inside
-   * 0xE000–0xF533), these replace the envelope for ENUMERATION and the
-   * browsed-universe scope. Rules still target the full envelope
-   * (`start`–`end`), exactly like every other block.
+   * (the Nerd Font PUA allocations — disjoint ranges inside
+   * 0xE000–0xF533 plus the Material plane in Supplementary PUA-A),
+   * these replace the envelope for ENUMERATION and the browsed-universe
+   * scope. Since round 7 a block ASSIGNMENT also writes one exact range
+   * rule per interval (see ui/charmap.ts), so a sub-block whose hull
+   * overlaps a neighbor (Font Awesome spans E200–E2A9 plus ED00–F2FF)
+   * never rules the neighbor's codepoints.
    */
   intervals?: ReadonlyArray<readonly [number, number]>;
 }
@@ -65,38 +68,33 @@ export const ALL_CATEGORY_ID = "all";
 export const ALL_RANGE = { start: 0x20, end: 0x10ffff };
 
 /**
- * The Nerd Font PUA allocations (round 6, the 图标 group): the
- * prototype's own `NF_RANGES` verbatim — the icon planes the patched
- * coding fonts actually carry. The block's raw envelope is
- * 0xE000–0xF533 (what a rule targets); the curated intervals are what
- * the grid pages through and the browsed universe counts, so the ~1.8k
- * non-NF private-use codepoints in between stay out of the view (the
- * prototype's hand-curated lists never had them).
+ * The icon sub-blocks (round 7): the publisher macro-blocks the
+ * research verified against `ryanoasis/nerd-fonts@v3.5.1/
+ * glyphnames.json` and the shipped Maple NF CN face. The union of the
+ * sub-blocks' intervals is exactly the prototype's `NF_RANGES` (the
+ * 22 disjoint PUA ranges inside 0xE000–0xF533, with the F000–F385 run
+ * re-cut at F300 into the Font Awesome and Font Logos allocations)
+ * plus the Material Design Icons plane in Supplementary PUA-A
+ * (0xF0001–0xF1AF0 — surrogate-pair codepoints the grid already
+ * renders like the emoji/CJK-ext-B planes). A sub-block's raw envelope
+ * is the hull of its intervals; rules target the intervals themselves
+ * (see ./charmap.ts), so overlapping hulls (Font Awesome spans
+ * E200–F2FF) never bleed into neighboring sub-blocks. The upstream
+ * IEC power-symbol strays (U+23FB–U+23FE, U+2B58) sit in the 通用符号
+ * blocks and stay there — the 图标 group browses the PUA planes only.
  */
-const NF_RANGES: ReadonlyArray<readonly [number, number]> = [
-  [0xe000, 0xe00a],
-  [0xe0a0, 0xe0a3],
-  [0xe0b0, 0xe0c8],
-  [0xe0ca, 0xe0ca],
-  [0xe0cc, 0xe0d2],
-  [0xe0d4, 0xe0d4],
-  [0xe0d6, 0xe0d7],
-  [0xe200, 0xe2a9],
-  [0xe300, 0xe3e3],
-  [0xe5fa, 0xe6bb],
-  [0xe700, 0xe958],
-  [0xea60, 0xea88],
-  [0xea8a, 0xea8c],
-  [0xea8f, 0xeac7],
-  [0xeac9, 0xeac9],
-  [0xeacc, 0xeb09],
-  [0xeb0b, 0xeb4e],
-  [0xeb50, 0xec5e],
-  [0xec60, 0xec84],
-  [0xed00, 0xefcf],
-  [0xf000, 0xf385],
-  [0xf400, 0xf533],
-];
+
+/** One icon sub-block: curated intervals over its envelope hull. */
+function iconBlock(
+  id: string,
+  name: string,
+  en: string,
+  intervals: ReadonlyArray<readonly [number, number]>,
+): UnicodeBlock {
+  const start = Math.min(...intervals.map(([s]) => s));
+  const end = Math.max(...intervals.map(([, e]) => e));
+  return { id, name, en, start, end, intervals };
+}
 
 export const BLOCK_GROUPS: BlockGroup[] = [
   {
@@ -132,10 +130,45 @@ export const BLOCK_GROUPS: BlockGroup[] = [
     id: "icons",
     name: "图标",
     blocks: [
-      {
-        ...block("nf-icons", "Nerd Font", "Nerd Font PUA", 0xe000, 0xf533),
-        intervals: NF_RANGES,
-      },
+      // The publisher macro-blocks (round 7), in Nerd Font order:
+      // 杂项图标 carries Pomicons + Weather Icons; Font Awesome spans
+      // its Extension allocation (E200–E2A9) plus the proper ranges.
+      iconBlock("nf-powerline", "Powerline 符号", "Powerline + Powerline Extra", [
+        [0xe0a0, 0xe0a3],
+        [0xe0b0, 0xe0c8],
+        [0xe0ca, 0xe0ca],
+        [0xe0cc, 0xe0d2],
+        [0xe0d4, 0xe0d4],
+        [0xe0d6, 0xe0d7],
+      ]),
+      iconBlock("nf-seti-devicons", "Seti 与 Devicons", "Seti-UI + Custom, Devicons", [
+        [0xe5fa, 0xe6bb],
+        [0xe700, 0xe958],
+      ]),
+      iconBlock("nf-codicons", "Codicons", "Codicons (VS Code)", [
+        [0xea60, 0xea88],
+        [0xea8a, 0xea8c],
+        [0xea8f, 0xeac7],
+        [0xeac9, 0xeac9],
+        [0xeacc, 0xeb09],
+        [0xeb0b, 0xeb4e],
+        [0xeb50, 0xec5e],
+        [0xec60, 0xec84],
+      ]),
+      iconBlock("nf-fontawesome", "Font Awesome", "Font Awesome + FA Extension", [
+        [0xe200, 0xe2a9],
+        [0xed00, 0xefcf],
+        [0xf000, 0xf2ff],
+      ]),
+      iconBlock("nf-fontlogos", "Font Logos", "Font Logos", [[0xf300, 0xf385]]),
+      iconBlock("nf-octicons", "Octicons", "GitHub Octicons", [[0xf400, 0xf533]]),
+      iconBlock("nf-material", "Material Icons", "Material Design Icons", [
+        [0xf0001, 0xf1af0],
+      ]),
+      iconBlock("nf-misc", "杂项图标", "Pomicons, Weather Icons", [
+        [0xe000, 0xe00a],
+        [0xe300, 0xe3e3],
+      ]),
     ],
   },
   {

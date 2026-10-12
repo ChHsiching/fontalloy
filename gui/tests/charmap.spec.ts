@@ -203,4 +203,75 @@ test.describe("character map", () => {
     await expect(cellA).toHaveCount(1);
     expect((await cellA.textContent()) ?? "").toContain("A");
   });
+
+  test("the 图标 group carries the eight publisher sub-blocks (round 7)", async ({
+    page,
+  }) => {
+    const SUBS = [
+      "nf-powerline",
+      "nf-seti-devicons",
+      "nf-codicons",
+      "nf-fontawesome",
+      "nf-fontlogos",
+      "nf-octicons",
+      "nf-material",
+      "nf-misc",
+    ] as const;
+    await pointerClick(page, page.locator(".kit-cat-g[data-group='icons']"));
+    // The round-6 single "Nerd Font" chip is gone; every publisher
+    // macro-block has its own chip.
+    await expect(
+      page.locator(".kit-cat-s[data-block='nf-icons']"),
+    ).toHaveCount(0);
+    for (const id of SUBS) {
+      await expect(
+        page.locator(`.kit-cat-s[data-block='${id}']`),
+      ).toHaveCount(1);
+    }
+
+    // A sub-block enumerates its curated intervals, not its hull:
+    // Powerline starts at U+E0A0 (the E000–E00A Pomicons stay in 杂项),
+    // and its six disjoint intervals count 40 visible cells.
+    await pointerClick(
+      page,
+      page.locator(".kit-cat-s[data-block='nf-powerline']"),
+    );
+    await expect(page.locator(".charmap-grid .kit-cell")).toHaveCount(
+      categorySize("nf-powerline"),
+    );
+    expect(categorySize("nf-powerline")).toBe(40);
+    await expect(page.locator(".charmap-grid .kit-cell").first()).toHaveAttribute(
+      "data-cp",
+      "U+E0A0",
+    );
+
+    // Font Awesome's hull overlaps three neighbors (E200–E2A9 wraps the
+    // Powerline/杂项 gap); its enumeration starts at its own E200
+    // allocation and never lists a neighbor's codepoint.
+    await pointerClick(
+      page,
+      page.locator(".kit-cat-s[data-block='nf-fontawesome']"),
+    );
+    await expect(page.locator(".charmap-grid .kit-cell").first()).toHaveAttribute(
+      "data-cp",
+      "U+E200",
+    );
+    await expect(
+      page.locator(".charmap-grid .kit-cell[data-cp='U+E5FA']"),
+    ).toHaveCount(0); // Seti's first codepoint is never Font Awesome's
+
+    // Material browses the Supplementary PUA-A plane — surrogate-pair
+    // codepoints the grid renders like the emoji plane.
+    await pointerClick(
+      page,
+      page.locator(".kit-cat-s[data-block='nf-material']"),
+    );
+    await expect(page.locator(".charmap-grid .kit-cell").first()).toHaveAttribute(
+      "data-cp",
+      "U+F0001",
+    );
+    await expect(
+      page.locator(".kit-toolrow [data-pager-label]"),
+    ).toBeVisible(); // 6,896 cells — multiple pages
+  });
 });

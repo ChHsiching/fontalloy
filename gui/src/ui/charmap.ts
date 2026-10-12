@@ -248,31 +248,56 @@ function sideRuleFonts(side: FontSide): string[] {
   return refs.includes(other) ? [mine, other] : [mine];
 }
 
-/** True when `rule` is a complete range rule over exactly `block`. */
-function isExactBlockRule(rule: EditorRule, block: UnicodeBlock): boolean {
-  if (rule.target.kind !== "range") return false;
-  const { start, end } = rule.target;
-  if (start === null || end === null) return false;
-  return (
-    Math.min(start, end) === block.start && Math.max(start, end) === block.end
-  );
+/**
+ * The enumeration (and, since round 7, RULE) intervals of a block: the
+ * curated `intervals` when the block has them (the 图标 sub-blocks),
+ * else the full `start`–`end` envelope. A block assignment writes one
+ * exact range rule per interval, so disjoint curated blocks (Font
+ * Awesome spans E200–E2A9 plus ED00–F2FF) never rule codepoints of
+ * neighboring sub-blocks through their hulls.
+ */
+function blockRanges(
+  block: UnicodeBlock,
+): ReadonlyArray<readonly [number, number]> {
+  return block.intervals ?? [[block.start, block.end]];
 }
 
-/** The side a block is explicitly assigned to ("" = not assigned). */
+/** True when `rule` is a complete range rule over exactly [start, end]. */
+function isExactRangeRule(
+  rule: EditorRule,
+  start: number,
+  end: number,
+): boolean {
+  if (rule.target.kind !== "range") return false;
+  const { start: rs, end: re } = rule.target;
+  if (rs === null || re === null) return false;
+  return Math.min(rs, re) === start && Math.max(rs, re) === end;
+}
+
+/**
+ * The side a block's interval rules declare, when EVERY interval of
+ * the block carries an exact rule whose first font agrees (round 6's
+ * preference-list form). A partially ruled block is not an assignment
+ * — exactly like a hand-written range that covers half a block.
+ */
 function blockAssignment(block: UnicodeBlock): FontSide | "" {
   const rules = store.get().rules;
-  for (let i = rules.length - 1; i >= 0; i--) {
-    const rule = rules[i]!;
-    if (!isExactBlockRule(rule, block)) continue;
-    // Round 6: assignments carry the preference list `[side, other]`
-    // (sideRuleFonts) — the side is the FIRST font, the list may also
-    // name the other pick as the fill-through.
-    if (rule.fonts.length < 1 || rule.fonts.length > 2) continue;
-    const ref = rule.fonts[0]!;
-    if (ref === "base") return "base";
-    if (ref === "donor-0") return "donor";
+  let side: FontSide | null = null;
+  for (const [start, end] of blockRanges(block)) {
+    let intervalSide: FontSide | null = null;
+    for (let i = rules.length - 1; i >= 0; i--) {
+      const rule = rules[i]!;
+      if (!isExactRangeRule(rule, start, end)) continue;
+      if (rule.fonts.length < 1 || rule.fonts.length > 2) continue;
+      const ref = rule.fonts[0]!;
+      intervalSide = ref === "base" ? "base" : ref === "donor-0" ? "donor" : null;
+      break;
+    }
+    if (intervalSide === null) return "";
+    if (side === null) side = intervalSide;
+    else if (side !== intervalSide) return "";
   }
-  return "";
+  return side ?? "";
 }
 
 /* -------- default sides (active-chip prototype parity) -------------- */
@@ -294,20 +319,27 @@ function sweepDefaultSide(
   donor: readonly number[] | null,
 ): FontSide | "" | null {
   if (base === null && donor === null) return null;
-  // Two pointers over the sorted coverages, swept along the block span.
-  let bi = lowerBound(base, block.start);
-  let di = lowerBound(donor, block.start);
+  // Two pointers over the sorted coverages, swept along the block's
+  // CURATED intervals (round 7): a disjoint block's hull overlaps
+  // neighboring icon sub-blocks, and their codepoints must not vote
+  // here.
+  let bi = 0;
+  let di = 0;
   let side: FontSide | "" | null = null;
-  for (let cp = block.start; cp <= block.end; cp++) {
-    if (bi >= (base?.length ?? 0) && di >= (donor?.length ?? 0)) break;
-    if (base) while (bi < base.length && base[bi]! < cp) bi++;
-    if (donor) while (di < donor.length && donor[di]! < cp) di++;
-    const hasBase = base !== null && base[bi] === cp;
-    const hasDonor = donor !== null && donor[di] === cp;
-    if (!hasBase && !hasDonor) continue;
-    const current: FontSide = hasBase ? "base" : "donor";
-    if (side === null) side = current;
-    else if (side !== current) return "";
+  for (const [blockStart, blockEnd] of blockRanges(block)) {
+    bi = lowerBound(base, blockStart);
+    di = lowerBound(donor, blockStart);
+    for (let cp = blockStart; cp <= blockEnd; cp++) {
+      if (bi >= (base?.length ?? 0) && di >= (donor?.length ?? 0)) break;
+      if (base) while (bi < base.length && base[bi]! < cp) bi++;
+      if (donor) while (di < donor.length && donor[di]! < cp) di++;
+      const hasBase = base !== null && base[bi] === cp;
+      const hasDonor = donor !== null && donor[di] === cp;
+      if (!hasBase && !hasDonor) continue;
+      const current: FontSide = hasBase ? "base" : "donor";
+      if (side === null) side = current;
+      else if (side !== current) return "";
+    }
   }
   return side;
 }
@@ -394,10 +426,11 @@ function effectiveGroupSide(
 }
 
 /**
- * Assign one block to a side through the rule state: an exact range
- * rule with the side's ref as the only font. Assigning the side the
- * block already carries (explicitly or by default) REVERTS it to the
- * default (prototype parity).
+ * Assign one block (or a group's blocks) to a side through the rule
+ * state: one exact range rule per block INTERVAL with the side's ref
+ * leading the font list. Assigning the side the group already carries
+ * (explicitly or by default) REVERTS it to the default (prototype
+ * parity).
  */
 function assignBlocks(
   blocks: readonly UnicodeBlock[],
@@ -410,7 +443,11 @@ function assignBlocks(
     blocks.flatMap((block) =>
       store
         .get()
-        .rules.filter((rule) => isExactBlockRule(rule, block))
+        .rules.filter((rule) =>
+          blockRanges(block).some(([start, end]) =>
+            isExactRangeRule(rule, start, end),
+          ),
+        )
         .map((rule) => rule.id),
     ),
   );
@@ -418,9 +455,9 @@ function assignBlocks(
   const rules = store.get().rules.filter((rule) => !exact.has(rule.id));
   if (!already) {
     for (const block of blocks) {
-      rules.push(
-        newRule({ kind: "range", start: block.start, end: block.end }, fonts),
-      );
+      for (const [start, end] of blockRanges(block)) {
+        rules.push(newRule({ kind: "range", start, end }, fonts));
+      }
     }
   }
   mutateRules(rules);
@@ -566,7 +603,15 @@ const BLOCK_ICONS: Record<string, IconName> = {
   "box-drawing": "grid",
   "geometric-shapes": "shapes",
   "misc-symbols": "shapes",
-  "nf-icons": "shapes",
+  // The icon sub-blocks (round 7), one glyph per publisher macro-block.
+  "nf-powerline": "arrow",
+  "nf-seti-devicons": "braces",
+  "nf-codicons": "dots",
+  "nf-fontawesome": "star",
+  "nf-fontlogos": "tag",
+  "nf-octicons": "github",
+  "nf-material": "layers",
+  "nf-misc": "shapes",
   hiragana: "lang",
   katakana: "lang",
   emoji: "shapes",
