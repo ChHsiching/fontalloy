@@ -39,13 +39,23 @@ const BROWSER_NOISE: Array<{ pattern: RegExp; reason: string }> = [
   },
 ];
 
+/**
+ * Whether one collected console line is one of the expected-benign
+ * classes above. Exposed for suites that own their listener lifetime
+ * (the journeys suite keeps one page across all journeys and filters
+ * at assertion time instead of registering per-test listeners).
+ */
+export function isKnownBenignConsoleError(text: string): boolean {
+  return BROWSER_NOISE.some((entry) => entry.pattern.test(text));
+}
+
 /** Collect every JS error the page reports into `sink`; assert later. */
 export function collectJsErrors(page: Page, sink: string[]): void {
   page.on("pageerror", (err) => sink.push(`pageerror: ${err.message}`));
   page.on("console", (msg) => {
     if (msg.type() !== "error") return;
     const text = `console.error: ${msg.text()}`;
-    if (BROWSER_NOISE.some((entry) => entry.pattern.test(text))) return;
+    if (isKnownBenignConsoleError(text)) return;
     sink.push(text);
   });
 }
