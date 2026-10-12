@@ -402,18 +402,15 @@ export function mountPicker(
         const rowNote = memberStatus.find((s) => s.status !== "verified");
         // The cuts (round 8): one chip per distinct release; the ACTIVE
         // cut is the explicit selection, else the family default. The
-        // row NAME carries the active cut's real name (item 7) — the
-        // list reads the family, a picked row reads its variant.
+        // LIST row reads the FAMILY name; the row the user actually
+        // PICKED (the checked one — the picker card's selected state)
+        // carries the variant's real name (item 7).
         const cuts = variantCuts(display);
         const selectedCutId = variantSelections.get(display.id) ?? null;
         const activeCut =
           cuts.find((cut) => cut.id === selectedCutId) ?? cuts[0] ?? null;
         const chips = rowChips(cuts, selectedCutId, statusOf);
         const baseName = CURATED_META[display.id]?.name ?? display.id;
-        const rowName =
-          activeCut !== null && activeCut.label !== "标准"
-            ? `${baseName} ${activeCut.label}`
-            : baseName;
         // Self-render + the checked state: the registration of the
         // CURRENTLY active cut first (a chip pick registered the
         // variant's own face), the sweep's primary face as the fallback.
@@ -423,10 +420,16 @@ export function mountPicker(
             : undefined) ??
           catalog.registered[primaryFamily] ??
           null;
+        const rowId = cssKey ?? `cat:${display.id}`;
+        const rowIsSelected = cssKey !== null && cssKey === selectedKey;
+        const rowName =
+          rowIsSelected && activeCut !== null && activeCut.label !== "标准"
+            ? `${baseName} ${activeCut.label}`
+            : baseName;
         return [
           display.id,
           {
-            id: cssKey ?? `cat:${display.id}`,
+            id: rowId,
             name: rowName,
             family: cssKey ?? undefined,
             meta: familyMeta(primaryFamily),
