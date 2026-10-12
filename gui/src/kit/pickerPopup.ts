@@ -56,6 +56,24 @@ export interface PickerFont {
   disabled?: boolean;
   /** Inline status tag for a disabled row (e.g. 下载中…). */
   note?: string;
+  /**
+   * Variant chips (round 7): the typed axis values under the row's
+   * meta line — NF图标 / 等宽 / 屏显 / GB / weights. A chip is a
+   * span-button (the row itself is the <button>; nested buttons are
+   * invalid HTML); clicking it fires onChip instead of onPick. `on`
+   * marks the selected value of its axis, `disabled` an impossible
+   * combination or an unfetched member family.
+   */
+  chips?: PickerChip[];
+}
+
+/** One variant chip of a picker row. */
+export interface PickerChip {
+  /** Stable key: `${axis}:${value}`. */
+  id: string;
+  label: string;
+  on?: boolean;
+  disabled?: boolean;
 }
 
 export interface PickerPopupProps {
@@ -85,6 +103,8 @@ export interface PickerPopupProps {
   /** Footer action (加载本地字体文件) — outside the scroll area. */
   footer?: { label: string; onClick(): void };
   onPick(id: string): void;
+  /** A variant chip was clicked (round 7); falls back to onPick. */
+  onChip?(rowId: string, chipId: string): void;
 }
 
 export interface PickerPopup {
@@ -249,6 +269,7 @@ export function mountPickerPopup(
         f.meta ?? null,
         f.disabled ?? false,
         f.note ?? null,
+        f.chips ?? null,
       ]),
     ]);
     if (scrollArea.dataset.signature === signature) return;
@@ -272,6 +293,29 @@ export function mountPickerPopup(
       }
       row.appendChild(name);
       if (font.meta) row.appendChild(metaLine(font.meta));
+      if (font.chips && font.chips.length > 0) {
+        const chips = document.createElement("span");
+        chips.className = "kit-fp-chips";
+        for (const chip of font.chips) {
+          const el = document.createElement("span");
+          el.className = "kit-vchip" + (chip.on ? " on" : "") + (chip.disabled ? " off" : "");
+          el.dataset.chip = chip.id;
+          el.setAttribute("role", "button");
+          el.textContent = chip.label;
+          if (!chip.disabled) {
+            el.tabIndex = -1; // pointer-driven (the row is the key target)
+            el.addEventListener("click", (e) => {
+              e.stopPropagation();
+              if (font.disabled) return;
+              props.onChip?.(font.id, chip.id);
+            });
+          } else {
+            el.setAttribute("aria-disabled", "true");
+          }
+          chips.appendChild(el);
+        }
+        row.appendChild(chips);
+      }
       if (font.note) {
         const tag = document.createElement("span");
         tag.className = "kit-fp-note";

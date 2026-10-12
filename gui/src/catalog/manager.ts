@@ -40,6 +40,40 @@ function describe(err: unknown): string {
 }
 
 /**
+ * The stored face a variant selection registers (round 7): the release
+ * zip carries every variant's faces; match the variant's tokens against
+ * the file names (NF→NerdFont, Mono, HW, Screen, GB, TC, weights),
+ * preferring Regular among equals. Falls back to the previous rule
+ * (first Regular-named face, else the first file) — a one-face family
+ * (the dev catalog and the CI zips) resolves to exactly that face.
+ */
+function pickFaceForVariant(
+  files: ReadonlyArray<{ file: string }>,
+  variant: string | null,
+): { file: string } {
+  const preferRegular = (list: ReadonlyArray<{ file: string }>) =>
+    list.find((f) => /regular/i.test(f.file)) ?? list[0]!;
+  if (variant === null || files.length <= 1) return preferRegular(files);
+
+  const lower = variant.toLowerCase();
+  const wants = (token: string): boolean => lower.includes(token);
+  const matches = files.filter((f) => {
+    const name = f.file.toLowerCase();
+    return (
+      (!wants("nf") || /nerd ?font|nf/.test(name)) &&
+      (!wants("mono") || name.includes("mono")) &&
+      (!wants("hw") || name.includes("hw")) &&
+      (!wants("screen") || name.includes("screen")) &&
+      (!wants("gb") || name.includes("gb")) &&
+      (!wants("tc") || name.includes("tc")) &&
+      (!wants("light") || name.includes("light")) &&
+      (!wants("medium") || name.includes("medium"))
+    );
+  });
+  return preferRegular(matches.length > 0 ? matches : files);
+}
+
+/**
  * The first-run catalog downloader (issue #17, ADR-0005).
  *
  * Every launch runs the same flow — there is no special "first" launch:
@@ -256,25 +290,36 @@ export class CatalogManager {
   }
 
   /**
-   * Make one catalog family selectable: read its primary face from storage,
-   * register it through the same FontFace(arrayBuffer) path as local files,
-   * and record family -> cssFamily for the picker rows. Idempotent —
-   * including mid-sweep, through the pending map (the sweep defers its
-   * store patches). Returns the cssFamily, or null when the family is not
-   * usable. `silent` skips both store patches (the sweep batches its own).
+   * Make one catalog family selectable: read a face from storage,
+   * register it through the same FontFace(arrayBuffer) path as local
+   * files, and record family -> cssFamily for the picker rows.
+   * Idempotent — including mid-sweep, through the pending map (the
+   * sweep defers its store patches). Returns the cssFamily, or null
+   * when the family is not usable. `silent` skips both store patches
+   * (the sweep batches its own).
+   *
+   * `variant` (round 7, the variant chips): the manifest VARIANT the
+   * user picked. It selects the stored face whose file name matches the
+   * variant (the production release zip carries every variant's faces;
+   * token matching — NF→NerdFont, Mono, HW, Screen, GB, TC, weights)
+   * and rides the registration as the catalog identity, so the recipe
+   * reference names exactly the chip's variant. Falls back to the
+   * release document's own variant and the Regular-preferring primary.
    */
   async ensureRegistered(
     family: ReleaseFamily,
-    opts: { silent?: boolean } = {},
+    opts: { silent?: boolean; variant?: string } = {},
   ): Promise<string | null> {
+    const variant = opts.variant ?? family.variant ?? null;
+    const cacheKey =
+      variant === null ? family.family : `${family.family}::${variant}`;
     const existing =
-      store.get().catalog.registered[family.family] ??
-      this.pendingRegistrations.get(family.family);
+      store.get().catalog.registered[cacheKey] ??
+      this.pendingRegistrations.get(cacheKey);
     if (existing) return existing;
 
     const dir = familyDir(family.family);
-    const primary =
-      family.files.find((f) => /regular/i.test(f.file)) ?? family.files[0];
+    const primary = pickFaceForVariant(family.files, variant);
     const buffer = await this.deps.storage.read(`${dir}/${primary.file}`);
     if (!buffer) return null;
     try {
@@ -291,17 +336,17 @@ export class CatalogManager {
         // The catalog identity (round 6): the synthesize flow names the
         // manifest family + variant in the recipe when the service can
         // resolve it, instead of a bare file name.
-        catalog: { family: family.family, variant: family.variant ?? null },
+        catalog: { family: family.family, variant },
       });
       if (opts.silent) {
         // The sweep collects these and patches the store once at the end.
-        this.pendingRegistrations.set(family.family, font.cssFamily);
+        this.pendingRegistrations.set(cacheKey, font.cssFamily);
         this.pendingFonts.push(font);
       } else {
         this.patchCatalog({
           registered: {
             ...store.get().catalog.registered,
-            [family.family]: font.cssFamily,
+            [cacheKey]: font.cssFamily,
           },
         });
       }

@@ -58,7 +58,10 @@ test("the real catalog lists real families with real meta", async ({ page }) => 
   // the open EN popup physically covers the CJK card below it.)
   await page.keyboard.press("Escape");
   const cjkPopup = await openFontPicker(page, "cjk");
-  await expect(cjkPopup.locator(".kit-fp")).toHaveCount(10);
+  // Round 7: the six WenKai manifest families collapse onto ONE group
+  // row — MapleMono + 霰鹜文楷(group) + NotoSansSC + NotoSerifSC + the
+  // five prototype-only extras.
+  await expect(cjkPopup.locator(".kit-fp")).toHaveCount(9);
   await expect(cjkPopup.locator(".kit-fp").first()).toContainText("Maple Mono CN");
   await expect(cjkPopup.locator(".kit-fp", { hasText: "得意黑" })).toHaveCount(1);
   await page.keyboard.press("Escape");
@@ -88,15 +91,18 @@ test("the real catalog lists real families with real meta", async ({ page }) => 
   await page.keyboard.press("Escape");
 
   // The CJK picker: the prototype's LD front (Maple Mono CN 圆角等宽 /
-  // 霞鹜文楷 Screen 楷体 / 思源黑体 黑体) with its star counts, and the
-  // five prototype-only CJK families the dev catalog serves.
+  // 霞鹜文楷 楷体 / 思源黑体 黑体) with its star counts, and the
+  // five prototype-only CJK families the dev catalog serves. (Round 7:
+  // WenKai's manifest families collapse onto ONE 霞鹜文楷 group row
+  // with variant chips — no separate Screen row.)
   const cjk = await openFontPicker(page, "cjk");
   const cjkTexts = await cjk.locator(".kit-fp").allTextContents();
   expect(cjkTexts.slice(0, 3)).toEqual([
     expect.stringContaining("Maple Mono CN"),
-    expect.stringContaining("霞鹜文楷 Screen"),
+    expect.stringContaining("霞鹜文楷"),
     expect.stringContaining("思源黑体"),
   ]);
+  expect(cjkTexts.filter((row) => row.includes("霞鹜文楷"))).toHaveLength(1);
   const maple = cjk.locator(".kit-fp", { hasText: "29.2k" });
   await expect(maple).toContainText("Maple Mono CN");
   await expect(maple).toContainText("圆角等宽");

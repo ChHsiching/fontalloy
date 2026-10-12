@@ -1,6 +1,6 @@
 {
  "schema": "fontalloy/curated-display-meta@1",
- "comment": "Curated DISPLAY data the repo manifest cannot provide (repair round 2), plus the pickers curated FRONT (repair round 3) and the round-5 SLOT SPLIT: GitHub star counts (seed values only - the pickers overlay them with live counts fetched at startup, see catalog/stars.ts), display names (Maple Mono CN / 霞鹜文楷 Screen / 思源黑体, the spaced base names), the prototype short pinned trait tags (连字 / 楷体 / 圆角等宽 …) from gui/prototype/data catalogs, and slots.cjk (owner item 2: the EN slot lists the Nerd Fonts coding families, the CJK slot the CJK families - the prototype BA/DA wiring, separate catalogs per slot; every family not named there is an EN-slot family). front pins the featured families first in the matching picker (the prototype LB/LD rows); NerdFontsSymbolsOnly never lists. The five CJK families the prototype ships but the committed manifest lacks (得意黑 / 更纱黑体 / 方舟像素 / 缝合像素 / 朱雀仿宋) are served by the DEV catalog from the local prototype fonts directory; upstream manifest pinning is a documented follow-up.",
+ "comment": "Curated DISPLAY data the repo manifest cannot provide (repair round 2), plus the pickers curated FRONT (repair round 3) and the round-5 SLOT SPLIT: GitHub star counts (seed values only - the pickers overlay them with live counts fetched at startup, see catalog/stars.ts), display names (Maple Mono CN / 霞鹜文楷 Screen / 思源黑体, the spaced base names), the prototype short pinned trait tags (连字 / 楷体 / 圆角等宽 …) from gui/prototype/data catalogs, and slots.cjk (owner item 2: the EN slot lists the Nerd Fonts coding families, the CJK slot the CJK families - the prototype BA/DA wiring, separate catalogs per slot; every family not named there is an EN-slot family). front pins the featured families first in the matching picker (the prototype LB/LD rows); NerdFontsSymbolsOnly never lists. Round 7 (the catalog expansion): 22 new curated CJK families (yuru7 merges, LXGW series, 寒蝉, Glow Sans, 汇文明朝体 …) and groups.LXGWWenKai, which collapses WenKai's six manifest families (kai x mono x screen x GB, separate upstream repos) onto ONE picker row whose variant chips resolve to the exact member family + variant. The five CJK families the prototype ships but the committed manifest lacks (得意黑 / 更纱黑体 / 方舟像素 / 缝合像素 / 朱雀仿宋) are served by the DEV catalog from the local prototype fonts directory; upstream manifest pinning is a documented follow-up.",
  "families": {
   "3270": {
    "trait": "IBM 终端复刻"
@@ -230,7 +230,8 @@
   },
   "LXGWWenKai": {
    "stars": 26195,
-   "trait": "楷体 · 阅读/正文"
+   "trait": "楷体 · 阅读/正文",
+   "name": "霞鹜文楷"
   },
   "NotoSerifSC": {
    "stars": 9749,
@@ -270,6 +271,111 @@
    "name": "缝合像素字体",
    "stars": 3304,
    "trait": "像素 · 泛中日韩"
+  },
+  "UDEVGothic": {
+   "name": "UDEV Gothic",
+   "stars": 2054,
+   "trait": "等宽合体 · 日文"
+  },
+  "HackGen": {
+   "name": "HackGen 白源",
+   "stars": 2449,
+   "trait": "等宽合体 · 日文"
+  },
+  "PlemolJP": {
+   "name": "PlemolJP",
+   "stars": 1396,
+   "trait": "等宽合体 · 日文"
+  },
+  "BizinGothic": {
+   "name": "Bizin Gothic",
+   "stars": 434,
+   "trait": "等宽合体 · 日文"
+  },
+  "GuguruSansCode": {
+   "name": "Guguru Sans Code",
+   "stars": 120,
+   "trait": "等宽合体 · 日文"
+  },
+  "SourceHanCodeJP": {
+   "name": "Source Han Code JP",
+   "stars": 1751,
+   "trait": "Adobe 官方合体 · 日文"
+  },
+  "LxgwNeoXiHei": {
+   "name": "霞鹜新晰黑",
+   "stars": 2689,
+   "trait": "黑体 · 印刷/正文"
+  },
+  "LxgwNeoXiHeiCode": {
+   "name": "霞鹜新晰黑 Code",
+   "stars": 69,
+   "trait": "等宽合体 · 黑体"
+  },
+  "LxgwNeoZhiSong": {
+   "name": "霞鹜新致宋",
+   "stars": 1266,
+   "trait": "宋体 · 印刷/正文"
+  },
+  "Xiaolai": {
+   "name": "小赖字体",
+   "stars": 2328,
+   "trait": "手写楷体"
+  },
+  "XiaolaiMono": {
+   "name": "小赖等宽",
+   "stars": 2328,
+   "trait": "手写楷体 · 等宽"
+  },
+  "LxgwWenKaiTC": {
+   "name": "霞鹜文楷 TC",
+   "stars": 869,
+   "trait": "楷体 · 繁体"
+  },
+  "LxgwWenKaiMonoTC": {
+   "name": "霞鹜文楷等宽 TC",
+   "stars": 869,
+   "trait": "楷体 · 繁体等宽"
+  },
+  "LxgwZhenKai": {
+   "name": "霞鹜臻楷",
+   "stars": 905,
+   "trait": "楷体 · 更粗字面"
+  },
+  "Yozai": {
+   "name": "悠哉字体",
+   "stars": 1266,
+   "trait": "手写楷体"
+  },
+  "LxgwMarkerGothic": {
+   "name": "霞鹜铭黑",
+   "stars": 564,
+   "trait": "马克笔风 · 标题"
+  },
+  "Chillkai": {
+   "name": "寒蝉正楷体",
+   "stars": 139,
+   "trait": "楷体 · 简繁双版"
+  },
+  "ChillRoundGothic": {
+   "name": "寒蝉全圆体",
+   "stars": 117,
+   "trait": "圆体"
+  },
+  "ChillRound": {
+   "name": "寒蝉圆体",
+   "stars": 384,
+   "trait": "圆体 · 后继项目"
+  },
+  "GlowSans": {
+   "name": "未来荧黑",
+   "stars": 1956,
+   "trait": "黑体 · 多宽度轴"
+  },
+  "HuiwenMincho": {
+   "name": "汇文明朝体修正",
+   "stars": 262,
+   "trait": "明朝体 · 古典"
   }
  },
  "front": {
@@ -285,8 +391,18 @@
   ],
   "cjk": [
    "MapleMono",
-   "LXGWWenKaiScreen",
+   "LXGWWenKai",
    "NotoSansSC"
+  ]
+ },
+ "groups": {
+  "LXGWWenKai": [
+   "LXGWWenKai",
+   "LXGWWenKaiMono",
+   "LXGWWenKaiScreen",
+   "LXGWWenKaiMonoScreen",
+   "LXGWWenKaiGBScreen",
+   "LXGWWenKaiMonoGBScreen"
   ]
  },
  "slots": {
@@ -304,7 +420,28 @@
    "SarasaGothic",
    "ArkPixel",
    "ZhuqueFangsong",
-   "FusionPixel"
+   "FusionPixel",
+   "UDEVGothic",
+   "HackGen",
+   "PlemolJP",
+   "BizinGothic",
+   "GuguruSansCode",
+   "SourceHanCodeJP",
+   "LxgwNeoXiHei",
+   "LxgwNeoXiHeiCode",
+   "LxgwNeoZhiSong",
+   "Xiaolai",
+   "XiaolaiMono",
+   "LxgwWenKaiTC",
+   "LxgwWenKaiMonoTC",
+   "LxgwZhenKai",
+   "Yozai",
+   "LxgwMarkerGothic",
+   "Chillkai",
+   "ChillRoundGothic",
+   "ChillRound",
+   "GlowSans",
+   "HuiwenMincho"
   ]
  }
 }

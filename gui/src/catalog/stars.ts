@@ -183,29 +183,36 @@ export async function refreshStars(): Promise<void> {
   const abort = new AbortController();
   const fresh: Record<string, number> = {};
   // Sequential on purpose: a handful of requests, paced, is exactly
-  // what an unauthenticated client owes the shared rate limit.
+  // what an unauthenticated client owes the shared rate limit. Each
+  // result lands IMMEDIATELY — overlay AND cache (round 7: the
+  // expansion families roughly doubled the fetch set, so a launch that
+  // ends mid-sweep — a reload, a close — must still find every count
+  // that already landed in its cache).
   for (const repo of repos) {
     if (abort.signal.aborted) break;
     const stars = await fetchRepoStars(repo, abort.signal);
-    if (stars !== null) fresh[repo] = stars;
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-
-  if (Object.keys(fresh).length === 0) return;
-  for (const family of families) {
-    const stars = fresh[repoOfFamily(family)!];
-    if (stars !== undefined) liveStars.set(family, stars);
-  }
-  notify();
-  if (storage !== null) {
-    try {
-      const merged = { ...(storage ? await readCache(storage) : {}), ...fresh };
-      await storage.write(
-        CACHE_KEY,
-        new TextEncoder().encode(JSON.stringify(merged)).buffer as ArrayBuffer,
-      );
-    } catch {
-      // A failed cache write costs nothing but a cold next launch.
+    if (stars !== null) {
+      fresh[repo] = stars;
+      let landed = false;
+      for (const family of families) {
+        if (repoOfFamily(family) === repo) {
+          liveStars.set(family, stars);
+          landed = true;
+        }
+      }
+      if (landed) notify();
+      if (storage !== null) {
+        try {
+          const merged = { ...(await readCache(storage)), ...fresh };
+          await storage.write(
+            CACHE_KEY,
+            new TextEncoder().encode(JSON.stringify(merged)).buffer as ArrayBuffer,
+          );
+        } catch {
+          // A failed cache write costs nothing but a cold next launch.
+        }
+      }
     }
+    await new Promise((resolve) => setTimeout(resolve, 250));
   }
 }

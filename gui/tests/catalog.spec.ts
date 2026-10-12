@@ -409,12 +409,14 @@ test.describe("first-run catalog download", () => {
     page,
   }) => {
     // Round 5, owner item 14. The catalog families are real manifest
-    // families (MapleMono / LXGWWenKaiScreen — CJK slot rows that
-    // display stars); their pinned upstream repos answer the startup
-    // fetch. A later launch with the API down shows the CACHED counts.
+    // families (MapleMono / LXGWWenKai — CJK slot rows that display
+    // stars); their pinned upstream repos answer the startup fetch. A
+    // later launch with the API down shows the CACHED counts. (Round 7:
+    // WenKai's manifest families collapse onto one 霞鹜文楷 group row —
+    // the row's stars are the primary member LXGWWenKai's.)
     const starCounts: Record<string, number> = {
       "subframe7536/maple-font": 32_000,
-      "lxgw/LxgwWenKai-Screen": 81_000,
+      "lxgw/LxgwWenKai": 81_000,
     };
     let apiUp = true;
     // Every response is 200 (a body without stargazers_count reads as
@@ -443,8 +445,8 @@ test.describe("first-run catalog download", () => {
     const sim = await SimCatalog.create([
       { family: "MapleMono", file: "MapleMonoCN-Regular.ttf", fontPath: FONT_A },
       {
-        family: "LXGWWenKaiScreen",
-        file: "LXGWWenKaiScreen-Regular.ttf",
+        family: "LXGWWenKai",
+        file: "LXGWWenKai-Regular.ttf",
         fontPath: FONT_B,
       },
     ]);
@@ -454,7 +456,7 @@ test.describe("first-run catalog download", () => {
     await expect(catalogDone(page)).toHaveText("2");
 
     // The CJK slot lists both families (the slot split); their rows
-    // show the LIVE counts, not the curated seeds (29.2k / 2.2k).
+    // show the LIVE counts, not the curated seeds (29.2k / 26.2k).
     await pointerClick(
       page,
       page.locator('[data-role="picker-cjk"] .kit-hd'),
@@ -465,9 +467,7 @@ test.describe("first-run catalog download", () => {
       cjkPopup.locator(".kit-fp", { hasText: "Maple Mono CN" }).locator(".kit-gh"),
     ).toContainText("32.0k");
     await expect(
-      cjkPopup
-        .locator(".kit-fp", { hasText: "霞鹜文楷 Screen" })
-        .locator(".kit-gh"),
+      cjkPopup.locator(".kit-fp", { hasText: "霞鹜文楷" }).locator(".kit-gh"),
     ).toContainText("81.0k");
 
     // The EN slot lists neither (separate catalogs per slot).
@@ -477,7 +477,7 @@ test.describe("first-run catalog download", () => {
     );
     const enPopup = page.locator('[data-picker-popup="en"]');
     await expect(enPopup.locator(".kit-fp", { hasText: "Maple Mono CN" })).toHaveCount(0);
-    await expect(enPopup.locator(".kit-fp", { hasText: "霞鹜文楷 Screen" })).toHaveCount(0);
+    await expect(enPopup.locator(".kit-fp", { hasText: "霞鹜文楷" })).toHaveCount(0);
 
     // Offline launch: the API is down; the cached counts still show
     // (never the stale seed, never nothing).
@@ -492,6 +492,80 @@ test.describe("first-run catalog download", () => {
     await expect(
       cjkPopup.locator(".kit-fp", { hasText: "Maple Mono CN" }).locator(".kit-gh"),
     ).toContainText("32.0k");
+  });
+
+  test("variant chips: one WenKai row, chips resolve to the exact manifest family", async ({
+    page,
+  }) => {
+    // Round 7. WenKai's six manifest families (kai × mono × screen × GB,
+    // separate upstream repos) collapse onto ONE 霞鹜文楷 row; its typed
+    // chips come from the manifest's axes. The sim serves two members
+    // (the plain and Screen cuts) — the un-fetched members' chips render
+    // disabled, never hidden.
+    const sim = await SimCatalog.create([
+      {
+        family: "LXGWWenKai",
+        variant: "Regular",
+        file: "LXGWWenKai-Regular.ttf",
+        fontPath: FONT_A,
+      },
+      {
+        family: "LXGWWenKaiScreen",
+        variant: "Regular",
+        file: "LXGWWenKaiScreen-Regular.ttf",
+        fontPath: FONT_B,
+      },
+      {
+        family: "UDEVGothic",
+        variant: "Standard",
+        file: "UDEVGothic-Regular.ttf",
+        fontPath: FONT_A,
+      },
+    ]);
+    await sim.install(page);
+    await injectCatalogConfig(page);
+    await page.goto("/");
+    await expect(catalogDone(page)).toHaveText("3");
+
+    await pointerClick(
+      page,
+      page.locator('[data-role="picker-cjk"] .kit-hd'),
+    );
+    const cjkPopup = page.locator('[data-picker-popup="cjk"]');
+    // Exactly ONE 霞鹜文楷 row — the group collapse.
+    const wenkai = cjkPopup.locator(".kit-fp", { hasText: "霞鹜文楷" });
+    await expect(wenkai).toHaveCount(1);
+
+    // The chip vocabulary: the weight axis (Regular on by default), the
+    // mono width, the screen rendering, the GB charset.
+    const chip = (id: string) => wenkai.locator(`.kit-vchip[data-chip='${id}']`);
+    await expect(chip("weight:Regular")).toHaveClass(/on/);
+    await expect(chip("weight:Light")).toBeVisible();
+    await expect(chip("weight:Medium")).toBeVisible();
+    // Un-fetched members (no local binary served) are DISABLED, not gone.
+    await expect(chip("cjk_width:mono")).toHaveClass(/off/);
+    await expect(chip("charset:GB")).toHaveClass(/off/);
+    await expect(chip("cjk_width:mono")).toHaveAttribute("aria-disabled", "true");
+    // The fetched 屏显 cut is enabled and off (the default is the plain cut).
+    await expect(chip("rendering:screen")).not.toHaveClass(/off/);
+    await expect(chip("rendering:screen")).not.toHaveClass(/on/);
+
+    // Clicking 屏显 resolves EXACTLY the Screen member family; the chip
+    // turns on, the popup stays open, and the donor pair shows the
+    // Screen family's metadata name.
+    await pointerClick(page, chip("rendering:screen"));
+    await expect(
+      page.locator("[data-role='font-pair'] [data-pair='donor']"),
+    ).toHaveText("LXGWWenKaiScreen");
+    await expect(chip("rendering:screen")).toHaveClass(/on/);
+    await expect(cjkPopup).toBeVisible();
+
+    // A multi-variant single family (yuru7's UDEVGothic: Standard + NF)
+    // renders its icons chip; the plain cut is the default.
+    const udev = cjkPopup.locator(".kit-fp", { hasText: "UDEV Gothic" });
+    await expect(udev).toHaveCount(1);
+    await expect(udev.locator(".kit-vchip[data-chip='icons:nf']")).toBeVisible();
+    await expect(udev.locator(".kit-vchip[data-chip='icons:plain']")).toHaveClass(/on/);
   });
 
   test("offline: the catalog is unavailable and local fonts work fully", async ({

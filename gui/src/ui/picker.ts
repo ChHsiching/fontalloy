@@ -6,10 +6,21 @@ import {
 import { registerFontBytes } from "../fonts/registry";
 import { getDefaultManager } from "../catalog/manager";
 import { starsFor, subscribeStars } from "../catalog/stars";
+import {
+  chipAxes,
+  chipLabel,
+  displayFamilies,
+  resolveVariant,
+  type AxisId,
+  type CatalogEntryLike,
+  type DisplayFamily,
+  type VariantSelection,
+} from "../catalog/variantAxes";
 import { canPickWithDialog, pickLocalFonts } from "../platform/localfonts";
 import {
   cssFamily,
   mountPickerPopup,
+  type PickerChip,
   type PickerFont,
   type PickerPopup,
   type PickerPopupProps,
@@ -119,6 +130,15 @@ const CJK_SLOT_FAMILIES = new Set(
   (curatedMeta as { slots?: { cjk?: string[] } }).slots?.cjk ?? [],
 );
 
+/**
+ * The display-family groups (round 7): WenKai's six manifest families
+ * (kai × mono × screen × GB — separate upstream repos) collapse onto
+ * one row whose chips resolve to the exact member family + variant.
+ */
+const FAMILY_GROUPS: Record<string, string[]> = (
+  curatedMeta as { groups?: Record<string, string[]> }
+).groups ?? {};
+
 /** The one family the prototype never lists (icon-only symbols build). */
 const EXCLUDED_FAMILIES = new Set(["NerdFontsSymbolsOnly"]);
 
@@ -143,6 +163,47 @@ function familyMeta(family: string): FontMeta | undefined {
   const stars = starsFor(family);
   if (base === undefined && stars === undefined) return undefined;
   return { license: base?.license, stars, trait: base?.trait };
+}
+
+/** Split a chip id back into its axis and value. */
+function parseChipId(chipId: string): [AxisId | null, string] {
+  const sep = chipId.indexOf(":");
+  if (sep <= 0) return [null, ""];
+  return [chipId.slice(0, sep) as AxisId, chipId.slice(sep + 1)];
+}
+
+/**
+ * The variant chips of one display row (round 7): every contrasting
+ * axis value of the family, ON when selected, DISABLED when the value
+ * cannot combine with the current selection (no such manifest entry) or
+ * its member family is not fetched. The default value of each axis
+ * carries no chip state — it is the row's plain cut.
+ */
+function rowChips(
+  display: DisplayFamily,
+  selection: VariantSelection,
+  statusOf: (family: string) => CatalogFamilyEntry | undefined,
+): PickerChip[] {
+  const chips: PickerChip[] = [];
+  for (const { axis, values } of chipAxes(display)) {
+    const active = selection[axis] ?? values[0]!;
+    for (const value of values) {
+      const entry = resolveVariant(display, { ...selection, [axis]: value });
+      if (entry === null) {
+        // Impossible combination — grey it, never hide the axis.
+        chips.push({ id: `${axis}:${value}`, label: chipLabel(axis, value), disabled: true });
+        continue;
+      }
+      const verified = statusOf(entry.family)?.status === "verified";
+      chips.push({
+        id: `${axis}:${value}`,
+        label: chipLabel(axis, value),
+        on: active === value,
+        disabled: !verified,
+      });
+    }
+  }
+  return chips;
 }
 
 /**
@@ -221,21 +282,24 @@ export function mountPicker(
   };
 
   /**
-   * Select a catalog family for preview: read the primary face from local
-   * storage (it was sha256-verified at download time), register it through
-   * the same FontFace(arrayBuffer) path as local files, and load it so the
-   * anchor renders in it immediately.
+   * Select a catalog entry for preview (round 7: an entry names the
+   * exact manifest family + VARIANT a row or chip resolved to): read
+   * the variant's face from local storage (sha256-verified at download
+   * time), register it through the same FontFace(arrayBuffer) path as
+   * local files, and load it so the anchor renders in it immediately.
    */
-  const selectCatalogFamily = async (
-    family: CatalogFamilyEntry,
+  const selectCatalogEntry = async (
+    entry: CatalogEntryLike,
   ): Promise<void> => {
     const manager = getDefaultManager();
     const release = manager?.getRelease();
-    const meta = release?.families.find((f) => f.family === family.family);
+    const meta = release?.families.find((f) => f.family === entry.family);
     if (!manager || !meta) return;
-    const cssKey = await manager.ensureRegistered(meta);
+    const cssKey = await manager.ensureRegistered(meta, {
+      variant: entry.variant,
+    });
     if (!cssKey) {
-      error = `无法载入目录字体 ${family.family}：存储的字体文件无法解析。`;
+      error = `无法载入目录字体 ${entry.family}：存储的字体文件无法解析。`;
       rerender();
       return;
     }
@@ -246,37 +310,100 @@ export function mountPicker(
     });
   };
 
+  /**
+   * Plain pick of a release family the manifest mirror does not carry
+   * (the e2e fixtures' invented families, the dev extras): the release
+   * document's own variant rides the catalog identity.
+   */
+  const selectReleaseFamily = async (family: string): Promise<void> => {
+    const manager = getDefaultManager();
+    const meta = manager?.getRelease()?.families.find(
+      (f) => f.family === family,
+    );
+    if (!manager || !meta) return;
+    const cssKey = await manager.ensureRegistered(meta);
+    if (!cssKey) {
+      error = `无法载入目录字体 ${family}：存储的字体文件无法解析。`;
+      rerender();
+      return;
+    }
+    await document.fonts.load(`16px ${cssFamily(cssKey)}`);
+    store.set({
+      selected: { ...store.get().selected, [options.role]: cssKey },
+    });
+  };
+
+  /** The live variant selection per display family (the chips' state). */
+  const variantSelections = new Map<string, VariantSelection>();
+
   const buildProps = (): PickerPopupProps => {
     const { fonts, selected, catalog } = store.get();
     const selectedKey = selected[options.role];
 
     // The role's OWN catalog (round 5, owner item 2): the EN slot lists
     // the Nerd Fonts coding families, the CJK slot the CJK families —
-    // separate catalogs, exactly the prototype's BA/DA wiring. The
-    // curated front pins first (keyed on the FAMILY name — a registered
+    // separate catalogs, exactly the prototype's BA/DA wiring (round 7:
+    // one DISPLAY family per typeface — WenKai's six manifest families
+    // collapse onto one chip row through the curated groups table).
+    // Release families the manifest mirror does not carry (the e2e
+    // fixtures' invented families, the dev catalog's prototype extras)
+    // keep their own plain rows — no manifest entries, no chips. The
+    // curated front pins first (keyed on the DISPLAY id — a registered
     // family's row swaps its `cat:` id for the css key, so ids are not
     // stable keys); NerdFontsSymbolsOnly never lists.
-    const slotFilter = (family: string): boolean =>
-      options.role === "cjk"
-        ? CJK_SLOT_FAMILIES.has(family)
-        : !CJK_SLOT_FAMILIES.has(family);
-    const slotEntries = catalog.families.filter(
-      (family) =>
-        !EXCLUDED_FAMILIES.has(family.family) &&
-        slotFilter(family.family),
+    const manifestDisplays = displayFamilies(FAMILY_GROUPS).filter(
+      (display) => !display.families.some((f) => EXCLUDED_FAMILIES.has(f)),
     );
+    const covered = new Set(manifestDisplays.flatMap((d) => d.families));
+    const releaseExtras: DisplayFamily[] = catalog.families
+      .filter(
+        (f) => !covered.has(f.family) && !EXCLUDED_FAMILIES.has(f.family),
+      )
+      .map((f) => ({ id: f.family, families: [f.family], entries: [] }));
+    const statusOf = (family: string): CatalogFamilyEntry | undefined =>
+      catalog.families.find((f) => f.family === family);
+    const displays = [...manifestDisplays, ...releaseExtras]
+      .filter((display) => {
+        const isCjk = display.families.some((f) => CJK_SLOT_FAMILIES.has(f));
+        return options.role === "cjk" ? isCjk : !isCjk;
+      })
+      // A row lists only when the release document actually carries one
+      // of its families (the dev catalog may serve a subset).
+      .filter((display) =>
+        display.families.some((f) => statusOf(f) !== undefined),
+      );
+
     const rowsByFamily = new Map(
-      slotEntries.map((family) => {
-        const cssKey = catalog.registered[family.family] ?? null;
+      displays.map((display) => {
+        const primaryFamily = display.families[0]!;
+        const memberStatus = display.families
+          .map((f) => statusOf(f))
+          .filter((s): s is CatalogFamilyEntry => s !== undefined);
+        const anyVerified = memberStatus.some((s) => s.status === "verified");
+        const rowNote = memberStatus.find((s) => s.status !== "verified");
+        const selection = variantSelections.get(display.id) ?? {};
+        const chips = rowChips(display, selection, statusOf);
+        // Self-render + the checked state: the registration of the
+        // CURRENTLY resolved entry first (a chip pick registered the
+        // variant's own face), the sweep's primary face as the fallback.
+        const active = resolveVariant(display, selection);
+        const cssKey =
+          (active !== null
+            ? catalog.registered[`${active.family}::${active.variant}`]
+            : undefined) ??
+          catalog.registered[primaryFamily] ??
+          null;
         return [
-          family.family,
+          display.id,
           {
-            id: cssKey ?? `cat:${family.family}`,
-            name: CURATED_META[family.family]?.name ?? family.family,
+            id: cssKey ?? `cat:${display.id}`,
+            name: CURATED_META[display.id]?.name ?? display.id,
             family: cssKey ?? undefined,
-            meta: familyMeta(family.family),
-            disabled: family.status !== "verified",
-            note: catalogTag(family),
+            meta: familyMeta(primaryFamily),
+            disabled: !anyVerified,
+            note: anyVerified ? undefined : (rowNote ? catalogTag(rowNote) : undefined),
+            chips: chips.length > 0 ? chips : undefined,
+            keywords: `${display.id} ${display.families.join(" ")}`,
           } satisfies PickerFont,
         ];
       }),
@@ -288,10 +415,15 @@ export function mountPicker(
         const row = rowsByFamily.get(id);
         return row === undefined ? [] : [row];
       }),
-      ...slotEntries
-        .filter((family) => !frontSet.has(family.family))
-        .map((family) => rowsByFamily.get(family.family)!),
+      ...displays
+        .filter((display) => !frontSet.has(display.id))
+        .map((display) => rowsByFamily.get(display.id)!),
     ];
+    // The live row id (a css key once registered) back to its display
+    // family — the chip handler resolves rows by id, never by name.
+    const displayByRowId = new Map(
+      displays.map((display) => [rowsByFamily.get(display.id)!.id, display.id]),
+    );
 
     // Locally loaded fonts. Faces that entered the registry through the
     // catalog (download or lazy registration) are NEVER listed here —
@@ -325,15 +457,40 @@ export function mountPicker(
       footer: { label: "加载本地字体文件", onClick: () => void openLocalFlow() },
       onPick: (id) => {
         if (id.startsWith("cat:")) {
-          const family = catalog.families.find(
-            (f) => `cat:${f.family}` === id,
+          const display = displays.find((d) => `cat:${d.id}` === id);
+          if (!display) return;
+          // A release-only family (no manifest entries): plain pick.
+          if (display.entries.length === 0) {
+            void selectReleaseFamily(display.id);
+            return;
+          }
+          const entry = resolveVariant(
+            display,
+            variantSelections.get(display.id) ?? {},
           );
-          if (family) void selectCatalogFamily(family);
+          if (entry) void selectCatalogEntry(entry);
           return;
         }
         store.set({
           selected: { ...store.get().selected, [options.role]: id },
         });
+      },
+      onChip: (rowId, chipId) => {
+        const displayId = displayByRowId.get(rowId);
+        const display = displays.find((d) => d.id === displayId);
+        if (!display) return;
+        const [axis, value] = parseChipId(chipId);
+        if (axis === null) return;
+        const selection = { ...(variantSelections.get(display.id) ?? {}) };
+        const axes = chipAxes(display).find((a) => a.axis === axis);
+        if (!axes) return;
+        // Clicking the selected value reverts that axis to its default.
+        if (selection[axis] === value) delete selection[axis];
+        else selection[axis] = value;
+        const entry = resolveVariant(display, selection);
+        if (entry === null) return; // impossible combination — never offered
+        variantSelections.set(display.id, selection);
+        void selectCatalogEntry(entry);
       },
     };
   };

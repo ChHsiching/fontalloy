@@ -68,7 +68,7 @@ They are deliberate, marked, and must not grow without a decision:
 
 | Part | What it adds | Why it exists |
 | --- | --- | --- |
-| `pickerPopup.ts` extension props | `note`/`error` status lines, `PickerFont.disabled` + `note` rows, `keywords`, `destroy()` | Catalog download states (未下载/下载中/失败) on picker rows; regions that rebuild. |
+| `pickerPopup.ts` extension props | `note`/`error` status lines, `PickerFont.disabled` + `note` rows, `keywords`, `chips` (span-button `PickerChip`s + `onChip`), `destroy()` | Catalog download states (未下载/下载中/失败) on picker rows; variant chips under a row (round 7 — NF图标/等宽/屏显/GB/weights, resolved by the app layer); regions that rebuild. |
 | `appSelect.ts` `destroy()` | Full teardown | Regions that rebuild. |
 | `grid.ts` `cp` + `attrs` data attributes | Provenance (winner/via/kind) on the cell dataset | Test-facing walkability (parity-matrix §3.13, benign). |
 | `sceneContent.ts` `spanAttrs` | Per-char provenance attributes | Same instrumentation discipline. |
