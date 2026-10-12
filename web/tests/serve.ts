@@ -82,6 +82,13 @@ async function run(args: string[], cwd: string): Promise<void> {
 export async function startServe(opts: {
   allowOrigin: string;
   fontDir?: string;
+  /**
+   * The catalog manifest to enumerate at /catalog AND resolve
+   * catalog-family references against (the default is the repo
+   * checkout's own manifest; the journey suite passes the owner's
+   * fetched-catalog layout manifest instead).
+   */
+  manifest?: string;
 }): Promise<ServeHandle> {
   const workDir = mkdtempSync(path.join(tmpdir(), "fontalloy-web-serve-"));
   const args = [
@@ -98,6 +105,9 @@ export async function startServe(opts: {
   ];
   if (opts.fontDir !== undefined) {
     args.push("--font-dir", opts.fontDir);
+  }
+  if (opts.manifest !== undefined) {
+    args.push("--manifest", opts.manifest);
   }
 
   const child: ChildProcess = spawn("uv", args, {
