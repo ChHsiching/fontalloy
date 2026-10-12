@@ -429,19 +429,26 @@ test.describe("sidecar synthesize", () => {
       });
 
       // The slot split (round 5, item 2): the EN slot lists the NF
-      // coding family, the CJK slot the CJK family.
+      // coding family, the CJK slot the CJK family. Round 9 (owner
+      // item 2): rows read the faces' OWN name-table names.
+      const baseName = parseFontMeta(
+        readFileSync(real.base).buffer.slice(0) as ArrayBuffer,
+      ).names.display;
+      const donorName = parseFontMeta(
+        readFileSync(real.donor).buffer.slice(0) as ArrayBuffer,
+      ).names.display;
       await pointerClick(page, page.locator('[data-role="picker-en"] .kit-hd'));
       await pointerClick(
         page,
         page
-          .locator('[data-picker-popup="en"] .kit-fp', { hasText: "JetBrains Mono" })
+          .locator('[data-picker-popup="en"] .kit-fp', { hasText: baseName })
           .first(),
       );
       await pointerClick(page, page.locator('[data-role="picker-cjk"] .kit-hd'));
       await pointerClick(
         page,
         page
-          .locator('[data-picker-popup="cjk"] .kit-fp', { hasText: "Maple Mono" })
+          .locator('[data-picker-popup="cjk"] .kit-fp', { hasText: donorName })
           .first(),
       );
       await waitForFontsReady(page);
@@ -598,18 +605,25 @@ test.describe("sidecar synthesize", () => {
         timeout: 30_000,
       });
 
+      // Round 9 (owner item 2): rows read the faces' own names.
+      const baseName2 = parseFontMeta(
+        readFileSync(real.base).buffer.slice(0) as ArrayBuffer,
+      ).names.display;
+      const donorName2 = parseFontMeta(
+        readFileSync(real.donor).buffer.slice(0) as ArrayBuffer,
+      ).names.display;
       await pointerClick(page, page.locator('[data-role="picker-en"] .kit-hd'));
       await pointerClick(
         page,
         page
-          .locator('[data-picker-popup="en"] .kit-fp', { hasText: "JetBrains Mono" })
+          .locator('[data-picker-popup="en"] .kit-fp', { hasText: baseName2 })
           .first(),
       );
       await pointerClick(page, page.locator('[data-role="picker-cjk"] .kit-hd'));
       await pointerClick(
         page,
         page
-          .locator('[data-picker-popup="cjk"] .kit-fp', { hasText: "Maple Mono" })
+          .locator('[data-picker-popup="cjk"] .kit-fp', { hasText: donorName2 })
           .first(),
       );
       await waitForFontsReady(page);

@@ -49,37 +49,38 @@ test("the real catalog lists real families with real meta", async ({ page }) => 
   const popup = await openFontPicker(page, "en");
   const rows = popup.locator(".kit-fp");
   // Round 5 (the slot split): the EN slot lists the Nerd Fonts CODING
-  // families only — 76 of the manifest's unique families have local
-  // binaries (the five LXGW-mono/NerdFontsSymbolsOnly misses are
-  // skipped), plus the dev catalog's five prototype-only CJK extras =
-  // 81 families, of which the 10 CJK ones belong to the CJK slot.
+  // families only; round 9 (owner item 1) the upstream pass serves EVERY
+  // manifest family, so the counts are the full manifest's: 71 EN rows
+  // (every coding family; NerdFontsSymbolsOnly never lists) and every
+  // CJK family the slots table names.
   await expect(rows).toHaveCount(71);
   // And the CJK slot lists exactly those CJK families. (Escape first:
   // the open EN popup physically covers the CJK card below it.)
   await page.keyboard.press("Escape");
   const cjkPopup = await openFontPicker(page, "cjk");
   // Round 7: the six WenKai manifest families collapse onto ONE group
-  // row — MapleMono + 霞鹜文楷(group) + NotoSansSC + NotoSerifSC +
-  // 霞鹜新晰黑 (LxgwNeoXiHei, the round-7 expansion family whose local
-  // prototype binary exists) + the five prototype-only extras.
-  await expect(cjkPopup.locator(".kit-fp")).toHaveCount(10);
+  // row; round 9: all 21 expansion families + the five prototype-only
+  // extras serve — 30 CJK rows, each reading its own name-table name.
+  await expect(cjkPopup.locator(".kit-fp")).toHaveCount(30);
   await expect(
-    cjkPopup.locator(".kit-fp", { hasText: "霞鹜新晰黑" }),
+    cjkPopup.locator(".kit-fp", { hasText: "LXGW Neo XiHei" }),
   ).toHaveCount(1);
   await expect(cjkPopup.locator(".kit-fp").first()).toContainText("Maple Mono");
-  await expect(cjkPopup.locator(".kit-fp", { hasText: "得意黑" })).toHaveCount(1);
+  await expect(
+    cjkPopup.locator(".kit-fp", { hasText: "Smiley Sans Oblique" }),
+  ).toHaveCount(1);
   await page.keyboard.press("Escape");
   const popupEn = await openFontPicker(page, "en");
   const rowsEn = popupEn.locator(".kit-fp");
-  // The curated FRONT pins first (the prototype's LB rows, its display
-  // names and short tags): JetBrains Mono 连字, Fira Code 连字,
-  // Cascadia Code 微软, Iosevka 超窄, Hack 经典, Source Code Pro Adobe,
-  // IBM Plex Mono IBM, Victor Mono 手写.
-  const front = ["JetBrains Mono", "Fira Code", "Cascadia Code", "Iosevka",
-    "Hack", "Source Code Pro", "IBM Plex Mono", "Victor Mono"];
+  // The curated FRONT pins first (the prototype's LB rows). Round 9
+  // (owner item 2): the rows read the patched binaries' OWN name-table
+  // names (JetBrainsMono Nerd Font …), with the curated trait tags.
+  const front = ["JetBrainsMono Nerd Font", "FiraCode Nerd Font",
+    "CaskaydiaCove Nerd Font", "Iosevka Nerd Font", "Hack Nerd Font",
+    "SauceCodePro Nerd Font", "BlexMono Nerd Font", "VictorMono Nerd Font"];
   const texts = await rowsEn.allTextContents();
   expect(texts.slice(0, 8)).toEqual(front.map((name) => expect.stringContaining(name)));
-  const jb = rowsEn.filter({ hasText: "JetBrains Mono" });
+  const jb = rowsEn.filter({ hasText: "JetBrainsMono Nerd Font" });
   await expect(jb).toHaveCount(1);
   await expect(jb).toContainText("OFL");
   await expect(jb).toContainText("连字");
@@ -88,8 +89,8 @@ test("the real catalog lists real families with real meta", async ({ page }) => 
     "源码可读性优先",
   );
   // The EN slot never lists the CJK families (separate catalogs).
-  await expect(rowsEn.filter({ hasText: "霞鹜文楷" })).toHaveCount(0);
-  await expect(rowsEn.filter({ hasText: "思源黑体" })).toHaveCount(0);
+  await expect(rowsEn.filter({ hasText: "LXGW WenKai" })).toHaveCount(0);
+  await expect(rowsEn.filter({ hasText: "Noto Sans SC" })).toHaveCount(0);
   // NerdFontsSymbolsOnly never lists (prototype parity).
   await expect(rowsEn.filter({ hasText: "SymbolsOnly" })).toHaveCount(0);
   await page.keyboard.press("Escape");
@@ -103,14 +104,15 @@ test("the real catalog lists real families with real meta", async ({ page }) => 
   const cjkTexts = await cjk.locator(".kit-fp").allTextContents();
   expect(cjkTexts.slice(0, 3)).toEqual([
     expect.stringContaining("Maple Mono"),
-    expect.stringContaining("霞鹜文楷"),
-    expect.stringContaining("思源黑体"),
+    expect.stringContaining("LXGW WenKai"),
+    expect.stringContaining("Noto Sans SC"),
   ]);
-  expect(cjkTexts.filter((row) => row.includes("霞鹜文楷"))).toHaveLength(1);
+  expect(cjkTexts.filter((row) => row.includes("LXGW WenKai"))).toHaveLength(1);
   const maple = cjk.locator(".kit-fp", { hasText: "29.2k" });
   await expect(maple).toContainText("Maple Mono");
   await expect(maple).toContainText("圆角等宽");
-  for (const name of ["得意黑", "更纱黑体", "方舟像素字体", "缝合像素字体", "朱雀仿宋"]) {
+  // The prototype-only extras read their own name-table names.
+  for (const name of ["Smiley Sans Oblique", "Sarasa Mono SC", "Ark Pixel", "Fusion Pixel", "Zhuque Fangsong"]) {
     await expect(cjk.locator(".kit-fp").filter({ hasText: name })).toHaveCount(1);
   }
   await page.keyboard.press("Escape");
@@ -143,7 +145,8 @@ test("a catalog family verifies, becomes pickable, and self-renders", async ({
   // and the card renders the family name in its own typeface.
   await pickCatalogFamily(page, "en", "0xProto", 240_000);
   const name = page.locator('[data-role="picker-en"] .kit-hd b');
-  await expect(name).toHaveText("0xProto");
+  // Round 9: the card reads the face's own name-table string.
+  await expect(name).toHaveText("0xProto Nerd Font");
   await expect
     .poll(() => name.evaluate((el) => getComputedStyle(el).fontFamily))
     .not.toBe("");
@@ -173,21 +176,19 @@ test("the real catalog drives the panel end to end (YAML, download, copy)", asyn
   );
   await page.goto(`/?serve=${encodeURIComponent(UNUSED_SERVE)}`);
   await waitForCatalogReady(page);
-  await pickCatalogFamily(page, "en", "JetBrains Mono");
-  // The row reads the family name; the CARD then reads the picked
-  // variant's real name (the default cut is the NF release).
-  await pickCatalogFamily(page, "cjk", "Maple Mono", 240_000, "Maple Mono NF");
+  await pickCatalogFamily(page, "en", "JetBrainsMono Nerd Font");
+  // Round 9 (owner item 2): rows and cards read the faces' OWN
+  // name-table strings — the dev catalog serves the CN face for Maple.
+  await pickCatalogFamily(page, "cjk", "Maple Mono", 240_000, "Maple Mono CN");
 
-  // The pair tags carry both picks as plain text — the CURATED display
-  // names (the same ones the picker rows and rail cards render; the raw
-  // manifest ids never reach the UI).
+  // The pair tags carry both picks as plain text — the name-table
+  // display names (the same ones the picker rows and rail cards
+  // render; the raw manifest ids never reach the UI).
   await expect(page.locator(".topbar [data-pair='base']")).toHaveText(
-    "JetBrains Mono",
+    "JetBrainsMono Nerd Font",
   );
-  // Round 8 (owner item 7): the pair tag carries the variant's REAL
-  // name — the row's default cut is the NF release.
   await expect(page.locator(".topbar [data-pair='donor']")).toHaveText(
-    "Maple Mono NF",
+    "Maple Mono CN",
   );
 
   // Open-at-the-selection: the EN picker reopens with the checked row

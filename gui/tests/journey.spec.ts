@@ -350,16 +350,18 @@ async function pickCatalogRow(
  * variant's REAL name, 「Maple Mono NF-CN」).
  */
 async function pickFlagshipPair(page: Page): Promise<void> {
-  await pickCatalogRow(page, "en", "JetBrains Mono", /JetBrains/);
+  // Round 9 (owner item 2): rows read the faces' OWN name-table names.
+  await pickCatalogRow(page, "en", "JetBrainsMono Nerd Font", /JetBrainsMono/);
   await openPicker(page, "cjk");
-  const mapleRow = pickerRow(page, "cjk", "Maple Mono");
+  const mapleRow = pickerRow(page, "cjk", "Maple Mono CN");
   const nfCnChip = mapleRow.locator(".kit-vchip[data-chip='MapleMono::NF-CN']");
   await expect(nfCnChip).toBeVisible();
   await rawClick(page, nfCnChip);
   await waitForFontsReady(page);
+  // The identity is the served face's own name-table string (round 9).
   await expect(
     page.locator("[data-role='font-pair'] [data-pair='donor']"),
-  ).toHaveText("Maple Mono NF-CN", { timeout: 20_000 });
+  ).toHaveText("Maple Mono CN", { timeout: 20_000 });
   await page.keyboard.press("Escape");
   await expect(pickerPopup(page, "cjk")).toBeHidden();
 }
@@ -693,7 +695,7 @@ test.describe("user journey", () => {
       });
 
       await step("J2.2 rows self-render in their own typeface with meta lines", async () => {
-        const row = pickerRow(page, "en", "JetBrains Mono");
+        const row = pickerRow(page, "en", "JetBrainsMono Nerd Font");
         await expect(row).toBeVisible();
         // Self-rendering: the name's inline font-family is its own face.
         // The lazy registration sweep lands AFTER the catalog screen
@@ -713,7 +715,7 @@ test.describe("user journey", () => {
       });
 
       await step("J2.3 pick JetBrains Mono (the Nerd Font cut) → the base pair tag", async () => {
-        await rawClick(page, pickerRow(page, "en", "JetBrains Mono"));
+        await rawClick(page, pickerRow(page, "en", "JetBrainsMono Nerd Font"));
         await waitForFontsReady(page);
         await expect(
           page.locator("[data-role='font-pair'] [data-pair='base']"),
@@ -727,21 +729,23 @@ test.describe("user journey", () => {
         const rows = pickerPopup(page, "cjk").locator(".kit-fp");
         const count = await rows.count();
         expect(count).toBeGreaterThanOrEqual(10);
-        for (const name of ["Maple Mono", "霞鹜文楷"]) {
+        for (const name of ["Maple Mono CN", "LXGW WenKai"]) {
           await expect(pickerRow(page, "cjk", name)).toBeVisible();
         }
       });
 
       await step("J2.5 variant chips are official proper nouns (NF / NF-CN, plain default, picker-level help)", async () => {
-        const maple = pickerRow(page, "cjk", "Maple Mono");
-        // Round 8 final form: one chip per CUT with the OFFICIAL labels
-        // from the data — NF (the family default) and NF-CN. The
+        const maple = pickerRow(page, "cjk", "Maple Mono CN");
+        // Round 8 final form: one chip per CUT; round 9: the labels are
+        // the data's own words — 标准 (the family default) and NF-CN. The
         // default cut renders PLAIN: no 默认 marker, no dashed ring,
         // never a pressed look; the weight axis never chips.
         const nf = maple.locator(".kit-vchip[data-chip='MapleMono::NF']");
         const nfCn = maple.locator(".kit-vchip[data-chip='MapleMono::NF-CN']");
         await expect(nf).toBeVisible();
-        await expect(nf).toHaveText(/^NF$/);
+        // Round 9 (owner item 2): the DEFAULT cut reads 标准; the other
+        // cut's label is the data's own word (the NF-CN variant).
+        await expect(nf).toHaveText(/^标准$/);
         await expect(nf).not.toContainText("默认");
         await expect(nf).not.toHaveClass(/def|on/);
         await expect(nfCn).toBeVisible();
@@ -750,13 +754,14 @@ test.describe("user journey", () => {
         await expect(maple.locator(".kit-vchip")).toHaveCount(2);
         // The WenKai group row: its cuts carry the official compound
         // labels (Mono / 屏幕版 / GB …), never a weight chip.
-        const wenkai = pickerRow(page, "cjk", "霞鹜文楷");
+        const wenkai = pickerRow(page, "cjk", "LXGW WenKai");
         await expect(
           wenkai.locator(".kit-vchip[data-chip='LXGWWenKaiMono::Regular']"),
         ).toHaveText(/^Mono/);
+        // Round 9: the author's own word (Screen), never 屏幕版.
         await expect(
           wenkai.locator(".kit-vchip[data-chip='LXGWWenKaiScreen::Regular']"),
-        ).toHaveText(/^屏幕版/);
+        ).toHaveText(/^Screen/);
         for (const chip of await wenkai.locator(".kit-vchip").all()) {
           const text = await chip.textContent();
           expect(text, `no weight chips: ${text}`).not.toMatch(
@@ -777,7 +782,7 @@ test.describe("user journey", () => {
         await expect(pop).toContainText("同一款字体常有多个发行版本");
         // The token vocabulary the chips carry, as official terms —
         // and no weight row (the axis is deleted).
-        for (const term of ["NF / NL", "Mono / HW", "屏幕版", "标准"]) {
+        for (const term of ["NF / NL", "Mono / HW", "Screen", "标准"]) {
           await expect(pop).toContainText(term);
         }
         await expect(pop).not.toContainText("字重");
@@ -795,12 +800,12 @@ test.describe("user journey", () => {
           .locator(".kit-vchip[data-chip='MapleMono::NF-CN']");
         await rawClick(page, nfCn);
         await waitForFontsReady(page);
-        // The identity follows the data (round 8, owner item 7): the
-        // pair tag carries the variant's REAL name — never
-        // family+hardcoded-suffix.
+        // The identity follows the font file itself (round 9, owner
+        // item 2): the pair tag carries the served face's OWN
+        // name-table string.
         await expect(
           page.locator("[data-role='font-pair'] [data-pair='donor']"),
-        ).toHaveText("Maple Mono NF-CN", { timeout: 20_000 });
+        ).toHaveText("Maple Mono CN", { timeout: 20_000 });
         // The chip is the EXPLICIT selection (accent); the default NF
         // cut stays plain.
         await expect(
@@ -823,11 +828,12 @@ test.describe("user journey", () => {
           const family = await name.evaluate((el) => el.style.fontFamily);
           expect(family.length).toBeGreaterThan(0); // rendered in its own face
         }
-        // The CJK card reads the picked VARIANT's real name (item 7) —
-        // the same identity the pair tag and the report carry.
+        // The CJK card reads the picked face's own name-table string
+        // (round 9, item 2) — the same identity the pair tag and the
+        // report carry.
         await expect(
           page.locator("[data-role='picker-cjk'] .kit-hd .kit-hdc b"),
-        ).toHaveText("Maple Mono NF-CN");
+        ).toHaveText("Maple Mono CN");
       });
 
       await step("J2.8 zero JS errors across the journey", assertNoJsErrors);
@@ -1146,8 +1152,39 @@ test.describe("user journey", () => {
         await expect(
           page.locator("[data-role='rule-solo']"),
         ).toHaveAttribute("aria-expanded", "true");
-        await pointerClick(page, page.locator("[data-role='rule-solo']"));
+        // Round 9 (owner item 6): the aggregate row carries its OWN × —
+        // visibly (DOM + geometry: a real sized, opaque close glyph).
+        const soloDel = page.locator(
+          "[data-role='rule-solo'] [data-role='remove-rule']",
+        );
+        const delGeom = await soloDel.evaluate((el) => {
+          const svg = el.querySelector("svg");
+          const s = svg ? svg.getBoundingClientRect() : new DOMRect();
+          const cs = getComputedStyle(el);
+          return {
+            svgW: s.width,
+            svgH: s.height,
+            visible: cs.visibility === "visible",
+            opacity: Number(cs.opacity),
+          };
+        });
+        expect(delGeom.visible).toBe(true);
+        expect(delGeom.opacity).toBeGreaterThanOrEqual(0.99);
+        expect(delGeom.svgW).toBeGreaterThanOrEqual(10);
+        expect(delGeom.svgH).toBeGreaterThanOrEqual(10);
+        // It deletes the WHOLE group as one undo step.
+        await pointerClick(page, soloDel);
         await expect(child).toHaveCount(0);
+        await expect(page.locator("[data-role='rule-solo']")).toHaveCount(0);
+        // Re-apply the single rule: the 恢复默认 walk (J5.4) needs it.
+        await pointerClick(page, cell);
+        await pointerClick(
+          page,
+          page.locator("[data-char-popup] [data-role='char-donor']"),
+        );
+        await expect(page.locator("[data-role='rule-solo']")).toHaveText(
+          "单个字符 1",
+        );
         // The glyph identity holds through the flip (item 3): every
         // effective cell — A now donor-supplied — paints its winner.
         await assertWinnerGlyphs(page);
@@ -1314,20 +1351,31 @@ test.describe("user journey", () => {
         await expect(
           page.locator("[data-role='rule-row'][data-kind='block']").first(),
         ).toContainText("基本拉丁用中文字体");
-        // Round 8 (owner item 2): the assignment announces its OUTCOME
-        // in plain words — a dismissable corner card with the real
-        // breakdown (N switched supplier) and the undo hint, never a
-        // modal, never a reflow of the workspace.
+        // Round 9 (owner item 3): the outcome is ONE terse line,
+        // numbers first — the success count ALWAYS stated, even 0 —
+        // then the undo hint. No title, no repetition.
         const message = page.locator("[data-role='message']").first();
         await expect(message).toBeVisible();
-        await expect(message.locator(".kit-msg-title")).toHaveText(
-          "已应用：基本拉丁 用中文字体",
+        await expect(message).toHaveText(
+          /^基本拉丁 → 中文：[\d,]+ 生效 \/ [\d,]+ 未变(（(无字形|[\d,]+ 无字形)）)? · Ctrl\+Z 撤销$/,
         );
-        await expect(message).toContainText(
-          /个改由中文字体提供/,
-        );
-        await expect(message).toContainText("可撤销：Ctrl+Z 或“撤销”");
-        // The card is dismissable (×) and stays gone.
+        // Round 9 (owner item 7): the card auto-dismisses on a ~6s
+        // countdown announced by the bottom-edge progress bar — the
+        // bar shrinks, hover FREEZES it, leaving resumes.
+        const bar = message.locator(".kit-msg-bar");
+        await expect(bar).toBeVisible();
+        await expect
+          .poll(() => bar.evaluate((el) => el.style.transform))
+          .toMatch(/^scaleX\(0\.\d+\)$/);
+        await message.hover();
+        await page.waitForTimeout(150); // pointerenter landed; the bar froze
+        const frozen = await bar.evaluate((el) => el.style.transform);
+        await page.waitForTimeout(900);
+        expect(await bar.evaluate((el) => el.style.transform)).toBe(frozen);
+        await page.mouse.move(700, 80);
+        await page.waitForTimeout(250);
+        expect(await bar.evaluate((el) => el.style.transform)).not.toBe(frozen);
+        // The × still closes instantly.
         await pointerClick(page, message.locator("[data-role='message-dismiss']"));
         await expect(message).toHaveCount(0);
       });
@@ -1377,19 +1425,14 @@ test.describe("user journey", () => {
         await expect(
           page.locator("[data-role='rule-row'][data-kind='group']").first(),
         ).toContainText("所有中日韩文字字符用英文字体");
-        // Round 8 (owner item 2): the message states the REAL outcome —
-        // nothing switched; thousands stayed because the English font
-        // lacks the codepoints (补字 by the Chinese font). The stack
-        // columns bottom-up: the newest card is the LAST child.
+        // Round 9 (owner item 3): the terse group form — scope → side,
+        // numbers first, the 未变 parenthetical naming the reason.
+        // The stack columns bottom-up: the newest card is the LAST child.
         const message = page.locator("[data-role='message']").last();
         await expect(message).toBeVisible();
-        await expect(message.locator(".kit-msg-title")).toHaveText(
-          "已应用：所有中日韩文字字符 用英文字体",
+        await expect(message).toHaveText(
+          /^中日韩文字 → 英文：[\d,]+ 生效 \/ [\d,]+ 未变（(无字形|[\d,]+ 无字形)） · Ctrl\+Z 撤销$/,
         );
-        await expect(message).toContainText(
-          /个未变：英文字体不含此码位，仍由中文字体补字/,
-        );
-        await expect(message).toContainText("可撤销：Ctrl+Z 或“撤销”");
         await pointerClick(page, message.locator("[data-role='message-dismiss']"));
         // Item 1a's absence check: the declaration says 英文, every
         // glyph on the page still paints its ACTUAL supplier (the donor
@@ -1602,6 +1645,48 @@ test.describe("user journey", () => {
         );
         expect(codeFont).toBe(enCard);
         expect(codeFont).not.toContain("consolas");
+        // Round 9 (owner item 4): the WHOLE document sample renders on
+        // the effective fonts — headings, list items, and table cells
+        // carry per-character spans like the terminal/code cards (every
+        // text node in the sample sits in a resolved span; the doc's
+        // own table lines/weights stay CSS).
+        const docFonts = await page.evaluate(() => {
+          const strip = (n: string): string =>
+            n.replace(/["']/g, "").trim().toLowerCase();
+          const card = document.querySelector<HTMLElement>(
+            ".kit-sc[data-scene='document'] .kit-doc",
+          );
+          if (!card) return { bare: -1, resolved: -1, latins: new Set<string>(), cjk: new Set<string>() };
+          let bare = 0;
+          let resolved = 0;
+          const walker = document.createTreeWalker(card, NodeFilter.SHOW_TEXT);
+          const latins = new Set<string>();
+          const cjk = new Set<string>();
+          for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+            const text = n.textContent;
+            const parent = (n.parentElement ?? { tagName: "" }).tagName;
+            if (parent === "SCRIPT" || parent === "STYLE") continue;
+            if (text.trim() === "" && !text.includes(" ")) continue;
+            // A whitespace-only text node between spans is layout
+            // filler; everything else must live inside a styled span.
+            if (parent !== "SPAN") bare += 1;
+          }
+          for (const span of card.querySelectorAll<HTMLElement>("span")) {
+            const ch = span.textContent ?? "";
+            if (ch.length !== 1) continue;
+            resolved += 1;
+            const fam = span.style.fontFamily;
+            if (/[A-Za-z0-9]/.test(ch)) latins.add(strip(fam.split(",")[0] ?? ""));
+            if (/[一-鿿]/.test(ch)) cjk.add(strip(fam.split(",")[0] ?? ""));
+          }
+          return { bare, resolved, latins: [...latins], cjk: [...cjk] };
+        });
+        expect(docFonts.bare, "no UI-font text nodes remain in the sample").toBe(0);
+        expect(docFonts.resolved).toBeGreaterThan(80);
+        expect(docFonts.latins.length).toBe(1);
+        expect(docFonts.cjk.length).toBe(1);
+        expect(docFonts.latins[0]).toBe(enCard);
+        expect(docFonts.cjk[0]).not.toBe(enCard);
       });
 
       await step("J7.3 per-card theme dropdowns: 14 terminal / 10 editor palettes", async () => {
@@ -1882,10 +1967,10 @@ test.describe("user journey", () => {
           ]) {
             await expect(panel).toContainText(label);
           }
-          // Round 8 (owner item 7): the 来源字体 names read the
-          // variant's REAL name (「Maple Mono NF-CN」), never the raw
-          // file name or a family+suffix hardcode.
-          await expect(panel).toContainText("Maple Mono NF-CN");
+          // Round 9 (owner item 2): the 来源字体 names read the font
+          // file's OWN name-table string (「Maple Mono CN」), never the
+          // raw file name or a curated/hardcoded display name.
+          await expect(panel).toContainText("Maple Mono CN");
         });
 
       await step("J9.4 the report's nouns carry their ?-popovers (X 是什么)", async () => {

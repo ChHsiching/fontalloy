@@ -212,7 +212,7 @@ async function pickFlagshipPair(page: Page): Promise<void> {
   // EN: the JetBrains Mono row (the Nerd Font cut).
   const en = await openFontPicker(page, "en");
   const jetRow = en.locator(".kit-fp").filter({
-    has: page.locator(".kit-nm", { hasText: /^JetBrains Mono$/ }),
+    has: page.locator(".kit-nm", { hasText: /^JetBrainsMono Nerd Font$/ }),
   });
   await jetRow.scrollIntoViewIfNeeded();
   await rawClick(page, jetRow);
@@ -227,7 +227,7 @@ async function pickFlagshipPair(page: Page): Promise<void> {
   // reads the variant's REAL name).
   const cjk = await openFontPicker(page, "cjk");
   const mapleRow = cjk.locator(".kit-fp").filter({
-    has: page.locator(".kit-nm", { hasText: /^Maple Mono$/ }),
+    has: page.locator(".kit-nm", { hasText: /^Maple Mono CN$/ }),
   });
   await mapleRow.scrollIntoViewIfNeeded();
   await rawClick(
@@ -235,9 +235,10 @@ async function pickFlagshipPair(page: Page): Promise<void> {
     mapleRow.locator(".kit-vchip[data-chip='MapleMono::NF-CN']"),
   );
   await waitForFontsReady(page);
+  // Round 9: the served face's own name-table string.
   await expect(
     page.locator("[data-role='font-pair'] [data-pair='donor']"),
-  ).toHaveText("Maple Mono NF-CN", { timeout: 20_000 });
+  ).toHaveText("Maple Mono CN", { timeout: 20_000 });
   await page.keyboard.press("Escape");
 }
 

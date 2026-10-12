@@ -34,13 +34,27 @@ const FAMILY_SPECS = [
 
 /** The css family the browser registers for a host font (parsed face name). */
 async function parsedCssFamily(path: string): Promise<string> {
+  return (await parsedFontMeta(path)).family;
+}
+
+/** The name-table display name the row/pair renders (round 9, item 2). */
+async function parsedDisplayName(path: string): Promise<string> {
+  return (await parsedFontMeta(path)).names.display;
+}
+
+const metaCache = new Map<string, ReturnType<typeof parseFontMeta>>();
+async function parsedFontMeta(path: string): Promise<ReturnType<typeof parseFontMeta>> {
+  const cached = metaCache.get(path);
+  if (cached) return cached;
   const bytes = await readFile(path);
-  return parseFontMeta(
+  const meta = parseFontMeta(
     bytes.buffer.slice(
       bytes.byteOffset,
       bytes.byteOffset + bytes.byteLength,
     ) as ArrayBuffer,
-  ).family;
+  );
+  metaCache.set(path, meta);
+  return meta;
 }
 
 /** The first-run progress screen (its DOM persists while hidden). */
@@ -54,10 +68,15 @@ const catalogDone = (page: Page) =>
   screen(page).locator("[data-stat='catalog-done']");
 /** The EN picker popup (scoped: both pickers keep popups on <body>). */
 const enPopup = (page: Page) => page.locator('[data-picker-popup="en"]');
-/** A catalog family's row (rows are keyed by their pick id: the css
- *  family once registered, `cat:<family>` while not). */
-const catalogRow = (page: Page, family: string) =>
-  enPopup(page).locator(".kit-fp", { hasText: family });
+/**
+ * A catalog family's row, located by what the row DISPLAYS (round 9,
+ * owner item 2): the registered face's own name-table name, or the
+ * release artifact's own stem while unregistered — never the metadata
+ * family id (rows are keyed by pick id: the css family once
+ * registered, `cat:<family>` while not).
+ */
+const catalogRow = (page: Page, name: string) =>
+  enPopup(page).locator(".kit-fp", { hasText: name });
 
 test.describe("first-run catalog download", () => {
   const jsErrors: string[] = [];
@@ -172,6 +191,8 @@ test.describe("first-run catalog download", () => {
   test("a sha256 mismatch fails only that family; startup is never blocked", async ({
     page,
   }) => {
+    const nameA = await parsedDisplayName(FONT_A);
+    const nameB = await parsedDisplayName(FONT_B);
     const sim = await SimCatalog.create(FAMILY_SPECS);
     sim.fail["Alloy Mono"] = "corrupt";
     await sim.install(page);
@@ -184,14 +205,16 @@ test.describe("first-run catalog download", () => {
     await expect(catalogDone(page)).toHaveText("2");
     await expect(screen(page)).toBeHidden();
 
-    // The picker lists the verified families and marks the missing one.
+    // The picker lists the verified families (their faces' own
+    // name-table names — round 9, owner item 2) and marks the missing
+    // one by its release artifact's own stem.
     await pointerClick(
       page,
       page.locator('[data-role="picker-en"] .kit-hd'),
     );
-    await expect(catalogRow(page, "Alloy Sans")).toBeVisible();
-    await expect(catalogRow(page, "Alloy Serif")).toBeVisible();
-    const missing = catalogRow(page, "Alloy Mono");
+    await expect(catalogRow(page, nameA)).toBeVisible();
+    await expect(catalogRow(page, nameB)).toBeVisible();
+    const missing = catalogRow(page, "AlloyMono-Regular");
     await expect(missing).toBeVisible();
     await expect(missing.locator(".kit-fp-note")).toContainText("未下载");
     expect(await missing.getAttribute("aria-disabled")).toBe("true");
@@ -221,13 +244,14 @@ test.describe("first-run catalog download", () => {
     expect(sim.count("primary:Alloy Mono")).toBe(1);
     expect(sim.count("backup:Alloy Mono")).toBe(1);
 
-    // The missing family is shown as such in the picker.
+    // The missing family is shown as such in the picker (the release
+    // artifact's own stem — round 9, owner item 2).
     await pointerClick(
       page,
       page.locator('[data-role="picker-en"] .kit-hd'),
     );
     await expect(
-      catalogRow(page, "Alloy Mono").locator(".kit-fp-note"),
+      catalogRow(page, "AlloyMono-Regular").locator(".kit-fp-note"),
     ).toContainText("未下载");
   });
 
@@ -253,12 +277,14 @@ test.describe("first-run catalog download", () => {
     expect(sim.count("primary:Alloy Serif")).toBe(1);
     expect(sim.count("primary:Alloy Mono")).toBe(1);
 
-    // The stored catalog still feeds the picker.
+    // The stored catalog still feeds the picker (the face's own name).
     await pointerClick(
       page,
       page.locator('[data-role="picker-en"] .kit-hd'),
     );
-    await expect(catalogRow(page, "Alloy Sans")).toBeVisible();
+    // Alloy Sans and Alloy Mono share the FONT_A binary, so BOTH rows
+    // list under its name-table name.
+    await expect(catalogRow(page, await parsedDisplayName(FONT_A))).toHaveCount(2);
   });
 
   test("a failed family retries and heals on a later launch", async ({
@@ -286,7 +312,8 @@ test.describe("first-run catalog download", () => {
       page,
       page.locator('[data-role="picker-en"] .kit-hd'),
     );
-    const healed = catalogRow(page, "Alloy Mono");
+    // The healed row lists under the face's own name-table name.
+    const healed = catalogRow(page, await parsedDisplayName(FONT_A)).first();
     await expect(healed).toBeVisible();
     await expect(healed.locator(".kit-fp-note")).toHaveCount(0);
     expect(await healed.getAttribute("aria-disabled")).toBeNull();
@@ -311,7 +338,7 @@ test.describe("first-run catalog download", () => {
       page,
       page.locator('[data-role="picker-en"] .kit-hd'),
     );
-    const row = catalogRow(page, "Alloy Serif");
+    const row = catalogRow(page, await parsedDisplayName(FONT_B));
     await expect(row).toBeVisible();
     expect(await row.getAttribute("aria-disabled")).toBeNull();
   });
@@ -320,6 +347,8 @@ test.describe("first-run catalog download", () => {
     page,
   }) => {
     const cssA = await parsedCssFamily(FONT_A);
+    const nameA = await parsedDisplayName(FONT_A);
+    const nameB = await parsedDisplayName(FONT_B);
     const sim = await SimCatalog.create(FAMILY_SPECS);
     await sim.install(page);
     await injectCatalogConfig(page);
@@ -330,13 +359,19 @@ test.describe("first-run catalog download", () => {
       page,
       page.locator('[data-role="picker-en"] .kit-hd'),
     );
-    const sansRow = catalogRow(page, "Alloy Sans");
+    // Alloy Sans and Alloy Mono share the FONT_A binary: both rows
+    // list under its name-table name — the assertions walk the first.
+    const sansRow = catalogRow(page, nameA).first();
     await expect(sansRow).toBeVisible();
 
-    // The row TEXT is the metadata family; the row FONT is the parsed face.
-    // The two differ by construction here, which pins "metadata-driven".
+    // Round 9 (owner item 2): the row TEXT is the face's OWN name-table
+    // string — never the invented metadata family id. The row FONT is
+    // the parsed face; for a Regular-only host font the display name is
+    // the family itself (no subfamily suffix), so name == css family
+    // here — the sim's invented "Alloy Sans" id appears nowhere.
     // (Computed font-family drops the quotes — compare the bare name.)
-    await expect(sansRow).toContainText("Alloy Sans");
+    await expect(sansRow).toContainText(nameA);
+    await expect(sansRow).not.toContainText("Alloy Sans");
     await expect
       .poll(() =>
         sansRow
@@ -353,14 +388,15 @@ test.describe("first-run catalog download", () => {
     // specs cover the MetaLine rendering itself).
     await expect(sansRow.locator(".kit-meta")).toHaveCount(0);
 
-    // Search filters across the catalog rows.
+    // Search filters across the catalog rows (the metadata ids ride
+    // the rows' keywords).
     const search = enPopup(page).locator(".kit-q");
     await expect(search).toBeVisible();
     await search.fill("Serif");
-    await expect(catalogRow(page, "Alloy Sans")).toBeHidden();
-    await expect(catalogRow(page, "Alloy Serif")).toBeVisible();
+    await expect(catalogRow(page, nameA)).toHaveCount(0);
+    await expect(catalogRow(page, nameB)).toBeVisible();
     await search.fill("");
-    await expect(catalogRow(page, "Alloy Sans")).toBeVisible();
+    await expect(catalogRow(page, nameA).first()).toBeVisible();
 
     // The local-file footer stays outside the scroll area.
     await expect(enPopup(page).locator(".kit-fpsys")).toContainText(
@@ -372,6 +408,7 @@ test.describe("first-run catalog download", () => {
     page,
   }) => {
     const cssA = await parsedCssFamily(FONT_A);
+    const nameA = await parsedDisplayName(FONT_A);
     const sim = await SimCatalog.create(FAMILY_SPECS);
     await sim.install(page);
     await injectCatalogConfig(page);
@@ -382,15 +419,16 @@ test.describe("first-run catalog download", () => {
       page,
       page.locator('[data-role="picker-en"] .kit-hd'),
     );
-    await pointerClick(page, catalogRow(page, "Alloy Sans"));
+    await pointerClick(page, catalogRow(page, nameA).first());
     await waitForFontsReady(page);
 
+    // The identity surfaces read the face's OWN name (round 9, item 2).
     await expect(
       page.locator('[data-role="picker-en"] .kit-hd b'),
-    ).toHaveText("Alloy Sans");
+    ).toHaveText(nameA);
     await expect(
       page.locator("[data-role='font-pair'] [data-pair='base']"),
-    ).toHaveText("Alloy Sans");
+    ).toHaveText(nameA);
 
     // Independent oracle: the face is really registered under the parsed
     // family name and covers U+0041.
@@ -459,19 +497,22 @@ test.describe("first-run catalog download", () => {
     await page.goto("/");
     await expect(catalogDone(page)).toHaveText("2");
 
-    // The CJK slot lists both families (the slot split); their rows
-    // show the LIVE counts, not the curated seeds (29.2k / 26.2k).
+    // The CJK slot lists both families (the slot split); the rows read
+    // the faces' own name-table names (round 9) and show the LIVE
+    // counts, not the curated seeds (29.2k / 26.2k).
+    const nameA = await parsedDisplayName(FONT_A);
+    const nameB = await parsedDisplayName(FONT_B);
     await pointerClick(
       page,
       page.locator('[data-role="picker-cjk"] .kit-hd'),
     );
     const cjkPopup = page.locator('[data-picker-popup="cjk"]');
-    await expect(cjkPopup.locator(".kit-fp", { hasText: "Maple Mono" })).toBeVisible();
+    await expect(cjkPopup.locator(".kit-fp", { hasText: nameA })).toBeVisible();
     await expect(
-      cjkPopup.locator(".kit-fp", { hasText: "Maple Mono" }).locator(".kit-gh"),
+      cjkPopup.locator(".kit-fp", { hasText: nameA }).locator(".kit-gh"),
     ).toContainText("32.0k");
     await expect(
-      cjkPopup.locator(".kit-fp", { hasText: "霞鹜文楷" }).locator(".kit-gh"),
+      cjkPopup.locator(".kit-fp", { hasText: nameB }).locator(".kit-gh"),
     ).toContainText("81.0k");
 
     // The EN slot lists neither (separate catalogs per slot).
@@ -480,8 +521,8 @@ test.describe("first-run catalog download", () => {
       page.locator('[data-role="picker-en"] .kit-hd'),
     );
     const enPopup = page.locator('[data-picker-popup="en"]');
-    await expect(enPopup.locator(".kit-fp", { hasText: "Maple Mono" })).toHaveCount(0);
-    await expect(enPopup.locator(".kit-fp", { hasText: "霞鹜文楷" })).toHaveCount(0);
+    await expect(enPopup.locator(".kit-fp", { hasText: nameA })).toHaveCount(0);
+    await expect(enPopup.locator(".kit-fp", { hasText: nameB })).toHaveCount(0);
 
     // Offline launch: the API is down; the cached counts still show
     // (never the stale seed, never nothing).
@@ -494,21 +535,27 @@ test.describe("first-run catalog download", () => {
       page.locator('[data-role="picker-cjk"] .kit-hd'),
     );
     await expect(
-      cjkPopup.locator(".kit-fp", { hasText: "Maple Mono" }).locator(".kit-gh"),
+      cjkPopup.locator(".kit-fp", { hasText: nameA }).locator(".kit-gh"),
     ).toContainText("32.0k");
   });
 
-  test("variant chips: one WenKai row, per-cut chips with official labels", async ({
+  test("variant chips: one WenKai row, per-cut chips with the data's own labels", async ({
     page,
   }) => {
-    // Round 8 (owner items 6+7). WenKai's six manifest families (kai ×
-    // mono × screen × GB, separate upstream repos) collapse onto ONE
-    // 霞鹜文楷 row whose chips are its CUTS — the distinct releases the
-    // manifest pins, labeled with official proper nouns. The WEIGHT
-    // axis is deleted everywhere (Light/Medium/Regular collapse into
-    // one cut); the default cut reads 标准 with NO 默认 marker and NO
-    // dashed ring; an unfetched member family's chip greys out with the
-    // 未下载 tag. The sim serves the plain and Screen cuts only.
+    // Round 8 (owner items 6+7); round 9 (owner item 2) labels.
+    // WenKai's six manifest families (kai × mono × screen × GB,
+    // separate upstream repos) collapse onto ONE row whose chips are
+    // its CUTS. The WEIGHT axis is deleted everywhere (Light/Medium/
+    // Regular collapse into one cut); the labels are the data's OWN
+    // words — a REGISTERED cut reads its name-table name after the
+    // family's shared base, an unfetched cut the manifest variant or
+    // the release artifact's own suffix (never a hand-built or
+    // translated token). The default cut reads 标准 with NO 默认
+    // marker and NO dashed ring; an unfetched member family's chip
+    // greys out with the 未下载 tag. The sim serves the plain and
+    // Screen cuts only.
+    const nameA = await parsedDisplayName(FONT_A);
+    const nameB = await parsedDisplayName(FONT_B);
     const sim = await SimCatalog.create([
       {
         family: "LXGWWenKai",
@@ -539,8 +586,15 @@ test.describe("first-run catalog download", () => {
       page.locator('[data-role="picker-cjk"] .kit-hd'),
     );
     const cjkPopup = page.locator('[data-picker-popup="cjk"]');
-    // Exactly ONE 霞鹜文楷 row — the group collapse.
-    const wenkai = cjkPopup.locator(".kit-fp", { hasText: "霞鹜文楷" });
+    // Exactly ONE WenKai group row — the group collapse. Its active
+    // (default) cut's registered face is FONT_A, so the row reads that
+    // face's own name-table name; UDEVGothic's registered face is the
+    // SAME host font, so the WenKai row is told apart by its chips.
+    const wenkai = cjkPopup
+      .locator(".kit-fp", { hasText: nameA })
+      .filter({
+        has: page.locator(".kit-vchip[data-chip='LXGWWenKaiMono::Regular']"),
+      });
     await expect(wenkai).toHaveCount(1);
 
     // One chip per CUT — six over the group (the three weights of the
@@ -556,38 +610,56 @@ test.describe("first-run catalog download", () => {
     await expect(base).toHaveText(/^标准/);
     await expect(base).not.toContainText("默认");
     await expect(base).not.toHaveClass(/def|on/);
-    // The mono cut carries the official label.
+    // The unfetched mono cut reads the release artifact's own suffix.
     await expect(chip("LXGWWenKaiMono::Regular")).toHaveText(/^Mono/);
     // Un-fetched members render the 未下载 tag inline, never hidden.
     const mono = chip("LXGWWenKaiMono::Regular");
     await expect(mono).toHaveClass(/off/);
     await expect(mono).toHaveAttribute("aria-disabled", "true");
     await expect(mono).toContainText("未下载");
-    // The fetched 屏幕版 cut is enabled and neutral (标准 is the
-    // default; nothing is picked yet).
+    // The fetched Screen cut is enabled and neutral; its label is its
+    // registered face's OWN name-table words after the family's shared
+    // base — with the sim's host font standing in for the real Screen
+    // face, that is FONT_B's own display name (标准 is the default;
+    // nothing is picked yet).
     const screen = chip("LXGWWenKaiScreen::Regular");
-    await expect(screen).toHaveText(/^屏幕版/);
+    await expect(screen).toHaveText(nameB);
     await expect(screen).not.toHaveClass(/off/);
     await expect(screen).not.toHaveClass(/on/);
 
-    // Clicking 屏幕版 resolves EXACTLY the Screen member family; the
-    // chip turns on, the popup stays open, and the donor pair shows
-    // the variant's REAL name (the family plus the cut's official
-    // label — never family+hardcoded-suffix).
+    // Clicking the Screen cut resolves EXACTLY the Screen member
+    // family; the chip turns on, the popup stays open, and the donor
+    // pair shows that face's own name (round 9: never a constructed
+    // family+suffix).
     await pointerClick(page, screen);
     await expect(
       page.locator("[data-role='font-pair'] [data-pair='donor']"),
-    ).toHaveText("霞鹜文楷 屏幕版");
-    await expect(screen).toHaveClass(/on/);
-    await expect(base).not.toHaveClass(/on/);
+    ).toHaveText(nameB);
+    // The row itself now reads the picked cut's own face name; the
+    // chip carries the accent, the default stays plain.
+    const wenkaiAfter = cjkPopup
+      .locator(".kit-fp", { hasText: nameB })
+      .filter({
+        has: page.locator(".kit-vchip[data-chip='LXGWWenKaiScreen::Regular']"),
+      });
+    await expect(wenkaiAfter).toHaveCount(1);
+    await expect(
+      wenkaiAfter.locator(".kit-vchip[data-chip='LXGWWenKaiScreen::Regular']"),
+    ).toHaveClass(/on/);
+    await expect(
+      wenkaiAfter.locator(".kit-vchip[data-chip='LXGWWenKai::Regular']"),
+    ).not.toHaveClass(/on/);
     await expect(cjkPopup).toBeVisible();
 
     // A multi-cut single family (yuru7's UDEVGothic: Standard + NF)
     // renders 标准 / NF. The 未下载 state is FAMILY-level (the release
     // carries a family's whole variant set), so a verified family's
     // cuts are all pickable — the WenKai row above pins the un-fetched
-    // member families' 未下载 tags.
-    const udev = cjkPopup.locator(".kit-fp", { hasText: "UDEV Gothic" });
+    // member families' 未下载 tags. UDEVGothic's registered face is
+    // also FONT_A, so its row is the OTHER nameA row.
+    const udev = cjkPopup
+      .locator(".kit-fp", { hasText: nameA })
+      .filter({ has: page.locator(".kit-vchip[data-chip='UDEVGothic::NF']") });
     await expect(udev).toHaveCount(1);
     await expect(udev.locator(".kit-vchip")).toHaveCount(2);
     const udevNf = udev.locator(".kit-vchip[data-chip='UDEVGothic::NF']");

@@ -10,6 +10,8 @@ import {
   waitForFontsReady,
 } from "./helpers";
 import { SimCatalog, injectCatalogConfig } from "./catalog-fixtures";
+import { readFile } from "node:fs/promises";
+import { parseFontMeta } from "../src/fonts/sfnt";
 
 /** Two catalog families are enough for the screenshot states. */
 const SHOT_FAMILY_SPECS = (fontA: string, fontB: string) => [
@@ -125,11 +127,19 @@ test.describe("screenshots of the catalog overlays", () => {
       screen.locator("[data-stat='catalog-done']"),
     ).toHaveText("2");
 
-    // Second overlay state: the picker listing catalog families, open.
+    // Second overlay state: the picker listing catalog families, open
+    // (the registered row reads the host font's own name — round 9).
+    const font1Bytes = await readFile(font1);
+    const font1Name = parseFontMeta(
+      font1Bytes.buffer.slice(
+        font1Bytes.byteOffset,
+        font1Bytes.byteOffset + font1Bytes.byteLength,
+      ) as ArrayBuffer,
+    ).names.display;
     await pointerClick(page, page.locator('[data-role="picker-en"] .kit-hd'));
     const row = page
       .locator('[data-picker-popup="en"]')
-      .locator(".kit-fp", { hasText: "Alloy Sans" });
+      .locator(".kit-fp", { hasText: font1Name });
     await expect(row).toBeVisible();
     await expect
       .poll(() => row.evaluate((el) => getComputedStyle(el).fontFamily))

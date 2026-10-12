@@ -54,8 +54,9 @@ test.describe("kit demo page", () => {
       "合成字体",
     );
     const pair = page.locator('[data-role="font-pair"] .kit-tag');
-    await expect(pair.nth(0)).toHaveText("JetBrains Mono");
-    await expect(pair.nth(1)).toHaveText("Maple Mono");
+    // Round 9 (owner item 2): the demo rows carry the name-table strings
+    // the real app reads ("JetBrainsMono Nerd Font", "Maple Mono NF").
+    await expect(pair.nth(0)).toHaveText("JetBrainsMono Nerd Font");
   });
 
   test("theme toggle: 3-state cycle with the effective icon and persistence", async ({
@@ -350,7 +351,7 @@ test.describe("kit demo page", () => {
     // Selected row: accent tint + check mark + aria-pressed.
     await expect(maple).toHaveAttribute("aria-pressed", "true");
     await expect(maple.locator(".kit-chk")).toBeVisible();
-    const unselected = rows.filter({ hasText: "思源黑体" });
+    const unselected = rows.filter({ hasText: "Noto Sans SC" });
     await expect(unselected).toHaveAttribute("aria-pressed", "false");
   });
 
@@ -368,7 +369,7 @@ test.describe("kit demo page", () => {
     await page.waitForTimeout(320);
     const rows = popup.locator(".kit-fp");
     await expect(rows).toHaveCount(1);
-    await expect(rows.first()).toContainText("JetBrains Mono");
+    await expect(rows.first()).toContainText("JetBrainsMono Nerd Font");
 
     // Same node, still open — the exit/open transitions stay wired.
     expect(await popup.getAttribute("data-marker")).toBe("alive");
@@ -387,10 +388,10 @@ test.describe("kit demo page", () => {
     const popup = page.locator('[data-picker-popup="en"]');
     await pointerClick(page, popup.locator(".kit-fp", { hasText: "Iosevka" }));
     await expect(popup).toBeHidden();
-    await expect(card.locator(".kit-hd b")).toHaveText("Iosevka");
+    await expect(card.locator(".kit-hd b")).toHaveText("Iosevka Nerd Font");
     // The top bar pair tag follows.
     await expect(page.locator('[data-role="font-pair"] .kit-tag').first()).toHaveText(
-      "Iosevka",
+      "Iosevka Nerd Font",
     );
   });
 
