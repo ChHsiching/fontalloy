@@ -17,12 +17,16 @@ A Unicode scalar value; the cmap table maps codepoints to glyphs.
 _Avoid_: encoding index, character number
 
 **Fill**:
-Placing a donor glyph where the base font has no glyph. The default behavior of a merge — it needs no explicit rule.
+Placing a donor glyph where the base font has no glyph. The default behavior of a merge — it needs no explicit rule. The user-facing Chinese term is 补字 (report copy, settings help, popup notes).
 _Avoid_: backfill, patching
 
 **Override**:
-Replacing a glyph the base font already has, by an explicit precedence rule. Only ever the result of a user decision, never implicit.
+Replacing a glyph the base font already has, by an explicit precedence rule. Only ever the result of a user decision, never implicit. The user-facing Chinese term is 替换.
 _Avoid_: replace, clobber
+
+**Variant**:
+One of the named releases a font family ships the same design in, identified by its official name — NF, NF-CN, Mono, SC, TC, 屏幕版 — never assembled from options. A variant pins an exact source file; every identity surface shows it by its real name, and recipes reference it as the pair `{family, variant}`.
+_Avoid_: option, flavor, edition
 
 **Absence never overrides**:
 The domain invariant: a font without a glyph at a codepoint never competes for it, whatever its precedence.
