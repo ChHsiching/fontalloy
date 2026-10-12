@@ -47,12 +47,12 @@ Inventory numbers cite the 62-item prototype inventory in
 | `topBar.ts` | Top bar (inv. 1–7): brand mark (round 4: the hand-drawn A×永 SVG mark, teal accent, replacing the solid placeholder), font-pair tags, GitHub ghost link (verbatim repo + aria; round 5: `onNavigate` lets the Tauri shell route the click to the system browser), theme toggle (`切换明暗`; round 5: the 3-state 自动/浅色/深色 cycle with the effective icon + 自动 badge), font-name input (`ChHsich`), `合成字体` shimmer button. |
 | `metaLine.ts` | The picker MetaLine (inv. 12–13): `X.Xk` stars in accent, license without `-1.1`, trait tag. |
 | `pickerPopup.ts` | The 英文字体/中文字体 card + popup (inv. 11–17): round 4 presents the popup in the SAME anchor-fused dropdown-list form as AppSelect — a persistent CHILD of the card (top:100%, left/right −1px, no top border, class-driven display transitions with allow-discrete + @starting-style; no portal, no deferred removal). Self-rendering rows, `搜索字体` 120 ms debounce, footer `加载本地字体文件` outside the scroll, check on selected. |
-| `helpPopover.ts` | The circular `?` buttons + popovers (inv. 28–30 chrome): widths 380/340, `.kit-wtab` worked-table chrome verbatim. |
+| `helpPopover.ts` | The circular `?` buttons + popovers (inv. 28–30 chrome): widths 380/340, `.kit-wtab` worked-table chrome verbatim. Round 6: the hover is a PURE CENTERED scale — `transform-origin` pinned center, zero translate (the round-5 status-bar anchor sat in baseline flow and read as a down-shift-then-scale; it is gone with the coverage popover, and the shared rule now forbids the class). |
 | `settingsTopics.ts` | The three 合成设置 topics (inv. 25–27) — labels, option lists, popover copy — plus `mountSettingRow` (the `.set` row: label + `?` + AppSelect, extracted this pass from duplicated app/demo glue). See the correction note below. |
 | `categoryChips.ts` | The two-level chip bar (inv. 31–33) — see the taxonomy deviation below. |
-| `actionBar.ts` | The tool row (inv. 34–43): `所有{组}字符` group segment, block segment, `{名} · {n} 字符` note, `缺失字符无法指定来源`, `多选`/`编码`/`撤销`, pager `‹ 第 n/m 页 ›`, `已调整` legend, `按编码指定`, the batch variant (`已选 {n} 个`, hint, 取消/撤销), `undoAllButton` (`全部恢复默认`, inv. 23), `segmentedControl`. |
+| `actionBar.ts` | The tool row (inv. 34–43): `所有{组}字符` group segment, block segment, `{名} · {n} 字符` note, `缺失字符无法指定来源`, `多选`/`编码`/`撤销`, pager `‹ 第 n/m 页 ›`, `已调整` legend, `按编码指定`, the batch variant (`已选 {n} 个`, hint, 取消/撤销), `undoAllButton` (`全部恢复默认`, inv. 23), `segmentedControl`. Round 6: the pager arrows are inline-SVG chevrons in flex-centered buttons (the `‹ ›` TEXT glyphs hugged the baseline and read low next to the CJK label — the same optical class as the ? fix), and the `第 n/m 页` label is click-editable jump-to-page (`onJump`: a numeric input commits clamped, Esc cancels). |
 | `grid.ts` | The 40 px cell vocabulary (inv. 44–46): hover neutral, `.ov` dot, `.sel` ring, dashed-danger missing (codepoint always shown), `.cur` cursor ring, codepoint row, 1024/page; round 5 reports the live COLUMN count (`onColumns`) so the consumer pages in whole rows. |
-| `statusBar.ts` | The status counters (inv. 58): 字符/英文/中文/已调整/缺失/覆盖 %, tabular numerals, change pop; round 5 adds the 覆盖 `?` anchor (the counting-scope popover mounts beside the label). |
+| `statusBar.ts` | The status counters (inv. 58): 字符/英文/中文/已调整/缺失/覆盖 %, tabular numerals, change pop. The round-5 覆盖 `?` anchor is GONE (round 6, owner item 2: coverage counts the whole visible universe — normal semantics, the explanation was noise). |
 | `sceneCard.ts` | Scene cards + fullscreen (inv. 50, 53, 57): captions 终端/代码编辑器/文档, theme selects, `全屏查看`, `上一项/下一项/关闭`; round 5: the fullscreen bar carries the theme select and `render()` swaps the content in place (no close/reopen choreography). |
 | `sceneContent.ts` | The sample content (inv. 54–56): terminal/code/document listings verbatim, per-char effective font, code tokenizer. |
 | `charPopup.ts` | `#charpop` (inv. 48, P0-2): opens AT the clicked cell, 44 px glyph in the winning font, `U+XXXX` in accent mono, `来自 X`, one-click `用英文字体`/`用中文字体` (carried side hidden), underlined `恢复默认`, missing copy incl. the Nerd Font PUA sentence. Extracted from `ui/charmap.ts` (this pass). |
@@ -113,6 +113,31 @@ instruction from the hands-on review, not a silent drift):
   (`unicode/visible.ts`, generated): control/format/separator/unassigned
   scalars never render as blank cells.
 
+## Round-6 owner rulings (this round)
+
+- **The coverage `?` is gone** (owner item 2): 覆盖 counts the whole
+  visible universe — normal semantics, the explanation was noise. The
+  sanctioned-additions note below is superseded by this.
+- **The `?` hover discipline** (owner item 1): color change plus at most
+  a PURE CENTERED scale — `transform-origin: center`, zero translate, in
+  every context that mounts a help anchor.
+- **Pager arrows + jump-to-page** (owner item 3): SVG chevrons centered
+  with the label (no baseline-riding text glyphs), and the page label is
+  click-editable (Enter commits clamped, Esc cancels).
+- **The 图标 group is restored** (owner item 7): the prototype's
+  `图标 → Nerd Font` chip returns as a first-class category — the NF PUA
+  allocations (the prototype's `NF_RANGES` verbatim) as a CURATED block
+  (`unicode/blocks.ts` `intervals`): the grid pages through the curated
+  planes while rules target the raw envelope, like every other block.
+  The taxonomy deviation note below now carries this as its ONE
+  sanctioned content exception being partially un-done (the group chrome
+  stays kit-derived; the 图标 group itself is prototype content).
+- **已调整 keys on the declared side** (owner item 4): the prototype's
+  ov discipline — a non-preset rule declaring a side the no-rule default
+  does not carry — see `precedence/resolve.ts` `isAdjusted`. Winner-only
+  comparison went mute exactly where an assignment cannot move the
+  winner (absence never overrides).
+
 ## Table-content policy — help content is the prototype's text
 
 Help-popover tables and prose carry the prototype's content VERBATIM
@@ -121,21 +146,26 @@ engineering notes in user-facing popovers"). The round-3/4 ADR-0006
 correction of the weight tables was REVERTED to the prototype's exact
 rows (including the 中等 output row); the engineering rationale lives
 in `docs/adr/0006-*` and the pipeline, never in a user-facing popover.
-The only sanctioned additions beyond the prototype's help texts are
-content for surfaces the prototype never had — e.g. the 覆盖 scope
-popover on the status bar (`statusBar.ts` + `ui/statsbar.ts`), which
-explains exactly what that number counts.
+Round 6 supersedes the one sanctioned addition: the 覆盖 scope popover
+on the status bar is REMOVED (see the round-6 rulings above). The
+build panel's report popovers are PRODUCT-EXTENSION surfaces (the
+prototype had no report): their copy follows the owner-ratified
+glossary in `fontalloy-notes/report-copy.md`, not the prototype.
 
 ## The owner-endorsed taxonomy deviation
 
 `categoryChips.ts` renders a **real Unicode-block taxonomy**
-(`unicode/blocks.ts`: 拉丁与欧洲文字 / 通用符号 / 中日韩文字 / 其他文字 and
-their block names) instead of the prototype's 字母/数字与符号/图标/中文/日韩
-chip labels. This is the single accepted deviation from the prototype's
-content — owner-praised (parity-matrix §3 preamble) — and it is recorded here
-so the invariant rule has its one sanctioned exception on the content axis
-(the chip chrome, counts, aggregates, and 缺失-danger styling remain
-prototype-derived).
+(`unicode/blocks.ts`: 拉丁与欧洲文字 / 通用符号 / 图标 / 中日韩文字 /
+其他文字 and their block names) instead of the prototype's
+字母/数字与符号/图标/中文/日韩 chip labels. This is the single accepted
+deviation from the prototype's content — owner-praised (parity-matrix §3
+preamble) — and it is recorded here so the invariant rule has its one
+sanctioned exception on the content axis (the chip chrome, counts,
+aggregates, and 缺失-danger styling remain prototype-derived). Round 6
+(owner item 7) restores the prototype's 图标 group INSIDE the real
+taxonomy: the NF PUA allocations as a curated first-class category (see
+the round-6 rulings above), so the deviation no longer drops prototype
+content — only the LABELS differ.
 
 ## Component contracts (summary)
 
