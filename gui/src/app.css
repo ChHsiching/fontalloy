@@ -393,6 +393,11 @@ body {
 .build-rows {
   min-height: 0;
   overflow-y: auto;
+  /* Round 6: the gutter is RESERVED — content width never changes when
+   * a scrollbar appears, so long report lines cannot reflow and set up
+   * the appear/disappear oscillation. */
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
   padding: 6px 0;
 }
 
@@ -443,6 +448,9 @@ body {
   color: var(--ink);
 }
 
+/* Round 6 stepper state model: upcoming faint / current active / done
+   lit-solid. A settled build lights every step (never all-gray at
+   save); a failed one turns the failing step danger. */
 .build-steps {
   display: flex;
   gap: 4px;
@@ -454,16 +462,38 @@ body {
   height: 3px;
   border-radius: 2px;
   background: var(--ln);
-  transition: background 0.2s ease;
+  opacity: 0.6;
+  transition: background 0.2s ease, opacity 0.2s ease, box-shadow 0.2s ease;
 }
 
 .build-step.is-passed {
   background: var(--ac);
+  opacity: 1;
 }
 
 .build-step.is-current {
   background: var(--acsoft);
   box-shadow: 0 0 0 1px var(--ac);
+  opacity: 1;
+}
+
+.build-step.is-failed {
+  background: var(--dgrsoft);
+  box-shadow: 0 0 0 1px var(--dgr);
+  opacity: 1;
+}
+
+/* The ONE current-stage line (round 6): the stage name + its ≤30-char
+   explanation, shown only while a stage is actually current. */
+.build-stage-line {
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--ink3);
+}
+
+.build-stage-line[hidden] {
+  display: none;
 }
 
 .build-error {
@@ -560,6 +590,10 @@ body {
   margin-top: 6px;
   max-height: 72px;
   overflow-y: auto;
+  /* Round 6: reserved gutter — the journal's own scrollbar cannot
+   * change the line width and set up a wrap/clip feedback loop. */
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
   font-size: 11px;
   line-height: 1.6;
   color: var(--ink3);
