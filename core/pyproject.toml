@@ -14,6 +14,12 @@ dependencies = [
     # stays bounded and uv.lock pins the exact build — that pin is what
     # makes woff2 output byte-stable across environments.
     "brotli>=1.1,<2",
+    # 7z archive reading for the fetch pipeline (e.g. LxgwBright-Code
+    # ships its releases as .7z only). py7zr is the standard maintained
+    # pure-Python 7z reader — no system libarchive, so the pipeline
+    # installs cleanly everywhere FontAlloy runs. Range bounded to the
+    # 0.x line; uv.lock pins the exact build.
+    "py7zr>=0.22,<0.25",
 ]
 
 [build-system]

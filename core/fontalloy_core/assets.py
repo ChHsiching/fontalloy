@@ -8,9 +8,12 @@ never carries a font binary, and a corrupted or tampered artifact never
 reaches the build.
 
 Origins are ordinary URLs (``https://`` upstream releases in production,
-``file://`` local directories in the offline test suite). Zip artifacts
-keep the verified archive and additionally extract their font faces
-beside it, so later pipeline stages read unpacked TTF/OTF files.
+``file://`` local directories in the offline test suite). Zip and 7z
+artifacts keep the verified archive and additionally extract their font
+faces beside it, so later pipeline stages read unpacked TTF/OTF files.
+The archive format is detected by content (magic bytes), never by
+filename: a misnamed artifact still extracts, and a corrupt one fails
+loudly at open — after the sha256 gate has authenticated the bytes.
 
 This module is also the assets machinery behind catalog-family recipe
 references (issue #23): :func:`resolve_recipe_fonts` turns a recipe's
@@ -33,6 +36,9 @@ from fnmatch import fnmatchcase
 from pathlib import Path
 from urllib.parse import unquote
 
+import py7zr
+import py7zr.exceptions
+
 from fontalloy_core.catalog import Catalog, CatalogEntry, font_suffixes, load_manifest
 from fontalloy_core.errors import AssetsError
 from fontalloy_core.recipe import FontRef, Recipe
@@ -41,6 +47,10 @@ from fontalloy_core.recipe import FontRef, Recipe
 _CHUNK = 1 << 20
 #: Per-request timeout; generous for slow release CDNs.
 _TIMEOUT_SECONDS = 300
+
+#: Archive kinds :func:`_archive_kind` detects and extracts. ``None``
+#: means "a bare font file, nothing to unpack".
+ARCHIVE_KINDS = ("zip", "7z")
 
 
 @dataclass(frozen=True)
@@ -98,11 +108,12 @@ def fetch_catalog(
         target = dest_dir / entry.file
         if target.is_file() and sha256_of(target) == entry.sha256:
             # The artifact is verified, but the layout must be whole:
-            # a zip whose extracted faces vanished is re-extracted, so
-            # "re-run assets fetch" genuinely repairs any state the
+            # an archive whose extracted faces vanished is re-extracted,
+            # so "re-run assets fetch" genuinely repairs any state the
             # error messages point it at (issue #23).
-            if zipfile.is_zipfile(target) and not (dest_dir / target.stem).is_dir():
-                extracted = _extract_faces(target, dest_dir / target.stem)
+            kind = _archive_kind(target)
+            if kind is not None and not (dest_dir / target.stem).is_dir():
+                extracted = _extract_faces(target, dest_dir / target.stem, kind)
                 echo(f"{entry.file}: extracted {extracted} font file(s)")
             skipped += 1
             echo(f"{entry.file}: already verified")
@@ -110,8 +121,9 @@ def fetch_catalog(
         _download_verified(entry, target)
         downloaded += 1
         echo(f"{entry.file}: verified ({entry.checksum_source} sha256)")
-        if zipfile.is_zipfile(target):
-            extracted = _extract_faces(target, dest_dir / target.stem)
+        kind = _archive_kind(target)
+        if kind is not None:
+            extracted = _extract_faces(target, dest_dir / target.stem, kind)
             echo(f"{entry.file}: extracted {extracted} font file(s)")
 
     return FetchSummary(downloaded=downloaded, skipped=skipped)
@@ -168,26 +180,107 @@ def download_verified(
         ) from None
 
 
-def _extract_faces(archive: Path, into: Path) -> int:
-    """Extract the font files from a verified zip artifact.
+def _archive_kind(artifact: Path) -> str | None:
+    """The archive format of a verified artifact, by content.
+
+    ``zip`` / ``7z`` for the supported archive formats, ``None`` for a
+    bare font file. Detection reads magic bytes, so the manifest's
+    ``file`` name is free to be anything upstream shipped.
+    """
+    if py7zr.is_7zfile(artifact):
+        return "7z"
+    if zipfile.is_zipfile(artifact):
+        return "zip"
+    return None
+
+
+def _extract_faces(archive: Path, into: Path, kind: str) -> int:
+    """Extract the font files from a verified archive artifact.
 
     Only font files are extracted (licenses stay inside the verified
     archive of record); member paths are sanitized so a hostile archive
-    cannot write outside ``into``.
+    cannot write outside ``into``. The target directory is created only
+    after the archive opens and its faces decode, so a loud failure
+    leaves no half-built layout behind.
     """
-    into.mkdir(parents=True, exist_ok=True)
+    if kind == "7z":
+        return _extract_7z_faces(archive, into)
+    return _extract_zip_faces(archive, into)
+
+
+def _extract_zip_faces(archive: Path, into: Path) -> int:
+    """Extract the font faces of a zip artifact into ``into``."""
     extracted = 0
     with zipfile.ZipFile(archive) as zf:
-        for info in zf.infolist():
-            name = Path(unquote(info.filename)).name
-            if info.is_dir() or name.startswith("."):
-                continue
-            if not name.lower().endswith(font_suffixes()):
-                continue
+        members = [
+            info
+            for info in zf.infolist()
+            if not info.is_dir() and _wanted_face_name(info.filename)
+        ]
+        if not members:
+            return 0
+        into.mkdir(parents=True, exist_ok=True)
+        for info in members:
+            name = _wanted_face_name(info.filename)
+            assert name is not None  # member list filtered on it
             with zf.open(info) as src, (into / name).open("wb") as out:
                 shutil.copyfileobj(src, out)
             extracted += 1
     return extracted
+
+
+def _extract_7z_faces(archive: Path, into: Path) -> int:
+    """Extract the font faces of a 7z artifact into ``into``.
+
+    The sha256 gate has already authenticated the bytes, so a decode
+    failure here means py7zr cannot read what upstream shipped (an
+    unsupported compression method, an encrypted archive) — a loud
+    :class:`AssetsError`, never a silent partial layout. Members are
+    read as streams and written under their sanitized bare names, so
+    py7zr's own path handling never places a file.
+    """
+    try:
+        with py7zr.SevenZipFile(archive, mode="r") as sz:
+            targets = [
+                info.filename
+                for info in sz.list()
+                if not info.is_directory and _wanted_face_name(info.filename)
+            ]
+            if not targets:
+                return 0
+            # The whole decode happens in memory before anything is
+            # written, so a failure leaves no partial extraction dir.
+            streams = sz.read(targets)
+            assert streams is not None  # a targeted read returns the files
+            into.mkdir(parents=True, exist_ok=True)
+            extracted = 0
+            for member, stream in streams.items():
+                name = _wanted_face_name(member)
+                if name is None:
+                    continue
+                with (into / name).open("wb") as out:
+                    shutil.copyfileobj(stream, out)
+                stream.close()
+                extracted += 1
+            return extracted
+    except (py7zr.exceptions.ArchiveError, py7zr.exceptions.PasswordRequired) as exc:
+        raise AssetsError(
+            f"{archive.name}: 7z extraction failed — py7zr cannot decode the "
+            f"verified archive ({exc}); the artifact stays in place, but its "
+            "faces were NOT extracted"
+        ) from None
+
+
+def _wanted_face_name(member: str) -> str | None:
+    """The sanitized bare filename when a member is a wanted font face.
+
+    Same rule as the zip path: no directories, no dotfiles, font
+    suffixes only. Returns ``None`` for members extraction must skip.
+    """
+    name = Path(unquote(member)).name
+    if name.startswith(".") or not name.lower().endswith(font_suffixes()):
+        return None
+    return name
 
 
 def sha256_of(path: Path) -> str:
