@@ -382,6 +382,53 @@ function collectGrid(
   });
 }
 
+/**
+ * Item 1a's rendering sanity (round 7): every EFFECTIVE cell on the
+ * current page renders in its WINNER's own face — the computed
+ * font-family's first name equals the winning pick's family (read off
+ * the rail card headers, which self-render each pick in its own face).
+ * The DATA layer (data-winner) saying one thing while the GLYPH layer
+ * paints another would be a real bug; this closes that blind spot.
+ */
+async function assertWinnerGlyphs(page: Page): Promise<void> {
+  const mismatches = await page.evaluate(() => {
+    const first = (list: string): string =>
+      list.split(",")[0]!.replace(/["']/g, "").trim().toLowerCase();
+    const cardFamily = (role: string): string =>
+      first(
+        document
+          .querySelector<HTMLElement>(
+            `[data-role='picker-${role}'] .kit-hd .kit-hdc b`,
+          )
+          ?.style.fontFamily ?? "",
+      );
+    const expected: Record<string, string> = {
+      base: cardFamily("en"),
+      "donor-0": cardFamily("cjk"),
+    };
+    const bad: string[] = [];
+    for (const cell of document.querySelectorAll<HTMLElement>(
+      ".charmap-grid .kit-cell[data-winner]",
+    )) {
+      const want = expected[cell.dataset.winner ?? ""];
+      if (!want) continue;
+      const got = first(getComputedStyle(cell).fontFamily);
+      if (got !== want) {
+        bad.push(
+          `${cell.dataset.cp}: winner=${cell.dataset.winner} painted=${got} expected=${want}`,
+        );
+      }
+    }
+    return bad;
+  });
+  expect(
+    mismatches,
+    `cells whose painted face differs from their winner font:\n${mismatches
+      .slice(0, 8)
+      .join("\n")}`,
+  ).toEqual([]);
+}
+
 /** Real-pointer drag-paint across the named cells (多选 armed first). */
 async function paintDrag(page: Page, cps: string[]): Promise<void> {
   const first = await hitTestCenter(
@@ -672,23 +719,52 @@ test.describe("user journey", () => {
         }
       });
 
-      await step("J2.5 variant chips visible on multi-variant families (Maple 宽度, HackGen NF)", async () => {
+      await step("J2.5 variant chips are self-explanatory (Chinese labels, 默认 marker, picker-level help)", async () => {
         const maple = pickerRow(page, "cjk", "Maple Mono CN");
-        await expect(
-          maple.locator(".kit-vchip[data-chip='cjk_width:mono']"),
-        ).toBeVisible(); // 等宽
-        await expect(
-          maple.locator(".kit-vchip[data-chip='cjk_width:prop']"),
-        ).toBeVisible(); // 比例 (the default cut)
+        // Round 7 redesign: chips carry FULL Chinese labels — 等宽, no
+        // raw axis ids — and the axis's default value wears the dim
+        // 默认 marker (比例 默认), never a pressed look.
+        const mono = maple.locator(".kit-vchip[data-chip='cjk_width:mono']");
+        await expect(mono).toBeVisible();
+        await expect(mono).toHaveText(/等宽/);
+        await expect(mono).not.toContainText("默认");
+        const prop = maple.locator(".kit-vchip[data-chip='cjk_width:prop']");
+        await expect(prop).toBeVisible();
+        await expect(prop).toHaveText(/比例/);
+        await expect(prop).toContainText("默认");
+        await expect(prop).toHaveClass(/def/);
+        await expect(prop).not.toHaveClass(/on/);
         const hackgen = pickerRow(page, "cjk", "HackGen");
         if ((await hackgen.count()) > 0) {
           await expect(
             hackgen.locator(".kit-vchip[data-chip='icons:nf']"),
-          ).toBeVisible(); // NF图标
+          ).toBeVisible(); // NF 图标
         }
+        // ONE ? for the whole picker (never per row): the variant help.
+        const help = pickerPopup(page, "cjk").locator(
+          "[data-role='help-picker-variants-cjk']",
+        );
+        await expect(help).toBeVisible();
+        await pointerClick(page, help);
+        const pop = page.locator(
+          "[data-help-popup='picker-variants-cjk']",
+        );
+        await expect(pop).toBeVisible();
+        await expect(pop.locator("h5")).toHaveText("变体是什么");
+        await expect(pop).toContainText("同一款字体常有多个发行版本");
+        // The axes the chips can carry, as real terms.
+        for (const term of ["图标", "连字", "宽度", "地区", "字库", "字重"]) {
+          await expect(pop).toContainText(term);
+        }
+        await page.keyboard.press("Escape");
+        await expect(pop).toBeHidden();
       });
 
       await step("J2.6 pick Maple Mono NF-CN via the 等宽 chip → the donor pair tag", async () => {
+        // J2.5's Escape closed only the help popover — the picker
+        // itself stays open (one layer per press). Fail fast if that
+        // layering ever breaks instead of waiting on a hidden chip.
+        await expect(pickerPopup(page, "cjk")).toBeVisible();
         const mapleRow = pickerRow(page, "cjk", "Maple Mono CN");
         await rawClick(
           page,
@@ -698,6 +774,14 @@ test.describe("user journey", () => {
         await expect(
           page.locator("[data-role='font-pair'] [data-pair='donor']"),
         ).toHaveText(/Maple Mono/, { timeout: 20_000 });
+        // The chip is now the EXPLICIT selection (accent); 比例 keeps
+        // its 默认 marker without the pressed look.
+        await expect(
+          mapleRow.locator(".kit-vchip[data-chip='cjk_width:mono']"),
+        ).toHaveClass(/on/);
+        await expect(
+          mapleRow.locator(".kit-vchip[data-chip='cjk_width:prop']"),
+        ).not.toHaveClass(/on/);
         await page.keyboard.press("Escape");
         await expect(pickerPopup(page, "cjk")).toBeHidden();
       });
@@ -921,7 +1005,47 @@ test.describe("user journey", () => {
         );
       });
 
-      await step("J4.8 zero JS errors across the journey", assertNoJsErrors);
+      await step("J4.8 glyph identity: every effective cell paints its winner's face; a CJK-adjacent assignment flips it", async () => {
+        // The CJK group's first page (CJK 符号和标点): the base holds
+        // none of it, so every effective cell must paint the DONOR.
+        await pointerClick(page, page.locator(".kit-cat-g[data-group='cjk']"));
+        await expect(
+          page.locator(".kit-cat-s[data-block='cjk-unified']"),
+        ).toBeVisible();
+        await assertWinnerGlyphs(page);
+        // The few CJK-adjacent codepoints the EN base ACTUALLY holds
+        // (JetBrains Mono NF carries the fullwidth braces U+FF5B/U+FF5D
+        // in 半形与全形字符): there the default winner is the BASE and
+        // an assignment to 中文 MUST visibly flip the painted glyph.
+        await pointerClick(
+          page,
+          page.locator(".kit-cat-s[data-block='halfwidth-fullwidth']"),
+        );
+        const brace = page.locator(
+          ".charmap-grid .kit-cell[data-cp='U+FF5B']",
+        );
+        await expect(brace).toBeVisible();
+        await expect(brace).toHaveAttribute("data-winner", "base");
+        await assertWinnerGlyphs(page);
+        const blockRow = page
+          .locator(".kit-toolrow")
+          .filter({ hasText: "半形与全形字符" });
+        await pointerClick(
+          page,
+          blockRow.locator(".kit-mseg button", { hasText: /^用中文$/ }),
+        );
+        await expect(brace).toHaveAttribute("data-winner", "donor-0");
+        await expect(brace).toHaveAttribute("data-via", /rule-\d+/);
+        // The GLYPH flips with the data: the brace now paints in the
+        // donor's own face (item 1a — assignment visibly moves glyphs).
+        await assertWinnerGlyphs(page);
+        // Undo returns the block to the no-rule default.
+        await pointerClick(page, page.locator("[data-role='undo']"));
+        await expect(brace).toHaveAttribute("data-winner", "base");
+        await assertWinnerGlyphs(page);
+      });
+
+      await step("J4.9 zero JS errors across the journey", assertNoJsErrors);
     });
   });
 
@@ -979,6 +1103,9 @@ test.describe("user journey", () => {
         await expect(page.locator("[data-role='rule-solo']")).toHaveText(
           /单个字符1/,
         );
+        // The glyph identity holds through the flip (item 3): every
+        // effective cell — A now donor-supplied — paints its winner.
+        await assertWinnerGlyphs(page);
       });
 
       await step("J5.4 恢复默认 returns the cell to the no-rule default", async () => {
@@ -997,6 +1124,7 @@ test.describe("user journey", () => {
         await expect(cell).toHaveAttribute("data-winner", "base");
         await expect(cell).not.toHaveClass(/ov/);
         await expect(page.locator("[data-role='rule-solo']")).toHaveCount(0);
+        await assertWinnerGlyphs(page);
       });
 
       await step("J5.5 按编码指定 accepts a range, a single codepoint, rejects garbage", async () => {
@@ -1090,6 +1218,9 @@ test.describe("user journey", () => {
         await expect(cell).toHaveAttribute("data-winner", "donor-0");
         await expect(cell).toHaveAttribute("data-via", /rule-\d+/);
         await expect(cell).toHaveClass(/ov/); // declared ≠ default → the dot
+        // Item 3: the whole basic-latin page (now donor-declared) still
+        // paints each cell in its winner's own face.
+        await assertWinnerGlyphs(page);
         await expect(
           page.locator("[data-role='rule-row'][data-kind='block']").first(),
         ).toContainText("基本拉丁用中文字体");
@@ -1132,6 +1263,35 @@ test.describe("user journey", () => {
         await expect(
           page.locator("[data-role='rule-row'][data-kind='group']").first(),
         ).toContainText("所有中日韩文字字符用英文字体");
+        // Item 1a's absence check: the declaration says 英文, every
+        // glyph on the page still paints its ACTUAL supplier (the donor
+        // — the base holds none of the CJK punctuation).
+        await assertWinnerGlyphs(page);
+        // Item 1b's affordance: the cell popup states the reason in
+        // plain glossary words instead of a silent 来自.
+        await pointerClick(page, cell);
+        const popup = page.locator("[data-char-popup]");
+        await expect(popup.locator("[data-role='char-note']")).toHaveText(
+          "英文字体不含此码位，仍由中文字体补字",
+        );
+        await expect(popup.locator("[data-role='char-from']")).toContainText(
+          "来自",
+        );
+        await page.keyboard.press("Escape");
+        // The 已调整 legend's ? explains the dot (声明 vs 实际供给).
+        const legendHelp = page.locator(
+          ".kit-toolrow [data-role='help-adjusted-legend']",
+        );
+        await expect(legendHelp).toBeVisible();
+        await pointerClick(page, legendHelp);
+        const legendPop = page.locator(
+          "[data-help-popup='adjusted-legend']",
+        );
+        await expect(legendPop).toBeVisible();
+        await expect(legendPop).toContainText("绿点＝已声明来源");
+        await expect(legendPop).toContainText("字形以实际供给为准");
+        await page.keyboard.press("Escape");
+        await expect(legendPop).toBeHidden();
       });
 
       await step("J6.4 多选 mode: drag-paint selects, the live count reads", async () => {
