@@ -9,15 +9,17 @@
  * - every character renders as its own span with the EFFECTIVE font
  *   for that codepoint (`resolveFont`), so the preview shows the merge
  *   result itself;
- * - spaces inside styled spans are NBSP — raw text-node spaces inherit
- *   the UI font (narrower) and collapse across span boundaries, both of
- *   which misalign monospace columns (docker ps table);
+ * - spaces inside the MONOSPACE cards' styled spans are NBSP — raw
+ *   text-node spaces inherit the UI font (narrower) and collapse across
+ *   span boundaries, both of which misalign monospace columns (docker
+ *   ps table); the document card's spans keep plain spaces (prose);
  * - the code scene tokenizes keywords / strings / numbers / types /
  *   comments for the editor theme classes (k / s / n / t / cm);
- * - the document scene's inline code (`<pre><code>`) resolves per
- *   character through the same `resolveFont` (round 8: the commands
- *   render in the EFFECTIVE English font, never the browser's
- *   monospace fallback).
+ * - the WHOLE document renders on the effective fonts (round 9, owner
+ *   item 4): headings, body, list items, and table cells resolve per
+ *   character through the same `resolveFont` the terminal and code
+ *   cards use — no UI-font text remains in the sample. The document's
+ *   STRUCTURE (sizes, weights, table lines) stays the consumer's CSS.
  */
 
 /** CSS font stack for one character (the effective merge preview). */
@@ -249,22 +251,44 @@ export function buildCode(props: SceneContentProps = {}): HTMLElement {
 
 /* ---------- document ---------- */
 
+/**
+ * Per-character spans for ANY document node (round 9, owner item 4):
+ * every character of the sample — headings, body, list items, table
+ * cells — renders in its WINNER font per codepoint, exactly like the
+ * terminal and code cards. The document's STRUCTURE (sizes, weights,
+ * table lines) is the consumer's CSS and stays untouched; no UI-font
+ * text remains in the sample.
+ *
+ * Spaces stay PLAIN here (inside their resolved spans — never raw text
+ * nodes): the NBSP rule serves the monospace cards' column alignment;
+ * the document is proportional, and plain spaces keep its prose
+ * copyable and matchable.
+ */
+function spanned(
+  node: HTMLElement,
+  text: string,
+  props: SceneContentProps,
+): HTMLElement {
+  for (const ch of text) {
+    if (ch === "\n") {
+      node.appendChild(document.createTextNode("\n"));
+      continue;
+    }
+    const span = document.createElement("span");
+    span.textContent = ch;
+    span.style.fontFamily = (props.resolveFont ?? defaultResolveFont)(ch);
+    applySpanAttrs(span, ch, props.spanAttrs);
+    node.appendChild(span);
+  }
+  return node;
+}
+
 export function buildDocument(props: SceneContentProps = {}): HTMLElement {
-  const resolve = props.resolveFont ?? defaultResolveFont;
   const doc = document.createElement("div");
   doc.className = "kit-doc";
 
-  const richText = (text: string): HTMLElement => {
-    const p = document.createElement("p");
-    for (const ch of text) {
-      const span = document.createElement("span");
-      span.textContent = ch === " " ? "\u00A0" : ch;
-      span.style.fontFamily = resolve(ch);
-      applySpanAttrs(span, ch, props.spanAttrs);
-      p.appendChild(span);
-    }
-    return p;
-  };
+  const richText = (text: string): HTMLElement =>
+    spanned(document.createElement("p"), text, props);
 
   /**
    * Inline code (round 8, owner item 5): the `<pre><code>` bodies
@@ -276,25 +300,58 @@ export function buildDocument(props: SceneContentProps = {}): HTMLElement {
   const codeBlock = (text: string): HTMLElement => {
     const pre = document.createElement("pre");
     const code = document.createElement("code");
-    for (const ch of text) {
-      if (ch === "\n") {
-        code.appendChild(document.createTextNode("\n"));
-        continue;
-      }
-      const span = document.createElement("span");
-      span.textContent = ch === " " ? "\u00A0" : ch;
-      span.style.fontFamily = resolve(ch);
-      applySpanAttrs(span, ch, props.spanAttrs);
-      code.appendChild(span);
-    }
+    spanned(code, text, props);
     pre.appendChild(code);
     return pre;
   };
 
-  const el = (tag: string, html?: string): HTMLElement => {
-    const node = document.createElement(tag);
-    if (html !== undefined) node.innerHTML = html;
-    return node;
+  // A heading (or any single-run block) on the effective fonts.
+  const heading = (tag: string, text: string): HTMLElement =>
+    spanned(document.createElement(tag), text, props);
+
+  // A list whose items render per character; an item's optional bold
+  // lead keeps its weight while its characters still resolve.
+  const list = (
+    items: ReadonlyArray<{ lead?: string; text: string }>,
+  ): HTMLElement => {
+    const ul = document.createElement("ul");
+    for (const item of items) {
+      const li = document.createElement("li");
+      if (item.lead !== undefined) {
+        li.appendChild(
+          spanned(document.createElement("strong"), item.lead, props),
+        );
+      }
+      spanned(li, item.text, props);
+      ul.appendChild(li);
+    }
+    return ul;
+  };
+
+  // The table: real rows/cells (borders come from CSS) whose text
+  // spans per character.
+  const table = (
+    head: readonly string[],
+    rows: ReadonlyArray<readonly string[]>,
+  ): HTMLElement => {
+    const tableEl = document.createElement("table");
+    const thead = document.createElement("thead");
+    const headRow = document.createElement("tr");
+    for (const cell of head) {
+      headRow.appendChild(spanned(document.createElement("th"), cell, props));
+    }
+    thead.appendChild(headRow);
+    tableEl.appendChild(thead);
+    const tbody = document.createElement("tbody");
+    for (const row of rows) {
+      const tr = document.createElement("tr");
+      for (const cell of row) {
+        tr.appendChild(spanned(document.createElement("td"), cell, props));
+      }
+      tbody.appendChild(tr);
+    }
+    tableEl.appendChild(tbody);
+    return tableEl;
   };
 
   if (props.customText) {
@@ -302,51 +359,59 @@ export function buildDocument(props: SceneContentProps = {}): HTMLElement {
     return doc;
   }
 
-  doc.appendChild(el("h2", "FontAlloy 使用指南"));
+  doc.appendChild(heading("h2", "FontAlloy 使用指南"));
   doc.appendChild(
     richText(
       "把英文编程字体和优秀的中文字体合成为一个字体，让终端和编辑器里的中文不再依赖字体回退。",
     ),
   );
-  doc.appendChild(el("h3", "快速开始"));
+  doc.appendChild(heading("h3", "快速开始"));
   doc.appendChild(
-    el(
-      "ul",
-      "<li>在左侧选择英文字体和中文字体</li><li>勾选需要补充的文字范围</li><li>在字符表中微调单个字符的来源</li><li>点击「合成字体」生成并安装</li>",
-    ),
+    list([
+      { text: "在左侧选择英文字体和中文字体" },
+      { text: "勾选需要补充的文字范围" },
+      { text: "在字符表中微调单个字符的来源" },
+      { text: "点击「合成字体」生成并安装" },
+    ]),
   );
-  doc.appendChild(el("h3", "命令行"));
+  doc.appendChild(heading("h3", "命令行"));
   doc.appendChild(
     codeBlock(
       "fontalloy build --base JetBrainsMono --cjk MapleMonoCN\nfontalloy export recipe.yaml",
     ),
   );
-  doc.appendChild(el("h3", "支持的语言"));
+  doc.appendChild(heading("h3", "支持的语言"));
   doc.appendChild(
-    el(
-      "table",
-      "<tr><th>语言</th><th>字符数</th><th>来源</th></tr><tr><td>简体中文</td><td>6,765</td><td>fc-lang zh_cn.orth</td></tr><tr><td>繁体中文</td><td>13,063</td><td>fc-lang zh_tw.orth</td></tr><tr><td>日文</td><td>2,314</td><td>fc-lang ja.orth</td></tr><tr><td>韩文</td><td>2,442</td><td>fc-lang ko.orth</td></tr>",
+    table(
+      ["语言", "字符数", "来源"],
+      [
+        ["简体中文", "6,765", "fc-lang zh_cn.orth"],
+        ["繁体中文", "13,063", "fc-lang zh_tw.orth"],
+        ["日文", "2,314", "fc-lang ja.orth"],
+        ["韩文", "2,442", "fc-lang ko.orth"],
+      ],
     ),
   );
-  const quote = el("blockquote");
+  const quote = document.createElement("blockquote");
   quote.appendChild(
     richText("字体名只能用英文字母、数字和连字符，例如 ChHsich-SC。"),
   );
   doc.appendChild(quote);
   if (props.full) {
-    doc.appendChild(el("h3", "Nerd Font 图标"));
+    doc.appendChild(heading("h3", "Nerd Font 图标"));
     doc.appendChild(
       richText("合成后的字体包含 Nerd Font 的图标字符，可在终端提示符和状态栏中使用："),
     );
     doc.appendChild(
       codeBlock("❯ git:(main) ✔  docker: running  ⚡ 99.97%"),
     );
-    doc.appendChild(el("h3", "常见问题"));
+    doc.appendChild(heading("h3", "常见问题"));
     doc.appendChild(
-      el(
-        "ul",
-        "<li><strong>中英文宽度不对齐？</strong> 中文默认采用 2:1 宽度比，可在设置中调整。</li><li><strong>某些字缺失？</strong> 两个字体都不包含这些字符，合成时会跳过并在报告中列出。</li><li><strong>支持 WOFF2 吗？</strong> 支持，输出格式可选 TTF 或 WOFF2。</li>",
-      ),
+      list([
+        { lead: "中英文宽度不对齐？", text: " 中文默认采用 2:1 宽度比，可在设置中调整。" },
+        { lead: "某些字缺失？", text: " 两个字体都不包含这些字符，合成时会跳过并在报告中列出。" },
+        { lead: "支持 WOFF2 吗？", text: " 支持，输出格式可选 TTF 或 WOFF2。" },
+      ]),
     );
   }
   return doc;
