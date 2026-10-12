@@ -27,6 +27,8 @@
  * keeps working around the cards.
  */
 
+import { icon } from "./icons";
+
 /** One dismissable message. */
 export interface KitMessage {
   /** Card heading (rare — the round-9 copy is one line). */
@@ -141,13 +143,14 @@ export function mountMessageStack(
       card.appendChild(row);
     }
     // The × dismiss: a real hit target (the card body is hoverable for
-    // the pause; the × closes instantly).
+    // the pause; the × closes instantly). Icon-only, like the rule
+    // rows' delete — the card's textContent stays exactly its copy.
     const close = document.createElement("button");
     close.type = "button";
     close.className = "kit-msg-close";
     close.dataset.role = "message-dismiss";
     close.setAttribute("aria-label", "关闭消息");
-    close.textContent = "×";
+    close.innerHTML = icon("close");
     card.appendChild(close);
     // The countdown bar (round 9): a thin edge progress strip along
     // the card's bottom. Hover pauses, leave resumes, × stops outright.
