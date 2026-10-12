@@ -24,9 +24,9 @@ import { missingCodepoints, BROWSE_UNIVERSE } from "./missing";
  * - 缺失: the universe codepoints NEITHER pick covers — the very cells
  *   the grid shows as dashed, visible the moment both picks exist, no
  *   preset involved;
- * - 已调整: codepoints a non-preset rule assigns away from their
- *   no-rule default (round 6 — the same discipline as the grid's ov
- *   dot; see precedence/resolve.ts isAdjusted);
+ * - 已调整: codepoints a non-preset rule EFFECTIVELY moves away from
+ *   their no-rule default supplier (round 8 — the same discipline as
+ *   the grid's ov dot; see precedence/resolve.ts isAdjusted);
  * - 覆盖: covered-by-either-font ÷ browsed-scope size — never "100%"
  *   while missing cells are on screen. Normal semantics (round 6,
  *   owner item 2): it counts the whole visible universe, so it carries

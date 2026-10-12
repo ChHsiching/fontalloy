@@ -35,7 +35,10 @@ export interface GridCellData {
   ch: string;
   /** Effective source; "none" renders the missing style. */
   state: CellState;
-  /** Effective value differs from the default → the corner dot. */
+  /**
+   * The declaration EFFECTIVELY changed the supplier (round 8: the
+   * resolved winner differs from the no-rule default) → the corner dot.
+   */
   adjusted?: boolean;
   selected?: boolean;
   /**

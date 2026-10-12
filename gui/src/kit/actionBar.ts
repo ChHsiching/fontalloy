@@ -427,9 +427,10 @@ export function mountActionBar(
       const dot = document.createElement("span");
       dot.className = "dot";
       legend.append(dot, document.createTextNode("已调整"));
-      // The legend's short note (round 7): the dot marks the DECLARED
-      // side; when the declared font lacks the codepoint (absence never
-      // overrides) the glyph still comes from the font that covers it.
+      // The legend's short note (round 8): the dot means the rule
+      // ACTUALLY took effect — the character's supplier changed. A
+      // declaration whose font lacks the codepoint (absence never
+      // overrides) never changes the supplier and carries no dot.
       legendHelp ??= mountHelpPopover({
         id: "adjusted-legend",
         title: "已调整是什么",
@@ -437,7 +438,7 @@ export function mountActionBar(
         width: 340,
         build: () =>
           helpNote(
-            "绿点＝已声明来源；被声明的字体不含此码位时，字形以实际供给为准（补字）。",
+            "绿点＝规则实际生效：该字符改由其他字体供给。声明但未改变供给的规则不加点。",
           ),
       });
       legend.appendChild(legendHelp.anchor);

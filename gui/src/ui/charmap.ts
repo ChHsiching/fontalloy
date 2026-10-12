@@ -38,6 +38,7 @@ import { mountCharPopup, type CharPopupFacts } from "../kit/charPopup";
 import { mountRangePopup } from "../kit/rangePopup";
 import { mountCategoryChips, type CategoryChips } from "../kit/categoryChips";
 import { mountActionBar, type ActionBar, type FontSide } from "../kit/actionBar";
+import { mountMessageStack, type MessageStack } from "../kit/messages";
 import { mountCharGrid, type CharGrid, type GridCellData } from "../kit/grid";
 import type { IconName } from "../kit/icons";
 import { MISSING_CATEGORY_ID, missingCodepoints } from "./missing";
@@ -58,11 +59,11 @@ import { liveNotice } from "./live";
  * in the winning font's own face, and carries its resolution as DOM
  * attributes (`data-winner` / `data-via` / `data-kind`) — the grid never
  * lies, however complex the rules. Adjusted cells carry the kit's corner
- * dot, paired with the 已调整 legend: a NON-PRESET rule declaring a side
- * that differs from the no-rule default (round 6 — the winner comparison
- * alone goes mute exactly where the owner went looking, an assignment to
- * a side whose font lacks the glyph; see precedence/resolve.ts
- * `isAdjusted`).
+ * dot, paired with the 已调整 legend: a NON-PRESET rule that EFFECTIVELY
+ * changes the supplier — the resolved winner differs from the no-rule
+ * default (round 8: the dot means 实际生效; a declaration whose font
+ * lacks the glyph cannot move the winner and carries no dot; see
+ * precedence/resolve.ts `isAdjusted`).
  *
  * Interaction surfaces (prototype parity, restored):
  *
@@ -81,7 +82,12 @@ import { liveNotice } from "./live";
  * `mutateRules` (one undo entry per action), the batch variant applies
  * to the selection exactly like the popup (one range rule per
  * contiguous run, per-codepoint rules otherwise), and typing a
- * codepoint locates it.
+ * codepoint locates it. Every block/group application announces its
+ * outcome through the kit's message stack (round 8, owner item 2) —
+ * the plain-words breakdown (N switched supplier; M stayed because
+ * the assigned font lacks the codepoint and the other 补字) plus the
+ * undo hint, in a dismissable corner card that never reflows the
+ * workspace.
  */
 
 /** Whether `rule` targets exactly this codepoint. */
@@ -221,6 +227,107 @@ function applyBatchRule(fonts: string[]): void {
 }
 
 /* -------------- block / group assignment (the segments) ------------- */
+
+/**
+ * The app-level message stack (round 8, owner item 2): one dismissable
+ * corner card per operation outcome. Mounted ONCE for the page (body
+ * level, fixed position — pushing a message can never reflow the
+ * workspace); the charmap's assignment paths are its writer.
+ */
+let messageStack: MessageStack | null = null;
+
+function messages(): MessageStack {
+  messageStack ??= mountMessageStack();
+  return messageStack;
+}
+
+/** The pick coverages as the resolver's map (shared builder). */
+function coveragesOf(
+  picks: PickRefs,
+): Map<string, Coverage | null> {
+  const map = new Map<string, Coverage | null>();
+  if (picks.base) map.set("base", arrayCoverage(picks.base.codepoints));
+  if (picks.donor) map.set("donor-0", arrayCoverage(picks.donor.codepoints));
+  return map;
+}
+
+/** Comma-grouped plain number (报告-style, en-US grouping). */
+const plainNum = (n: number): string => n.toLocaleString("en-US");
+
+const sideName = (side: FontSide): string =>
+  side === "base" ? "英文字体" : "中文字体";
+
+/**
+ * Announce one block/group assignment in plain words (round 8, owner
+ * item 2): what the operation actually DID — how many characters
+ * switched supplier, how many could not (the assigned font lacks the
+ * codepoint; absence never overrides, the other font 补字) — plus the
+ * undo hint. `nextRules` is the rule list the assignment is about to
+ * commit; the breakdown compares the resolved table before and after.
+ */
+function announceAssignment(
+  blocks: readonly UnicodeBlock[],
+  scope: string,
+  side: FontSide,
+  nextRules: readonly EditorRule[],
+  reverted: boolean,
+  picks: PickRefs,
+): void {
+  const before = currentResolver(picks);
+  if (before === null) return; // no pair: the segments are no-ops anyway
+  const after = new EffectiveResolver(nextRules, coveragesOf(picks));
+  const wanted = side === "base" ? "base" : "donor-0";
+
+  // Sweep the assigned intervals (a group assignment sweeps every block
+  // interval of the group; the resolver is per-codepoint, so this is a
+  // one-off walk, never a render path).
+  let switched = 0;
+  let ineffective = 0;
+  for (const block of blocks) {
+    for (const [start, end] of blockRanges(block)) {
+      for (let cp = start; cp <= end; cp++) {
+        const was = before.resolve(cp);
+        const now = after.resolve(cp);
+        if (was === null || now === null) continue; // neither pick covers
+        if (now.winner !== was.winner) switched++;
+        else if (
+          !reverted &&
+          now.declared !== null &&
+          now.declared.font === wanted &&
+          now.winner !== wanted
+        ) {
+          // The assignment's own rule covers this codepoint but its
+          // font lacks the glyph — the other font keeps supplying it.
+          ineffective++;
+        }
+      }
+    }
+  }
+
+  const lines: string[] = [];
+  if (reverted) {
+    lines.push(
+      switched > 0 ? `${plainNum(switched)} 个已恢复原字体` : "字符来源无变化",
+    );
+  } else {
+    if (switched > 0) {
+      lines.push(`${plainNum(switched)} 个改由${sideName(side)}提供`);
+    }
+    if (ineffective > 0) {
+      lines.push(
+        `${plainNum(ineffective)} 个未变：${sideName(side)}不含此码位，仍由${sideName(side === "base" ? "donor" : "base")}补字`,
+      );
+    }
+    if (lines.length === 0) lines.push("字符来源无变化");
+  }
+  lines.push("可撤销：Ctrl+Z 或“撤销”");
+  messages().push({
+    title: reverted
+      ? `已恢复默认：${scope}`
+      : `已应用：${scope} ${side === "base" ? "用英文字体" : "用中文字体"}`,
+    lines,
+  });
+}
 
 /** The font ref of one side ("base" / the first donor). */
 function sideRef(side: FontSide): string | null {
@@ -430,14 +537,18 @@ function effectiveGroupSide(
  * state: one exact range rule per block INTERVAL with the side's ref
  * leading the font list. Assigning the side the group already carries
  * (explicitly or by default) REVERTS it to the default (prototype
- * parity).
+ * parity). Every application announces its outcome through the message
+ * stack (round 8, owner item 2) — `scope` is the human name of the
+ * assigned range (所有…字符 for a group, the block name otherwise).
  */
 function assignBlocks(
   blocks: readonly UnicodeBlock[],
   side: FontSide,
+  scope: string,
 ): void {
   const ref = sideRef(side);
   if (ref === null) return;
+  const picks = pickRefs();
   const fonts = sideRuleFonts(side);
   const exact = new Set(
     blocks.flatMap((block) =>
@@ -451,7 +562,7 @@ function assignBlocks(
         .map((rule) => rule.id),
     ),
   );
-  const already = effectiveGroupSide(blocks, pickRefs()) === side;
+  const already = effectiveGroupSide(blocks, picks) === side;
   const rules = store.get().rules.filter((rule) => !exact.has(rule.id));
   if (!already) {
     for (const block of blocks) {
@@ -460,6 +571,7 @@ function assignBlocks(
       }
     }
   }
+  announceAssignment(blocks, scope, side, rules, already, picks);
   mutateRules(rules);
 }
 
@@ -523,11 +635,21 @@ function charFacts(cp: number): CharPopupFacts {
       : "'Microsoft YaHei',sans-serif";
   // The carried side hides; so does a side whose font is not picked
   // (an unpickable button would be a lie). `winner` is the REF
-  // (`base` / `donor-0`), compared in that vocabulary.
+  // (`base` / `donor-0`), compared in that vocabulary. Round 8 (owner
+  // item 1): a SHOWN side whose font lacks this codepoint renders its
+  // button DISABLED with the plain-words reason attached — the
+  // assignment could never take effect (absence never overrides), so
+  // offering it as a working action would be the lie.
   const showBase =
     entry.winner !== "base" && picks.refs.includes("base");
   const showDonor =
     entry.winner !== "donor-0" && picks.refs.includes("donor-0");
+  const sideCovers = (font: typeof picks.base): boolean =>
+    font !== null && font.codepoints.includes(cp);
+  const baseReason =
+    showBase && !sideCovers(picks.base) ? "英文字体不含此码位" : undefined;
+  const donorReason =
+    showDonor && !sideCovers(picks.donor) ? "中文字体不含此码位" : undefined;
 
   // 恢复默认 shows only when the character carries its own override
   // AND that override changes the outcome (prototype: S.ov[ch] &&
@@ -554,6 +676,8 @@ function charFacts(cp: number): CharPopupFacts {
     note,
     showBase,
     showDonor,
+    baseReason,
+    donorReason,
     showReset,
     onBase: () => applyCodepointSide(cp, "base"),
     onDonor: () => applyCodepointSide(cp, "donor"),
@@ -685,6 +809,10 @@ export function locateQuery(raw: string): void {
 /* ------------------------------ mount ------------------------------- */
 
 export function mountCharmap(root: HTMLElement): void {
+  // The message stack (round 8, owner item 2) mounts with the first
+  // charmap and stays for the page's life (a fixed, body-level layer —
+  // later stage remounts reuse the same one).
+  messages();
   // A previous stage mount (mode switches rebuild the stage) leaves its
   // body-level popup nodes orphaned; this mount replaces them (the
   // action bar's legend ? popup rides the same list — the bar remounts
@@ -1051,7 +1179,12 @@ export function mountCharmap(root: HTMLElement): void {
               label: group.name,
               allBase: effectiveGroupSide(group.blocks, picks) === "base",
               allDonor: effectiveGroupSide(group.blocks, picks) === "donor",
-              onAssign: (side) => assignBlocks(group.blocks, side),
+              onAssign: (side) =>
+                assignBlocks(
+                  group.blocks,
+                  side,
+                  `所有${group.name}字符`,
+                ),
             }
           : undefined,
       block:
@@ -1060,7 +1193,7 @@ export function mountCharmap(root: HTMLElement): void {
               label: block.name,
               aggregate: false,
               value: effectiveBlockSide(block, picks),
-              onAssign: (side) => assignBlocks([block], side),
+              onAssign: (side) => assignBlocks([block], side, block.name),
             }
           : categoryId === ALL_CATEGORY_ID
             ? { label: "全部", aggregate: true, count: categorySize(categoryId) }
@@ -1161,8 +1294,8 @@ export function mountCharmap(root: HTMLElement): void {
           : effective
             ? "none"
             : "plain",
-        // Adjusted = a non-preset rule declares a side the no-rule
-        // default does not carry (see isAdjusted — round 6).
+        // Adjusted = a non-preset rule EFFECTIVELY changes the
+        // supplier (see isAdjusted — round 8).
         adjusted: isAdjusted(entry, baseEntry),
         selected: selectionSet.has(cp),
         cursor: cp === selectedCodepoint,

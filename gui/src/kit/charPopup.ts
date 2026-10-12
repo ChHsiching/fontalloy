@@ -8,6 +8,13 @@
  * ineffective-assignment `note` under it when a declared side cannot
  * supply the glyph), the one-click 用英文字体/用中文字体 buttons (the
  * carried side is the consumer's to hide), and the underlined 恢复默认.
+ *
+ * Round 8 (owner item 1): a side button whose font LACKS the codepoint
+ * is never a working action — it renders DISABLED with the plain-words
+ * reason attached to it (「X字体不含此码位」, visible the moment the
+ * popup opens, no extra clicks), instead of an enabled button whose
+ * assignment could never take effect.
+ *
  * The FACTS — including the three action callbacks, which close over
  * the open codepoint — are the consumer's; the kit renders what it is
  * given, reports the actions, and closes after each.
@@ -38,6 +45,13 @@ export interface CharPopupFacts {
   note?: string;
   showBase: boolean;
   showDonor: boolean;
+  /**
+   * Round 8: the shown side's font lacks this codepoint — the button
+   * renders DISABLED with the reason attached under its label (「英文
+   * 字体不含此码位」), visible on open. Omitted when the button works.
+   */
+  baseReason?: string;
+  donorReason?: string;
   showReset: boolean;
   onBase?(): void;
   onDonor?(): void;
@@ -74,16 +88,24 @@ export function mountCharPopup(): CharPopup {
 
   const btns = document.createElement("div");
   btns.className = "kit-pop-btns";
-  const baseBtn = document.createElement("button");
-  baseBtn.type = "button";
-  baseBtn.className = "kit-btn sm";
-  baseBtn.dataset.role = "char-base";
-  baseBtn.textContent = "用英文字体";
-  const donorBtn = document.createElement("button");
-  donorBtn.type = "button";
-  donorBtn.className = "kit-btn sm";
-  donorBtn.dataset.role = "char-donor";
-  donorBtn.textContent = "用中文字体";
+  const sideButton = (role: string, label: string): HTMLButtonElement => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "kit-btn sm kit-pop-side";
+    btn.dataset.role = role;
+    const text = document.createElement("span");
+    text.className = "kit-pop-side-label";
+    text.textContent = label;
+    btn.appendChild(text);
+    // The round-8 disabled reason line (visible inside the button).
+    const reason = document.createElement("span");
+    reason.className = "kit-pop-side-reason";
+    reason.dataset.role = `${role}-reason`;
+    btn.appendChild(reason);
+    return btn;
+  };
+  const baseBtn = sideButton("char-base", "用英文字体");
+  const donorBtn = sideButton("char-donor", "用中文字体");
   btns.append(baseBtn, donorBtn);
 
   const reset = document.createElement("button");
@@ -120,6 +142,17 @@ export function mountCharPopup(): CharPopup {
     }
     baseBtn.style.display = next.showBase ? "" : "none";
     donorBtn.style.display = next.showDonor ? "" : "none";
+    // Round 8: a side whose font lacks this codepoint disables its
+    // button and states the reason IN it (visible on open).
+    baseBtn.disabled = Boolean(next.baseReason);
+    donorBtn.disabled = Boolean(next.donorReason);
+    const reasonText = (btn: HTMLButtonElement, text: string | undefined): void => {
+      const node = btn.querySelector<HTMLElement>(".kit-pop-side-reason")!;
+      node.textContent = text ?? "";
+      node.style.display = text ? "" : "none";
+    };
+    reasonText(baseBtn, next.baseReason);
+    reasonText(donorBtn, next.donorReason);
     reset.style.display = next.showReset ? "" : "none";
   };
 

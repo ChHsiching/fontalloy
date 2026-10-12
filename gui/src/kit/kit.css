@@ -397,6 +397,32 @@
   flex: 1;
 }
 
+/* Round 8 (owner item 1): a side whose font lacks this codepoint
+ * renders its button disabled with the reason INSIDE it — a column of
+ * the label and the dim 10px reason line, visible the moment the
+ * popup opens. */
+.kit-pop .kit-pop-side {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+
+.kit-pop .kit-pop-side-reason {
+  display: none;
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--ink3);
+}
+
+.kit-pop .kit-pop-side:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
 .kit-pop .kit-pop-rest {
   width: 100%;
   color: var(--ink3);
@@ -880,12 +906,13 @@
   height: 14px;
 }
 
-/* Variant chips (round 7, redesigned same round — owner item 2
- * "看不懂"): the typed axis values under the row's meta line, full
- * Chinese labels. Span-buttons (the row itself is the <button>); the
- * accent tint marks the value the USER picked, the dim 默认 marker the
- * axis's default (家族默认 — never a pressed look), grey an unfetched
- * or impossible combination. Small like the meta line (10px), one
+/* Variant chips (round 8 final form — owner items 6+7): one chip per
+ * CUT, labeled with the official proper nouns from the data (NF /
+ * NF-CN / Mono / 屏幕版 …; the default cut reads 标准). Span-buttons
+ * (the row itself is the <button>); the accent tint marks ONLY the
+ * user's explicit pick — the default cut renders plain (round 8: no
+ * dashed ring, no 默认 marker), grey an unfetched member family (the
+ * 未下载 tag rides inside). Small like the meta line (10px), one
  * flex-wrap row. */
 .kit-fp .kit-fp-chips {
   display: flex;
@@ -921,20 +948,11 @@
   color: var(--ink);
 }
 
-/* The axis's default value: dashed and quiet — the unselected state
- * reads as 家族默认, visibly distinct from a picked (accent) chip. */
-.kit-vchip.def {
-  border-style: dashed;
-}
-
-.kit-vchip .kit-vchip-def {
+/* The unfetched cut's inline 未下载 tag (round 8). */
+.kit-vchip .kit-vchip-tag {
   margin-left: 4px;
   font-size: 9px;
   color: var(--ink3);
-}
-
-.kit-vchip.on .kit-vchip-def {
-  color: var(--ac);
 }
 
 .kit-vchip.off {
@@ -1094,6 +1112,39 @@
   flex: none;
   font-size: 10.5px;
   color: var(--ink3);
+}
+
+/* Round 8 (owner item 3): the dashed 单个字符 N row is an expandable
+ * GROUP HEAD — a real button (chevron rotates with aria-expanded); its
+ * children rows indent under the head. Button reset: the kit's row
+ * look wins over the UA sheet. */
+.kit-rl.kit-rl-solo {
+  width: 100%;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.kit-rl-solo .kit-rl-chev {
+  display: inline-flex;
+  flex: none;
+  margin-left: auto;
+  color: var(--ink3);
+  transition: transform 120ms var(--spring);
+}
+
+.kit-rl-solo .kit-rl-chev svg {
+  width: 12px;
+  height: 12px;
+}
+
+.kit-rl-solo[aria-expanded="true"] .kit-rl-chev {
+  transform: rotate(90deg);
+}
+
+.kit-rl[data-kind="codepoint"] {
+  margin-left: 14px;
+  border-style: dashed;
 }
 
 .kit-rl .kit-del {
@@ -1739,4 +1790,85 @@
 .kit-zf-b .kit-cselw {
   width: auto;
   min-width: 130px;
+}
+
+/* ============ message stack (PRODUCT-EXTENSION, round 8) ============
+ * The kit-level message system the build panel's row mechanism
+ * generalizes into: fixed cards in a bottom corner (never in the flow
+ * — pushing a message can never reflow the workspace), columned
+ * bottom-up, capped at four visible, dismissable by ×. Enter/leave
+ * animate transform + opacity only. */
+
+.kit-msgs {
+  position: fixed;
+  left: 14px;
+  bottom: 52px; /* the 42px stats bar plus a gap (the build panel's band) */
+  z-index: 870;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(360px, calc(100vw - 28px));
+  pointer-events: none; /* the empty stack never blocks the workspace */
+}
+
+.kit-msg {
+  position: relative;
+  /* The card body is pointer-transparent: a message never masks the
+   * grid or the rail beneath it (the workspace stays fully
+   * interactive); the × dismiss is the one real hit target. */
+  pointer-events: none;
+  border: 1px solid var(--ln2);
+  border-radius: 10px;
+  background: var(--sf);
+  box-shadow: var(--sh3);
+  padding: 8px 26px 9px 12px;
+  font-size: 12px;
+  color: var(--ink2);
+  line-height: 1.6;
+}
+
+.kit-msg-title {
+  font-weight: 600;
+  color: var(--ink);
+  font-size: 12.5px;
+  margin-bottom: 2px;
+}
+
+.kit-msg-line {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.kit-msg-close {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  pointer-events: auto;
+  border: none;
+  background: none;
+  padding: 0 4px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--ink3);
+  cursor: pointer;
+}
+
+.kit-msg-close:hover {
+  color: var(--ink);
+}
+
+.kit-msg.enter {
+  animation: kit-msg-in 0.18s var(--spring-out);
+}
+
+.kit-msg.leave {
+  opacity: 0;
+  transition: opacity 0.15s ease-in;
+}
+
+@keyframes kit-msg-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
 }

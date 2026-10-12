@@ -222,14 +222,14 @@ export function arrayCoverage(codepoints: readonly number[]): Coverage {
 }
 
 /**
- * The 已调整 discipline (round 6, prototype parity): a codepoint is
- * adjusted when a NON-PRESET rule declares a side that differs from the
- * no-rule default winner. The winner comparison alone goes mute exactly
- * where the owner went looking — an assignment to a side whose font
- * lacks the glyph cannot move the winner (absence never overrides), so
- * the declaration is what the dot keys on. Preset (language-scope)
- * rules never count: declaring zh_cn with base-first-then-donor IS the
- * default order, not an adjustment.
+ * The 已调整 discipline (round 8, owner item 1): a codepoint is
+ * adjusted when a NON-PRESET rule EFFECTIVELY changes the supplier —
+ * the resolved winner differs from the no-rule default winner. A
+ * declaration whose font lacks the glyph cannot move the winner
+ * (absence never overrides), so such a cell carries no dot: the dot
+ * means 实际生效, not 已声明. Preset (language-scope) rules never
+ * count: declaring zh_cn with base-first-then-donor IS the default
+ * order, not an adjustment.
  */
 export function isAdjusted(
   entry: EffectiveEntry | null,
@@ -238,5 +238,5 @@ export function isAdjusted(
   if (entry === null || defaultEntry === null) return false;
   const declared = entry.declared;
   if (declared === null || declared.granularity === "preset") return false;
-  return declared.font !== defaultEntry.winner;
+  return entry.winner !== defaultEntry.winner;
 }
