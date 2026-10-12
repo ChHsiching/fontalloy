@@ -40,9 +40,17 @@ function intersect(
   return out;
 }
 
-/** The taxonomy blocks' raw intervals, in declaration order. */
+/**
+ * The taxonomy blocks' enumeration intervals, in declaration order —
+ * curated intervals included (the 图标 group contributes the Nerd Font
+ * PUA planes, not their raw envelope).
+ */
 export const BLOCK_UNIVERSE: ReadonlyArray<{ start: number; end: number }> =
-  ALL_BLOCKS.map((block) => ({ start: block.start, end: block.end }));
+  ALL_BLOCKS.flatMap((block) =>
+    block.intervals
+      ? block.intervals.map(([start, end]) => ({ start, end }))
+      : [{ start: block.start, end: block.end }],
+  );
 
 /** The browsable universe's visible intervals (sorted, disjoint). */
 export const BROWSE_UNIVERSE: ReadonlyArray<readonly [number, number]> =

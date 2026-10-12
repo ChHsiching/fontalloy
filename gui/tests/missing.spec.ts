@@ -133,7 +133,9 @@ test.describe("missing glyph scope", () => {
 
     // The status bar agrees with the chip and covers honestly: 覆盖 is
     // the covered share of the browsed universe — never 100% while
-    // missing cells exist (owner item 6), and the ? explains the scope.
+    // missing cells exist (owner item 6). Round 6: the number counts
+    // the whole visible universe (normal semantics), so it carries NO
+    // ?-popover — the explanation was noise.
     await expect(page.locator("[data-stat='missing']")).toHaveText(
       missing.toLocaleString("en-US"),
     );
@@ -145,13 +147,7 @@ test.describe("missing glyph scope", () => {
     );
     expect(coverage).toBeGreaterThan(0);
     expect(coverage).toBeLessThan(100);
-    const help = page.locator("[data-role='help-coverage']");
-    await expect(help).toBeVisible();
-    await pointerClick(page, help);
-    await expect(page.locator("[data-help-popup='coverage']")).toBeVisible();
-    await expect(page.locator("[data-help-popup='coverage']")).toContainText(
-      "已覆盖码位 ÷ 浏览范围码位总数",
-    );
+    await expect(page.locator("[data-role='help-coverage']")).toHaveCount(0);
 
     // Opening the chip: the notice replaces the assignment segments,
     // every cell is dashed-missing, and the grid pages its own list.

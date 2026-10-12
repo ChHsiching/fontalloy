@@ -60,6 +60,38 @@ export interface PagerProps {
   page: number;
   count: number;
   onPage(delta: 1 | -1): void;
+  /**
+   * Jump to an absolute page (round 6): the pager's 第 N/M 页 label is
+   * click-editable — a numeric input commits clamped, Esc cancels.
+   * Optional: pagers without it keep the plain label.
+   */
+  onJump?(target: number): void;
+}
+
+/** One pager arrow as an inline SVG chevron (round 6). */
+function pagerChevron(direction: "prev" | "next"): SVGSVGElement {
+  const svg = document.createElementNS(
+    "http://www.w3.org/2000/svg",
+    "svg",
+  );
+  svg.setAttribute("viewBox", "0 0 16 16");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "1.5");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  svg.setAttribute("aria-hidden", "true");
+  const path = document.createElementNS(
+    "http://www.w3.org/2000/svg",
+    "path",
+  );
+  // › for next; the previous arrow mirrors it in place.
+  path.setAttribute("d", "M6 3.5L10.5 8 6 12.5");
+  if (direction === "prev") {
+    path.setAttribute("transform", "translate(16,0) scale(-1,1)");
+  }
+  svg.appendChild(path);
+  return svg;
 }
 
 export function gridPager(props: PagerProps): HTMLElement {
@@ -67,21 +99,67 @@ export function gridPager(props: PagerProps): HTMLElement {
   pager.className = "kit-pgc";
   const prev = document.createElement("button");
   prev.type = "button";
-  prev.textContent = "‹";
   prev.setAttribute("aria-label", "上一页");
+  prev.dataset.pagerArrow = "prev";
   prev.disabled = props.page <= 0;
   prev.addEventListener("click", () => props.onPage(-1));
+  prev.appendChild(pagerChevron("prev"));
   const label = document.createElement("span");
   label.className = "kit-num";
   label.dataset.pagerLabel = "";
   label.textContent = `第 ${props.page + 1}/${props.count} 页`;
+
+  if (props.onJump) {
+    // Jump-to-page (round 6): clicking the label swaps in a numeric
+    // input — Enter commits (clamped into 1..count), Esc cancels, blur
+    // cancels. The nodes persist; only visibility flips.
+    const input = document.createElement("input");
+    input.type = "text";
+    input.inputMode = "numeric";
+    input.dataset.pagerInput = "";
+    input.setAttribute("aria-label", "跳转到页");
+    input.hidden = true;
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        const value = Number.parseInt(input.value.trim(), 10);
+        if (Number.isFinite(value)) {
+          const clamped = Math.min(Math.max(value, 1), props.count);
+          props.onJump!(clamped - 1);
+        }
+        input.hidden = true;
+        label.hidden = false;
+        input.blur();
+      } else if (e.key === "Escape") {
+        input.hidden = true;
+        label.hidden = false;
+        input.blur();
+      }
+    });
+    input.addEventListener("blur", () => {
+      input.hidden = true;
+      label.hidden = false;
+    });
+    label.addEventListener("click", () => {
+      input.value = String(props.page + 1);
+      label.hidden = true;
+      input.hidden = false;
+      input.focus();
+      input.select();
+    });
+    label.title = "点击跳转页码";
+    pager.append(prev, label, input);
+  } else {
+    pager.append(prev, label);
+  }
+
   const next = document.createElement("button");
   next.type = "button";
-  next.textContent = "›";
   next.setAttribute("aria-label", "下一页");
+  next.dataset.pagerArrow = "next";
   next.disabled = props.page >= props.count - 1;
   next.addEventListener("click", () => props.onPage(1));
-  pager.append(prev, label, next);
+  next.appendChild(pagerChevron("next"));
+  pager.appendChild(next);
   return pager;
 }
 

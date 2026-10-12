@@ -239,6 +239,41 @@ test.describe("kit demo page", () => {
     await expect(pop).toBeHidden();
   });
 
+  // Round 6, owner item 1 — the ? hover is a PURE CENTERED scale: no
+  // translate component, transform-origin pinned to center, so the
+  // glyph can never appear to dip toward its label.
+  test("help button hover: color change plus a pure centered scale only", async ({
+    page,
+  }) => {
+    const button = page.locator('[data-role="help-weight"]');
+    // The resting box (before the hover scale inflates it).
+    const restBox = await button.boundingBox();
+    await button.hover();
+    const midTransform = await button.evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return { matrix: new DOMMatrixReadOnly(cs.transform), origin: cs.transformOrigin };
+    });
+    // After the 120 ms transition settles: scale(1.1), zero translate.
+    await page.waitForTimeout(300);
+    const settled = await button.evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return { matrix: new DOMMatrixReadOnly(cs.transform), origin: cs.transformOrigin };
+    });
+    const m = settled.matrix;
+    expect(m.m11).toBeCloseTo(1.1, 2);
+    expect(m.m22).toBeCloseTo(1.1, 2);
+    expect(Math.abs(m.m41)).toBeLessThanOrEqual(0.01); // no X shift
+    expect(Math.abs(m.m42)).toBeLessThanOrEqual(0.01); // no Y shift
+    // transform-origin center: the computed form resolves to half the
+    // resting box on both axes (percentages become pixels).
+    const [ox, oy] = settled.origin.split(" ").map((v) => Number.parseFloat(v));
+    expect(Math.abs(ox - restBox!.width / 2)).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(oy - restBox!.height / 2)).toBeLessThanOrEqual(0.5);
+    // The mid-transition sample was already pure too (no choreography).
+    expect(Math.abs(midTransform.matrix.m41)).toBeLessThanOrEqual(0.01);
+    expect(Math.abs(midTransform.matrix.m42)).toBeLessThanOrEqual(0.01);
+  });
+
   /* ---------- PickerPopup ---------- */
 
   test("picker opens as the anchor-fused list card (AppSelect form)", async ({

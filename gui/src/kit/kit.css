@@ -255,12 +255,22 @@
 
 /* ============ circular help button (qh) ============ */
 
+/*
+ * Round 6: the hover is a pure CENTERED scale — transform-origin
+ * pinned to center and zero translate, so the glyph can never appear
+ * to dip toward the label. Any context that puts this button in
+ * baseline flow must center it optically (flex + align-items: center),
+ * never rely on the inline baseline.
+ */
 .kit-qh {
   display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 2px;
   border-radius: 50%;
   color: var(--ink3);
   flex: none;
+  transform-origin: center;
   transition: background-color 100ms ease-out, color 100ms ease-out,
     transform 120ms var(--spring);
 }
@@ -1230,7 +1240,10 @@
   background: var(--ac);
 }
 
-/* Compressible: the pager cluster keeps one line but yields width. */
+/* Compressible: the pager cluster keeps one line but yields width.
+ * Round 6: the arrows are inline-SVG chevrons in flex-centered
+ * buttons (the ‹ › TEXT glyphs hugged the baseline and read low next
+ * to the CJK label — the same optical class as the ? button). */
 .kit-pgc {
   display: inline-flex;
   align-items: center;
@@ -1248,10 +1261,46 @@
   text-overflow: ellipsis;
 }
 
+/* Click-editable page label (jump-to-page): reads as the same text,
+ * but shows it is clickable. */
+.kit-pgc .kit-num:not([hidden]) {
+  border-radius: 4px;
+  padding: 1px 4px;
+  margin: 0 1px;
+  cursor: pointer;
+}
+
+.kit-pgc .kit-num:not([hidden]):hover {
+  background: var(--sf2);
+  color: var(--ink);
+}
+
+.kit-pgc input[data-pager-input] {
+  width: 52px;
+  padding: 1px 4px;
+  margin: 0 1px;
+  border: 1px solid var(--ln2);
+  border-radius: 4px;
+  background: var(--page);
+  color: var(--ink);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
 .kit-pgc button {
-  padding: 2px 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
   border-radius: 5px;
   color: var(--ink);
+}
+
+.kit-pgc button svg {
+  width: 10px;
+  height: 10px;
+  display: block;
 }
 
 .kit-pgc button:hover:not(:disabled) {
@@ -1440,17 +1489,12 @@
   color: var(--ac);
 }
 
-/* The ? beside 覆盖 (round 5): same circular help button as the
- * settings rows, scaled to the bar's 42px height. */
+/* The 覆盖 label (round 6): the popover anchor is gone — the number
+ * counts the whole visible universe, normal semantics. */
 .kit-stat .kit-cov-label {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-}
-
-.kit-stat .kit-cov .kit-qh .kit-ci {
-  width: 11px;
-  height: 11px;
 }
 
 /* Counter pop when a value changes. */

@@ -39,6 +39,15 @@ export interface UnicodeBlock {
   en: string;
   start: number;
   end: number;
+  /**
+   * Curated enumeration intervals (round 6, the 图标 group): when a
+   * block's browsable content is a CURATED subset of its raw envelope
+   * (the Nerd Font PUA allocations — 22 disjoint ranges inside
+   * 0xE000–0xF533), these replace the envelope for ENUMERATION and the
+   * browsed-universe scope. Rules still target the full envelope
+   * (`start`–`end`), exactly like every other block.
+   */
+  intervals?: ReadonlyArray<readonly [number, number]>;
 }
 
 export interface BlockGroup {
@@ -54,6 +63,40 @@ function block(id: string, name: string, en: string, start: number, end: number)
 export const ALL_CATEGORY_ID = "all";
 
 export const ALL_RANGE = { start: 0x20, end: 0x10ffff };
+
+/**
+ * The Nerd Font PUA allocations (round 6, the 图标 group): the
+ * prototype's own `NF_RANGES` verbatim — the icon planes the patched
+ * coding fonts actually carry. The block's raw envelope is
+ * 0xE000–0xF533 (what a rule targets); the curated intervals are what
+ * the grid pages through and the browsed universe counts, so the ~1.8k
+ * non-NF private-use codepoints in between stay out of the view (the
+ * prototype's hand-curated lists never had them).
+ */
+const NF_RANGES: ReadonlyArray<readonly [number, number]> = [
+  [0xe000, 0xe00a],
+  [0xe0a0, 0xe0a3],
+  [0xe0b0, 0xe0c8],
+  [0xe0ca, 0xe0ca],
+  [0xe0cc, 0xe0d2],
+  [0xe0d4, 0xe0d4],
+  [0xe0d6, 0xe0d7],
+  [0xe200, 0xe2a9],
+  [0xe300, 0xe3e3],
+  [0xe5fa, 0xe6bb],
+  [0xe700, 0xe958],
+  [0xea60, 0xea88],
+  [0xea8a, 0xea8c],
+  [0xea8f, 0xeac7],
+  [0xeac9, 0xeac9],
+  [0xeacc, 0xeb09],
+  [0xeb0b, 0xeb4e],
+  [0xeb50, 0xec5e],
+  [0xec60, 0xec84],
+  [0xed00, 0xefcf],
+  [0xf000, 0xf385],
+  [0xf400, 0xf533],
+];
 
 export const BLOCK_GROUPS: BlockGroup[] = [
   {
@@ -83,6 +126,16 @@ export const BLOCK_GROUPS: BlockGroup[] = [
       block("geometric-shapes", "几何图形", "Geometric Shapes", 0x25a0, 0x25ff),
       block("misc-symbols", "杂项符号", "Miscellaneous Symbols", 0x2600, 0x26ff),
       block("dingbats", "装饰符号", "Dingbats", 0x2700, 0x27bf),
+    ],
+  },
+  {
+    id: "icons",
+    name: "图标",
+    blocks: [
+      {
+        ...block("nf-icons", "Nerd Font", "Nerd Font PUA", 0xe000, 0xf533),
+        intervals: NF_RANGES,
+      },
     ],
   },
   {
@@ -155,9 +208,22 @@ export function categoryIntervals(
     ];
   }
   const group = findGroupCategory(id);
-  if (group) return group.blocks.map((b) => ({ start: b.start, end: b.end }));
+  if (group) {
+    // A group's aggregate is the union of its blocks' ENUMERATION
+    // intervals (curated intervals included — the 图标 group's 全部
+    // counts the Nerd Font planes, not the raw envelope).
+    return group.blocks.flatMap((b) =>
+      b.intervals
+        ? b.intervals.map(([start, end]) => ({ start, end }))
+        : [{ start: b.start, end: b.end }],
+    );
+  }
   const block = BLOCK_BY_ID.get(id);
-  return block ? [{ start: block.start, end: block.end }] : [];
+  if (!block) return [];
+  // A curated block enumerates its curated intervals, not the envelope.
+  return block.intervals
+    ? block.intervals.map(([start, end]) => ({ start, end }))
+    : [{ start: block.start, end: block.end }];
 }
 
 export function categoryName(id: string): string {
