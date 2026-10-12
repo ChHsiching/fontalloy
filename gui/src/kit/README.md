@@ -167,6 +167,41 @@ instruction from the hands-on review, not a silent drift):
   (an inline SVG data URI), and the generated Tauri icon set
   (`gui/scripts/make-icons.mjs` rasterizes the same A×永 mark).
 
+## Round-9 owner rulings (this round)
+
+- **Display names are the font's own** (owner item 2 + item 5): every
+  name surface — picker rows, variant chips, rail identity cards,
+  top-bar pair tags, the char popup's 来自 line, the report's source
+  names — reads the REGISTERED font's name table verbatim (nameID 16/1
+  + 17/2, the en records; the zh-CN records ride along untranslated:
+  `fonts/sfnt.ts` `FontNames`). "LXGW WenKai Screen" stays "LXGW
+  WenKai Screen"; curated display names are GONE from
+  `data/curated-meta.json` (stars/traits/slots stay). An unfetched row
+  falls back to the upstream release artifact's own name (its stem),
+  never a constructed string. Chip labels are the data's own words:
+  the registered cut's name after the family's shared base, else the
+  manifest variant word, else the asset's own suffix — the translated
+  屏幕版 token is deleted in favor of the author's Screen.
+- **Message copy is one terse line** (owner item 3): 「中日韩文字 → 英
+  文：0 生效 / 41,289 未变（无字形）· Ctrl+Z 撤销」 — numbers first,
+  the success count ALWAYS stated (even 0), no title, no repetition.
+- **The rule-row × is visibly there** (owner item 6): an explicit 14px
+  close glyph at full contrast on every summary row AND the 单个字符 N
+  aggregate head (its × deletes the whole group in ONE undo step;
+  `ruleRows.ts` renders the head as a group div whose wide toggle
+  button carries the sentence, so the × never nests inside a button).
+- **Messages auto-dismiss on a countdown** (owner item 7): ~6s, a thin
+  progress bar shrinking along the card's bottom edge (rAF-driven),
+  hover PAUSES (the bar freezes), leaving resumes, the × closes
+  instantly; a message may opt out with `autoDismiss: false`. Cards
+  are real hover targets (pointer-events on the card); the stack's
+  empty area stays pointer-transparent.
+- **The document scene renders on the effective fonts** (owner item
+  4): headings, body, list items, and table cells resolve per
+  character like the terminal/code cards — no UI-font text remains in
+  the sample; the document's structure (sizes, weights, table lines)
+  stays CSS.
+
 ## Table-content policy — help content is the prototype's text
 
 Help-popover tables and prose carry the prototype's content VERBATIM

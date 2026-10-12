@@ -1115,13 +1115,29 @@
 }
 
 /* Round 8 (owner item 3): the dashed 单个字符 N row is an expandable
- * GROUP HEAD — a real button (chevron rotates with aria-expanded); its
- * children rows indent under the head. Button reset: the kit's row
- * look wins over the UA sheet. */
+ * GROUP HEAD — its TOGGLE is a wide button covering the sentence (the
+ * × never nests inside it); the chevron rotates with aria-expanded and
+ * its children rows indent under the head. Round 9 (owner item 6): the
+ * head carries its OWN × deleting the whole group in one undo step. */
 .kit-rl.kit-rl-solo {
   width: 100%;
   font: inherit;
   text-align: start;
+  cursor: pointer;
+}
+
+.kit-rl-toggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  border: none;
+  background: none;
+  padding: 0;
   cursor: pointer;
 }
 
@@ -1147,22 +1163,44 @@
   border-style: dashed;
 }
 
+/* Round 9 (owner item 6): the delete × is VISIBLY there — an explicit
+ * 14px close glyph (the icon's own svg sizing; without it the inline
+ * svg explodes to its default replaced size and the × disappears), a
+ * resting contrast the row's own ink carries (never a hover-only
+ * ghost), danger red on the hover lift. Applies to every summary row
+ * AND the 单个字符 aggregate head. */
 .kit-rl .kit-del {
-  color: var(--ink3);
-  display: flex;
-  padding: 2px;
-  border-radius: 4px;
+  color: var(--ink2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  padding: 0;
   margin-left: auto;
-  transition: color 100ms ease-out, transform 100ms var(--spring);
+  border: none;
+  border-radius: 5px;
+  background: none;
+  cursor: pointer;
+  transition: color 100ms ease-out, transform 100ms var(--spring),
+    background-color 100ms ease-out;
+}
+
+.kit-rl .kit-del svg {
+  width: 14px;
+  height: 14px;
+  display: block;
 }
 
 .kit-rl .kit-del:hover {
   color: var(--dgr);
+  background: var(--dgrsoft);
 }
 
 @media (hover: hover) {
   .kit-rl .kit-del:hover {
-    transform: scale(1.2);
+    transform: scale(1.15);
   }
 }
 
@@ -1797,7 +1835,14 @@
  * generalizes into: fixed cards in a bottom corner (never in the flow
  * — pushing a message can never reflow the workspace), columned
  * bottom-up, capped at four visible, dismissable by ×. Enter/leave
- * animate transform + opacity only. */
+ * animate transform + opacity only.
+ *
+ * Round 9 (owner item 7): each card auto-dismisses after ~6s — a thin
+ * progress bar shrinking along the card's bottom edge announces the
+ * countdown; hovering the card pauses it (the bar freezes), leaving
+ * resumes, the × closes instantly. Hover must land, so the CARD is a
+ * real hit target; the stack's own empty area stays
+ * pointer-transparent so the workspace around the cards keeps working. */
 
 .kit-msgs {
   position: fixed;
@@ -1813,18 +1858,19 @@
 
 .kit-msg {
   position: relative;
-  /* The card body is pointer-transparent: a message never masks the
-   * grid or the rail beneath it (the workspace stays fully
-   * interactive); the × dismiss is the one real hit target. */
-  pointer-events: none;
+  /* A real hit target: the hover pause (round 9) needs pointerenter,
+   * and the × needs its click. Cards sit in the corner; the workspace
+   * around them stays fully interactive. */
+  pointer-events: auto;
   border: 1px solid var(--ln2);
   border-radius: 10px;
   background: var(--sf);
   box-shadow: var(--sh3);
-  padding: 8px 26px 9px 12px;
+  padding: 8px 26px 10px 12px;
   font-size: 12px;
   color: var(--ink2);
   line-height: 1.6;
+  overflow: hidden; /* the countdown bar bleeds to the card's edges */
 }
 
 .kit-msg-title {
@@ -1843,18 +1889,33 @@
   position: absolute;
   top: 4px;
   right: 6px;
-  pointer-events: auto;
   border: none;
   background: none;
   padding: 0 4px;
   font-size: 13px;
   line-height: 1.4;
-  color: var(--ink3);
+  color: var(--ink2);
   cursor: pointer;
 }
 
 .kit-msg-close:hover {
   color: var(--ink);
+}
+
+/* The auto-dismiss countdown bar (round 9): a 2px strip pinned to the
+ * card's bottom edge, shrinking right-anchored. A CSS animation would
+ * not freeze on hover, so the transform is rAF-driven (messages.ts);
+ * the element here only carries the geometry. */
+.kit-msg-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--ac);
+  opacity: 0.55;
+  transform-origin: left center;
+  will-change: transform;
 }
 
 .kit-msg.enter {
