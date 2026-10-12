@@ -35,6 +35,9 @@
 .kit-brand {
   font-size: 15px;
   font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 /* The theme toggle's 自动 badge (round 5, owner item 8): a tiny tag at
@@ -58,16 +61,18 @@
   letter-spacing: 0.02em;
 }
 
-/* The hand-drawn mark (A × 永): 24-grid strokes, rendered at 16px in
-   the top bar — crisp from 16 to 24px, currentColor + teal accent so
-   both themes read. */
-.kit-brand .kit-brand-mark {
-  width: 16px;
-  height: 16px;
-  margin-right: 8px;
-  vertical-align: -3px;
-  display: inline-block;
+/* The hand-drawn mark (A × 永): 24-grid strokes, currentColor + teal
+   accent so both themes read. Round 7 sizes it inline (22px in the top
+   bar, 18–22px in the adopted panel headers) — .kit-mark is the flex
+   holder, the svg keeps the kit-brand-mark class everywhere. */
+.kit-mark {
+  display: inline-flex;
+  align-items: center;
   flex: none;
+}
+
+.kit-brand .kit-brand-mark {
+  display: block;
 }
 
 /* Linear icon default size (24-viewBox stroke family). */

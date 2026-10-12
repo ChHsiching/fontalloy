@@ -23,6 +23,7 @@ import { buildWorkspaceDraft, connectService } from "../service/synthesize";
 import { buildCommand, recipeFileName, recipeYaml } from "../recipe/yaml";
 import { validateDraft } from "../recipe/validate";
 import type { FontSlot, Preset } from "../recipe/model";
+import { brandMark } from "../kit/topBar";
 import presetsJson from "../data/presets.json";
 import catalogManifest from "../data/catalog.json";
 
@@ -111,6 +112,8 @@ export function mountCliPanel(): void {
     </div>
   `;
   document.body.appendChild(root);
+  // Round 7: the panel head carries the brand mark (logo adoption).
+  root.querySelector(".cli-head")!.prepend(brandMark(18));
   panel = root;
 
   root

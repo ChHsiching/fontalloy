@@ -127,6 +127,10 @@ test.describe("sidecar synthesize", () => {
       // 改写名称表 …), and a running build with no stage yet says 正在合成.
       const panel = page.locator('[data-testid="build-panel"]');
       await expect(panel).toBeVisible();
+      // Round 7 (logo adoption): the panel head carries the brand mark.
+      await expect(
+        panel.locator(".build-panel-title .kit-brand-mark"),
+      ).toBeVisible();
       await expect(panel.locator("[data-build-stage]").first()).toHaveText(
         /(读取字体|规划字重|解析规则|移植字形|改写名称表|保存输出|生成报告|完成|排队中|正在合成)/,
       );

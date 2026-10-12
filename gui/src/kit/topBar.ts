@@ -31,9 +31,11 @@ export const DEFAULT_FONT_NAME = "ChHsich";
  * monospace Latin letterform whose strokes are CJK calligraphy). The
  * 捺 press-stroke and the detached 点 dot carry the teal accent; the
  * rest follows the text color, so the mark reads on dark and light
- * alike. Drawn on a 24 grid with ≥2px strokes so it stays crisp at the
- * 16px topbar size (and up to 24px+ elsewhere). The owner finalizes
- * the concept later — today it must simply not be a placeholder block.
+ * alike. Drawn on a 24 grid with ≥2px strokes so it stays crisp from
+ * 16 to 24px+. Round 7 adopts it product-wide (owner: the top-bar mark
+ * was 好小 and 只有左上角): 22px in the top bar, and the same mark
+ * heads the first-run / build / no-service panels, the web favicon,
+ * and the generated Tauri icon set (gui/scripts/make-icons.mjs).
  */
 const BRAND_MARK_SVG = `
 <svg class="kit-brand-mark" viewBox="0 0 24 24" aria-hidden="true">
@@ -54,9 +56,26 @@ const BRAND_MARK_SVG = `
 export function brandPart(): HTMLElement {
   const brand = document.createElement("div");
   brand.className = "kit-brand";
-  brand.innerHTML = BRAND_MARK_SVG;
+  brand.appendChild(brandMark(22));
   brand.appendChild(document.createTextNode("FontAlloy"));
   return brand;
+}
+
+/**
+ * The mark at an explicit size, outside the top bar (round 7): panel
+ * headers (first-run catalog, build, no-service) adopt the same SVG at
+ * their own scale. The svg keeps the kit-brand-mark class so walkers
+ * and CSS find it everywhere.
+ */
+export function brandMark(size: number): HTMLElement {
+  const holder = document.createElement("span");
+  holder.className = "kit-mark";
+  holder.dataset.role = "brand-mark";
+  holder.innerHTML = BRAND_MARK_SVG;
+  const svg = holder.firstElementChild as SVGSVGElement;
+  svg.style.width = `${size}px`;
+  svg.style.height = `${size}px`;
+  return holder;
 }
 
 /**

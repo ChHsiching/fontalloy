@@ -35,6 +35,15 @@ test("no service: the synthesize flow offers the CLI panel as page text", async 
   page,
 }) => {
   const panel = await openCliPanel(page);
+  // Round 7 (logo adoption): the panel head carries the brand mark, and
+  // the web target ships the mark as an inline SVG favicon (a data URI,
+  // so nothing can 404 into the console gate).
+  await expect(panel.locator(".cli-head .kit-brand-mark")).toBeVisible();
+  const iconHref = await page.evaluate(() => {
+    const el = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    return el?.href ?? "";
+  });
+  expect(iconHref.startsWith("data:image/svg+xml,")).toBe(true);
   const notice = panel.locator('[data-testid="service-notice"]');
   await expect(notice).toContainText("fontalloy serve");
   await expect(notice).toContainText("127.0.0.1");

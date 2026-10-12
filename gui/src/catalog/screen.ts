@@ -1,5 +1,6 @@
 import { store, type CatalogFamilyStatus } from "../state";
 import { getDefaultManager } from "./manager";
+import { brandMark } from "../kit/topBar";
 
 /**
  * The first-run progress screen (issue #17, ADR-0005): a dismissable
@@ -40,6 +41,9 @@ export function mountCatalogScreen(): void {
   `;
   screen.hidden = true;
   document.body.appendChild(screen);
+
+  // Round 7: the panel head carries the brand mark (logo adoption).
+  screen.querySelector(".catalog-title")!.prepend(brandMark(22));
 
   const list = screen.querySelector<HTMLElement>(".catalog-list")!;
   const done = screen.querySelector<HTMLElement>("[data-stat='catalog-done']")!;

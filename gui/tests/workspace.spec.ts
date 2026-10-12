@@ -117,11 +117,13 @@ test.describe("workspace shell", () => {
     page,
   }) => {
     // Round 4: the solid placeholder block became a drawn mark (an A
-    // built from 永-style strokes, teal accent) — an SVG, sized 16px.
+    // built from 永-style strokes, teal accent). Round 7 enlarges it to
+    // 22px — balanced with the bar, not tiny — and adopts it product-
+    // wide (panel headers, favicon, the Tauri icon set).
     const mark = page.locator(".topbar .kit-brand .kit-brand-mark");
     await expect(mark).toBeVisible();
     const box = await mark.boundingBox();
-    expect(box!.width).toBeCloseTo(16, 0);
+    expect(box!.width).toBeCloseTo(22, 0);
     expect(await mark.locator("path").count()).toBeGreaterThanOrEqual(3);
 
     // The custom window controls and the drag region are GUI-only

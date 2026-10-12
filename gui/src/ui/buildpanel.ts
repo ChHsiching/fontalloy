@@ -29,6 +29,7 @@
 
 import { synthStore, removeBuild, type BuildRow } from "../service/state";
 import { mountHelpPopover, type HelpPopover } from "../kit/helpPopover";
+import { brandMark } from "../kit/topBar";
 
 /**
  * The pipeline stages (report-copy §1): the key drives the serve's
@@ -549,6 +550,8 @@ export function mountBuildPanel(): void {
     <div class="build-rows" role="status" aria-live="polite"></div>
   `;
   document.body.appendChild(panel);
+  // Round 7: the panel head carries the brand mark (logo adoption).
+  panel.querySelector(".build-panel-title")!.prepend(brandMark(18));
 
   const rowsEl = panel.querySelector<HTMLElement>(".build-rows")!;
 

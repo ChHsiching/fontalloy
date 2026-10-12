@@ -280,6 +280,14 @@ body {
   font-weight: 600;
 }
 
+/* Round 7: the brand mark heads the first-run panel (the same kit mark
+ * the top bar carries, adopted product-wide). */
+.catalog-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .catalog-progress {
   font-size: 12.5px;
   color: var(--ink2);
@@ -383,6 +391,9 @@ body {
 
 .build-panel-title {
   flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 8px 12px;
   border-bottom: 1px solid var(--ln);
   color: var(--ink2);
@@ -634,6 +645,7 @@ body {
   flex: none;
   display: flex;
   align-items: center;
+  gap: 8px;
   padding: 8px 12px;
   border-bottom: 1px solid var(--ln);
 }

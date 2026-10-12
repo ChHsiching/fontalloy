@@ -44,7 +44,7 @@ Inventory numbers cite the 62-item prototype inventory in
 
 | Module | Prototype origin |
 | --- | --- |
-| `topBar.ts` | Top bar (inv. 1–7): brand mark (round 4: the hand-drawn A×永 SVG mark, teal accent, replacing the solid placeholder), font-pair tags, GitHub ghost link (verbatim repo + aria; round 5: `onNavigate` lets the Tauri shell route the click to the system browser), theme toggle (`切换明暗`; round 5: the 3-state 自动/浅色/深色 cycle with the effective icon + 自动 badge), font-name input (`ChHsich`), `合成字体` shimmer button. |
+| `topBar.ts` | Top bar (inv. 1–7): brand mark (round 4: the hand-drawn A×永 SVG mark, teal accent, replacing the solid placeholder; round 7: 22px in the bar and the `brandMark(size)` export the panels/favicon/Tauri icons adopt), font-pair tags, GitHub ghost link (verbatim repo + aria; round 5: `onNavigate` lets the Tauri shell route the click to the system browser), theme toggle (`切换明暗`; round 5: the 3-state 自动/浅色/深色 cycle with the effective icon + 自动 badge), font-name input (`ChHsich`), `合成字体` shimmer button. |
 | `metaLine.ts` | The picker MetaLine (inv. 12–13): `X.Xk` stars in accent, license without `-1.1`, trait tag. |
 | `pickerPopup.ts` | The 英文字体/中文字体 card + popup (inv. 11–17): round 4 presents the popup in the SAME anchor-fused dropdown-list form as AppSelect — a persistent CHILD of the card (top:100%, left/right −1px, no top border, class-driven display transitions with allow-discrete + @starting-style; no portal, no deferred removal). Self-rendering rows, `搜索字体` 120 ms debounce, footer `加载本地字体文件` outside the scroll, check on selected. |
 | `helpPopover.ts` | The circular `?` buttons + popovers (inv. 28–30 chrome): widths 380/340, `.kit-wtab` worked-table chrome verbatim. Round 6: the hover is a PURE CENTERED scale — `transform-origin` pinned center, zero translate (the round-5 status-bar anchor sat in baseline flow and read as a down-shift-then-scale; it is gone with the coverage popover, and the shared rule now forbids the class). |
@@ -68,10 +68,12 @@ They are deliberate, marked, and must not grow without a decision:
 
 | Part | What it adds | Why it exists |
 | --- | --- | --- |
-| `pickerPopup.ts` extension props | `note`/`error` status lines, `PickerFont.disabled` + `note` rows, `keywords`, `chips` (span-button `PickerChip`s + `onChip`), `destroy()` | Catalog download states (未下载/下载中/失败) on picker rows; variant chips under a row (round 7 — NF图标/等宽/屏显/GB/weights, resolved by the app layer); regions that rebuild. |
+| `pickerPopup.ts` extension props | `note`/`error` status lines, `PickerFont.disabled` + `note` rows, `keywords`, `chips` (span-button `PickerChip`s + `onChip`), `help` (the picker-level variant ?), `destroy()` | Catalog download states (未下载/下载中/失败) on picker rows; variant chips under a row (round 7, redesigned the same round — full-Chinese labels, the axis default's dim 默认 marker `def` vs the explicit accent `on`, axes the family actually varies on only); ONE `?` per picker explaining 变体 (owner item 2: the raw chips were 看不懂); regions that rebuild. |
 | `appSelect.ts` `destroy()` | Full teardown | Regions that rebuild. |
 | `grid.ts` `cp` + `attrs` data attributes | Provenance (winner/via/kind) on the cell dataset | Test-facing walkability (parity-matrix §3.13, benign). |
 | `sceneContent.ts` `spanAttrs` | Per-char provenance attributes | Same instrumentation discipline. |
+| `charPopup.ts` `note` | The ineffective-assignment reason line under 来自 (round 7) | Absence never overrides: the declared side cannot supply, the popup states it in glossary words (补字) instead of a silent 来自 (owner item 1). |
+| `actionBar.ts` legend `?` | The 已调整 legend carries a help anchor (round 7) | The dot means DECLARED, the glyph follows the actual supplier — the legend says so (owner item 1). |
 
 App-level PRODUCT-EXTENSION surfaces (NOT kit — they live in `gui/src/ui` /
 `gui/src/catalog` with chrome in `app.css`, and must stay marked): the build
@@ -137,6 +139,33 @@ instruction from the hands-on review, not a silent drift):
   does not carry — see `precedence/resolve.ts` `isAdjusted`. Winner-only
   comparison went mute exactly where an assignment cannot move the
   winner (absence never overrides).
+
+## Round-7 owner rulings (this round)
+
+- **The ineffective-assignment affordance** (owner item 1): absence
+  never overrides is CORRECT but was silent — 用英文字体 on CJK
+  codepoints the base lacks marks the declared side (the green dot)
+  while the supplier stays the CJK font. No behavior change: the char
+  popup gains a reason line under 来自 (「英文字体不含此码位，仍由中文字
+  体补字」 — glossary words), and the 已调整 legend carries a `?`
+  (「绿点＝已声明来源；被声明的字体不含此码位时，字形以实际供给为准」).
+  The journey suite now also asserts the GLYPH layer: every effective
+  cell's computed font-family equals its winner's own family
+  (`assertWinnerGlyphs`, J4/J5/J6), including the CJK-adjacent
+  codepoints the EN base actually holds (the fullwidth braces), where
+  an assignment MUST visibly flip the painted glyph.
+- **The variant chips redesign** (owner item 2: 看不懂): full Chinese
+  labels only (NF 图标 / 等宽 / 屏显优化 / 简繁地区 …— real terms per
+  the report-copy style, NO raw axis ids), chips render ONLY the axes
+  the family actually varies on, the axis default wears a dim 默认
+  marker (dashed) instead of a pressed look (未选择变体时 = 家族默认),
+  and ONE `?` per picker (变体是什么: one sentence + the axes table)
+  replaces per-row machinery.
+- **Logo adoption** (owner item 4: 好小 + 只有左上角): the top-bar mark
+  enlarges 16 → 22px, and the same SVG heads the first-run catalog
+  panel, the build panel, the no-service panel, the web + gui favicon
+  (an inline SVG data URI), and the generated Tauri icon set
+  (`gui/scripts/make-icons.mjs` rasterizes the same A×永 mark).
 
 ## Table-content policy — help content is the prototype's text
 
