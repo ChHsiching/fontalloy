@@ -6,6 +6,10 @@ import { defineConfig } from "@playwright/test";
 // shell (gui/src-tauri) where the native build toolchain allows.
 export default defineConfig({
   testDir: "tests",
+  // The user-journey suite (J1–J10) has its own project —
+  // playwright.journey.config.ts (one persistent browser profile, the
+  // REAL dev catalog, 900s timeouts). Never pick it up here.
+  testIgnore: /journey\.spec\.ts$/,
   timeout: 30_000,
   fullyParallel: true,
   retries: 0,

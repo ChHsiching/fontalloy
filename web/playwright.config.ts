@@ -7,6 +7,11 @@ import { defineConfig } from "@playwright/test";
 // what is under test.
 export default defineConfig({
   testDir: "tests",
+  // The user-journey suite (J11) has its own project —
+  // playwright.journey.config.ts (the built WebApp against a real
+  // serve over the fetched catalog, 900s timeouts). Never pick it up
+  // here.
+  testIgnore: /journey\.spec\.ts$/,
   timeout: 30_000,
   fullyParallel: true,
   retries: 0,
