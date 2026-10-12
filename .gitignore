@@ -20,6 +20,10 @@ target/
 *.woff2
 assets/fonts/
 
+# Dev-catalog upstream cache (round 9): fetched release artifacts +
+# extracted faces, populated on first dev/preview boot, never committed
+gui/.dev-catalog-cache/
+
 # Local working files
 .playwright-mcp/
 *.log
