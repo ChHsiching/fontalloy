@@ -17,6 +17,7 @@
  */
 
 import { icon } from "./icons";
+import { helpNote, mountHelpPopover, type HelpPopover } from "./helpPopover";
 
 export type FontSide = "base" | "donor";
 
@@ -253,6 +254,37 @@ export function mountActionBar(
 
   let props: ActionBarProps = initial;
 
+  // Node persistence for the locate field (round 7): the row re-renders
+  // on every store patch, and a REBUILT input would silently drop an
+  // in-flight typed query between fill and Enter (a late font-load
+  // patch lands exactly there — the precedence suite's locate test
+  // flaked on it). The input node is created once and re-appended;
+  // only its placeholder retunes.
+  let locateInput: HTMLInputElement | null = null;
+  const ensureLocateInput = (): HTMLInputElement => {
+    locateInput ??= (() => {
+      const input = document.createElement("input");
+      input.setAttribute("aria-label", "定位");
+      // Shrink floor for the one-row discipline (the sheet owns the
+      // resting width; inline 120px would block the shrink).
+      input.style.minWidth = "84px";
+      input.dataset.role = "locate";
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && props.onLocate) {
+          props.onLocate(input.value);
+        }
+      });
+      return input;
+    })();
+    return locateInput;
+  };
+
+  // The 已调整 legend's ? (round 7, owner item 1): mounted ONCE per
+  // action bar — re-renders re-append the SAME anchor node so the
+  // body-level popup never duplicates (the consumer's remount cycle
+  // removes the stale popup node; see ui/charmap.ts).
+  let legendHelp: HelpPopover | null = null;
+
   const render = (): void => {
     el.innerHTML = "";
 
@@ -395,21 +427,29 @@ export function mountActionBar(
       const dot = document.createElement("span");
       dot.className = "dot";
       legend.append(dot, document.createTextNode("已调整"));
+      // The legend's short note (round 7): the dot marks the DECLARED
+      // side; when the declared font lacks the codepoint (absence never
+      // overrides) the glyph still comes from the font that covers it.
+      legendHelp ??= mountHelpPopover({
+        id: "adjusted-legend",
+        title: "已调整是什么",
+        buttonLabel: "已调整是什么",
+        width: 340,
+        build: () =>
+          helpNote(
+            "绿点＝已声明来源；被声明的字体不含此码位时，字形以实际供给为准（补字）。",
+          ),
+      });
+      legend.appendChild(legendHelp.anchor);
       el.appendChild(legend);
     }
 
     if (props.onLocate) {
-      const input = document.createElement("input");
+      const input = ensureLocateInput();
       input.placeholder = props.locatePlaceholder ?? "永 U+6C38";
-      input.setAttribute("aria-label", "定位");
-      // Shrink floor for the one-row discipline (the sheet owns the
-      // resting width; inline 120px would block the shrink).
-      input.style.minWidth = "84px";
-      input.dataset.role = "locate";
-      input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") props.onLocate!(input.value);
-      });
       el.appendChild(input);
+    } else if (locateInput?.isConnected) {
+      locateInput.remove();
     }
 
     if (props.onRangeSpecify) {
