@@ -552,11 +552,12 @@ test.describe("first-run catalog download", () => {
 
     // Clicking 屏显 resolves EXACTLY the Screen member family; the chip
     // turns on, the popup stays open, and the donor pair shows the
-    // Screen family's metadata name.
+    // Screen family's CURATED display name (the top-bar pair tags render
+    // the same curated names the picker rows and rail cards carry).
     await pointerClick(page, chip("rendering:screen"));
     await expect(
       page.locator("[data-role='font-pair'] [data-pair='donor']"),
-    ).toHaveText("LXGWWenKaiScreen");
+    ).toHaveText("霞鹜文楷 Screen");
     await expect(chip("rendering:screen")).toHaveClass(/on/);
     await expect(cjkPopup).toBeVisible();
 

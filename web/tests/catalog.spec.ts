@@ -59,9 +59,13 @@ test("the real catalog lists real families with real meta", async ({ page }) => 
   await page.keyboard.press("Escape");
   const cjkPopup = await openFontPicker(page, "cjk");
   // Round 7: the six WenKai manifest families collapse onto ONE group
-  // row — MapleMono + 霰鹜文楷(group) + NotoSansSC + NotoSerifSC + the
-  // five prototype-only extras.
-  await expect(cjkPopup.locator(".kit-fp")).toHaveCount(9);
+  // row — MapleMono + 霞鹜文楷(group) + NotoSansSC + NotoSerifSC +
+  // 霞鹜新晰黑 (LxgwNeoXiHei, the round-7 expansion family whose local
+  // prototype binary exists) + the five prototype-only extras.
+  await expect(cjkPopup.locator(".kit-fp")).toHaveCount(10);
+  await expect(
+    cjkPopup.locator(".kit-fp", { hasText: "霞鹜新晰黑" }),
+  ).toHaveCount(1);
   await expect(cjkPopup.locator(".kit-fp").first()).toContainText("Maple Mono CN");
   await expect(cjkPopup.locator(".kit-fp", { hasText: "得意黑" })).toHaveCount(1);
   await page.keyboard.press("Escape");
@@ -172,12 +176,14 @@ test("the real catalog drives the panel end to end (YAML, download, copy)", asyn
   await pickCatalogFamily(page, "en", "JetBrains Mono");
   await pickCatalogFamily(page, "cjk", "Maple Mono CN");
 
-  // The pair tags carry both picks as plain text.
+  // The pair tags carry both picks as plain text — the CURATED display
+  // names (the same ones the picker rows and rail cards render; the raw
+  // manifest ids never reach the UI).
   await expect(page.locator(".topbar [data-pair='base']")).toHaveText(
-    "JetBrainsMono",
+    "JetBrains Mono",
   );
   await expect(page.locator(".topbar [data-pair='donor']")).toHaveText(
-    "MapleMono",
+    "Maple Mono CN",
   );
 
   // Open-at-the-selection: the EN picker reopens with the checked row
