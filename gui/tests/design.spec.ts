@@ -8,6 +8,7 @@ import {
   collectJsErrors,
   hitTestCenter,
   pointerClick,
+  realCatalogFontPaths,
   waitForFontsReady,
 } from "./helpers";
 
@@ -274,6 +275,137 @@ test.describe("action bar rule wiring", () => {
     // One Ctrl+Z reverts the whole group assignment.
     await page.keyboard.press("Control+z");
     await expect.poll(() => summaryRowCount(page)).toBe(0);
+  });
+
+  // Round 6, owner item 4 — the P0: with the REAL catalog pair
+  // (JetBrainsMono Nerd Font base, Maple Mono CN donor) the base covers
+  // ~nothing of the CJK group, so a base-side assignment used to leave
+  // the grid looking dead (absence never overrides kept every winner
+  // at the default and the old adjusted discipline compared winners).
+  // The assignment now carries the [side, other] preference list (the
+  // rule supplies through the donor: via credits it) and the ov dot
+  // keys on the DECLARED side (see precedence/resolve.ts isAdjusted).
+  test("the CJK group assignment visibly rules the grid with the real catalog pair", async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    const real = realCatalogFontPaths();
+    await openWithFonts(page, real);
+
+    await pointerClick(page, page.locator(".kit-cat-g[data-group='cjk']"));
+    const groupRow = page
+      .locator(".kit-toolrow")
+      .filter({ hasText: "所有中日韩文字字符" });
+    await expect(groupRow).toBeVisible();
+    const groupButton = (label: string) =>
+      groupRow.locator(".kit-mseg button", { hasText: new RegExp(`^${label}$`) });
+
+    // Boot state: the donor alone covers the group — 全用中文 pressed,
+    // the first visible cell (、U+3001) resolves via the default with
+    // no adjusted dot.
+    await expect(groupButton("全用中文")).toHaveAttribute("aria-pressed", "true");
+    const cell = page.locator(".charmap-grid .kit-cell[data-cp='U+3001']");
+    await expect(cell).toHaveAttribute("data-winner", "donor-0");
+    await expect(cell).toHaveAttribute("data-via", "default");
+    await expect(cell).not.toHaveClass(/ov/);
+
+    // Assign 全用英文 — the rule must visibly take the group.
+    await pointerClick(page, groupButton("全用英文"));
+    await expect(page.locator("[data-role='rule-row'][data-kind='group']")).toHaveText(
+      /所有中日韩文字字符用英文字体/,
+    );
+    await expect(groupButton("全用英文")).toHaveAttribute("aria-pressed", "true");
+    // The grid updates: the covering rule's via, the ov dot (declared
+    // base ≠ the no-rule default donor) — and the winner stays the
+    // merge truth (the English font lacks the glyphs; the preference
+    // list fills through the Chinese font, exactly what the merge does).
+    await expect(cell).toHaveAttribute("data-via", /rule-\d+/);
+    await expect(cell).toHaveAttribute("data-winner", "donor-0");
+    await expect(cell).toHaveClass(/ov/);
+    // The status bar's 已调整 counter agrees (it counts the same
+    // discipline as the dot).
+    const adjusted = await page.locator("[data-stat='adjusted']").textContent();
+    expect(Number((adjusted ?? "0").replace(/,/g, ""))).toBeGreaterThan(0);
+
+    // Assigning the side the group already carries by default writes
+    // the rule but no dots appear (nothing changed).
+    await pointerClick(page, groupButton("全用中文"));
+    await expect(cell).toHaveAttribute("data-via", /rule-\d+/);
+    await expect(cell).not.toHaveClass(/ov/);
+
+    // Two Ctrl+Z revert both assignments (英文 then 中文) to the boot
+    // state: the preset default supplies again, no dot.
+    await page.keyboard.press("Control+z");
+    await page.keyboard.press("Control+z");
+    await expect(cell).toHaveAttribute("data-via", "default");
+    await expect(cell).not.toHaveClass(/ov/);
+  });
+
+  // Round 6, owner item 3b — jump-to-page: clicking the 第 N/M 页 label
+  // turns it into a numeric input; Enter commits clamped, Esc cancels.
+  test("the pager label is a jump-to-page input (commit clamped, Esc cancels)", async ({
+    page,
+  }) => {
+    const fonts = await makeLocalFixtures();
+    await openWithFonts(page, fonts);
+
+    await pointerClick(page, page.locator(".kit-cat-g[data-group='cjk']"));
+    const label = page.locator("[data-pager-label]");
+    await expect(label).toContainText(/第 1\/\d+ 页/);
+    const last = Number(
+      (await label.textContent())!.match(/第 1\/(\d+) 页/)![1],
+    );
+
+    // Click the label: the input appears focused, the label hides.
+    await pointerClick(page, label);
+    const input = page.locator("[data-pager-input]");
+    await expect(input).toBeVisible();
+    await expect(label).toBeHidden();
+    await expect(input).toBeFocused();
+
+    // A way-out number commits clamped to the last page.
+    await input.fill("99999");
+    await input.press("Enter");
+    await expect(label).toBeVisible();
+    await expect(label).toHaveText(`第 ${last}/${last} 页`);
+
+    // Zero/negative clamps to the first page; Esc cancels an edit.
+    await pointerClick(page, label);
+    await input.fill("0");
+    await input.press("Enter");
+    await expect(label).toHaveText(`第 1/${last} 页`);
+    await pointerClick(page, label);
+    await input.fill("2");
+    await input.press("Escape");
+    await expect(label).toBeVisible();
+    await expect(label).toHaveText(`第 1/${last} 页`);
+  });
+
+  // Round 6, owner item 3a — the pager arrows are inline-SVG chevrons in
+  // flex-centered buttons, optically centered with the label (the ‹ ›
+  // TEXT glyphs hugged the baseline and read low).
+  test("the pager arrows center optically with the label", async ({ page }) => {
+    const fonts = await makeLocalFixtures();
+    await openWithFonts(page, fonts);
+
+    await pointerClick(page, page.locator(".kit-cat-g[data-group='cjk']"));
+    const metrics = await page.evaluate(() => {
+      const pager = document.querySelector(".kit-pgc");
+      const label = pager?.querySelector(".kit-num");
+      const arrow = pager?.querySelector("button svg");
+      if (!pager || !label || !arrow) return null;
+      const pr = pager.getBoundingClientRect();
+      const lr = label.getBoundingClientRect();
+      const ar = arrow.getBoundingClientRect();
+      return {
+        pagerMid: pr.y + pr.height / 2,
+        labelMid: lr.y + lr.height / 2,
+        arrowMid: ar.y + ar.height / 2,
+      };
+    });
+    expect(metrics).not.toBeNull();
+    expect(Math.abs(metrics!.arrowMid - metrics!.labelMid)).toBeLessThanOrEqual(1);
+    expect(Math.abs(metrics!.labelMid - metrics!.pagerMid)).toBeLessThanOrEqual(1);
   });
 
   test("the 按编码指定 popup follows the prototype contract", async ({ page }) => {

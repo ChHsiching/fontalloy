@@ -1,7 +1,7 @@
 import { store, type AppState } from "../state";
 import { mountStatusBar, type StatusBar } from "../kit/statusBar";
-import { mountHelpPopover, workedTable } from "../kit/helpPopover";
 import { currentResolver, defaultResolver } from "../precedence/live";
+import { isAdjusted } from "../precedence/resolve";
 import { pickRefs, type PickRefs } from "../precedence/picks";
 import { missingCodepoints, BROWSE_UNIVERSE } from "./missing";
 
@@ -24,9 +24,13 @@ import { missingCodepoints, BROWSE_UNIVERSE } from "./missing";
  * - 缺失: the universe codepoints NEITHER pick covers — the very cells
  *   the grid shows as dashed, visible the moment both picks exist, no
  *   preset involved;
- * - 已调整: effective winners that differ from the no-rule default;
+ * - 已调整: codepoints a non-preset rule assigns away from their
+ *   no-rule default (round 6 — the same discipline as the grid's ov
+ *   dot; see precedence/resolve.ts isAdjusted);
  * - 覆盖: covered-by-either-font ÷ browsed-scope size — never "100%"
- *   while missing cells are on screen.
+ *   while missing cells are on screen. Normal semantics (round 6,
+ *   owner item 2): it counts the whole visible universe, so it carries
+ *   no ?-popover — the explanation was noise.
  *
  * Before both picks exist there is no merge to judge: the counters
  * then report the covered share of whatever IS picked (the lone-pick
@@ -82,7 +86,7 @@ function computeStats(state: AppState, picks: PickRefs): LiveStats {
       if (entry.winner === "base") en++;
       else cjk++;
       const baseEntry = base ? base.resolve(cp) : null;
-      if (baseEntry && baseEntry.winner !== entry.winner) adjusted++;
+      if (isAdjusted(entry, baseEntry)) adjusted++;
     });
   } else {
     // The lone-pick preview: count the covered union of whatever is
@@ -99,7 +103,7 @@ function computeStats(state: AppState, picks: PickRefs): LiveStats {
         if (entry.winner === "base") en++;
         else cjk++;
         const baseEntry = base ? base.resolve(cp) : null;
-        if (baseEntry && baseEntry.winner !== entry.winner) adjusted++;
+        if (isAdjusted(entry, baseEntry)) adjusted++;
       }
     }
   }
@@ -111,45 +115,10 @@ function computeStats(state: AppState, picks: PickRefs): LiveStats {
   return stats;
 }
 
-/** The 覆盖 help popover body (kit HelpPopover form). */
-function buildCoverageHelp(): HTMLElement {
-  const wrap = document.createElement("div");
-  const note = (text: string): HTMLElement => {
-    const p = document.createElement("p");
-    p.className = "kit-sub";
-    p.textContent = text;
-    return p;
-  };
-  wrap.append(
-    note("覆盖 = 已覆盖码位 ÷ 浏览范围码位总数。"),
-    note("浏览范围：字符表分类列出的全部 Unicode 区块中可显示的码位（控制符、格式符、未定义码位不计）。"),
-    workedTable(["项", "含义"], [
-      ["已覆盖", "英文字体或中文字体任意一方包含，并计入成品"],
-      ["缺失", "浏览范围内两款字体都不包含的码位"],
-      ["字符", "浏览范围码位总数（选定两款字体后为固定值）"],
-    ]),
-    note("已选字体在浏览范围之外覆盖的码位（如罕见文字区块）不计入这个数字，但仍在成品字体中。"),
-    note("覆盖与当前浏览的分类无关：无论正在看哪一类，这里统计的始终是整个浏览范围。"),
-  );
-  return wrap;
-}
-
 export function mountStatsbar(root: HTMLElement): StatusBar {
   const bar = mountStatusBar(root);
   bar.el.classList.add("statsbar", "enter");
   bar.el.style.animationDelay = "120ms";
-
-  // The ? next to 覆盖 explains exactly what the number counts (never
-  // a hover-only mystery — the popover is clickable page text).
-  const help = mountHelpPopover({
-    id: "coverage",
-    title: "覆盖是什么",
-    buttonLabel: "覆盖是什么",
-    width: 340,
-    build: buildCoverageHelp,
-  });
-  help.anchor.dataset.role = "help-coverage";
-  bar.coverageLabel.after(help.anchor);
 
   const render = (): void => {
     bar.render(computeStats(store.get(), pickRefs()));

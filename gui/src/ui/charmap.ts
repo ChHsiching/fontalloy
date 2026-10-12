@@ -19,6 +19,7 @@ import { currentResolver, defaultResolver } from "../precedence/live";
 import {
   arrayCoverage,
   EffectiveResolver,
+  isAdjusted,
   type Coverage,
 } from "../precedence/resolve";
 import { pickRefs, refFont, type PickRefs } from "../precedence/picks";
@@ -56,9 +57,12 @@ import { liveNotice } from "./live";
  * resolver) against the coverage of the actually-loaded fonts, rendered
  * in the winning font's own face, and carries its resolution as DOM
  * attributes (`data-winner` / `data-via` / `data-kind`) — the grid never
- * lies, however complex the rules. Adjusted cells (the effective winner
- * differing from the no-rule default) carry the kit's corner dot,
- * paired with the 已调整 legend.
+ * lies, however complex the rules. Adjusted cells carry the kit's corner
+ * dot, paired with the 已调整 legend: a NON-PRESET rule declaring a side
+ * that differs from the no-rule default (round 6 — the winner comparison
+ * alone goes mute exactly where the owner went looking, an assignment to
+ * a side whose font lacks the glyph; see precedence/resolve.ts
+ * `isAdjusted`).
  *
  * Interaction surfaces (prototype parity, restored):
  *
@@ -90,7 +94,7 @@ function codepointRule(cp: number): EditorRule | undefined {
   return store.get().rules.find((rule) => targetsCodepoint(rule, cp));
 }
 
-/** Upsert a single-font codepoint rule (the popup's side buttons). */
+/** Upsert a codepoint rule (the popup's side buttons). */
 function applyCodepointSide(cp: number, side: FontSide): void {
   const picks = pickRefs();
   const wanted = side === "base" ? "base" : "donor-0";
@@ -105,7 +109,7 @@ function applyCodepointSide(cp: number, side: FontSide): void {
     mutateRules(withoutOwn);
     return;
   }
-  upsertCodepointRule(cp, wanted);
+  upsertCodepointRule(cp, sideRuleFonts(side));
 }
 
 /**
@@ -225,6 +229,25 @@ function sideRef(side: FontSide): string | null {
   return refs.includes(wanted) ? wanted : null;
 }
 
+/**
+ * The font list a side assignment writes (round 6): the side's ref
+ * FIRST, then the other pick — "用X字体" under absence-never-overrides
+ * means "X supplies; where X lacks the glyph the other font fills",
+ * which is exactly the ordered-list form. The single-ref form would
+ * dead-end (`break` to the global default) and the rule would go
+ * uncredited in the effective table; the preference list keeps the
+ * SAME winner for every codepoint (the default order is the same
+ * chain) while `via` reports the rule and the report's per-rule
+ * coverage reads sanely.
+ */
+function sideRuleFonts(side: FontSide): string[] {
+  const mine = sideRef(side);
+  if (mine === null) return [];
+  const other = side === "base" ? "donor-0" : "base";
+  const refs = pickRefs().refs;
+  return refs.includes(other) ? [mine, other] : [mine];
+}
+
 /** True when `rule` is a complete range rule over exactly `block`. */
 function isExactBlockRule(rule: EditorRule, block: UnicodeBlock): boolean {
   if (rule.target.kind !== "range") return false;
@@ -241,7 +264,10 @@ function blockAssignment(block: UnicodeBlock): FontSide | "" {
   for (let i = rules.length - 1; i >= 0; i--) {
     const rule = rules[i]!;
     if (!isExactBlockRule(rule, block)) continue;
-    if (rule.fonts.length !== 1) continue;
+    // Round 6: assignments carry the preference list `[side, other]`
+    // (sideRuleFonts) — the side is the FIRST font, the list may also
+    // name the other pick as the fill-through.
+    if (rule.fonts.length < 1 || rule.fonts.length > 2) continue;
     const ref = rule.fonts[0]!;
     if (ref === "base") return "base";
     if (ref === "donor-0") return "donor";
@@ -379,6 +405,7 @@ function assignBlocks(
 ): void {
   const ref = sideRef(side);
   if (ref === null) return;
+  const fonts = sideRuleFonts(side);
   const exact = new Set(
     blocks.flatMap((block) =>
       store
@@ -392,7 +419,7 @@ function assignBlocks(
   if (!already) {
     for (const block of blocks) {
       rules.push(
-        newRule({ kind: "range", start: block.start, end: block.end }, [ref]),
+        newRule({ kind: "range", start: block.start, end: block.end }, fonts),
       );
     }
   }
@@ -481,11 +508,11 @@ function charFacts(cp: number): CharPopupFacts {
   };
 }
 
-/** Upsert the codepoint rule as the side's single-font override. */
-function upsertCodepointRule(cp: number, ref: string): void {
+/** Upsert the codepoint rule to `fonts` (the side's preference list). */
+function upsertCodepointRule(cp: number, fonts: string[]): void {
   const rules = [...store.get().rules];
   const existing = rules.findIndex((rule) => targetsCodepoint(rule, cp));
-  const rule = newRule({ kind: "codepoint", cp }, [ref]);
+  const rule = newRule({ kind: "codepoint", cp }, fonts);
   if (existing >= 0) rules.splice(existing, 1, rule);
   else rules.push(rule);
   mutateRules(rules);
@@ -507,14 +534,14 @@ function applyRangeInput(
 ): boolean {
   const start = parseCodepointInput(startText);
   const endRaw = endText.trim();
-  const end = endRaw === "" ? start : parseCodepointInput(endRaw);
+  const end = endRaw === "" ? start : parseCodepointInput(endText);
   const ref = sideRef(side);
   if (start === null || end === null || end < start || ref === null) {
     return false;
   }
   mutateRules([
     ...store.get().rules,
-    newRule({ kind: "range", start, end }, [ref]),
+    newRule({ kind: "range", start, end }, sideRuleFonts(side)),
   ]);
   return true;
 }
@@ -524,6 +551,7 @@ function applyRangeInput(
 const GROUP_ICONS: Record<string, IconName> = {
   "latin-europe": "type",
   symbols: "shapes",
+  icons: "shapes",
   cjk: "lang",
   "other-scripts": "globe",
 };
@@ -538,6 +566,7 @@ const BLOCK_ICONS: Record<string, IconName> = {
   "box-drawing": "grid",
   "geometric-shapes": "shapes",
   "misc-symbols": "shapes",
+  "nf-icons": "shapes",
   hiragana: "lang",
   katakana: "lang",
   emoji: "shapes",
@@ -902,6 +931,9 @@ export function mountCharmap(root: HTMLElement): void {
             const { page: current } = store.get();
             store.set({ page: Math.min(Math.max(current + delta, 1), last) });
           },
+          onJump: (target) => {
+            store.set({ page: Math.min(Math.max(target + 1, 1), last) });
+          },
         },
         adjustedLegend: true,
         onLocate: locate,
@@ -937,7 +969,7 @@ export function mountCharmap(root: HTMLElement): void {
               return;
             }
             const ref = sideRef(side);
-            if (ref !== null) applyBatchRule([ref]);
+            if (ref !== null) applyBatchRule(sideRuleFonts(side));
           },
           onUndoPick: () => undoSelection(),
         },
@@ -986,6 +1018,8 @@ export function mountCharmap(root: HTMLElement): void {
       page: { page: safePage - 1, count: last, onPage: (delta) => {
         const { page: current } = store.get();
         store.set({ page: Math.min(Math.max(current + delta, 1), last) });
+      }, onJump: (target) => {
+        store.set({ page: Math.min(Math.max(target + 1, 1), last) });
       } },
       adjustedLegend: true,
       onLocate: locate,
@@ -1064,11 +1098,9 @@ export function mountCharmap(root: HTMLElement): void {
           : effective
             ? "none"
             : "plain",
-        // Adjusted = the effective winner differs from the no-rule default.
-        adjusted:
-          entry !== null && baseEntry !== null
-            ? entry.winner !== baseEntry.winner
-            : false,
+        // Adjusted = a non-preset rule declares a side the no-rule
+        // default does not carry (see isAdjusted — round 6).
+        adjusted: isAdjusted(entry, baseEntry),
         selected: selectionSet.has(cp),
         cursor: cp === selectedCodepoint,
         fontFamily: winnerFont

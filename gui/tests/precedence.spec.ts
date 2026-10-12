@@ -279,10 +279,14 @@ test.describe("precedence editing", () => {
 
       // Rule set exercising every granularity through the real UI, in
       // declaration order (the boot-seeded zh_cn preset — [base,
-      // donor-0], resolution-neutral — is complete rule 0 before these):
-      //   rule-1 range 0x41-0x46 -> [base]     (both hold: rule supplies base)
-      //   rule-2 codepoint 0x42 -> [donor-0]   (cp beats the range: override)
-      //   rule-3 range 0x4E00-0x4E0F -> [base] (absence: base lacks CJK)
+      // donor-0], resolution-neutral — is complete rule 0 before these;
+      // round 6: side assignments carry the PREFERENCE list [side,
+      // other] — "用X字体" means X first, the other font filling what X
+      // lacks, so the rule supplies everywhere it covers):
+      //   rule-1 range 0x41-0x46 -> [base, donor-0]
+      //   rule-2 codepoint 0x42 -> [donor-0, base] (cp beats the range)
+      //   rule-3 range 0x4E00-0x4E0F -> [base, donor-0] (base lacks CJK:
+      //        the rule still supplies, through the donor)
       await addRangeRule(page, "0x41", "0x46", "base");
       await setCodepointSide(page, "U+0042", "donor");
       await addRangeRule(page, "0x4E00", "0x4E0F", "base");
@@ -332,21 +336,22 @@ test.describe("precedence editing", () => {
       };
 
       // The recipe the GUI submitted echoes the serialized rule list
-      // (the boot-seeded zh_cn preset first, then the UI-declared rules).
+      // (the boot-seeded zh_cn preset first, then the UI-declared rules;
+      // round 6: assignments carry the [side, other] preference lists).
       expect(report.rules).toEqual([
         { id: "rule-0", granularity: "set", target: "zh_cn", fonts: ["base", "donor-0"] },
         {
           id: "rule-1",
           granularity: "range",
           target: "0x41-0x46",
-          fonts: ["base"],
+          fonts: ["base", "donor-0"],
         },
-        { id: "rule-2", granularity: "codepoint", target: "0x42", fonts: ["donor-0"] },
+        { id: "rule-2", granularity: "codepoint", target: "0x42", fonts: ["donor-0", "base"] },
         {
           id: "rule-3",
           granularity: "range",
           target: "0x4E00-0x4E0F",
-          fonts: ["base"],
+          fonts: ["base", "donor-0"],
         },
       ]);
 
@@ -384,7 +389,8 @@ test.describe("precedence editing", () => {
     const fonts = await makeLocalFixtures();
     await openWithFonts(page, fonts);
 
-    // Rule "0x0041-0x005A -> [donor-0]": override intent over all ASCII.
+    // Rule "0x0041-0x005A -> [donor-0, base]" (round 6 preference list):
+    // override intent over all ASCII.
     await addRangeRule(page, "0x0041", "0x005A", "donor");
 
     // A–F: the donor holds them, so the rule overrides the base.
@@ -398,14 +404,16 @@ test.describe("precedence editing", () => {
     );
     expect(await cellRenderFamily(page, "U+0041")).toBe("AlloyDonor");
 
-    // Z: the donor LACKS it — absence never overrides, the base renders.
+    // Z: the donor LACKS it — absence never overrides, the base renders
+    // (through the rule's own fill: the preference list names the base
+    // second, so the rule still supplies and via credits it).
     await expect(page.locator(".charmap-grid .kit-cell[data-cp='U+005A']")).toHaveAttribute(
       "data-winner",
       "base",
     );
     await expect(page.locator(".charmap-grid .kit-cell[data-cp='U+005A']")).toHaveAttribute(
       "data-via",
-      "default",
+      /rule-\d+/,
     );
     expect(await cellRenderFamily(page, "U+005A")).toBe("AlloyBase");
 
@@ -502,14 +510,18 @@ test.describe("precedence editing", () => {
     ).toHaveAttribute("data-via", "rule-0");
 
     // The char is donor-carried: the donor side's button hides, and
-    // 用英文字体 declares an override the base CANNOT supply (absence
-    // never overrides) — the default keeps rendering it, via "default".
+    // 用英文字体 declares a base-first preference the base CANNOT
+    // supply (absence never overrides) — the donor keeps rendering it,
+    // now THROUGH the rule (round 6: the preference list names the
+    // other pick second, so via credits the rule) and the ov dot marks
+    // the declared side ≠ the default.
     await expect(popup.locator("[data-role='char-donor']")).toBeHidden();
     await expect(popup.locator("[data-role='char-base']")).toBeVisible();
     await pointerClick(page, popup.locator("[data-role='char-base']"));
     const cell = page.locator(".charmap-grid .kit-cell[data-cp='U+4E2D']");
     await expect(cell).toHaveAttribute("data-winner", "donor-0");
-    await expect(cell).toHaveAttribute("data-via", "default");
+    await expect(cell).toHaveAttribute("data-via", /rule-\d+/);
+    await expect(cell).toHaveClass(/ov/);
 
     // Live update, no reload: same pager state, sibling cell untouched
     // (丮 U+4E2E is a rare han OUTSIDE the seeded zh_cn scope — it keeps

@@ -134,9 +134,11 @@ export function mountPresetSection(root: HTMLElement): void {
 
 /* ------------------ 自定义规则 (the summary list) -------------------- */
 
-/** The side a single-font rule carries ("" when it carries none). */
+/** The side an assignment rule carries ("" when it carries none). */
 function ruleSide(rule: EditorRule): "base" | "donor" | "" {
-  if (rule.fonts.length !== 1) return "";
+  // Round 6: assignments carry the preference list `[side, other]`
+  // (sideRuleFonts) — the side is the FIRST font.
+  if (rule.fonts.length < 1 || rule.fonts.length > 2) return "";
   const ref = rule.fonts[0]!;
   if (ref === "base") return "base";
   if (ref === "donor-0") return "donor";

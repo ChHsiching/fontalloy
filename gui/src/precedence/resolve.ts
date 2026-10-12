@@ -34,13 +34,25 @@ export interface Coverage {
   has(cp: number): boolean;
 }
 
-/** How a codepoint's winner was chosen. */
+/**
+ * How a codepoint's winner was chosen. `declared` is the ASSIGNMENT
+ * layer (round 6): the first font the covering rule declares, exposed
+ * even when that rule cannot supply the codepoint (absence never
+ * overrides — the default fills, `via` stays "default", but the rule's
+ * declaration is real and the 已调整 discipline keys on it).
+ */
 export interface EffectiveEntry {
   /** Font ref: `base` or `donor-<index>`. */
   winner: string;
   /** `default`, or the winning rule's id (`rule-<declaration index>`). */
   via: string;
   kind: "base" | "fill" | "override";
+  /**
+   * The covering rule's declared side (its first font) and granularity,
+   * or null when no rule covers the codepoint. `winner`/`via`/`kind`
+   * stay the merge truth; `declared` is what the user assigned.
+   */
+  declared: { font: string; granularity: "preset" | "range" | "codepoint" } | null;
 }
 
 /** Granularity ranks, narrowest first (the order IS the precedence). */
@@ -50,6 +62,7 @@ const RANK: Record<string, number> = { codepoint: 3, range: 2, set: 1 };
 interface RankedRule {
   index: number;
   rank: number;
+  granularity: "preset" | "range" | "codepoint";
   via: string;
   fonts: readonly string[];
   covers(cp: number): boolean;
@@ -99,6 +112,7 @@ export class EffectiveResolver {
         return {
           index: i,
           rank: RANK.set!,
+          granularity: "preset",
           via,
           fonts: rule.fonts,
           covers: (cp: number) => intervalsCover(union, cp),
@@ -110,6 +124,7 @@ export class EffectiveResolver {
         return {
           index: i,
           rank: RANK.range!,
+          granularity: "range",
           via,
           fonts: rule.fonts,
           covers: (cp: number) => cp >= lo && cp <= hi,
@@ -118,6 +133,7 @@ export class EffectiveResolver {
       return {
         index: i,
         rank: RANK.codepoint!,
+        granularity: "codepoint",
         via,
         fonts: rule.fonts,
         covers: (cp: number) => cp === target.cp,
@@ -154,22 +170,36 @@ export class EffectiveResolver {
 
     for (const rule of this.ordered) {
       if (!rule.covers(cp)) continue;
+      const declared = {
+        font: rule.fonts[0] ?? "",
+        granularity: rule.granularity,
+      };
       const winner = firstHolder(rule.fonts);
-      if (winner !== null) return this.entry(cp, winner, rule.via);
-      break; // the rule won but cannot supply: the default fills
+      if (winner !== null) return this.entry(cp, winner, rule.via, declared);
+      // The rule won but cannot supply (absence never overrides): the
+      // global default fills — the merge truth — while `declared` still
+      // exposes the assignment the rule carries.
+      const fallback = firstHolder(this.defaultList);
+      if (fallback === null) return null;
+      return this.entry(cp, fallback, "default", declared);
     }
     const winner = firstHolder(this.defaultList);
     if (winner === null) return null;
-    return this.entry(cp, winner, "default");
+    return this.entry(cp, winner, "default", null);
   }
 
-  private entry(cp: number, winner: string, via: string): EffectiveEntry {
+  private entry(
+    cp: number,
+    winner: string,
+    via: string,
+    declared: { font: string; granularity: "preset" | "range" | "codepoint" } | null,
+  ): EffectiveEntry {
     const kind = this.baseCoverage?.has(cp)
       ? winner === "base"
         ? "base"
         : "override"
       : "fill";
-    return { winner, via, kind };
+    return { winner, via, kind, declared };
   }
 }
 
@@ -189,4 +219,24 @@ export function arrayCoverage(codepoints: readonly number[]): Coverage {
       return false;
     },
   };
+}
+
+/**
+ * The 已调整 discipline (round 6, prototype parity): a codepoint is
+ * adjusted when a NON-PRESET rule declares a side that differs from the
+ * no-rule default winner. The winner comparison alone goes mute exactly
+ * where the owner went looking — an assignment to a side whose font
+ * lacks the glyph cannot move the winner (absence never overrides), so
+ * the declaration is what the dot keys on. Preset (language-scope)
+ * rules never count: declaring zh_cn with base-first-then-donor IS the
+ * default order, not an adjustment.
+ */
+export function isAdjusted(
+  entry: EffectiveEntry | null,
+  defaultEntry: EffectiveEntry | null,
+): boolean {
+  if (entry === null || defaultEntry === null) return false;
+  const declared = entry.declared;
+  if (declared === null || declared.granularity === "preset") return false;
+  return declared.font !== defaultEntry.winner;
 }
