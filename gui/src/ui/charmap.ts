@@ -498,6 +498,21 @@ function charFacts(cp: number): CharPopupFacts {
     };
   }
   const winnerFont = refFont(entry.winner, picks);
+  // The ineffective-assignment reason (round 7, owner item 1): a rule
+  // DECLARED a side whose font lacks this codepoint — absence never
+  // overrides, so the winner is the font that actually covers it. The
+  // popup states that in plain glossary words (码位 / 补字) instead of
+  // silently showing a 来自 that seems to contradict the assignment.
+  const declaredRef = entry.declared?.font ?? null;
+  let note: string | undefined;
+  if (declaredRef !== null && declaredRef !== entry.winner) {
+    const declaredName = declaredRef === "base" ? "英文字体" : "中文字体";
+    const winnerName = entry.winner === "base" ? "英文字体" : "中文字体";
+    note =
+      entry.winner === "donor-0"
+        ? `${declaredName}不含此码位，仍由${winnerName}补字`
+        : `${declaredName}不含此码位，仍由${winnerName}提供`;
+  }
   // Prototype parity (stk/stkW): the glyph stack carries the WINNING
   // SIDE's fallback tail — the base side falls back to the mono tail,
   // the donor side to the CJK tail. The app additionally keeps a
@@ -536,6 +551,7 @@ function charFacts(cp: number): CharPopupFacts {
       : undefined,
     code: formatCp(cp),
     from: `来自 ${winnerFont?.family ?? ""}`,
+    note,
     showBase,
     showDonor,
     showReset,
@@ -670,9 +686,11 @@ export function locateQuery(raw: string): void {
 
 export function mountCharmap(root: HTMLElement): void {
   // A previous stage mount (mode switches rebuild the stage) leaves its
-  // body-level popup nodes orphaned; this mount replaces them.
+  // body-level popup nodes orphaned; this mount replaces them (the
+  // action bar's legend ? popup rides the same list — the bar remounts
+  // with every stage).
   for (const stale of document.body.querySelectorAll(
-    "[data-char-popup], [data-range-popup]",
+    "[data-char-popup], [data-range-popup], [data-help-popup='adjusted-legend']",
   )) {
     stale.remove();
   }

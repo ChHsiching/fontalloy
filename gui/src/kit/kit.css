@@ -370,6 +370,18 @@
   flex-wrap: wrap;
 }
 
+/* The ineffective-assignment reason (round 7): a dim second line under
+ * 来自 — a rule declared a side whose font lacks this codepoint
+ * (absence never overrides), so the glyph still comes from the font
+ * that actually covers it. Hidden unless the consumer supplies one. */
+.kit-pop .kit-pop-note {
+  display: none;
+  color: var(--ink3);
+  font-size: 11px;
+  line-height: 1.5;
+  margin: -3px 0 8px;
+}
+
 .kit-pop .kit-pop-btns {
   display: flex;
   gap: 6px;
