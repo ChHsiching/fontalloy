@@ -1887,7 +1887,9 @@
 
 .kit-msg-close {
   position: absolute;
-  top: 5px;
+  /* Vertically centered against the one-line copy (round-9 vision note). */
+  top: 50%;
+  transform: translateY(-50%);
   right: 6px;
   display: inline-flex;
   align-items: center;

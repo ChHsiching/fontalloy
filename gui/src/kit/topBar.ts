@@ -161,7 +161,9 @@ export interface ThemeToggleProps {
 export function themeToggle(props: ThemeToggleProps = {}): HTMLButtonElement {
   const btn = document.createElement("button");
   btn.type = "button";
-  btn.className = "kit-btn gh";
+  // Standard bordered button chrome in BOTH themes — the borderless "gh"
+  // link style left the light-theme sun as a bare floating glyph.
+  btn.className = "kit-btn";
   btn.dataset.role = "theme-toggle";
 
   const draw = (): void => {
