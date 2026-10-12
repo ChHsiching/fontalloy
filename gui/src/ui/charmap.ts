@@ -34,6 +34,7 @@ import {
   canUndoRules,
 } from "../history";
 import { cssFamily } from "../kit/pickerPopup";
+import { fontDisplayName } from "../fonts/registry";
 import { mountCharPopup, type CharPopupFacts } from "../kit/charPopup";
 import { mountRangePopup } from "../kit/rangePopup";
 import { mountCategoryChips, type CategoryChips } from "../kit/categoryChips";
@@ -254,16 +255,17 @@ function coveragesOf(
 /** Comma-grouped plain number (报告-style, en-US grouping). */
 const plainNum = (n: number): string => n.toLocaleString("en-US");
 
-const sideName = (side: FontSide): string =>
-  side === "base" ? "英文字体" : "中文字体";
-
 /**
- * Announce one block/group assignment in plain words (round 8, owner
- * item 2): what the operation actually DID — how many characters
- * switched supplier, how many could not (the assigned font lacks the
- * codepoint; absence never overrides, the other font 补字) — plus the
- * undo hint. `nextRules` is the rule list the assignment is about to
- * commit; the breakdown compares the resolved table before and after.
+ * Announce one block/group assignment (round 9, owner item 3): ONE
+ * terse line, numbers first, zero fluff, no repetition — what actually
+ * happened, then the undo hint. The success count is ALWAYS stated,
+ * even when 0:
+ *
+ *   中日韩文字 → 英文：0 生效 / 41,289 未变（无字形）· Ctrl+Z 撤销
+ *
+ * `nextRules` is the rule list the assignment is about to commit; the
+ * counts compare the resolved table before and after. The card
+ * auto-dismisses on its countdown (round 9, owner item 7).
  */
 function announceAssignment(
   blocks: readonly UnicodeBlock[],
@@ -276,57 +278,53 @@ function announceAssignment(
   const before = currentResolver(picks);
   if (before === null) return; // no pair: the segments are no-ops anyway
   const after = new EffectiveResolver(nextRules, coveragesOf(picks));
-  const wanted = side === "base" ? "base" : "donor-0";
 
   // Sweep the assigned intervals (a group assignment sweeps every block
   // interval of the group; the resolver is per-codepoint, so this is a
   // one-off walk, never a render path).
   let switched = 0;
   let ineffective = 0;
+  let noop = 0;
   for (const block of blocks) {
     for (const [start, end] of blockRanges(block)) {
       for (let cp = start; cp <= end; cp++) {
         const was = before.resolve(cp);
         const now = after.resolve(cp);
         if (was === null || now === null) continue; // neither pick covers
-        if (now.winner !== was.winner) switched++;
-        else if (
-          !reverted &&
-          now.declared !== null &&
-          now.declared.font === wanted &&
-          now.winner !== wanted
-        ) {
+        if (now.winner !== was.winner) {
+          switched++;
+          continue;
+        }
+        if (reverted) continue;
+        if (now.declared !== null && now.winner !== now.declared.font) {
           // The assignment's own rule covers this codepoint but its
           // font lacks the glyph — the other font keeps supplying it.
           ineffective++;
+        } else {
+          // Already supplied by the assigned side; the rule changes
+          // nothing here (the declaration is now explicit, the glyph
+          // is the same one).
+          noop++;
         }
       }
     }
   }
 
-  const lines: string[] = [];
+  const sideWord = side === "base" ? "英文" : "中文";
+  let line: string;
   if (reverted) {
-    lines.push(
-      switched > 0 ? `${plainNum(switched)} 个已恢复原字体` : "字符来源无变化",
-    );
+    line = `${scope} → 默认：${plainNum(switched)} 恢复 · Ctrl+Z 撤销`;
   } else {
-    if (switched > 0) {
-      lines.push(`${plainNum(switched)} 个改由${sideName(side)}提供`);
-    }
-    if (ineffective > 0) {
-      lines.push(
-        `${plainNum(ineffective)} 个未变：${sideName(side)}不含此码位，仍由${sideName(side === "base" ? "donor" : "base")}补字`,
-      );
-    }
-    if (lines.length === 0) lines.push("字符来源无变化");
+    const unchanged = ineffective + noop;
+    const reason =
+      ineffective === 0
+        ? ""
+        : ineffective === unchanged
+          ? "（无字形）"
+          : `（${plainNum(ineffective)} 无字形）`;
+    line = `${scope} → ${sideWord}：${plainNum(switched)} 生效 / ${plainNum(unchanged)} 未变${reason} · Ctrl+Z 撤销`;
   }
-  lines.push("可撤销：Ctrl+Z 或“撤销”");
-  messages().push({
-    title: reverted
-      ? `已恢复默认：${scope}`
-      : `已应用：${scope} ${side === "base" ? "用英文字体" : "用中文字体"}`,
-    lines,
-  });
+  messages().push({ lines: [line] });
 }
 
 /** The font ref of one side ("base" / the first donor). */
@@ -672,7 +670,9 @@ function charFacts(cp: number): CharPopupFacts {
       ? `${cssFamily(winnerFont.cssFamily)},${winnerTail}`
       : undefined,
     code: formatCp(cp),
-    from: `来自 ${winnerFont?.family ?? ""}`,
+    // Round 9 (owner item 2): the 来自 line reads the font's OWN name
+    // table, verbatim — never the metadata family id.
+    from: `来自 ${winnerFont ? fontDisplayName(winnerFont) : ""}`,
     note,
     showBase,
     showDonor,
@@ -1180,11 +1180,9 @@ export function mountCharmap(root: HTMLElement): void {
               allBase: effectiveGroupSide(group.blocks, picks) === "base",
               allDonor: effectiveGroupSide(group.blocks, picks) === "donor",
               onAssign: (side) =>
-                assignBlocks(
-                  group.blocks,
-                  side,
-                  `所有${group.name}字符`,
-                ),
+                // Round 9 (owner item 3): the message scope reads the
+                // plain group name (中日韩文字), not 所有…字符.
+                assignBlocks(group.blocks, side, group.name),
             }
           : undefined,
       block:

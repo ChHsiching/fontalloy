@@ -4,11 +4,12 @@ import {
   type CatalogState,
   type LoadedFont,
 } from "../state";
-import { registerFontBytes } from "../fonts/registry";
+import { registerFontBytes, fontDisplayName } from "../fonts/registry";
 import { getDefaultManager } from "../catalog/manager";
 import { starsFor, subscribeStars } from "../catalog/stars";
 import {
   TOKEN_HELP_ROWS,
+  cutLabels,
   displayFamilies,
   variantCuts,
   type CatalogEntryLike,
@@ -101,16 +102,18 @@ function catalogNote(catalog: CatalogState): string | null {
 /**
  * Display metadata for a catalog family: license + variant from the
  * repo's catalog manifest (the honest in-repo source), overlaid with
- * the curated display data the validated prototype carries — display
- * names (Maple Mono CN / 霞鹜文楷 Screen / 思源黑体, the spaced base
- * names), GitHub stars, and the Chinese trait tags (连字 / 楷体 /
- * 圆角等宽 …) — from data/curated-meta.json. Star counts come through
+ * the curated display DATA the validated prototype carries — GitHub
+ * stars and the Chinese trait tags (连字 / 楷体 / 圆角等宽 …) — from
+ * data/curated-meta.json. Display NAMES are not curated (round 9,
+ * owner item 2): every name surface reads the registered font's own
+ * name table (see variantDisplayName); unfetched rows fall back to the
+ * upstream release artifact's own name. Star counts come through
  * `starsFor` (round 5): the live startup fetch, falling back to the
  * curated seed when offline.
  */
 const CURATED_META = curatedMeta.families as Record<
   string,
-  { name?: string; stars?: number; trait?: string }
+  { stars?: number; trait?: string }
 >;
 
 /** The curated front per picker role: featured families pinned first
@@ -169,52 +172,53 @@ function familyMeta(family: string): FontMeta | undefined {
 }
 
 /**
- * The user-facing name of a loaded font (round 8, owner item 7): the
- * variant's REAL NAME from the data — the display family's curated
- * name plus the cut's official label (「Maple Mono NF-CN」) — never the
- * family plus a hardcoded suffix. Local files keep their parsed name.
- * The top bar's pair tags, the rail cards, and the report/message
- * source names are the consumers.
+ * The user-facing name of a loaded font (round 9, owner item 2): the
+ * font file's OWN name-table strings, verbatim — nameID 16/1 + 17/2 as
+ * the author wrote them ("LXGW WenKai Screen" stays "LXGW WenKai
+ * Screen", never 屏幕版/Screen-翻译/mixed hand-built forms). Local
+ * files keep their parsed name (it IS the name table). The top bar's
+ * pair tags, the rail cards, the char popup's 来自 line, and the
+ * report/message source names are the consumers.
  */
 export function variantDisplayName(font: LoadedFont): string {
-  const catalogFamily = font.catalog?.family;
-  if (catalogFamily === undefined) return font.family;
-  const display = ALL_DISPLAYS.find((d) => d.families.includes(catalogFamily));
-  const base =
-    (display !== undefined ? CURATED_META[display.id]?.name : undefined) ??
-    CURATED_META[catalogFamily]?.name ??
-    font.family;
-  const cut =
-    display !== undefined
-      ? variantCuts(display).find(
-          (c) =>
-            c.entry.family === catalogFamily &&
-            c.entry.variant === font.catalog?.variant,
-        )
-      : undefined;
-  return cut && cut.label !== "标准" ? `${base} ${cut.label}` : base;
+  return fontDisplayName(font);
 }
 
 /**
- * The variant chips of one display row (round 8 final form, owner
- * items 6+7): one chip per CUT — the distinct releases the manifest
- * pins, labeled with the official proper nouns (NF / NF-CN / Mono /
- * 屏幕版 …; the default cut reads 标准). The default cut renders
- * PLAIN; the accent marks only the user's EXPLICIT pick. A cut whose
- * member family is not fetched renders disabled with the 未下载 tag.
- * Every chip is a real manifest entry, so impossible combinations
- * never appear at all.
+ * The upstream release artifact's own name — the row a font that has
+ * not been fetched falls back to (round 9, owner item 2): the stem of
+ * the release document's face file, never a constructed string.
+ */
+function releaseArtifactName(family: string): string {
+  const meta = getDefaultManager()
+    ?.getRelease()
+    ?.families.find((f) => f.family === family);
+  const face = meta?.files[0]?.file ?? `${family}.ttf`;
+  return face.replace(/\.[^.]+$/, "");
+}
+
+/**
+ * The variant chips of one display row: one chip per CUT — the distinct
+ * releases the manifest pins, labeled in the DATA'S OWN WORDS (round 9,
+ * owner item 2: the registered cut's name-table name after the family's
+ * shared base — 「Maple Mono NF CN」 after 「Maple Mono NF」 reads CN;
+ * unfetched cuts fall back to the manifest's variant word or the
+ * release artifact's own suffix). The default cut renders PLAIN; the
+ * accent marks only the user's EXPLICIT pick. A cut whose member family
+ * is not fetched renders disabled with the 未下载 tag. Every chip is a
+ * real manifest entry, so impossible combinations never appear at all.
  */
 function rowChips(
   cuts: readonly VariantCut[],
   selectedCutId: string | null,
   statusOf: (family: string) => CatalogFamilyEntry | undefined,
+  labels: ReadonlyMap<string, string>,
 ): PickerChip[] {
   return cuts.map((cut) => {
     const verified = statusOf(cut.entry.family)?.status === "verified";
     return {
       id: cut.id,
-      label: cut.label,
+      label: labels.get(cut.id) ?? cut.label,
       on: selectedCutId === cut.id,
       disabled: !verified,
       tag: verified ? undefined : "未下载",
@@ -381,6 +385,25 @@ export function mountPicker(
       .map((f) => ({ id: f.family, families: [f.family], entries: [] }));
     const statusOf = (family: string): CatalogFamilyEntry | undefined =>
       catalog.families.find((f) => f.family === family);
+    /**
+     * The cssFamily a family's registered face lives under: the exact
+     * variant key first, then the bare family key, then ANY variant key
+     * of the family (the sweep registers the face the release document
+     * carries, under ITS variant — one face per dev family, every
+     * member family in production).
+     */
+    const registeredCss = (family: string, variant?: string): string | null => {
+      if (variant !== undefined) {
+        const exact = catalog.registered[`${family}::${variant}`];
+        if (exact !== undefined) return exact;
+      }
+      const bare = catalog.registered[family];
+      if (bare !== undefined) return bare;
+      for (const key of Object.keys(catalog.registered)) {
+        if (key.startsWith(`${family}::`)) return catalog.registered[key]!;
+      }
+      return null;
+    };
     const displays = [...manifestDisplays, ...releaseExtras]
       .filter((display) => {
         const isCjk = display.families.some((f) => CJK_SLOT_FAMILIES.has(f));
@@ -402,30 +425,41 @@ export function mountPicker(
         const rowNote = memberStatus.find((s) => s.status !== "verified");
         // The cuts (round 8): one chip per distinct release; the ACTIVE
         // cut is the explicit selection, else the family default. The
-        // LIST row reads the FAMILY name; the row the user actually
+        // LIST row reads the family name; the row the user actually
         // PICKED (the checked one — the picker card's selected state)
-        // carries the variant's real name (item 7).
+        // carries the registered face's own name-table name.
         const cuts = variantCuts(display);
         const selectedCutId = variantSelections.get(display.id) ?? null;
         const activeCut =
           cuts.find((cut) => cut.id === selectedCutId) ?? cuts[0] ?? null;
-        const chips = rowChips(cuts, selectedCutId, statusOf);
-        const baseName = CURATED_META[display.id]?.name ?? display.id;
         // Self-render + the checked state: the registration of the
         // CURRENTLY active cut first (a chip pick registered the
-        // variant's own face), the sweep's primary face as the fallback.
+        // variant's own face), any registered member face as fallback.
         const cssKey =
           (activeCut !== null
-            ? catalog.registered[`${activeCut.entry.family}::${activeCut.entry.variant}`]
-            : undefined) ??
-          catalog.registered[primaryFamily] ??
-          null;
+            ? registeredCss(activeCut.entry.family, activeCut.entry.variant)
+            : null) ?? registeredCss(primaryFamily) ?? null;
+        // Round 9 (owner item 2): the row name is the registered
+        // font's OWN name-table string; an unfetched row falls back to
+        // the upstream release artifact's own name — never a curated
+        // or constructed display name.
+        const activeFont =
+          cssKey !== null
+            ? (fonts.find((f) => f.cssFamily === cssKey) ?? null)
+            : null;
+        const rowName = activeFont
+          ? fontDisplayName(activeFont)
+          : releaseArtifactName(activeCut?.entry.family ?? primaryFamily);
+        // The chip labels: the registered cuts' own name-table words,
+        // falling back to the data label (variant / asset words).
+        const nameOf = (cut: VariantCut): string | undefined => {
+          const key = registeredCss(cut.entry.family, cut.entry.variant);
+          if (key === null) return undefined;
+          return fonts.find((f) => f.cssFamily === key)?.names?.display;
+        };
+        const labels = cutLabels(cuts, display.id, nameOf);
+        const chips = rowChips(cuts, selectedCutId, statusOf, labels);
         const rowId = cssKey ?? `cat:${display.id}`;
-        const rowIsSelected = cssKey !== null && cssKey === selectedKey;
-        const rowName =
-          rowIsSelected && activeCut !== null && activeCut.label !== "标准"
-            ? `${baseName} ${activeCut.label}`
-            : baseName;
         return [
           display.id,
           {
@@ -472,7 +506,8 @@ export function mountPicker(
       seen.add(font.cssFamily);
       rows.push({
         id: font.cssFamily,
-        name: font.family,
+        // The local row's name: the file's own name table (round 9).
+        name: fontDisplayName(font),
         // Every row renders its family name in its own font (ADR-0004).
         family: font.cssFamily,
         meta: { trait: "本地字体文件" },

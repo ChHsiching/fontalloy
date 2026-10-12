@@ -8,6 +8,7 @@
 
 import type { EditorRule } from "./precedence/model";
 import { newRule } from "./precedence/model";
+import type { FontNames } from "./fonts/sfnt";
 import presetsData from "./data/presets.json";
 
 export type ContentMode = "charmap" | "scene";
@@ -68,10 +69,14 @@ export interface LoadedFont {
   /** CSS font-family key the face is registered under (the parsed family). */
   cssFamily: string;
   /**
-   * Display family name: the parsed name for local files, the catalog
-   * metadata family for downloaded fonts (pickers are metadata-driven).
+   * The metadata family: the parsed name-table family for local files,
+   * the catalog manifest family for downloaded fonts (pickers are
+   * metadata-driven). NOT the display name — every display surface
+   * reads `names.display` (round 9, owner item 2).
    */
   family: string;
+  /** The name table's own strings, verbatim (round 9, owner item 2). */
+  names?: FontNames;
   fileName: string;
   origin: FontOrigin;
   /**

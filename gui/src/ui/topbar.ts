@@ -133,10 +133,10 @@ export function mountTopbar(root: HTMLElement): TopBar {
     const label = (key: string | null): string => {
       const font = fonts.find((f) => f.cssFamily === key);
       // Empty picks hide their tag (the kit's set() treats "" as absent).
-      // Catalog picks render the VARIANT'S REAL NAME (round 8, owner
-      // item 7) — the display family plus the cut's official label
-      // (「Maple Mono NF-CN」), the same identity the rail card and the
-      // report carry, never the raw manifest id or a hardcoded suffix.
+      // Catalog picks render the font's OWN name-table string (round 9,
+      // owner item 2) — the same identity the rail card, the char
+      // popup, and the report carry, never a curated or constructed
+      // display name.
       return font ? variantDisplayName(font) : "";
     };
     topBar.setPair(label(selected.en), label(selected.cjk));

@@ -171,8 +171,8 @@ const pickerEn: PickerPopup = mountPickerPopup(enHost, {
 /** The Maple row's live chip selection (round 8: the picked CUT id). */
 const chipState = new Map<string, string>();
 const MAPLE_CHIPS: Array<{ id: string; label: string }> = [
-  { id: "MapleMono::NF", label: "NF" },
-  { id: "MapleMono::NF-CN", label: "NF-CN" },
+  { id: "MapleMono::NF", label: "标准" },
+  { id: "MapleMono::NF-CN", label: "CN" },
 ];
 
 /** CJK_FONTS with the Maple chips recomputed from the live selection. */
@@ -181,10 +181,12 @@ function cjkFonts() {
     font.id === "maple"
       ? {
           ...font,
+          // Round 9: the row name is the picked cut's own name-table
+          // string (the default cut reads the family's own name).
           name:
             chipState.get("maple") === MAPLE_CHIPS[1]!.id
-              ? "Maple Mono NF-CN"
-              : "Maple Mono",
+              ? "Maple Mono NF CN"
+              : "Maple Mono NF",
           chips: MAPLE_CHIPS.map(({ id, label }) => ({
             id,
             label,
@@ -328,12 +330,18 @@ function renderRules(): void {
     );
   }
   if (DEMO_SOLOS.length > 0) {
-    // Round 8: the dashed aggregate expands into its per-character rows.
+    // Round 8: the dashed aggregate expands into its per-character
+    // rows. Round 9 (owner item 6): it carries its own × deleting the
+    // whole group in one move.
     fragment.appendChild(
       ruleSoloRow(DEMO_SOLOS.length, {
         expanded: soloExpanded,
         onToggle: () => {
           soloExpanded = !soloExpanded;
+          renderRules();
+        },
+        onRemove: () => {
+          DEMO_SOLOS.length = 0;
           renderRules();
         },
       }),

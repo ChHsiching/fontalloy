@@ -1,6 +1,16 @@
 import { parseFontMeta } from "./sfnt";
 import { store, type FontCatalogIdentity, type LoadedFont } from "../state";
 
+/**
+ * The user-facing name of a registered font (round 9, owner item 2):
+ * the font's OWN name-table strings, verbatim — never a curated or
+ * constructed display name. Fonts whose bytes could not be read carry
+ * no names and fall back to their metadata family.
+ */
+export function fontDisplayName(font: LoadedFont): string {
+  return font.names?.display ?? font.family;
+}
+
 export interface LoadResult {
   font: LoadedFont;
   /** True when this family was not present before. */
@@ -73,6 +83,7 @@ export async function registerFontBytes(
   const font: LoadedFont = {
     cssFamily: meta.family,
     family: options.family ?? meta.family,
+    names: meta.names,
     fileName: options.fileName,
     origin: options.origin,
     path: options.path,

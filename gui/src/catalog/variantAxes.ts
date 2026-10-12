@@ -2,10 +2,15 @@
  * The variant-cut model (round 7 chips, round 8 final form): one FAMILY
  * ROW per typeface whose chips are its CUTS — the distinct releases the
  * manifest actually pins (Maple NF / NF-CN, Noto Sans SC HW / Mono /
- * Variable, the WenKai group's kai × mono × screen × GB members),
- * labeled with the OFFICIAL proper nouns straight from the data
- * (variant strings when they name the cut — NF, NF-CN, HW, Mono — else
- * the contrasting axis tokens: Mono / SC / TC / 屏幕版 / GB).
+ * Variable, the WenKai group's kai × mono × screen × GB members).
+ *
+ * Round 9 (owner item 2): chip LABELS are the data's own words — the
+ * registered cut's name-table name after the family's shared base
+ * (「Maple Mono NF CN」 vs 「Maple Mono NF」 → CN), else the manifest's
+ * variant word (NF / NF-CN / GB / Plus …), else the release asset's own
+ * suffix (LXGWWenKaiScreen → Screen). No translated or hand-built
+ * tokens — 屏幕版-style labels are gone; the author's spelling (Screen)
+ * ships instead.
  *
  * Round-8 rulings baked in (owner items 6+7):
  *
@@ -18,10 +23,10 @@
  *   combination never appears (the round-7 greyed-out impossible chips
  *   are gone by construction). A cut whose member family is not
  *   fetched renders disabled with the 未下载 tag.
- * - The cut's label doubles as the variant's REAL NAME: identity
- *   surfaces (rail card, pair tags, picker header, report and message
- *   source names) render `{family display name} {label}` — e.g.
- *   「Maple Mono NF-CN」 — never family plus a hardcoded suffix.
+ * - Identity surfaces (rail card, pair tags, picker header, report and
+ *   message source names) render the registered font's own name-table
+ *   display string (fonts/registry.ts fontDisplayName) — never a
+ *   curated or constructed name.
  *
  * WenKai's six manifest families (kai × mono × screen × GB, separate
  * upstream repos) collapse onto ONE display row through the curated
@@ -116,7 +121,11 @@ export function displayFamilies(groups: Record<string, string[]>): DisplayFamily
 export interface VariantCut {
   /** Stable id: `${family}::${variant}` of the canonical entry. */
   id: string;
-  /** The official label (NF / NF-CN / Mono / 屏幕版 / 标准). */
+  /**
+   * The data's own label (round 9): the manifest's variant word when it
+   * names the cut, else the release asset's own suffix, else 标准. Live
+   * name-table refinement happens in `cutLabels` at render time.
+   */
   label: string;
   /** The exact manifest entry picking this cut resolves to. */
   entry: CatalogEntryLike;
@@ -177,21 +186,74 @@ function isOfficialCutName(variant: string): boolean {
   );
 }
 
-/** The official token one contrasting axis value contributes to a label. */
-const AXIS_TOKENS: Record<string, string> = {
-  "icons:nf": "NF",
-  "icons:plain": "无图标",
-  "ligature:nl": "NL",
-  "ligature:liga": "连字",
-  "cjk_width:mono": "Mono",
-  "cjk_width:hw": "HW",
-  "cjk_width:prop": "比例",
-  "rendering:screen": "屏幕版",
-  "rendering:print": "印刷",
-  "charset:GB": "GB",
-  "charset:Lite": "Lite",
-  "charset:full": "全集",
-};
+/** The words the release ASSET itself uses after the family prefix. */
+function assetSuffixWords(file: string, groupId: string): string {
+  const stem = file.replace(/\.[^.]+$/, "");
+  const rest =
+    groupId.length > 0 && stem.toLowerCase().startsWith(groupId.toLowerCase())
+      ? stem.slice(groupId.length)
+      : stem;
+  return rest.replace(/^[-_.]+/, "").replace(/[-_](?=[^-_]*$)/, " ").trim();
+}
+
+/**
+ * The cut's DATA label (round 9, owner item 2): the manifest variant's
+ * own word when it names the cut, else the release asset's own suffix
+ * (LXGWWenKaiScreen after LXGWWenKai → Screen). 标准 when the data
+ * names nothing distinguishing (the row default always reads 标准).
+ */
+export function dataCutLabel(
+  entry: CatalogEntryLike,
+  def: boolean,
+  groupId: string,
+): string {
+  if (def) return "标准";
+  if (isOfficialCutName(entry.variant)) return entry.variant;
+  const suffix = assetSuffixWords(entry.file, groupId);
+  return suffix || "标准";
+}
+
+/** Words of `name` after the word prefix it shares with `base`. */
+function suffixWords(name: string, base: string): string {
+  const a = name.split(/\s+/);
+  const b = base.split(/\s+/);
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  return a.slice(i).join(" ");
+}
+
+/**
+ * The chip labels of one display family (round 9, owner item 2): each
+ * cut in the AUTHOR'S OWN words — the registered cut's name-table
+ * display after the words it shares with the default cut's registered
+ * name — falling back to the data label when either side is not
+ * registered yet. The default cut always reads 标准.
+ *
+ * `nameOf` returns the registered font's name-table display string for
+ * a cut whose face is registered, undefined otherwise.
+ */
+export function cutLabels(
+  cuts: readonly VariantCut[],
+  groupId: string,
+  nameOf: (cut: VariantCut) => string | undefined,
+): Map<string, string> {
+  const def = cuts.find((cut) => cut.def) ?? cuts[0];
+  const defName = def !== undefined ? nameOf(def) : undefined;
+  const out = new Map<string, string>();
+  for (const cut of cuts) {
+    if (cut.def) {
+      out.set(cut.id, "标准");
+      continue;
+    }
+    const live = nameOf(cut);
+    const suffix =
+      live !== undefined && defName !== undefined
+        ? suffixWords(live, defName)
+        : "";
+    out.set(cut.id, suffix || dataCutLabel(cut.entry, cut.def, groupId));
+  }
+  return out;
+}
 
 /**
  * The cuts of one display family, DEFAULT FIRST: entries collapsed by
@@ -264,24 +326,12 @@ function computeVariantCuts(family: DisplayFamily): VariantCut[] {
     ) ?? canonical[0]!;
 
   const cuts: VariantCut[] = canonical.map((entry) => {
-    // The official label: the variant string when it names the cut,
-    // else the tokens of the axes where this cut leaves the default.
-    const tokens = contrasting
-      .filter((axis) => effectiveAxis(entry, axis) !== defaultVector.get(axis))
-      .map((axis) => {
-        const value = effectiveAxis(entry, axis)!;
-        return AXIS_TOKENS[`${axis}:${value}`] ?? value;
-      });
-    const label = isOfficialCutName(entry.variant)
-      ? entry.variant
-      : tokens.length > 0
-        ? tokens.join(" ")
-        : "标准";
+    const isDef = entry === defEntry;
     return {
       id: `${entry.family}::${entry.variant}`,
-      label,
+      label: dataCutLabel(entry, isDef, family.id),
       entry,
-      def: entry === defEntry,
+      def: isDef,
     };
   });
   // Default cut first, the rest in manifest order.
@@ -289,16 +339,17 @@ function computeVariantCuts(family: DisplayFamily): VariantCut[] {
 }
 
 /**
- * The picker-level variant help (round 8 final form): what a variant
- * IS, one sentence, plus one row per token the chips can carry — the
- * official proper nouns with their plain-word meanings. No weight row
+ * The picker-level variant help (round 8 final form; round 9 words):
+ * what a variant IS, one sentence, plus one row per word the chips can
+ * carry — the data's own vocabulary (the author's words and the
+ * manifest's variant strings), with plain-word meanings. No weight row
  * (the axis is not a chip).
  */
 export const TOKEN_HELP_ROWS: ReadonlyArray<readonly [string, string]> = [
   ["NF / NL", "内置 Nerd Font 图标 / 无连字的版本"],
   ["Mono / HW", "中文字符按等宽或半宽占位"],
   ["SC / TC / JP", "收录简体、繁体或日文地区字形"],
-  ["屏幕版", "为屏幕显示优化"],
+  ["Screen", "为屏幕显示优化的版本"],
   ["GB / Lite", "收录字库的范围"],
   ["标准", "家族默认版本（无标注）"],
 ];

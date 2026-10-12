@@ -12,39 +12,43 @@ import type { StatusBarStats } from "../statusBar";
 /* ---------- fonts ---------- */
 
 export const EN_FONTS: readonly PickerFont[] = [
-  { id: "jbmono", name: "JetBrains Mono", family: "JetBrains Mono", meta: { trait: "连字" } },
-  { id: "firacode", name: "Fira Code", family: "Fira Code", meta: { trait: "连字" } },
-  { id: "cascadia", name: "Cascadia Code", family: "Cascadia Code", meta: { trait: "微软" } },
-  { id: "iosevka", name: "Iosevka", family: "Iosevka", meta: { trait: "超窄" } },
-  { id: "hack", name: "Hack", family: "Hack", meta: { trait: "经典" } },
-  { id: "scp", name: "Source Code Pro", family: "Source Code Pro", meta: { trait: "Adobe" } },
-  { id: "plex", name: "IBM Plex Mono", family: "IBM Plex Mono", meta: { trait: "IBM" } },
-  { id: "victor", name: "Victor Mono", family: "Victor Mono", meta: { trait: "手写" } },
+  // Round 9 (owner item 2): the demo rows carry the same name-table
+  // strings the app reads from the real font binaries — never curated
+  // display names ("JetBrains Mono" reads "JetBrainsMono Nerd Font",
+  // the patched binary's own name table).
+  { id: "jbmono", name: "JetBrainsMono Nerd Font", family: "JetBrains Mono", meta: { trait: "连字" } },
+  { id: "firacode", name: "FiraCode Nerd Font", family: "Fira Code", meta: { trait: "连字" } },
+  { id: "cascadia", name: "CaskaydiaCove Nerd Font", family: "Cascadia Code", meta: { trait: "微软" } },
+  { id: "iosevka", name: "Iosevka Nerd Font", family: "Iosevka", meta: { trait: "超窄" } },
+  { id: "hack", name: "Hack Nerd Font", family: "Hack", meta: { trait: "经典" } },
+  { id: "scp", name: "SauceCodePro Nerd Font", family: "Source Code Pro", meta: { trait: "Adobe" } },
+  { id: "plex", name: "BlexMono Nerd Font", family: "IBM Plex Mono", meta: { trait: "IBM" } },
+  { id: "victor", name: "VictorMono Nerd Font", family: "Victor Mono", meta: { trait: "手写" } },
 ];
 
 export const CJK_FONTS: readonly PickerFont[] = [
   {
     id: "maple",
-    name: "Maple Mono",
+    name: "Maple Mono NF CN",
     family: "Microsoft YaHei",
     meta: { stars: 29170, license: "OFL-1.1", trait: "圆角等宽" },
-    // Round-8 variant chips: one chip per CUT with the official labels;
-    // the accent marks only the explicit pick (main.ts recomputes them
-    // live — the demo's row name carries the active cut's real name).
+    // Round-9 chip labels: the cuts' own name-table words after the
+    // family's shared base (Maple Mono NF / Maple Mono NF CN → 标准 /
+    // CN) — main.ts recomputes the row name from the live selection.
     chips: [
-      { id: "MapleMono::NF", label: "NF" },
-      { id: "MapleMono::NF-CN", label: "NF-CN" },
+      { id: "MapleMono::NF", label: "标准" },
+      { id: "MapleMono::NF-CN", label: "CN" },
     ],
   },
   {
     id: "lxgw",
-    name: "霞鹜文楷",
+    name: "LXGW WenKai",
     family: "Microsoft YaHei",
     meta: { stars: 2176, license: "OFL-1.1", trait: "楷体" },
   },
   {
     id: "noto",
-    name: "思源黑体",
+    name: "Noto Sans SC",
     family: "Microsoft YaHei",
     meta: { stars: 4090, license: "OFL-1.1", trait: "黑体" },
   },

@@ -1,16 +1,40 @@
 /**
- * Minimal sfnt reader for the GUI preview path: family name (name table)
- * and codepoint coverage (cmap). This is metadata for the FontFace rendering
- * path only — the real merge pipeline lives in core/ and never runs here.
+ * Minimal sfnt reader for the GUI preview path: the name table's own
+ * strings (family + subfamily, zh and en exactly as the author wrote
+ * them — round 9, owner item 2: display names are the font's own,
+ * never hand-built) and codepoint coverage (cmap). This is metadata
+ * for the FontFace rendering path only — the real merge pipeline lives
+ * in core/ and never runs here.
  *
  * Supports TrueType/OpenType (and reads the first face of a TTC for
  * metadata); woff2 is left to the FontFace decoder and yields no coverage
  * list (the browser still renders it).
  */
 
+/**
+ * The name-table strings a font ships, verbatim. `display` is the
+ * family plus the subfamily's distinguishing words — the author's own
+ * naming ("LXGW WenKai Screen" stays "LXGW WenKai Screen"); the zh-CN
+ * records ride along untranslated for any consumer that wants them.
+ */
+export interface FontNames {
+  /** Preferred family: nameID 16, falling back to nameID 1 (en). */
+  family: string;
+  /** Preferred subfamily: nameID 17, falling back to nameID 2 (en). */
+  subfamily?: string;
+  /** The composed display name (family + distinguishing subfamily). */
+  display: string;
+  /** The zh-CN (0x804) family string when the author wrote one. */
+  zhFamily?: string;
+  /** The zh-CN subfamily string when the author wrote one. */
+  zhSubfamily?: string;
+}
+
 export interface FontMeta {
   /** Display family name; nameID 16 preferred over nameID 1. */
   family: string;
+  /** The name table's own strings (round 9, owner item 2). */
+  names: FontNames;
   /** Sorted covered codepoints (empty when the cmap cannot be read). */
   codepoints: number[];
 }
@@ -47,26 +71,47 @@ export function parseFontMeta(buffer: ArrayBuffer): FontMeta {
     }
   }
 
-  const family = nameOffset >= 0 ? readFamilyName(view, nameOffset) : "";
+  const names =
+    nameOffset >= 0 ? readFamilyName(view, nameOffset) : null;
   const codepoints = cmapOffset >= 0 ? readCoverage(view, cmapOffset) : [];
-  if (!family) throw new Error("font has no readable family name");
-  return { family, codepoints };
+  if (names === null || !names.family) {
+    throw new Error("font has no readable family name");
+  }
+  return { family: names.family, names, codepoints };
 }
 
-function readFamilyName(view: DataView, offset: number): string {
+interface NameRecord {
+  platform: number;
+  encoding: number;
+  language: number;
+  nameId: number;
+  length: number;
+  strOffset: number;
+}
+
+/** Compose the display name: family + the subfamily's own words. */
+function composeDisplay(family: string, subfamily: string | undefined): string {
+  // "Regular" (and 标准) is the everyday member — the author's full
+  // name needs no suffix then. Anything else the author wrote stays.
+  if (subfamily === undefined || /^(regular|标准)$/i.test(subfamily)) {
+    return family;
+  }
+  return family.includes(subfamily) ? family : `${family} ${subfamily}`;
+}
+
+/**
+ * Read the name table's own strings (round 9, owner item 2): the en
+ * (Windows 0x409) family/subfamily through the same precedence chain
+ * the FontFace key always used, plus the zh-CN (0x804) records when
+ * the author wrote them — verbatim, never translated or recombined
+ * beyond the family+subfamily join every OS performs.
+ */
+function readFamilyName(view: DataView, offset: number): FontNames {
   const count = view.getUint16(offset + 2);
   const stringOffset = view.getUint16(offset + 4);
   const utf16be = new TextDecoder("utf-16be");
 
-  interface Record {
-    platform: number;
-    encoding: number;
-    language: number;
-    nameId: number;
-    length: number;
-    strOffset: number;
-  }
-  const records: Record[] = [];
+  const records: NameRecord[] = [];
   for (let i = 0; i < count; i++) {
     const rec = offset + 6 + i * 12;
     records.push({
@@ -79,7 +124,7 @@ function readFamilyName(view: DataView, offset: number): string {
     });
   }
 
-  const decode = (r: Record): string => {
+  const decode = (r: NameRecord): string => {
     const start = offset + stringOffset + r.strOffset;
     const bytes = new Uint8Array(
       view.buffer,
@@ -94,7 +139,7 @@ function readFamilyName(view: DataView, offset: number): string {
   };
 
   // Windows Unicode English first, then any Windows Unicode, then Mac Roman.
-  const pick = (nameId: number, pred: (r: Record) => boolean): string => {
+  const pick = (nameId: number, pred: (r: NameRecord) => boolean): string => {
     for (const r of records) {
       if (r.nameId === nameId && r.length > 0 && pred(r)) {
         const text = decode(r);
@@ -103,19 +148,30 @@ function readFamilyName(view: DataView, offset: number): string {
     }
     return "";
   };
-  const isWinUnicode = (r: Record): boolean =>
+  const isWinUnicode = (r: NameRecord): boolean =>
     r.platform === 3 && r.encoding === 1;
-  const isMacRoman = (r: Record): boolean =>
+  const isWinZh = (r: NameRecord): boolean =>
+    r.platform === 3 && r.encoding === 1 && r.language === 0x804;
+  const isMacRoman = (r: NameRecord): boolean =>
     r.platform === 1 && r.encoding === 0;
 
-  return (
-    pick(16, (r) => isWinUnicode(r) && r.language === 0x409) ||
-    pick(1, (r) => isWinUnicode(r) && r.language === 0x409) ||
-    pick(16, isWinUnicode) ||
-    pick(1, isWinUnicode) ||
-    pick(16, isMacRoman) ||
-    pick(1, isMacRoman)
-  );
+  const chain = (nameId: number): string =>
+    pick(nameId, (r) => isWinUnicode(r) && r.language === 0x409) ||
+    pick(nameId, isWinUnicode) ||
+    pick(nameId, isMacRoman);
+
+  const family = chain(16) || chain(1);
+  const subfamilyRaw = chain(17) || chain(2);
+  const names: FontNames = {
+    family,
+    ...(subfamilyRaw ? { subfamily: subfamilyRaw } : {}),
+    display: composeDisplay(family, subfamilyRaw || undefined),
+  };
+  const zhFamily = pick(16, isWinZh) || pick(1, isWinZh);
+  const zhSubfamily = pick(17, isWinZh) || pick(2, isWinZh);
+  if (zhFamily) names.zhFamily = zhFamily;
+  if (zhSubfamily) names.zhSubfamily = zhSubfamily;
+  return names;
 }
 
 function readCoverage(view: DataView, offset: number): number[] {

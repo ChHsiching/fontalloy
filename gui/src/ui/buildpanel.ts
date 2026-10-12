@@ -94,11 +94,10 @@ function basename(path: string | undefined): string {
 }
 
 /**
- * One report source's display name (round 8, owner item 7): the picked
- * font's REAL variant name — the display family plus the cut's official
- * label (「Maple Mono NF-CN」) — whenever the source maps onto a pick
- * (its file basename matches, or its role names the current pick);
- * the serve's file basename otherwise.
+ * One report source's display name (round 9, owner item 2): the picked
+ * font's OWN name-table string (「Maple Mono NF CN」) whenever the
+ * source maps onto a pick (its file basename matches, or its role names
+ * the current pick); the serve's file basename otherwise.
  */
 function sourceName(id: string | undefined, path: string | undefined): string {
   const { fonts, selected } = store.get();
