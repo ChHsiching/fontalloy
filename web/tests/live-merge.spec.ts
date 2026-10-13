@@ -145,11 +145,16 @@ test("detects the service, merges live with journal and report, downloads the fo
     await expect(panel).toContainText("码位");
     // Round 16 (owner): the borrow source is one sentence above the
     // weight grid — the per-slot 「N ← …」 lines are gone; NO
-    // dash-joins. Round 13 (owner item 6): the metrics render as a
-    // real table — 合并前 / 合并后 stated once in the header row.
-    await expect(panel).toContainText(
-      /\d+ 档全部取自 .+（自动取最近|指定字重|锁定）/,
-    );
+    // dash-joins. Round 17 (owner item 2): the via qualifier rides a
+    // TAG beside the sentence, never bracket text. Round 13 (owner
+    // item 6): the metrics render as a real table — 合并前 / 合并后
+    // stated once in the header row.
+    await expect(panel).toContainText(/\d+ 档全部取自 .+/);
+    await expect(
+      panel
+        .locator('[data-role="report-tag"]')
+        .filter({ hasText: /自动取最近|指定字重|锁定/ }),
+    ).toHaveCount(1);
     const metricsTable = panel.locator(".report-mtable").first();
     await expect(metricsTable).toBeVisible();
     expect(

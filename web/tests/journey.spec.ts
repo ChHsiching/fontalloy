@@ -400,9 +400,14 @@ test("J11 Web 目标 — detection, picks, preset, live merge, report, download,
       ).toEqual(["合并前", "合并后"]);
       // Round 16 (owner): the borrow source is one sentence above the
       // weight grid — the per-slot 「N ← …」 borrow lines are gone.
-      await expect(panel).toContainText(
-        /\d+ 档全部取自 .+（自动取最近|指定字重|锁定）/,
-      );
+      // Round 17 (owner item 2): the via qualifier rides a TAG beside
+      // the sentence, never bracket text.
+      await expect(panel).toContainText(/\d+ 档全部取自 .+/);
+      await expect(
+        panel
+          .locator('[data-role="report-tag"]')
+          .filter({ hasText: /自动取最近|指定字重|锁定/ }),
+      ).toHaveCount(1);
       await expect(panel).not.toContainText("←");
       // Round 12 (owner item 1): no dash-joins anywhere in the panel.
       await expect(panel).not.toContainText("—");

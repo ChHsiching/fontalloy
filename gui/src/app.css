@@ -919,6 +919,30 @@ body {
   white-space: nowrap;
 }
 
+/* Round 17 (owner item 2): report qualifier TAGS — what used to ride
+ * the value text as brackets (「ttc（多字体合集）」, 「…（自动取最近）」)
+ * renders as a small badge chip BESIDE the text. The picker's 未下载
+ * chip idiom (kit-vchip): tiny, muted border + fill on theme tokens,
+ * the app's small corner radius, no shadows. The chip never wraps
+ * mid-word (white-space: nowrap) and never sits inside an
+ * ellipsizing text span, so nothing can clip it; the value's own
+ * text keeps its normal wrapping in the span before it. Decorative
+ * qualifier of the adjacent text — the words carry the meaning. */
+.report-tag {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 5px;
+  padding: 0 5px;
+  border: 1px solid var(--ln);
+  border-radius: 4px;
+  background: var(--sf2);
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--ink3);
+  white-space: nowrap;
+  user-select: none;
+}
+
 /* Round 13 (owner item 6): the metrics comparison is a real TABLE —
    rows are the metrics, the 合并前 / 合并后 data columns are stated
    ONCE in the header row, values are column-aligned (tabular-nums,
