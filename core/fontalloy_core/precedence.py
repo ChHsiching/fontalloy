@@ -21,7 +21,11 @@ Semantics (DESIGN.md, ADR-0001):
 - Fill is the default behavior; an override happens only through an
   explicit rule. Whether a rule fills or overrides is expressed by the
   rule's own font list: a list starting with ``base`` keeps base glyphs
-  (fill), a list without ``base`` displaces them (override).
+  (fill), a list without ``base`` displaces them (override). The one
+  non-rule override is the recipe's fullwidth quote/dash width policy
+  (:func:`fontalloy_core.normalize.apply_quote_dash_policy`), which
+  rewrites default-decided base keeps for its codepoint set — a
+  declared rule's decision always stands against it.
 
 Named sets decouple the resolver from preset data: a rule references a
 set by name, and the sets themselves arrive as data. ``BUILTIN_NAMED_SETS``
@@ -49,8 +53,9 @@ SET = "set"
 DEFAULT = "default"
 
 #: How a codepoint's winner was chosen: the global default precedence,
-#: or a rule by declaration index.
+#: a rule by declaration index, or a normalization policy.
 VIA_DEFAULT = "default"
+VIA_POLICY = "policy"
 
 _GRANULARITY_RANK = {CODEPOINT: 3, RANGE: 2, SET: 1}
 
@@ -147,12 +152,13 @@ class EffectiveEntry:
 
     ``kind`` distinguishes how the glyph got there: ``"base"`` — the base
     font keeps its own glyph; ``"fill"`` — a donor filled a slot the base
-    font lacks; ``"override"`` — an explicit rule displaced a base glyph.
+    font lacks; ``"override"`` — an explicit rule (or the recipe's
+    fullwidth quote/dash policy) displaced a base glyph.
     """
 
     codepoint: int
     winner: str  # font id: "base" or "donor-<index>"
-    via: str  # VIA_DEFAULT or a rule id ("rule-<index>")
+    via: str  # VIA_DEFAULT, VIA_POLICY, or a rule id ("rule-<index>")
     kind: str  # "base" | "fill" | "override"
 
 
@@ -204,7 +210,7 @@ def resolve_precedence(
     plug-in point for language presets. The effective table spans the
     union of all coverages: a codepoint no font holds is in no merge.
     """
-    default_list = _default_font_order(coverages)
+    default_list = default_font_order(coverages)
     _validate_contract(rules, coverages, named_sets, default_list)
 
     # Winner selection order: narrowest granularity first, and within a
@@ -314,8 +320,13 @@ def _first_holder(
     return None
 
 
-def _default_font_order(coverages: Mapping[str, AbstractSet[int]]) -> list[str]:
-    """The global default font list: base first, then donors in join order."""
+def default_font_order(coverages: Mapping[str, AbstractSet[int]]) -> list[str]:
+    """The global default font list: base first, then donors in join order.
+
+    Public because the fullwidth quote/dash policy (the normalization
+    glue) scans the same donor order when it overrides base-covered
+    ambiguous codepoints.
+    """
     donors: list[tuple[int, str]] = []
     for font_id in coverages:
         match = re.fullmatch(r"donor-(\d+)", font_id)

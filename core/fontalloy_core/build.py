@@ -60,6 +60,7 @@ from fontalloy_core.normalize import (
     HAN_COMMON_FIRST,
     HAN_COMMON_LAST,
     NormalizationPlan,
+    apply_quote_dash_policy,
     latin_advance,
     plan_normalization,
 )
@@ -252,7 +253,12 @@ def build_recipe(
             for donor_id, pool in pools.items()
         }
         # Stage: resolve the precedence rules into the effective table —
-        # per slot, since each slot's container is its own output face.
+        # per slot, since each slot's container is its own output face —
+        # then apply the quote/dash width policy (ADR-0003's locale
+        # option): under fullwidth the policy rewrites default-decided
+        # base keeps in the quote/dash set to the first donor holding
+        # the codepoint, so the donor's fullwidth glyph and the wide
+        # advance actually reach the merged font.
         _stage("resolving")
         named_sets = {**BUILTIN_NAMED_SETS, **recipe.named_sets}
         resolutions: list[Resolution] = []
@@ -261,17 +267,22 @@ def build_recipe(
             # resolved against the donor faces matched for that slot —
             # rule font ids (base, donor-<i>) are join indices, so a
             # rule's "donor-0" means "donor-0's face for this slot".
+            coverages = {
+                "base": _coverage(slot.base.font),
+                **{
+                    match.donor_id: _coverage(match.face.font)
+                    for match in slot.donors
+                },
+            }
             resolutions.append(
-                resolve_precedence(
-                    recipe.rules,
-                    coverages={
-                        "base": _coverage(slot.base.font),
-                        **{
-                            match.donor_id: _coverage(match.face.font)
-                            for match in slot.donors
-                        },
-                    },
-                    named_sets=named_sets,
+                apply_quote_dash_policy(
+                    resolve_precedence(
+                        recipe.rules,
+                        coverages=coverages,
+                        named_sets=named_sets,
+                    ),
+                    coverages,
+                    recipe.normalization,
                 )
             )
 
