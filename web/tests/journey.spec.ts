@@ -330,6 +330,16 @@ test("J11 Web 目标 — detection, picks, preset, live merge, report, download,
         "完成",
         { timeout: 300_000 },
       );
+      // Round 12 (owner item 3, no web regression): the web save stays
+      // the BROWSER download path — the completion line shows it and
+      // the completed row carries the same 另存为 affordance (a second
+      // browser download when clicked).
+      await expect(
+        panel.locator("[data-build-saved-path]").first(),
+      ).toHaveText(/^已保存：ChHsich\.ttf$/);
+      await expect(
+        panel.locator("[data-build-saveas]").first(),
+      ).toBeVisible();
     });
 
     await step("J11.6 the verification report renders under the real terms", async () => {

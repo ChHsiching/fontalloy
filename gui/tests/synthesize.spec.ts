@@ -394,6 +394,249 @@ test.describe("sidecar synthesize", () => {
     }
   });
 
+  test("round 12: the save handoff needs no dialog, keeps the stepper lit, and offers 另存为", async ({
+    page,
+  }) => {
+    const service = await startServeFixture();
+    const saved: string[] = [];
+    const dialogCalls: string[] = [];
+    try {
+      const saveDir = await mkdtemp(resolve(tmpdir(), "fontalloy-save-"));
+      // The DEFAULT-save stand-in, GATED: the handoff stays open exactly
+      // as long as a user might keep a native dialog open, and the test
+      // decides when it ends.
+      let releaseGate: () => void = () => {};
+      const gate = new Promise<void>((resolveGate) => {
+        releaseGate = resolveGate;
+      });
+      await page.exposeFunction(
+        "__fontalloyTestSave",
+        async (name: string, bytesB64: string): Promise<string | null> => {
+          await gate;
+          const bytes = Buffer.from(bytesB64, "base64");
+          const target = resolve(saveDir, name);
+          await writeFile(target, bytes);
+          saved.push(target);
+          return target;
+        },
+      );
+      // The DIALOG seam (另存为): a spy that writes an as- copy. The
+      // automatic save must NEVER touch it (the no-dialog contract).
+      await page.exposeFunction(
+        "__fontalloyTestSaveAs",
+        async (name: string, bytesB64: string): Promise<string | null> => {
+          dialogCalls.push(name);
+          const bytes = Buffer.from(bytesB64, "base64");
+          const target = resolve(saveDir, `as-${name}`);
+          await writeFile(target, bytes);
+          return target;
+        },
+      );
+      await page.addInitScript(() => {
+        const config = window as unknown as {
+          __FONTALLOY_CONFIG__: Record<string, unknown>;
+        };
+        const toB64 = (bytes: Uint8Array): string =>
+          btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(""));
+        config.__FONTALLOY_CONFIG__ = {
+          saveArtifact: async (
+            name: string,
+            bytes: Uint8Array,
+          ): Promise<{ saved: boolean; path: string | null }> => {
+            const path = await window.__fontalloyTestSave(name, toB64(bytes));
+            return path === null ? { saved: false, path: null } : { saved: true, path };
+          },
+          saveArtifactAs: async (
+            name: string,
+            bytes: Uint8Array,
+          ): Promise<{ saved: boolean; path: string | null }> => {
+            const path = await window.__fontalloyTestSaveAs(name, toB64(bytes));
+            return path === null ? { saved: false, path: null } : { saved: true, path };
+          },
+        };
+      });
+      await page.addInitScript((url: string) => {
+        const config = window as unknown as {
+          __FONTALLOY_CONFIG__: Record<string, unknown>;
+        };
+        config.__FONTALLOY_CONFIG__ ??= {};
+        config.__FONTALLOY_CONFIG__.serveUrl = url;
+      }, service.url);
+      collectJsErrors(page, jsErrors);
+      await page.goto("/");
+      await waitForFontsReady(page);
+
+      await loadIntoPicker(page, "en", service.baseFont);
+      await loadIntoPicker(page, "cjk", service.donorFont);
+      const synthesize = page.locator(".topbar [data-role='synthesize']");
+      await expect(synthesize).toHaveAttribute("aria-disabled", "false");
+      await pointerClick(page, synthesize);
+
+      // Mid-handoff (the gated stand-in stands in for the open dialog):
+      // the row narrates 正在保存 and the stepper KEEPS its lit
+      // segments — 读取字体…改写名称表 stay passed, 保存输出 pulses,
+      // 生成报告 stays faint (owner round 12, item 2: never a blank
+      // stepper while the save is pending).
+      const panel = page.locator('[data-testid="build-panel"]');
+      await expect(panel.locator("[data-build-stage]").first()).toHaveText(
+        "正在保存",
+        { timeout: 30_000 },
+      );
+      await expect(panel.locator("[data-build-stage-line]").first()).toHaveText(
+        "正在保存 — 把成品字体写入磁盘。",
+      );
+      const stepStates = await panel
+        .locator(".build-step")
+        .evaluateAll((steps) =>
+          steps.map((step) => ({
+            passed: step.classList.contains("is-passed"),
+            current: step.classList.contains("is-current"),
+            failed: step.classList.contains("is-failed"),
+          })),
+        );
+      expect(stepStates).toEqual([
+        ...Array.from({ length: 5 }, () => ({
+          passed: true,
+          current: false,
+          failed: false,
+        })),
+        { passed: false, current: true, failed: false }, // 保存输出 pulses
+        { passed: false, current: false, failed: false }, // 生成报告 waits
+      ]);
+      // The dialog seam was not touched by the automatic save.
+      expect(dialogCalls).toEqual([]);
+
+      // Release the handoff: the row settles with the FULL path as page
+      // text and the 另存为 affordance on the completed row.
+      releaseGate();
+      await expect(panel.locator("[data-build-stage]").first()).toHaveText(
+        "完成",
+        { timeout: 30_000 },
+      );
+      const savedPath = panel.locator("[data-build-saved-path]").first();
+      await expect(savedPath).toHaveText(/^已保存：.+[\\/]ChHsich\.ttf$/);
+      expect(saved.length).toBe(1);
+      expect(dialogCalls).toEqual([]);
+      const saveAs = panel.locator("[data-build-saveas]").first();
+      await expect(saveAs).toBeVisible();
+      await expect(saveAs).toHaveText("另存为");
+
+      // The settled stepper lights every segment (never all-gray).
+      const settledStates = await panel
+        .locator(".build-step")
+        .evaluateAll((steps) =>
+          steps.map((step) => step.classList.contains("is-passed")),
+        );
+      expect(settledStates).toEqual(Array.from({ length: 7 }, () => true));
+
+      // 另存为: the DIALOG seam engages and the completion line moves
+      // to the chosen location (a real second file on disk).
+      await pointerClick(page, saveAs);
+      await expect(savedPath).toHaveText(
+        /^已保存：.+[\\/]as-ChHsich\.ttf$/,
+        { timeout: 30_000 },
+      );
+      expect(dialogCalls).toEqual(["ChHsich.ttf"]);
+      expect(readFileSync(resolve(saveDir, "as-ChHsich.ttf")).length).toBeGreaterThan(
+        0,
+      );
+      // A successful 另存为 leaves no notice.
+      await expect(panel.locator("[data-build-notice]").first()).toBeHidden();
+    } finally {
+      await service.dispose();
+    }
+  });
+
+  test("round 12: a 另存为 dialog that cannot open falls back to the default path with a plain notice", async ({
+    page,
+  }) => {
+    const service = await startServeFixture();
+    const saved: string[] = [];
+    try {
+      const saveDir = await mkdtemp(resolve(tmpdir(), "fontalloy-save-"));
+      await page.exposeFunction(
+        "__fontalloyTestSave",
+        async (name: string, bytesB64: string): Promise<string | null> => {
+          const bytes = Buffer.from(bytesB64, "base64");
+          const target = resolve(saveDir, name);
+          await writeFile(target, bytes);
+          saved.push(target);
+          return target;
+        },
+      );
+      // The headless-Linux stand-in: the dialog command itself REJECTS.
+      await page.exposeFunction("__fontalloyTestSaveAs", async (): Promise<never> => {
+        throw new Error("dialog backend unavailable");
+      });
+      await page.addInitScript(() => {
+        const config = window as unknown as {
+          __FONTALLOY_CONFIG__: Record<string, unknown>;
+        };
+        const toB64 = (bytes: Uint8Array): string =>
+          btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(""));
+        config.__FONTALLOY_CONFIG__ = {
+          saveArtifact: async (
+            name: string,
+            bytes: Uint8Array,
+          ): Promise<{ saved: boolean; path: string | null }> => {
+            const path = await window.__fontalloyTestSave(name, toB64(bytes));
+            return path === null ? { saved: false, path: null } : { saved: true, path };
+          },
+          saveArtifactAs: async (
+            name: string,
+            bytes: Uint8Array,
+          ): Promise<{ saved: boolean; path: string | null }> => {
+            await window.__fontalloyTestSaveAs(name, toB64(bytes));
+            return { saved: true, path: null };
+          },
+        };
+      });
+      await page.addInitScript((url: string) => {
+        const config = window as unknown as {
+          __FONTALLOY_CONFIG__: Record<string, unknown>;
+        };
+        config.__FONTALLOY_CONFIG__ ??= {};
+        config.__FONTALLOY_CONFIG__.serveUrl = url;
+      }, service.url);
+      collectJsErrors(page, jsErrors);
+      await page.goto("/");
+      await waitForFontsReady(page);
+
+      await loadIntoPicker(page, "en", service.baseFont);
+      await loadIntoPicker(page, "cjk", service.donorFont);
+      const synthesize = page.locator(".topbar [data-role='synthesize']");
+      await expect(synthesize).toHaveAttribute("aria-disabled", "false");
+      await pointerClick(page, synthesize);
+
+      const panel = page.locator('[data-testid="build-panel"]');
+      await expect(panel.locator("[data-build-stage]").first()).toHaveText(
+        "完成",
+        { timeout: 30_000 },
+      );
+      const savedPath = panel.locator("[data-build-saved-path]").first();
+      await expect(savedPath).toHaveText(/ChHsich\.ttf$/);
+
+      // The broken dialog falls back: the row stays settled, the
+      // completion line still names the DEFAULT location, and the
+      // plain notice explains the fallback (no modal, no toast-only).
+      await pointerClick(page, panel.locator("[data-build-saveas]").first());
+      await expect(panel.locator("[data-build-notice]").first()).toBeVisible({
+        timeout: 30_000,
+      });
+      await expect(panel.locator("[data-build-notice]").first()).toHaveText(
+        "保存对话框不可用，已保存到默认位置。",
+      );
+      await expect(savedPath).toHaveText(/ChHsich\.ttf$/);
+      await expect(panel.locator("[data-build-stage]").first()).toHaveText(
+        "完成",
+      );
+      // The fallback wrote the artifact through the default saver again.
+      expect(saved.length).toBe(2);
+    } finally {
+      await service.dispose();
+    }
+  });
+
   test("shows progress while building and stays usable, queueing a second build", async ({
     page,
   }) => {

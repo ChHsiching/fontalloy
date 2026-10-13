@@ -7,8 +7,9 @@ split-pane workspace of ADR-0004, local font loading through
 `FontFace(arrayBuffer)`, the character map), issue #17 (the first-run
 catalog download with self-rendering font pickers), and issue #16 (the
 core bundled as a binary sidecar — the synthesize action drives real
-merges over the serve contract, saves the output through the native
-save dialog, and renders the verification report).
+merges over the serve contract, saves the output into the configured
+output directory (round 12: dialog-free, with a 另存为 affordance for
+the native dialog), and renders the verification report).
 
 ## Stack, and why
 
@@ -167,9 +168,13 @@ and uploads them as artifacts for the desktop release job.
 to the frontend through the `serve_url` command (plus a `serve-ready`
 event); the child is killed on app exit. A spawn failure degrades to
 "service unavailable" — the app stays usable. The shell also owns the
-native dialogs (`pick_font_files` / `prepare_save`) and the raw-IPC byte
-pipes (`read_font_file` / `save_artifact`) so recipes get real absolute
-paths and saved artifacts never serialize megabytes through JSON.
+native dialogs (`pick_font_files` / `prepare_save` / `pick_output_dir`)
+and the raw-IPC byte pipes (`read_font_file` / `save_artifact`) so
+recipes get real absolute paths and saved artifacts never serialize
+megabytes through JSON. `default_output_dir` resolves the round-12
+output directory (`<OS Downloads>/fontalloy`, the app-data fonts dir
+as the headless fallback) and `park_save_path` joins the dialog-free
+save target.
 
 ### The synthesize flow
 
@@ -190,8 +195,12 @@ paths and saved artifacts never serialize megabytes through JSON.
    queues another build (the service serializes them, `queue_position`
    is displayed).
 5. **Save + report**: on completion the artifact goes through the
-   platform saver — native save dialog under Tauri, the injected
-   stand-in in tests — and the verification report renders from the
+   platform's DEFAULT-PATH saver (round 12) — the configured output
+   directory (设置 → 输出目录; default `<OS Downloads>/fontalloy`),
+   no dialog anywhere in the path; the completed row shows the full
+   path and carries a 另存为 button (the native dialog on demand,
+   falling back to the default directory with a plain notice when the
+   dialog cannot open). The verification report renders from the
    machine JSON (sources, coverage summary, precedence counts, weight
    borrows, plus the raw JSON under 原始报告). Failures — resolution,
    HTTP 400, a pipeline failure — surface as inline panel text; there

@@ -67,6 +67,12 @@ export interface BuildRow {
   error: string | null;
   /** Where the artifact was saved (page text once saved). */
   savedPath: string | null;
+  /**
+   * A plain notice beside the saved line (round 12): the 另存为
+   * fallback to the default directory explains itself here. Null
+   * clears it.
+   */
+  savedNotice: string | null;
   /** The verification report (machine JSON), once fetched. */
   report: ReportDocument | null;
   submittedAt: string;

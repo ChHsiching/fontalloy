@@ -32,9 +32,15 @@
  *   connection is a handled state, and the browser's own console line
  *   for the refused probe is declared benign by the e2e gates. Explicit
  *   `null` disables the service entirely (no probe, status "none").
- * - `saveArtifact` — the artifact saver the synthesize flow hands the
- *   built font to. Under Tauri it is the native save dialog + a raw IPC
- *   write; tests inject a stand-in through `page.exposeFunction`.
+ * - `saveArtifact` — the DEFAULT-PATH saver the synthesize flow hands the
+ *   built font to (round 12: saving writes straight to the configured
+ *   output directory, no dialog). Under Tauri it parks the joined
+ *   default-dir path and streams the bytes over the raw IPC pipe; tests
+ *   inject a stand-in through `page.exposeFunction`.
+ * - `saveArtifactAs` — the 另存为 saver (the native save dialog). Tests
+ *   inject a stand-in to observe that the DEFAULT flow never touches it
+ *   (the no-dialog contract) and to drive the dialog-unavailable
+ *   fallback.
  */
 
 /** GitHub Releases tag carrying the consolidated catalog (ADR-0005, #14). */
@@ -57,6 +63,11 @@ export interface ArtifactSaveResult {
   saved: boolean;
   /** Where the bytes landed (null when canceled or not saved). */
   path: string | null;
+  /**
+   * A plain-Chinese notice shown beside the saved line (round 12: the
+   * 另存为 fallback to the default directory explains itself here).
+   */
+  notice?: string;
 }
 
 /**
@@ -79,8 +90,10 @@ export interface FontalloyConfig {
    * shell resolves it); `null` = explicitly disabled.
    */
   serveUrl?: string | null;
-  /** The artifact saver (injected by tests; Tauri default otherwise). */
+  /** The default-path saver (injected by tests; Tauri default otherwise). */
   saveArtifact?: ArtifactSaver;
+  /** The 另存为 dialog saver (injected by tests; Tauri dialog otherwise). */
+  saveArtifactAs?: ArtifactSaver;
 }
 
 declare global {
@@ -156,5 +169,6 @@ export function readConfig(): FontalloyConfig {
     catalogBootstrapUrl: bootstrap ?? null,
     serveUrl: injected?.serveUrl,
     saveArtifact: injected?.saveArtifact,
+    saveArtifactAs: injected?.saveArtifactAs,
   };
 }

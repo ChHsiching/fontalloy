@@ -32,10 +32,17 @@ export interface PlatformCapabilities {
   localFilePicker: boolean;
   /** The core runs as a bundled sidecar binary. */
   sidecar: boolean;
+  /**
+   * Built fonts land in a configurable output directory (round 12):
+   * the 设置 entry 输出目录 exists and saves need no dialog. The plain
+   * browser keeps its own download flow (the browser manages where
+   * downloads go), so the entry does not render there.
+   */
+  outputDirPicker: boolean;
 }
 
 export function capabilities(t: FrontendTarget = target): PlatformCapabilities {
   return t === "tauri"
-    ? { localFilePicker: true, sidecar: true }
-    : { localFilePicker: false, sidecar: false };
+    ? { localFilePicker: true, sidecar: true, outputDirPicker: true }
+    : { localFilePicker: false, sidecar: false, outputDirPicker: false };
 }
