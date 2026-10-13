@@ -2207,12 +2207,17 @@ test.describe("user journey", () => {
           await expect(
             savedBlock.locator("[data-build-saved-label]"),
           ).toHaveText("已保存");
-          const savedLine = panel.locator("[data-build-saved-path]").first();
+          const savedLine = page.locator("[data-build-saved-path]").first();
+          // Round 12's family-matrix artifact is the ttc collection
+          // (J9.5 below parses it); a round-13 merge left these two
+          // lines pinning the stale single-slot .ttf name — corrected
+          // in round 14 with the pick-pattern fix that keeps the
+          // journey's pair a family build.
           await expect(savedLine).toHaveAttribute(
             "title",
-            /.+[\\/]ChHsich\.ttf$/,
+            /.+[\\/]ChHsich\.ttc$/,
           );
-          await expect(savedLine).toHaveText(/ChHsich\.ttf$/);
+          await expect(savedLine).toHaveText(/ChHsich\.ttc$/);
           await expect(
             panel.locator("[data-build-saveas]").first(),
           ).toBeVisible();
