@@ -20,8 +20,9 @@ export const REPO_ROOT = path.resolve(HERE, "..", "..");
 
 const READY_LINE = /^http:\/\/127\.0\.0\.1:(\d+)\s*$/;
 
-/** The origin the built site is previewed at (playwright baseURL). */
-export const PREVIEW_ORIGIN = "http://localhost:4173";
+/** The origin the built site is previewed at (playwright baseURL).
+ * PLAYWRIGHT_PREVIEW_PORT moves it for parallel-worktree runs. */
+export const PREVIEW_ORIGIN = `http://localhost:${process.env.PLAYWRIGHT_PREVIEW_PORT ?? "4173"}`;
 
 /** A serve allowlist entry that is NOT the preview origin (CORS tests). */
 export const OTHER_ORIGIN = "http://allowlist.example";

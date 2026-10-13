@@ -17,7 +17,9 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "../..");
-const devOrigin = "http://localhost:5173";
+// Parallel worktrees: the allow-origin must match whichever port the
+// Playwright configs picked (PLAYWRIGHT_DEV_PORT, default 5173).
+const devOrigin = `http://localhost:${process.env.PLAYWRIGHT_DEV_PORT ?? "5173"}`;
 
 /** The startup-line contract from ticket #11 (the port discovery regex). */
 const STARTUP_LINE = /^http:\/\/127\.0\.0\.1:(\d+)\r?\n?$/;

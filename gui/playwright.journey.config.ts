@@ -26,7 +26,14 @@ import { defineConfig } from "@playwright/test";
  * 5173 could have the catalog OFF (the component suite's setting), and
  * the journeys would silently run catalog-free. A port conflict fails
  * loudly instead.
+ *
+ * Parallel worktrees: PLAYWRIGHT_DEV_PORT moves every 5173 reference
+ * (this server, the component config's, the serve fixture's
+ * --allow-origin, the journey profile's baseURL) so sibling checkouts
+ * can run their suites side by side. Default 5173.
  */
+const devPort = process.env.PLAYWRIGHT_DEV_PORT ?? "5173";
+
 export default defineConfig({
   testDir: "tests",
   testMatch: /journey\.spec\.ts$/,
@@ -37,13 +44,13 @@ export default defineConfig({
   reporter: [["list"]],
   outputDir: "test-results-journey",
   use: {
-    baseURL: "http://localhost:5173",
+    baseURL: `http://localhost:${devPort}`,
     viewport: { width: 1440, height: 900 },
     colorScheme: "light",
   },
   webServer: {
-    command: "npm run dev",
-    url: "http://localhost:5173",
+    command: `npm run dev -- --port ${devPort} --strictPort`,
+    url: `http://localhost:${devPort}`,
     reuseExistingServer: false,
     timeout: 60_000,
     stdout: "ignore",
