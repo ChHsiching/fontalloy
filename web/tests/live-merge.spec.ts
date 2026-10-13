@@ -126,20 +126,24 @@ test("detects the service, merges live with journal and report, downloads the fo
       donors: body.donors.map((d) => d.replaceAll("\\", "/")),
     }).toEqual(expectedBody(base, [slow]));
 
-    // The build panel (the workspace's live-merge surface): the row's
-    // journal is append-only, so observing the in-flight line after the
-    // fact is race-free history, not timing luck.
+    // The build panel (the workspace's live-merge surface): the head
+    // status term carries the live state (round 10: the vertical
+    // journal list is gone — the stepper is the progress).
     const panel = page.locator('[data-testid="build-panel"]');
     await expect(panel).toBeVisible();
-    const journal = panel.locator("[data-build-journal]").first();
     const stage = panel.locator("[data-build-stage]").first();
-    await expect(stage).toContainText(/完成|进行中|排队/);
+    await expect(stage).toContainText(/完成|排队|正在合成|读取字体/);
     await expect(stage).toContainText("完成", { timeout: 60_000 });
-    await expect(journal).toContainText(/进行中|排队/);
+    await expect(panel.locator("[data-build-journal]")).toHaveCount(0);
 
-    // The report renders from the machine JSON the service returned.
+    // The report renders from the machine JSON the service returned —
+    // behind the 查看报告 disclosure (round 10: a settled row stays
+    // calm; the raw JSON form is gone from the UI).
+    await expect(panel.locator(".build-row").first()).toContainText("已保存");
+    await pointerClick(page, panel.locator(".report-details > summary"));
     await expect(panel).toContainText("验证报告");
     await expect(panel).toContainText("码位");
+    await expect(panel).not.toContainText("fontalloy/verification-report");
 
     // The saved artifact is a real font download: real bytes, TTF magic.
     const fontDownload = await downloadPromise;

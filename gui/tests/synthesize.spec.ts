@@ -134,6 +134,28 @@ test.describe("sidecar synthesize", () => {
       await expect(panel.locator("[data-build-stage]").first()).toHaveText(
         /(读取字体|规划字重|解析规则|移植字形|改写名称表|保存输出|生成报告|完成|排队中|正在合成)/,
       );
+
+      // Round 10 (no flicker): sample the panel's clientHeight and the
+      // rows region's scrollbar state every frame for the REST of the
+      // build — the fixed-height panel must NEVER move and the rows
+      // region must never toggle a scrollbar (the per-poll re-render
+      // used to oscillate both).
+      await page.evaluate(() => {
+        const record = { samples: [] as string[], done: false };
+        (window as unknown as { __panelSamples: typeof record }).__panelSamples =
+          record;
+        const panelEl = document.querySelector('[data-testid="build-panel"]')!;
+        const rows = panelEl.querySelector(".build-rows")!;
+        const started = performance.now();
+        const tick = (): void => {
+          record.samples.push(
+            `${panelEl.clientHeight}:${rows.scrollHeight > rows.clientHeight ? 1 : 0}`,
+          );
+          if (performance.now() - started < 4500) requestAnimationFrame(tick);
+          else record.done = true;
+        };
+        tick();
+      });
       await expect(panel.locator("[data-build-stage]").first()).toHaveText(
         "完成",
         { timeout: 30_000 },
@@ -142,6 +164,21 @@ test.describe("sidecar synthesize", () => {
       // The artifact was saved and states where, as page text.
       await expect(panel).toContainText("已保存");
       expect(saved.length).toBe(1);
+
+      // The flicker ledger: one height, zero scrollbar frames.
+      await page.waitForFunction(
+        () =>
+          (window as unknown as { __panelSamples: { done: boolean } })
+            .__panelSamples.done,
+      );
+      const ledger = await page.evaluate(
+        () =>
+          (window as unknown as { __panelSamples: { samples: string[] } })
+            .__panelSamples.samples,
+      );
+      expect(ledger.length).toBeGreaterThan(60);
+      expect(new Set(ledger.map((s) => s.split(":")[0])).size).toBe(1);
+      expect(ledger.some((s) => s.endsWith(":1"))).toBe(false);
 
       // Round 6: at save EVERY stepper step is lit-solid (never
       // all-gray) — the model is upcoming faint / current active /
@@ -166,6 +203,11 @@ test.describe("sidecar synthesize", () => {
       await expect(
         panel.locator("[data-build-stage-line]").first(),
       ).toBeHidden();
+      // Round 10: the vertical journal list is GONE — the stepper is
+      // the progress.
+      await expect(
+        panel.locator("[data-build-journal]"),
+      ).toHaveCount(0);
 
       // The saved artifact parses as a font: sfnt magic, the output
       // family, and the merged coverage read back from its cmap.
@@ -178,9 +220,14 @@ test.describe("sidecar synthesize", () => {
       expect(meta.family).toBe("ChHsich");
       expect(meta.codepoints.length).toBe(30_026);
 
-      // The verification report renders from the machine JSON, under
-      // the report-copy §3.1 labels (round 6).
+      // The verification report renders behind the 查看报告 disclosure
+      // (round 10: a settled row stays calm — saved line first, the
+      // report on demand), under the report-copy §3.1 labels.
+      const disclosure = panel.locator(".report-details > summary");
+      await expect(disclosure).toHaveText("查看报告");
+      await pointerClick(page, disclosure);
       await expect(panel).toContainText("验证报告");
+      await expect(panel).toContainText("成品文件");
       await expect(panel).toContainText("参与合并的码位");
       await expect(panel).toContainText("30,026");
       await expect(panel).toContainText("基底提供");
@@ -191,7 +238,57 @@ test.describe("sidecar synthesize", () => {
       await expect(panel).toContainText("覆盖检查");
       await expect(panel).toContainText("字体尺寸对比");
       await expect(panel).toContainText("行高保持不变");
-      await expect(panel).toContainText("fontalloy/verification-report");
+      // Round 10: the raw JSON report is GONE from the UI — the
+      // machine schema string only ever rendered inside the deleted
+      // <pre>, and rendering it froze the app for tens of seconds.
+      await expect(panel).not.toContainText(
+        "fontalloy/verification-report",
+      );
+
+      // Round 10 (? affordances): exactly ONE ? per section heading
+      // (the fact lines carry none), each circle optically centered
+      // with its heading text, and every popover stacks ABOVE the
+      // panel (the topmost element at the popover's center is the
+      // popover, never the panel).
+      const headings = panel.locator(".report-heading, .report-section-title");
+      const headingCount = await headings.count();
+      expect(headingCount).toBeGreaterThanOrEqual(7);
+      for (const heading of await headings.all()) {
+        expect(await heading.locator(".kit-qh").count()).toBe(1);
+      }
+      expect(await panel.locator(".report-fact .kit-qh").count()).toBe(0);
+      const offsets = await panel.evaluate(() => {
+        const center = (el: Element): number => {
+          const r = el.getBoundingClientRect();
+          return (r.top + r.bottom) / 2;
+        };
+        return [...document.querySelectorAll(
+          '[data-testid="build-panel"] .report-heading, [data-testid="build-panel"] .report-section-title',
+        )].map((h) => Math.abs(center(h.firstElementChild!) - center(h.lastElementChild!)));
+      });
+      expect(Math.max(...offsets)).toBeLessThanOrEqual(2);
+
+      for (const anchor of await panel.locator(".kit-qh").all()) {
+        await pointerClick(page, anchor);
+        const pop = page.locator(".kit-pop.open");
+        await expect(pop).toBeVisible();
+        const hit = await page.evaluate(() => {
+          const open = document.querySelector(".kit-pop.open")!;
+          const r = open.getBoundingClientRect();
+          const el = document.elementFromPoint(
+            r.left + r.width / 2,
+            r.top + r.height / 2,
+          );
+          return {
+            hitsPopover: el !== null && el.closest(".kit-pop") !== null,
+            hitsPanel: el !== null && el.closest(".build-panel") !== null,
+          };
+        });
+        expect(hit.hitsPopover).toBe(true);
+        expect(hit.hitsPanel).toBe(false);
+        await page.keyboard.press("Escape");
+        await expect(pop).toBeHidden();
+      }
 
       // An open-overlay screenshot of the completed build: the panel with
       // the rendered report is this feature's overlay state (seam-3 rule).

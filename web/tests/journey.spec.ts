@@ -334,8 +334,14 @@ test("J11 Web 目标 — detection, picks, preset, live merge, report, download,
 
     await step("J11.6 the verification report renders under the real terms", async () => {
       const panel = page.locator('[data-testid="build-panel"]');
+      // Round 10: the settled row stays calm — the report sits behind
+      // the 查看报告 disclosure (saved line first); the raw JSON form
+      // is gone from the UI.
+      await expect(panel.locator(".build-row").first()).toContainText("已保存");
+      await pointerClick(page, panel.locator(".report-details > summary"));
       for (const label of [
         "验证报告",
+        "成品文件",
         "输出格式",
         "SHA-256 校验值",
         "来源字体",
@@ -357,6 +363,7 @@ test("J11 Web 目标 — detection, picks, preset, live merge, report, download,
       ]) {
         await expect(panel).toContainText(label);
       }
+      await expect(panel).not.toContainText("fontalloy/verification-report");
     });
 
     await step("J11.7 the artifact downloads and PARSES (family ChHsich, donor CJK inside)", async () => {
