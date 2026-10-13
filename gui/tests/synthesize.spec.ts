@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 import { writeFile, copyFile, mkdtemp, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve, basename } from "node:path";
@@ -135,11 +135,14 @@ test.describe("sidecar synthesize", () => {
         /(读取字体|规划字重|解析规则|移植字形|改写名称表|保存输出|生成报告|完成|排队中|正在合成)/,
       );
 
-      // Round 10 (no flicker): sample the panel's clientHeight and the
-      // rows region's scrollbar state every frame for the REST of the
-      // build — the fixed-height panel must NEVER move and the rows
-      // region must never toggle a scrollbar (the per-poll re-render
-      // used to oscillate both).
+      // Round 10 (no flicker), round 11 (content sizing): sample the
+      // panel's clientHeight and the rows region's scrollbar state
+      // every frame for the REST of the build — the poll must never
+      // move the height frame to frame. The panel is content-sized now,
+      // so ONE real transition is sanctioned (the row settling:
+      // running content → saved line + collapsed disclosure); what must
+      // never happen is an oscillation (an A→B→A poll-driven bounce)
+      // or a scrollbar toggle (the reserved gutter).
       await page.evaluate(() => {
         const record = { samples: [] as string[], done: false };
         (window as unknown as { __panelSamples: typeof record }).__panelSamples =
@@ -165,7 +168,8 @@ test.describe("sidecar synthesize", () => {
       await expect(panel).toContainText("已保存");
       expect(saved.length).toBe(1);
 
-      // The flicker ledger: one height, zero scrollbar frames.
+      // The flicker ledger: at most ONE height change (the settle), no
+      // scrollbar frames.
       await page.waitForFunction(
         () =>
           (window as unknown as { __panelSamples: { done: boolean } })
@@ -177,7 +181,9 @@ test.describe("sidecar synthesize", () => {
             .__panelSamples.samples,
       );
       expect(ledger.length).toBeGreaterThan(60);
-      expect(new Set(ledger.map((s) => s.split(":")[0])).size).toBe(1);
+      const heights = ledger.map((s) => Number(s.split(":")[0]));
+      const changes = heights.filter((h, i) => i > 0 && h !== heights[i - 1]);
+      expect(changes.length).toBeLessThanOrEqual(1);
       expect(ledger.some((s) => s.endsWith(":1"))).toBe(false);
 
       // Round 6: at save EVERY stepper step is lit-solid (never
@@ -225,19 +231,40 @@ test.describe("sidecar synthesize", () => {
       // report on demand), under the report-copy §3.1 labels.
       const disclosure = panel.locator(".report-details > summary");
       await expect(disclosure).toHaveText("查看报告");
+      // Round 11 (panel sizing): while calm the panel is COMPACT —
+      // content-sized, strictly under the ceiling — and it is NOT in
+      // the expanded state.
+      const ceiling = await page.evaluate(
+        () => Math.min(window.innerHeight * 0.6, 520),
+      );
+      const compactHeight = await panel.evaluate((el) => el.clientHeight);
+      expect(compactHeight).toBeLessThan(ceiling);
+      await expect(panel).not.toHaveClass(/is-report-open/);
       await pointerClick(page, disclosure);
+      // Opening the disclosure buys the full ceiling (the expanded
+      // state exists only while a report is open); clientHeight sits at
+      // the ceiling modulo the panel's own 2px of border.
+      await expect(panel).toHaveClass(/is-report-open/);
+      const openHeight = await panel.evaluate((el) => el.clientHeight);
+      expect(openHeight).toBeGreaterThan(compactHeight);
+      expect(openHeight).toBeGreaterThanOrEqual(ceiling - 2);
+      expect(openHeight).toBeLessThanOrEqual(ceiling);
       await expect(panel).toContainText("验证报告");
       await expect(panel).toContainText("成品文件");
       await expect(panel).toContainText("参与合并的码位");
       await expect(panel).toContainText("30,026");
-      await expect(panel).toContainText("基底提供");
+      await expect(panel).toContainText("英文字体提供");
       await expect(panel).toContainText("26");
-      await expect(panel).toContainText("供体补充");
+      await expect(panel).toContainText("中文字体补充");
       await expect(panel).toContainText("30,000");
       // v2 sections: coverage scope and before/after metrics render too.
       await expect(panel).toContainText("覆盖检查");
       await expect(panel).toContainText("字体尺寸对比");
       await expect(panel).toContainText("行高保持不变");
+      // Round 11 (owner item 2): the single-donor source list reads the
+      // fonts' real names only — no 基底/供体/role wording, no numbering.
+      await expect(panel).not.toContainText("基底");
+      await expect(panel).not.toContainText("供体");
       // Round 10: the raw JSON report is GONE from the UI — the
       // machine schema string only ever rendered inside the deleted
       // <pre>, and rendering it froze the app for tens of seconds.
@@ -290,6 +317,51 @@ test.describe("sidecar synthesize", () => {
         await expect(pop).toBeHidden();
       }
 
+      // Round 11 (items 4–5): the section popovers carry FULL content —
+      // the title explanation plus every sub-item of the section as a
+      // compact table — and the notation legend lives in its own
+      // section's popover (A → B / — with the metrics; X ← Y with the
+      // weight slots).
+      const openHelp = async (label: string): Promise<Locator> => {
+        const anchor = panel.locator(`.kit-qh[aria-label='${label}']`);
+        await pointerClick(page, anchor);
+        const pop = page.locator(".kit-pop.open");
+        await expect(pop).toBeVisible();
+        return pop;
+      };
+      const metricsPop = await openHelp("字体尺寸对比是什么");
+      await expect(metricsPop).toContainText(
+        "描述字体高矮、深浅、行距的一组数值",
+      );
+      await expect(metricsPop).toContainText("A → B");
+      await expect(metricsPop).toContainText("合并前的值 → 合并后的值");
+      await expect(metricsPop).toContainText("该项原本没有值");
+      await expect(metricsPop).toContainText("UPM");
+      await expect(metricsPop).toContainText("中英宽度比");
+      await expect(metricsPop).toContainText("行高保持不变");
+      await page.keyboard.press("Escape");
+      await expect(metricsPop).toBeHidden();
+      const slotPop = await openHelp("字重档位是什么");
+      await expect(slotPop).toContainText("X ← Y");
+      await expect(slotPop).toContainText("借用来源：Y 这款字体提供了这一档");
+      await expect(slotPop).toContainText("自动取最近");
+      await expect(slotPop).toContainText("锁定");
+      await page.keyboard.press("Escape");
+      await expect(slotPop).toBeHidden();
+      const sourcesPop = await openHelp("来源字体是什么");
+      await expect(sourcesPop).toContainText(
+        "英文字体作合并容器，中文字体提供补充字形",
+      );
+      await expect(sourcesPop).toContainText("作为合并容器的字体");
+      await page.keyboard.press("Escape");
+      await expect(sourcesPop).toBeHidden();
+      const reportPop = await openHelp("验证报告是什么");
+      for (const part of ["成品文件", "来源字体", "合并统计", "规则优先级", "覆盖检查", "字体尺寸对比", "字重档位"]) {
+        await expect(reportPop).toContainText(part);
+      }
+      await page.keyboard.press("Escape");
+      await expect(reportPop).toBeHidden();
+
       // An open-overlay screenshot of the completed build: the panel with
       // the rendered report is this feature's overlay state (seam-3 rule).
       const { mkdirSync } = await import("node:fs");
@@ -309,6 +381,9 @@ test.describe("sidecar synthesize", () => {
   test("shows progress while building and stays usable, queueing a second build", async ({
     page,
   }) => {
+    // Round 11: the close × adds a third full build to this test —
+    // three real merges plus browsing exceed the 30s default.
+    test.setTimeout(120_000);
     const service = await startServeFixture();
     const saved: string[] = [];
     try {
@@ -365,6 +440,24 @@ test.describe("sidecar synthesize", () => {
         });
       }
       expect(saved.length).toBe(2);
+
+      // Round 11 (owner item 6): the panel's own close × — the kit
+      // close glyph in the title row — clears every row and hides the
+      // panel any time; the next synthesize re-opens it fresh.
+      const close = panel.locator(".build-close");
+      await expect(close).toHaveAttribute("aria-label", "关闭面板");
+      await expect(close.locator("svg")).toBeVisible();
+      await pointerClick(page, close);
+      await expect(panel).toBeHidden();
+      await expect(panel.locator("[data-build-row]")).toHaveCount(0);
+      await pointerClick(page, synthesize);
+      await expect(panel).toBeVisible();
+      await expect(panel.locator("[data-build-row]")).toHaveCount(1);
+      await expect(panel.locator("[data-build-stage]").first()).toHaveText(
+        "完成",
+        { timeout: 30_000 },
+      );
+      expect(saved.length).toBe(3);
     } finally {
       await service.dispose();
     }

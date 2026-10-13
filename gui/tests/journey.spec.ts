@@ -1943,11 +1943,12 @@ test.describe("user journey", () => {
           select.locator(".kit-cso", { hasText: "1.5 倍英文宽" }),
         );
         await expect(yaml).toContainText("width_factor: 1.5");
-        // Back to the 2× default: the knob disappears from the YAML.
+        // Back to the 2× default: the knob disappears from the YAML
+        // (round 11: the label reads 2 倍英文宽, matching its siblings).
         await pointerClick(page, select.locator(".kit-csel"));
         await pointerClick(
           page,
-          select.locator(".kit-cso", { hasText: "两倍英文宽" }),
+          select.locator(".kit-cso", { hasText: "2 倍英文宽" }),
         );
         await expect(yaml).not.toContainText("width_factor");
       });
@@ -2006,10 +2007,13 @@ test.describe("user journey", () => {
           await expect(stage).toHaveText(
             /(正在合成|读取字体|规划字重|解析规则|移植字形|改写名称表|保存输出|生成报告|完成)/,
           );
-          // Round 10 (no flicker): sample the panel's clientHeight and
-          // the rows region's scrollbar state every frame while the
-          // real build walks its stages — the fixed-height panel never
-          // moves and the rows region never toggles a scrollbar.
+          // Round 10 (no flicker), round 11 (content sizing): sample
+          // the panel's clientHeight and the rows region's scrollbar
+          // state every frame while the real build walks its stages —
+          // the poll must never move the height frame to frame. The
+          // panel is content-sized now, so ONE real transition is
+          // sanctioned (the row settling); an oscillation (A→B→A) or a
+          // scrollbar toggle is the flicker class that must stay dead.
           await page.evaluate(() => {
             const record = { samples: [] as string[], done: false };
             (window as unknown as { __panelSamples: typeof record })
@@ -2039,7 +2043,9 @@ test.describe("user journey", () => {
                 .__panelSamples.samples,
           );
           expect(ledger.length).toBeGreaterThan(120);
-          expect(new Set(ledger.map((s) => s.split(":")[0])).size).toBe(1);
+          const heights = ledger.map((s) => Number(s.split(":")[0]));
+          const changes = heights.filter((h, i) => i > 0 && h !== heights[i - 1]);
+          expect(changes.length).toBeLessThanOrEqual(1);
           expect(ledger.some((s) => s.endsWith(":1"))).toBe(false);
           // Round 10: the vertical journal list is gone — the stepper
           // is the progress.
@@ -2061,8 +2067,8 @@ test.describe("user journey", () => {
             "来源字体",
             "合并统计",
             "参与合并的码位",
-            "基底提供",
-            "供体补充",
+            "英文字体提供",
+            "中文字体补充",
             "成品收录",
             "规则优先级",
             "覆盖检查",
@@ -2079,9 +2085,15 @@ test.describe("user journey", () => {
           ]) {
             await expect(panel).toContainText(label);
           }
+          // Round 11 (terminology ruling): user-facing copy never says
+          // 基底 or 供体 — those stay in the machine layer only.
+          await expect(panel).not.toContainText("基底");
+          await expect(panel).not.toContainText("供体");
           // Round 9 (owner item 2): the 来源字体 names read the font
           // file's OWN name-table string (「Maple Mono CN」), never the
-          // raw file name or a curated/hardcoded display name.
+          // raw file name or a curated/hardcoded display name. Round
+          // 11 (owner item 2): with the single donor the rows carry
+          // the real names as their labels — no role word, no number.
           await expect(panel).toContainText("Maple Mono CN");
           // Round 10: the raw JSON form is gone from the UI.
           await expect(panel).not.toContainText("fontalloy/verification-report");

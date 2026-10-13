@@ -429,7 +429,7 @@ test.describe("scene previews and synthesis settings", () => {
       "双方字重全部保留 推荐",
     );
     await expect(baseline.locator(".kit-csel")).toHaveText("自动 推荐");
-    await expect(width.locator(".kit-csel")).toHaveText("两倍英文宽 推荐");
+    await expect(width.locator(".kit-csel")).toHaveText("2 倍英文宽 推荐");
     await expect(
       weight.locator(".kit-csel .kit-badge"),
     ).toHaveText("推荐");
@@ -449,7 +449,7 @@ test.describe("scene previews and synthesis settings", () => {
     await page.keyboard.press("Escape");
     await pointerClick(page, width.locator(".kit-csel"));
     expect(await width.locator(".kit-cso").allTextContents()).toEqual([
-      "两倍英文宽 推荐",
+      "2 倍英文宽 推荐",
       "1.8 倍英文宽",
       "1.5 倍英文宽",
     ]);
