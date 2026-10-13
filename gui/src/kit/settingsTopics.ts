@@ -6,7 +6,10 @@
  * prototype VERBATIM — including the weight topic's tables (round 5,
  * owner item 11: help content is the prototype's text, full stop — no
  * engineering notes in user-facing popovers; the ADR-0006 correction
- * lives in the docs and the pipeline, not here).
+ * lives in the docs and the pipeline, not here). ONE deviation (round
+ * 11, owner item 7, recorded in the kit README's deviation list): the
+ * width option reads 「2 倍英文宽」, not the prototype's 「两倍英文宽」 —
+ * the numeric form matches its sibling labels (1.8 倍 / 1.5 倍).
  */
 
 import { mountAppSelect, type AppSelect, type AppSelectOption } from "./appSelect";
@@ -111,7 +114,7 @@ export const SETTINGS_TOPICS: readonly SettingsTopic[] = [
     key: "cjkWidth",
     name: "中文字符宽度",
     options: [
-      { value: "2", label: "两倍英文宽", badge: "推荐" },
+      { value: "2", label: "2 倍英文宽", badge: "推荐" },
       { value: "1.8", label: "1.8 倍英文宽" },
       { value: "1.5", label: "1.5 倍英文宽" },
     ],
@@ -127,9 +130,10 @@ export const SETTINGS_TOPICS: readonly SettingsTopic[] = [
             "等宽环境里，每个字符占的位置按英文字符的宽度计算。中文字形比英文宽，通常占 2 个位置：",
           ),
           // Verbatim prototype table (inventory item 30): the 1.8x /
-          // 1.5x rows are the pipeline's `normalization.width_factor`.
+          // 1.5x rows are the pipeline's `normalization.width_factor`;
+          // the 2x row's label carries the round-11 numeric form.
           workedTable(["选项", "效果"], [
-            ["两倍英文宽 · 推荐", "标准等宽，一个中文正好对齐两个英文"],
+            ["2 倍英文宽 · 推荐", "标准等宽，一个中文正好对齐两个英文"],
             ["1.8 倍英文宽", "稍紧凑，一行能多放几个字"],
             ["1.5 倍英文宽", "很窄，一行能放更多中文"],
           ]),

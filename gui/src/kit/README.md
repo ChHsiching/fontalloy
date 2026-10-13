@@ -202,6 +202,16 @@ instruction from the hands-on review, not a silent drift):
   the sample; the document's structure (sizes, weights, table lines)
   stays CSS.
 
+## Round-11 owner rulings (recorded deviations)
+
+- **「2 倍英文宽」, not 「两倍英文宽」** (owner item 7): the CJK-width
+  option label — in the AppSelect options AND the help table's first
+  row — uses the numeric form so it matches its sibling labels
+  (1.8 倍英文宽 / 1.5 倍英文宽). This is an explicit owner ruling that
+  OVERRIDES the prototype-verbatim policy for this one string; the
+  deviation is recorded here per the invariant rule. The rest of the
+  settings topics' copy stays verbatim (`settingsTopics.ts`).
+
 ## Table-content policy — help content is the prototype's text
 
 Help-popover tables and prose carry the prototype's content VERBATIM
@@ -214,7 +224,9 @@ Round 6 supersedes the one sanctioned addition: the 覆盖 scope popover
 on the status bar is REMOVED (see the round-6 rulings above). The
 build panel's report popovers are PRODUCT-EXTENSION surfaces (the
 prototype had no report): their copy follows the owner-ratified
-glossary in `fontalloy-notes/report-copy.md`, not the prototype.
+glossary in `fontalloy-notes/report-copy.md`, not the prototype. The
+ONE content deviation inside the prototype-derived topics is the
+round-11 「2 倍英文宽」 label (see the round-11 rulings above).
 
 ## The owner-endorsed taxonomy deviation
 
