@@ -1086,15 +1086,15 @@ export function mountBuildPanel(): void {
         ${STAGES.map(([, label]) => `<span class="build-step" title="${label}"></span>`).join("")}
       </div>
       <div class="build-stage-line" data-build-stage-line>
-        <div class="build-stage-text">
+        <div class="build-stage-row">
           <span class="build-stage-name" data-build-stage-name></span>
-          <span class="build-stage-note" data-build-stage-note></span>
-        </div>
-        <div class="build-stage-live" data-build-stage-live hidden>
+          <div class="build-stage-live" data-build-stage-live hidden>
           <span class="build-stage-elapsed" data-build-elapsed hidden></span>
           <span class="build-stage-fact" data-build-fact="0" hidden></span>
           <span class="build-stage-fact" data-build-fact="1" hidden></span>
+          </div>
         </div>
+        <span class="build-stage-note" data-build-stage-note></span>
       </div>
       <div class="build-error" data-build-error role="alert" hidden></div>
       <div class="build-saved" data-build-saved hidden>

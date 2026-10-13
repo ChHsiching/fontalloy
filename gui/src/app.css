@@ -717,10 +717,26 @@ body {
   color: var(--ink3);
 }
 
-.build-stage-text {
-  min-width: 0;
-  display: flex;
+.build-stage-line {
   flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+}
+
+.build-stage-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.build-stage-live {
+  margin-left: auto;
+}
+
+.build-stage-note {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .build-stage-name {
@@ -731,7 +747,6 @@ body {
    stage facts; tabular-nums keeps the ticking mm:ss and the counts
    width-stable so nothing reflows as numbers move. */
 .build-stage-live {
-  margin-left: auto;
   flex: none;
   display: flex;
   flex-direction: column;
@@ -932,6 +947,11 @@ body {
   text-align: right;
   background: var(--sf2);
   white-space: nowrap;
+}
+
+.report-mtable thead th[scope="col"]:first-child,
+.report-mtable tbody th {
+  text-align: left;
 }
 
 .report-mtable tbody th {
