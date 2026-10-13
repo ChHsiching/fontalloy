@@ -365,8 +365,11 @@ body {
 
 /* ---------- build panel (issue #16) ----------
    Synthesis progress + verification report as a fixed, non-modal panel
-   above the stats bar. Clamped height with internal scroll (the same
-   pattern as the picker popups); the workspace underneath stays fully
+   above the stats bar. Round 10: the panel height is FIXED (it never
+   sizes to content), and the rows region owns the scrolling with a
+   reserved gutter — a build can grow, settle, and render its report
+   without the panel's clientHeight or scrollbars ever moving (the
+   round-6 oscillation class). The workspace underneath stays fully
    interactive — builds never block browsing or queueing more. */
 
 .build-panel {
@@ -375,7 +378,7 @@ body {
   bottom: 52px; /* the 42px stats bar plus a gap */
   z-index: 880;
   width: 400px;
-  max-height: min(60vh, 520px);
+  height: min(60vh, 520px); /* fixed: no content-driven height change */
   display: flex;
   flex-direction: column;
   border-radius: 12px;
@@ -387,6 +390,14 @@ body {
 
 .build-panel[hidden] {
   display: none;
+}
+
+/* The panel's ?-popovers (mounted on <body> by the kit) stack ABOVE
+   their own panel — the popups would otherwise paint under the panel's
+   z-index 880. Stays below the app notices (900) and the first-run
+   catalog screen (950). */
+.build-help-pop {
+  z-index: 890;
 }
 
 .build-panel-title {
@@ -402,9 +413,10 @@ body {
 }
 
 .build-rows {
+  flex: 1;
   min-height: 0;
   overflow-y: auto;
-  /* Round 6: the gutter is RESERVED — content width never changes when
+  /* The gutter is RESERVED — content width never changes when
    * a scrollbar appears, so long report lines cannot reflow and set up
    * the appear/disappear oscillation. */
   scrollbar-gutter: stable;
@@ -494,10 +506,16 @@ body {
   opacity: 1;
 }
 
-/* The ONE current-stage line (round 6): the stage name + its ≤30-char
-   explanation, shown only while a stage is actually current. */
+/* The ONE line under the stepper (round 10): the current stage name +
+   its ≤30-char explanation (or the queue position while queued). The
+   two-line minimum is RESERVED from the row's first paint, so stage
+   copy of differing lengths never moves the rows underneath it; the
+   text block centers inside the reservation. */
 .build-stage-line {
   margin-top: 6px;
+  min-height: 36px; /* 11px × 1.6 line-height × 2 lines */
+  display: flex;
+  align-items: center;
   font-size: 11px;
   line-height: 1.6;
   color: var(--ink3);
@@ -544,6 +562,9 @@ body {
 }
 
 .report-heading {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   color: var(--ink);
   font-weight: 600;
   margin-bottom: 4px;
@@ -554,7 +575,15 @@ body {
   border-top: 1px dashed var(--ln);
 }
 
+/* Section headings and the report heading lay their ?-anchor out as a
+ * flex row with align-items: center — the circle sits optically
+ * centered with the heading text (the inline baseline rides high; the
+ * same inline-flex baseline bug class the status bar's fix came from).
+ * One ? per heading (round 10); the fact lines carry none. */
 .report-section-title {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   color: var(--ink3);
   margin: 3px 0 2px;
 }
@@ -571,48 +600,38 @@ body {
   white-space: nowrap;
 }
 
-.report-raw {
-  border-top: 1px dashed var(--ln);
-  padding-top: 4px;
-  margin-top: 2px;
-}
-
-.report-raw summary {
-  color: var(--ink3);
-  cursor: pointer;
-}
-
-.report-raw pre {
-  max-height: 200px;
-  overflow: auto;
-  margin: 6px 0 0;
-  padding: 8px;
-  border-radius: 6px;
-  background: var(--sf2);
-  font-size: 11px;
-  line-height: 1.5;
+/* The report disclosure (round 10): a settled row stays calm — the
+   saved line first, the report on demand behind a 查看报告 summary. */
+.report-details > summary {
   color: var(--ink2);
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  user-select: none;
 }
 
-/* The journal (issue #22, absorbed): the append-only run history under
-   the stepper — one dim line per observed state transition. */
-
-.build-journal {
-  margin-top: 6px;
-  max-height: 72px;
-  overflow-y: auto;
-  /* Round 6: reserved gutter — the journal's own scrollbar cannot
-   * change the line width and set up a wrap/clip feedback loop. */
-  scrollbar-gutter: stable;
-  overscroll-behavior: contain;
-  font-size: 11px;
-  line-height: 1.6;
-  color: var(--ink3);
-  font-variant-numeric: tabular-nums;
+.report-details > summary::before {
+  content: "";
+  width: 0;
+  height: 0;
+  border-left: 5px solid var(--ink3);
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  transition: transform 0.15s ease-out;
 }
 
-.build-journal:empty {
-  display: none;
+.report-details[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.report-details > summary:hover {
+  color: var(--ink);
+}
+
+.report-body {
+  margin-top: 2px;
 }
 
 /* ---------- no-service CLI panel (issue #22's absorption) ----------
