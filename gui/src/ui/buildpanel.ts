@@ -65,12 +65,29 @@
  *   lives where it applies: 「A → B」 and 「—」 in the metrics
  *   popover, 「X ← Y」 in the weight-slot one.
  *
+ * Round 12 (the save flow):
+ *
+ * - **The stepper keeps its lit segments through the save** (owner
+ *   item 2): the artifact handoff rides the 保存输出 stage — segments
+ *   already done stay lit while a dialog (or the default-directory
+ *   write) is in flight and after it; only the current segment
+ *   pulses. The old stage lookup indexed the serve's terminal
+ *   `stage: "done"`, which no stepper segment matches — the whole
+ *   stepper blanked exactly while the dialog stood open.
+ * - **Default-path save, dialog optional** (owner item 3): the saved
+ *   line carries the FULL path (已保存：…), the completed row owns a
+ *   另存为 button (the native dialog on demand), and a fallback
+ *   notice line (`data-build-notice`) explains a dialog that could
+ *   not open. The orchestration lives in synthesize.ts
+ *   (`saveBuildAs`); the 设置 entry 输出目录 lives in ui/settings.ts.
+ *
  * Wording follows the owner-ratified copy spec
  * (`fontalloy-notes/report-copy.md`): real words only, the round-10
  * ruling trims the ?-popovers to one per section heading.
  */
 
 import { synthStore, removeBuild, type BuildRow } from "../service/state";
+import { saveBuildAs } from "../service/synthesize";
 import {
   mountHelpPopover,
   helpNote,
@@ -582,6 +599,7 @@ function renderSignature(row: BuildRow): string {
     row.queuePosition ?? "",
     row.error ?? "",
     row.savedPath ?? "",
+    row.savedNotice ?? "",
     row.report === null ? "" : "report",
   ].join("|");
 }
@@ -611,16 +629,30 @@ function renderRow(
   // lit-solid. A settled build lights every step — never all-gray at
   // save; a failed one keeps the completed steps lit and turns the
   // failing step danger.
+  //
+  // Round 12 (owner item 2): the artifact handoff (status "saving")
+  // rides the 保存输出 stage — segments already done STAY lit through
+  // the save (the handoff lasts exactly as long as a user might keep
+  // a dialog open) and only that segment pulses. The old code indexed
+  // the row's raw `stage` field, which the serve leaves at "done"
+  // after its final poll — `order.indexOf("done") === -1`, so every
+  // segment dropped BOTH classes and the whole stepper went faint
+  // exactly while the dialog stood open, refilling only after the
+  // save settled. Not focus loss, not a re-render: the stage index
+  // fell out of the stepper's vocabulary.
   const steps = rowEl.querySelector<HTMLElement>(".build-steps")!;
   const order = STAGES.map(([key]) => key);
-  const current = row.status === "queued" ? -1 : order.indexOf(row.stage ?? "");
+  const handoff = row.status === "saving";
+  const stageKey = handoff ? "saving" : (row.stage ?? "");
+  const current = row.status === "queued" ? -1 : order.indexOf(stageKey);
   const settled = row.status === "saved" || row.status === "done";
   const failed = row.status === "failed" || row.status === "error";
+  const active = row.status === "running" || handoff;
   const dots = steps.querySelectorAll<HTMLElement>(".build-step");
   dots.forEach((dot, index) => {
     const passed = settled || (current >= 0 && index < current);
     const isCurrent =
-      !settled && !failed && current >= 0 && index === current && row.status === "running";
+      !settled && !failed && current >= 0 && index === current && active;
     const isFailing = failed && (current < 0 || index === current);
     dot.classList.toggle("is-passed", passed);
     dot.classList.toggle("is-current", isCurrent);
@@ -639,9 +671,33 @@ function renderRow(
   errorEl.hidden = row.error === null;
   errorEl.textContent = row.error ?? "";
 
+  // The saved line (round 12): the FULL path as page text (a default
+  // directory only the app knows about would be a path nobody can
+  // find), with the 另存为 affordance on the completed row — visible
+  // whenever the artifact is on disk and no handoff is in flight (the
+  // row's own state narrates an in-flight one).
   const savedEl = rowEl.querySelector<HTMLElement>("[data-build-saved]")!;
   savedEl.hidden = row.savedPath === null;
-  if (row.savedPath !== null) savedEl.textContent = `已保存：${row.savedPath}`;
+  const savedPathEl = rowEl.querySelector<HTMLElement>(
+    "[data-build-saved-path]",
+  )!;
+  if (row.savedPath !== null) {
+    const line = `已保存：${row.savedPath}`;
+    if (savedPathEl.textContent !== line) savedPathEl.textContent = line;
+  }
+  const saveAsEl = rowEl.querySelector<HTMLButtonElement>(
+    "[data-build-saveas]",
+  )!;
+  saveAsEl.hidden = row.savedPath === null || handoff;
+
+  // The plain notice beside the saved line (round 12): the 另存为
+  // fallback to the default directory explains itself here, never as
+  // a modal or a toast the user can miss only by luck.
+  const noticeEl = rowEl.querySelector<HTMLElement>("[data-build-notice]")!;
+  noticeEl.hidden = row.savedNotice === null;
+  if (row.savedNotice !== null && noticeEl.textContent !== row.savedNotice) {
+    noticeEl.textContent = row.savedNotice;
+  }
 
   // The report renders ONCE per report object: the report REFERENCE is
   // set exactly once when the fetch lands — identity memoization means
@@ -720,7 +776,11 @@ export function mountBuildPanel(): void {
       </div>
       <div class="build-stage-line" data-build-stage-line></div>
       <div class="build-error" data-build-error role="alert" hidden></div>
-      <div class="build-saved" data-build-saved hidden></div>
+      <div class="build-saved" data-build-saved hidden>
+        <span class="build-saved-path" data-build-saved-path></span>
+        <button class="build-saveas" data-build-saveas type="button" hidden>另存为</button>
+      </div>
+      <div class="build-notice" data-build-notice role="status" hidden></div>
       <div class="build-report" data-build-report hidden></div>
     `;
     // The entrance animation plays ONCE: once it ends the class drops,
@@ -735,6 +795,15 @@ export function mountBuildPanel(): void {
       .querySelector<HTMLButtonElement>(".build-dismiss")!
       .addEventListener("click", () => {
         removeBuild(row.dataset.buildId ?? "");
+      });
+    // 另存为 (round 12, owner item 3): the explicit export on the
+    // completed row — the native dialog when it can open, the default
+    // directory with a plain notice when it cannot (saveBuildAs owns
+    // that fallback; this wiring only fires it).
+    row
+      .querySelector<HTMLButtonElement>("[data-build-saveas]")!
+      .addEventListener("click", () => {
+        void saveBuildAs(row.dataset.buildId ?? "");
       });
     return row;
   };

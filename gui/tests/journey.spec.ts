@@ -110,6 +110,8 @@ async function writeReport(): Promise<void> {
 const jsErrors: string[] = [];
 /** Where the current journey's saved artifacts land (the save stand-in). */
 let currentSaveDir: string | null = null;
+/** Round 12: how many times the 另存为 DIALOG seam fired this run. */
+let dialogSaveCalls = 0;
 // Parallel-stream runs: an explicit FONTALLOY_E2E_ORIGIN wins, else the
 // PLAYWRIGHT_DEV_PORT the configs picked (default: the shared 5173).
 const JOURNEY_ORIGIN =
@@ -152,12 +154,26 @@ const test = base.extend<{ journeysPage: Page }>({
       );
 
       // The native-save stand-in (one binding for the whole run; the
-      // bytes land in the CURRENT journey's temp dir).
+      // bytes land in the CURRENT journey's temp dir). Round 12 splits
+      // the seam in two, mirroring the app: `saveArtifact` is the
+      // DEFAULT-PATH save (what synthesis uses — no dialog), and
+      // `saveArtifactAs` is the 另存为 dialog (an as- copy; counting
+      // its calls proves the automatic save never depends on it).
       await page.exposeFunction(
         "__fontalloyJourneySave",
         async (name: string, bytesB64: string): Promise<string | null> => {
           if (currentSaveDir === null) return null;
           const target = resolve(currentSaveDir, name);
+          await writeFile(target, Buffer.from(bytesB64, "base64"));
+          return target;
+        },
+      );
+      await page.exposeFunction(
+        "__fontalloyJourneySaveAs",
+        async (name: string, bytesB64: string): Promise<string | null> => {
+          if (currentSaveDir === null) return null;
+          dialogSaveCalls += 1;
+          const target = resolve(currentSaveDir, `as-${name}`);
           await writeFile(target, Buffer.from(bytesB64, "base64"));
           return target;
         },
@@ -168,13 +184,12 @@ const test = base.extend<{ journeysPage: Page }>({
             __FONTALLOY_CONFIG__: Record<string, unknown>;
           }
         ).__FONTALLOY_CONFIG__ ??= {};
+        const toB64 = (bytes: Uint8Array): string =>
+          btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(""));
         config.saveArtifact = async (
           name: string,
           bytes: Uint8Array,
         ): Promise<{ saved: boolean; path: string | null }> => {
-          const b64 = btoa(
-            Array.from(bytes, (b) => String.fromCharCode(b)).join(""),
-          );
           const path = await (
             window as unknown as {
               __fontalloyJourneySave(
@@ -182,7 +197,23 @@ const test = base.extend<{ journeysPage: Page }>({
                 b64: string,
               ): Promise<string | null>;
             }
-          ).__fontalloyJourneySave(name, b64);
+          ).__fontalloyJourneySave(name, toB64(bytes));
+          return path === null
+            ? { saved: false, path: null }
+            : { saved: true, path };
+        };
+        config.saveArtifactAs = async (
+          name: string,
+          bytes: Uint8Array,
+        ): Promise<{ saved: boolean; path: string | null }> => {
+          const path = await (
+            window as unknown as {
+              __fontalloyJourneySaveAs(
+                name: string,
+                b64: string,
+              ): Promise<string | null>;
+            }
+          ).__fontalloyJourneySaveAs(name, toB64(bytes));
           return path === null
             ? { saved: false, path: null }
             : { saved: true, path };
@@ -1983,6 +2014,7 @@ test.describe("user journey", () => {
     ]);
     const serviceUrl = await service.url;
     currentSaveDir = await mkdtemp(resolve(tmpdir(), "fontalloy-j9-save-"));
+    dialogSaveCalls = 0;
     try {
       await journey("J9 合成", async (step) => {
         await step("J9.1 the serve is detected; the action arms once both picks exist", async () => {
@@ -2041,6 +2073,18 @@ test.describe("user journey", () => {
           });
           await expect(stage).toHaveText("完成", { timeout: 300_000 });
           await expect(panel).toContainText("已保存");
+          // Round 12 (owner item 3): the automatic save is DIALOG-FREE
+          // — the default-path seam landed the font and the 另存为
+          // dialog seam was never touched.
+          expect(dialogSaveCalls).toBe(0);
+          // The completion line carries the FULL path (a default
+          // directory only the app knows would be a path nobody can
+          // find), and the completed row offers the 另存为 affordance.
+          const savedLine = panel.locator("[data-build-saved-path]").first();
+          await expect(savedLine).toHaveText(/^已保存：.+[\\/]ChHsich\.ttf$/);
+          await expect(
+            panel.locator("[data-build-saveas]").first(),
+          ).toBeVisible();
           await page.waitForFunction(
             () =>
               (window as unknown as { __panelSamples: { done: boolean } })
@@ -2156,7 +2200,7 @@ test.describe("user journey", () => {
         });
 
         await step("J9.5 the saved artifact PARSES: family ChHsich, cmap > 0, donor CJK inside", async () => {
-          const savedLine = page.locator("[data-build-saved]").first();
+          const savedLine = page.locator("[data-build-saved-path]").first();
           await expect(savedLine).toContainText(/\.ttf$/);
           const savedPath = (await savedLine.textContent())!.replace(
             /^已保存：/,
@@ -2169,6 +2213,17 @@ test.describe("user journey", () => {
             parsed.cjkCodepoints,
             "the donor's CJK codepoints must live in the built font",
           ).toBeGreaterThan(0);
+          // Round 12 (owner item 3): 另存为 on the completed row routes
+          // through the DIALOG seam — the completion line moves to the
+          // chosen location and the as- copy parses too.
+          await pointerClick(
+            page,
+            page.locator("[data-build-saveas]").first(),
+          );
+          await expect(savedLine).toHaveText(/as-ChHsich\.ttf$/, {
+            timeout: 30_000,
+          });
+          expect(dialogSaveCalls).toBe(1);
         });
 
         await step("J9.6 a second build queues while the first owns the worker", async () => {

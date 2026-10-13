@@ -154,6 +154,22 @@ test("detects the service, merges live with journal and report, downloads the fo
     // The row states where it landed, as page text.
     await expect(panel.locator(".build-row").first()).toContainText("已保存");
 
+    // Round 12 (owner item 3, no web regression): the completed row
+    // carries the 另存为 affordance, and on this target it is a SECOND
+    // browser download of the same bytes — the web path never opens a
+    // dialog and never needs one.
+    const saveAsDownload = page.waitForEvent("download");
+    await pointerClick(
+      page,
+      panel.locator("[data-build-saveas]").first(),
+    );
+    const saveAsFile = await saveAsDownload;
+    expect(await saveAsFile.suggestedFilename()).toBe("ChHsich.ttf");
+    const saveAsBytes = await readFile((await saveAsFile.path())!);
+    expect(saveAsBytes.subarray(0, 4)).toEqual(
+      Buffer.from([0x00, 0x01, 0x00, 0x00]),
+    );
+
     assertNoJsErrors(errors);
   } finally {
     await serve.stop();
