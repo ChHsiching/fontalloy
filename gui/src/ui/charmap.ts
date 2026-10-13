@@ -256,16 +256,14 @@ function coveragesOf(
 const plainNum = (n: number): string => n.toLocaleString("en-US");
 
 /**
- * Announce one block/group assignment (round 9, owner item 3): ONE
- * terse line, numbers first, zero fluff, no repetition — what actually
- * happened, then the undo hint. The success count is ALWAYS stated,
- * even when 0:
- *
- *   中日韩文字 → 英文：0 生效 / 41,289 未变（无字形）· Ctrl+Z 撤销
- *
- * `nextRules` is the rule list the assignment is about to commit; the
- * counts compare the resolved table before and after. The card
- * auto-dismisses on its countdown (round 9, owner item 7).
+ * Announce one block/group assignment (round 9, owner item 3; the
+ * structured-card redesign): a structured outcome card, never a prose
+ * line — the action as the title, the counts as compact stat pairs
+ * (the success count ALWAYS stated, even when 0), the ineffective
+ * reason as a dim sub-line only when nonzero, and the undo hint as a
+ * kbd chip. `nextRules` is the rule list the assignment is about to
+ * commit; the counts compare the resolved table before and after. The
+ * card auto-dismisses on its countdown (round 9, owner item 7).
  */
 function announceAssignment(
   blocks: readonly UnicodeBlock[],
@@ -311,20 +309,28 @@ function announceAssignment(
   }
 
   const sideWord = side === "base" ? "英文" : "中文";
-  let line: string;
   if (reverted) {
-    line = `${scope} → 默认：${plainNum(switched)} 恢复 · Ctrl+Z 撤销`;
-  } else {
-    const unchanged = ineffective + noop;
-    const reason =
-      ineffective === 0
-        ? ""
-        : ineffective === unchanged
-          ? "（无字形）"
-          : `（${plainNum(ineffective)} 无字形）`;
-    line = `${scope} → ${sideWord}：${plainNum(switched)} 生效 / ${plainNum(unchanged)} 未变${reason} · Ctrl+Z 撤销`;
+    messages().push({
+      icon: "undo",
+      title: `${scope}恢复默认`,
+      stats: [{ value: plainNum(switched), label: "恢复" }],
+      undo: "撤销",
+    });
+    return;
   }
-  messages().push({ lines: [line] });
+  messages().push({
+    icon: ineffective > 0 ? "warn" : "check",
+    title: `${scope}用${sideWord}字体`,
+    stats: [
+      { value: plainNum(switched), label: "生效" },
+      { value: plainNum(ineffective + noop), label: "未变" },
+    ],
+    // The reason names the ASSIGNED side's lack (the char popup's own
+    // vocabulary) — and only ever when there is an ineffective count
+    // to explain; the title already carries the side once.
+    reason: ineffective > 0 ? `${sideWord}字体不含此码位` : undefined,
+    undo: "撤销",
+  });
 }
 
 /** The font ref of one side ("base" / the first donor). */
