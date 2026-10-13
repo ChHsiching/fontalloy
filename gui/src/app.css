@@ -96,6 +96,42 @@ body {
   gap: 12px;
 }
 
+/* Round 12: the 输出目录 row — the kit settings-row chrome over a
+   directory line instead of an AppSelect. The path truncates with an
+   ellipsis (the full path rides the title attribute); 更改 / 恢复默认
+   are quiet text buttons that never push the rail wider. */
+.settings-outdir-value {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.settings-outdir-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--ink2);
+}
+
+.settings-outdir-btn {
+  flex: none;
+  font-size: 11px;
+  color: var(--ac);
+  border: 1px solid var(--acsoft);
+  border-radius: 6px;
+  background: none;
+  padding: 1px 8px;
+  cursor: pointer;
+}
+
+.settings-outdir-btn:hover {
+  background: var(--acsoft);
+}
+
 /* Entrance animations — fill-mode: backwards everywhere. `both` leaves
    every section a permanent stacking context that traps popup z-index
    (ADR-0004; the prototype's r31 lesson). */
@@ -601,12 +637,56 @@ body {
 
 .build-saved {
   margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 12px;
   color: var(--ink2);
   word-break: break-all;
 }
 
 .build-saved[hidden] {
+  display: none;
+}
+
+/* Round 12: the path text wraps freely while the 另存为 button stays
+   whole beside it (flex none keeps the affordance clickable however
+   long the saved path is). */
+.build-saved-path {
+  min-width: 0;
+}
+
+.build-saveas {
+  flex: none;
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--ac);
+  border: 1px solid var(--acsoft);
+  border-radius: 6px;
+  background: none;
+  padding: 1px 8px;
+  cursor: pointer;
+}
+
+.build-saveas:hover {
+  background: var(--acsoft);
+}
+
+.build-saveas[hidden] {
+  display: none;
+}
+
+/* Round 12: the plain notice beside the saved line (the 另存为
+   fallback to the default directory explains itself here). */
+.build-notice {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--ink3);
+  word-break: break-all;
+}
+
+.build-notice[hidden] {
   display: none;
 }
 

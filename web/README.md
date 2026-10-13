@@ -31,9 +31,11 @@ only differences are platform mechanics:
   offering the recipe YAML (built from the same picks/rules/settings
   the service flow would submit) as a download plus the copyable
   `fontalloy build` command that reproduces the same merge.
-- **saving artifacts** — the native save dialog becomes a browser
-  download; the build panel renders the run's journal and verification
-  report identically on both targets.
+- **saving artifacts** — round 12's output-directory save becomes a
+  browser download on this target (the browser manages where downloads
+  land, so the 设置 → 输出目录 entry does not render here); 另存为 is a
+  second download of the same bytes. The build panel renders the run's
+  progress and verification report identically on both targets.
 
 ## One codebase, two build targets
 

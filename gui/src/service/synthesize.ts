@@ -2,10 +2,11 @@
  * The synthesize flow (issue #16): connect to the merge service, build a
  * recipe from the current GUI state through the shared recipe modules
  * (issue #21's model/validation), submit it over the serve contract,
- * poll progress, save the artifact through the platform saver, and fetch
- * the verification report — all without ever blocking the workspace
- * (each build runs as an independent async loop; the UI observes the
- * store).
+ * poll progress, save the artifact through the platform's DEFAULT-PATH
+ * saver (round 12: the configured output directory, no dialog), and
+ * fetch the verification report — all without ever blocking the
+ * workspace (each build runs as an independent async loop; the UI
+ * observes the store).
  */
 
 import { store, type LoadedFont } from "../state";
@@ -13,7 +14,7 @@ import { defaultDraft, type FontSlot } from "../recipe/model";
 import { recipeJson } from "../recipe/json";
 import { applySettingsToDraft, fileFaceSlots } from "../recipe/settings";
 import { applyRulesToDraft } from "../precedence/serialize";
-import { saveArtifact } from "../platform/artifacts";
+import { saveArtifact, saveArtifactAs } from "../platform/artifacts";
 import { isTauri, readConfig, serveProbeAddress } from "../platform/config";
 import { ServeClient, type CatalogDocument, type FaceDocument } from "./client";
 import {
@@ -289,6 +290,7 @@ function newBuildRow(family: string): BuildRow {
     queuePosition: null,
     error: null,
     savedPath: null,
+    savedNotice: null,
     report: null,
     submittedAt: new Date().toISOString(),
   };
@@ -391,7 +393,10 @@ export async function synthesize(): Promise<void> {
     await sleep(doc.status === "queued" ? QUEUED_POLL_MS : RUNNING_POLL_MS);
   }
 
-  // Fetch artifact + report, then hand the font to the platform saver.
+  // Fetch artifact + report, then hand the font to the platform's
+  // DEFAULT-PATH saver (round 12: the configured output directory, no
+  // dialog anywhere in the saving path — a dialog is never a
+  // dependency of saving).
   patchBuild(id, { status: "saving" });
   try {
     const [bytes, report] = await Promise.all([
@@ -406,6 +411,7 @@ export async function synthesize(): Promise<void> {
     patchBuild(id, {
       status: result.saved ? "saved" : "done",
       savedPath: result.path,
+      savedNotice: result.notice ?? null,
       report,
     });
   } catch (err) {
@@ -413,6 +419,64 @@ export async function synthesize(): Promise<void> {
       status: "error",
       error: err instanceof Error ? err.message : String(err),
     });
+  }
+}
+
+/**
+ * The 另存为 affordance (round 12): re-fetch the built font from the
+ * service and hand it to the DIALOG flow. A canceled dialog changes
+ * nothing; a dialog that cannot open or errors (headless Linux, a
+ * broken dialog backend) falls back to the DEFAULT path with a plain
+ * notice — the artifact stays on disk either way. The row rides the
+ * same "saving" handoff state the initial save used, so the stepper
+ * keeps its lit segments and 保存输出 pulses (item 2's model applies
+ * verbatim). Never throws: outcomes land in the row as inline text.
+ */
+export async function saveBuildAs(id: string): Promise<void> {
+  const { service, builds } = synthStore.get();
+  const row = builds.find((candidate) => candidate.id === id);
+  if (row === undefined || service.client === null) return;
+  if (row.status !== "saved" && row.status !== "done") return;
+  const suggested = `${row.family || "ChHsich"}.ttf`;
+  const restore = row.savedPath === null ? ("done" as const) : ("saved" as const);
+  patchBuild(id, { status: "saving", error: null });
+  const failInline = (message: string): void => {
+    if (row.savedPath === null) {
+      patchBuild(id, { status: "error", error: message });
+    } else {
+      // The artifact is already on disk from the initial save; the
+      // row stays settled and the notice carries what went wrong.
+      patchBuild(id, { status: "saved", savedNotice: `无法另存：${message}` });
+    }
+  };
+  try {
+    // The service owns the artifact bytes (its build scratch keeps the
+    // newest finished builds); the row never carries multi-MB blobs.
+    const bytes = await service.client.fontBytes(id);
+    try {
+      const result = await saveArtifactAs(suggested, bytes);
+      if (!result.saved) {
+        // A canceled dialog leaves the row exactly as it was.
+        patchBuild(id, { status: restore });
+        return;
+      }
+      patchBuild(id, {
+        status: "saved",
+        savedPath: result.path,
+        savedNotice: result.notice ?? null,
+      });
+    } catch {
+      const fallback = await saveArtifact(suggested, bytes);
+      patchBuild(id, {
+        status: fallback.saved ? "saved" : "done",
+        savedPath: fallback.path ?? row.savedPath,
+        savedNotice: fallback.saved
+          ? "保存对话框不可用，已保存到默认位置。"
+          : null,
+      });
+    }
+  } catch (err) {
+    failInline(err instanceof Error ? err.message : String(err));
   }
 }
 

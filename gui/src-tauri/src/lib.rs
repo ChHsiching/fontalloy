@@ -14,10 +14,17 @@
 ///    (`pick_font_files`) returns absolute paths, and `read_font_file`
 ///    streams the bytes back over the raw IPC pipe — recipes can name
 ///    the file, and no fs-scope widening beyond the catalog is needed.
-/// 3. **The artifact save**: `prepare_save` runs the native save dialog
-///    and parks the chosen path; `save_artifact` then receives the font
-///    bytes as a raw IPC body (no JSON serialization of a multi-MB
-///    font) and writes them there.
+/// 3. **The artifact save** (round 12): synthesis writes each built
+///    font straight into the configured output directory — `park_save_path`
+///    joins and parks `<output dir>/<name>` (no dialog), and
+///    `save_artifact` then receives the font bytes as a raw IPC body (no
+///    JSON serialization of a multi-MB font) and writes them there.
+///    `default_output_dir` resolves the directory (`<OS Downloads>/fontalloy`,
+///    the app-data fonts dir as the fallback when no download dir
+///    exists), and `pick_output_dir` backs the 设置 entry 输出目录.
+///    The native save dialog survives as the EXPLICIT export:
+///    `prepare_save` runs it and parks the chosen path for
+///    `save_artifact` (the 另存为 affordance on a completed row).
 
 use std::path::PathBuf;
 use std::sync::{Condvar, Mutex};
@@ -128,7 +135,9 @@ fn read_font_file(path: String) -> Result<tauri::ipc::Response, String> {
 }
 
 /// Run the native save dialog and park the chosen path. `default_name`
-/// suggests the file name; `None` = the user canceled.
+/// suggests the file name; `None` = the user canceled. This is the
+/// EXPLICIT 另存为 flow only — synthesis itself saves without a dialog
+/// (round 12).
 #[tauri::command]
 async fn prepare_save(
     app: AppHandle,
@@ -156,7 +165,60 @@ async fn prepare_save(
     Ok(Some(path))
 }
 
-/// Write the built font (raw IPC body) to the path `prepare_save` chose.
+/// The default output directory (round 12): `<OS Downloads>/fontalloy`,
+/// falling back to the app's own data directory when the platform has
+/// no download directory (headless Linux). Created on demand; the same
+/// file name saves over whatever the previous build of that name left.
+#[tauri::command]
+async fn default_output_dir(app: AppHandle) -> Result<String, String> {
+    let dir = match app.path().download_dir() {
+        Ok(downloads) => downloads.join("fontalloy"),
+        Err(_) => app
+            .path()
+            .app_data_dir()
+            .map_err(|err| format!("无法定位输出目录: {err}"))?
+            .join("fonts"),
+    };
+    std::fs::create_dir_all(&dir)
+        .map_err(|err| format!("无法创建输出目录 {}: {err}", dir.display()))?;
+    Ok(dir.to_string_lossy().into_owned())
+}
+
+/// The native directory picker behind the 设置 entry 输出目录.
+/// `None` = the user canceled.
+#[tauri::command]
+async fn pick_output_dir(app: AppHandle) -> Result<Option<String>, String> {
+    let Some(chosen) = app.dialog().file().blocking_pick_folder() else {
+        return Ok(None);
+    };
+    Ok(Some(
+        chosen
+            .into_path()
+            .map_err(|err| err.to_string())?
+            .to_string_lossy()
+            .into_owned(),
+    ))
+}
+
+/// Join and park the DEFAULT-path save target (`<dir>/<name>`, no
+/// dialog); returns the joined path for the completion line.
+#[tauri::command]
+fn park_save_path(
+    state: State<'_, ShellState>,
+    dir: String,
+    name: String,
+) -> Result<String, String> {
+    let path = PathBuf::from(&dir).join(&name);
+    *state
+        .pending_save
+        .lock()
+        .map_err(|_| "shell state poisoned")? = Some(path.clone());
+    Ok(path.to_string_lossy().into_owned())
+}
+
+/// Write the built font (raw IPC body) to the parked path — chosen by
+/// the 另存为 dialog (`prepare_save`) or joined by the default-path
+/// save (`park_save_path`); whichever parked last wins.
 #[tauri::command]
 fn save_artifact(state: State<'_, ShellState>, request: tauri::ipc::Request) -> Result<(), String> {
     let bytes = match request.body() {
@@ -271,6 +333,9 @@ pub fn run() {
             read_font_file,
             prepare_save,
             save_artifact,
+            default_output_dir,
+            pick_output_dir,
+            park_save_path,
             open_external
         ])
         .setup(|app| {
