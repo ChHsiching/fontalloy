@@ -47,7 +47,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 from fontTools.ttLib import TTFont
 
@@ -125,7 +125,7 @@ def build(
     output_format: str | None = None,
     manifest: Path | str | None = None,
     fonts_dir: Path | str | None = None,
-    progress: Callable[[str], None] | None = None,
+    progress: Callable[[str, "dict[str, Any] | None"], None] | None = None,
 ) -> BuildOutput:
     """Build a merged font (or weight/style matrix) from a recipe file.
 
@@ -138,8 +138,16 @@ def build(
     ``fonts_dir`` defaulting to the ``fonts`` directory beside it —
     exactly what ``fontalloy assets fetch`` fills). ``progress``
     (issue #11), when given, is called with a stage name as the
-    pipeline enters each stage; serve uses it to report build
-    progress over HTTP.
+    pipeline enters each stage plus a ``facts`` mapping (round 13,
+    owner item 5) of the quantitative facts the pipeline already
+    knows at that point — file count/sizes at ``loading``, the
+    planned slot count at ``planning``, the rule count at
+    ``resolving`` (refreshed with the effective codepoint count once
+    resolved), slots/codepoints at ``grafting``, the face count at
+    ``rewriting``, format and an estimated size at ``saving``, and
+    the check count at ``reporting``; serve carries both onto the
+    build's status document. A stage without facts calls with
+    ``None`` (clearing the previous stage's).
 
     The requested matrix comes from the base font file's faces (a
     recipe ``weights`` section selects a subset); every donor family
@@ -178,7 +186,7 @@ def build_recipe(
     output_format: str | None = None,
     manifest: Path | str | None = None,
     fonts_dir: Path | str | None = None,
-    progress: Callable[[str], None] | None = None,
+    progress: Callable[[str, "dict[str, Any] | None"], None] | None = None,
 ) -> BuildOutput:
     """Build a merged font from an already-parsed recipe.
 
@@ -192,9 +200,23 @@ def build_recipe(
     catalog; see :func:`build`).
     """
 
-    def _stage(name: str) -> None:
+    # Round 13 (owner item 5): the stage callback carries the facts the
+    # pipeline already knows alongside the stage name — the live
+    # quantitative readout the build panel shows beside the elapsed
+    # time. ``_stage`` marks a stage ENTRY (a None ``facts`` clears the
+    # previous stage's); ``_facts`` refreshes the CURRENT stage's
+    # numbers in place (the stage block stays, the values move).
+    stage_now: str | None = None
+
+    def _stage(name: str, facts: dict[str, Any] | None = None) -> None:
+        nonlocal stage_now
+        stage_now = name
         if progress is not None:
-            progress(name)
+            progress(name, facts)
+
+    def _facts(facts: dict[str, Any]) -> None:
+        if progress is not None and stage_now is not None:
+            progress(stage_now, facts)
 
     if recipe.base.is_catalog_ref or any(
         ref.is_catalog_ref for ref in recipe.donors
@@ -217,7 +239,7 @@ def build_recipe(
     # one, an unpinned file all of them. The one-face rule for the
     # single-file formats moves to the slot-count check below, so a
     # weights selection of one slot can stand in for a face pin.
-    _stage("loading")
+    _stage("loading", _source_facts(recipe))
     _verify_pinned_sources(recipe)
     bases = load_faces(recipe.base, role="base font")
     pools: dict[str, DonorPool] = {}
@@ -241,6 +263,7 @@ def build_recipe(
             f"{fmt!r} output carries one face — select a face reference, "
             "declare a single weights slot, or use output.format ttc"
         )
+    _facts({"slots": len(slots)})
 
     try:
         timestamp = output_timestamp([slot.base.font for slot in slots])
@@ -259,7 +282,7 @@ def build_recipe(
         # base keeps in the quote/dash set to the first donor holding
         # the codepoint, so the donor's fullwidth glyph and the wide
         # advance actually reach the merged font.
-        _stage("resolving")
+        _stage("resolving", {"rules": len(recipe.rules)})
         named_sets = {**BUILTIN_NAMED_SETS, **recipe.named_sets}
         resolutions: list[Resolution] = []
         for slot in slots:
@@ -285,6 +308,14 @@ def build_recipe(
                     recipe.normalization,
                 )
             )
+        # The effective count arrives once resolution is done: slot 0's
+        # table — the same face the report's flat sections describe.
+        _facts(
+            {
+                "rules": len(recipe.rules),
+                "codepoints": len(resolutions[0].effective_table),
+            }
+        )
 
         # Stage: graft the donor glyphs into each slot's base container
         # and rebuild the cmap (ADR-0001), each glyph normalized onto
@@ -300,7 +331,15 @@ def build_recipe(
         # started from (a variable base's instance, not the file's
         # default) — and the plans' k/s0 per donor are kept for the
         # report's normalization records.
-        _stage("grafting")
+        _stage(
+            "grafting",
+            {
+                "slots": len(slots),
+                "codepoints": sum(
+                    len(resolution.effective_table) for resolution in resolutions
+                ),
+            },
+        )
         base_snapshots = [_face_snapshot(slot.base.font) for slot in slots]
         slot_normalization: list[tuple[DonorNormalizationRecord, ...]] = []
         for slot, resolution in zip(slots, resolutions):
@@ -321,15 +360,24 @@ def build_recipe(
             # rewritten font. Each slot's container carries its own
             # subfamily, so the slots become the output family's
             # weight/style variants.
-            _stage("rewriting")
+            _stage("rewriting", {"faces": len(slots)})
             apply_output_identity(
                 slot.base.font, OutputNaming(recipe.output.family)
             )
             apply_os2_corrections(slot.base.font)
 
         # Stage: write the output at the single reproducible boundary —
-        # pinned head timestamps, no recalculation, TTC dedup on.
-        _stage("saving")
+        # pinned head timestamps, no recalculation, TTC dedup on. The
+        # size fact is an ESTIMATE from the source bytes (one grafted
+        # copy per slot for a collection); the saved artifact's exact
+        # size lands on the done document as always.
+        _stage(
+            "saving",
+            {
+                "format": fmt,
+                "bytes_est": _estimated_output_bytes(recipe, fmt, len(slots)),
+            },
+        )
         save_output(
             [slot.base.font for slot in slots], output, fmt, timestamp=timestamp
         )
@@ -342,8 +390,11 @@ def build_recipe(
     # Read the built font back: the report's in_output flags record what
     # the output cmap actually covers, not what the pipeline intended —
     # and the metric comparison measures the saved file, never the
-    # in-memory container.
-    _stage("reporting")
+    # in-memory container. The checks fact: every face is read back and
+    # metric-compared, every rule's coverage is checked.
+    _stage(
+        "reporting", {"checks": 2 * len(slots) + len(recipe.rules)}
+    )
     readback = _read_back(output, fmt, len(slots))
     try:
         output_cmaps = [set(font.getBestCmap()) for font in readback]
@@ -473,6 +524,50 @@ def build_recipe(
         format=fmt,
         report_html_path=report_html_path,
     )
+
+
+def _source_files(recipe: Recipe) -> list[Path]:
+    """The distinct font files the recipe's references build from.
+
+    A catalog reference counts its resolved artifact (the zip or the
+    bare font file); a path reference the file itself. Duplicates (a
+    base and a donor naming one file) count once.
+    """
+    files: dict[str, Path] = {}
+    for ref in [recipe.base, *recipe.donors]:
+        path = ref.artifact if ref.artifact is not None else ref.path
+        if path is not None:
+            files.setdefault(str(path), Path(path))
+    return list(files.values())
+
+
+def _source_facts(recipe: Recipe) -> dict[str, Any]:
+    """The loading stage's facts: the file count and their total size.
+
+    A file that cannot be stat'd contributes zero — the load itself
+    fails on its own terms with the readable error.
+    """
+    files = _source_files(recipe)
+    total = 0
+    for path in files:
+        try:
+            total += path.stat().st_size
+        except OSError:
+            continue
+    return {"files": len(files), "bytes": total}
+
+
+def _estimated_output_bytes(
+    recipe: Recipe, fmt: str, slots: int
+) -> int:
+    """The saving stage's rough size estimate from the source bytes.
+
+    One grafted copy per slot for a collection, the plain source total
+    otherwise — a scale reference while the write runs, never a promise
+    (the exact size lands on the done document).
+    """
+    total = _source_facts(recipe)["bytes"]
+    return total * (slots if fmt == "ttc" else 1)
 
 
 def _resolve_catalog(

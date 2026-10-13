@@ -136,6 +136,14 @@ test.describe("sidecar synthesize", () => {
         /(读取字体|规划字重|解析规则|移植字形|改写名称表|保存输出|生成报告|完成|排队中|正在合成)/,
       );
 
+      // Round 13 (owner item 5): living progress — the elapsed timer
+      // (mm:ss, ticking) renders right-aligned in the live column
+      // while the build runs (the ~2s fixture build keeps the window
+      // open).
+      await expect(
+        panel.locator("[data-build-elapsed]").first(),
+      ).toHaveText(/用时 \d+:\d{2}/);
+
       // Round 10 (no flicker), round 11 (content sizing): sample the
       // panel's clientHeight and the rows region's scrollbar state
       // every frame for the REST of the build — the poll must never
@@ -262,10 +270,21 @@ test.describe("sidecar synthesize", () => {
       await expect(panel).toContainText("覆盖检查");
       await expect(panel).toContainText("字体尺寸对比");
       await expect(panel).toContainText("行高保持不变");
-      // Round 12 (owner item 5): before/after renders as TWO rows
-      // (合并前 / 合并后) — never one dash-joined line.
-      await expect(panel).toContainText("UPM · 合并前");
-      await expect(panel).toContainText("UPM · 合并后");
+      // Round 13 (owner item 6): the metrics render as a real TABLE —
+      // the 合并前 / 合并后 data columns stated ONCE in a header row,
+      // values column-aligned, 「无」 stays, zero · separators in the
+      // section (the fact-pair rows 「UPM · 合并前」 are gone).
+      const metricsTable = panel.locator(".report-mtable").first();
+      await expect(metricsTable).toBeVisible();
+      const columnHeaders = (
+        await metricsTable.locator("thead th").allTextContents()
+      ).filter((h) => h === "合并前" || h === "合并后");
+      expect(columnHeaders).toEqual(["合并前", "合并后"]);
+      await expect(metricsTable.locator("tbody tr").first()).toContainText(
+        "UPM",
+      );
+      await expect(metricsTable).not.toContainText("·");
+      await expect(metricsTable).not.toContainText("—");
       // Round 12 (owner item 4): the borrow rows read the ratified
       // 成品档位 ← 来源字体 direction — the output weight LEFT of the
       // arrow, the source font right of it, the via qualifier after ·.
@@ -347,12 +366,13 @@ test.describe("sidecar synthesize", () => {
       await expect(metricsPop).toContainText(
         "描述字体高矮、深浅、行距的一组数值",
       );
-      await expect(metricsPop).toContainText("A → B");
-      await expect(metricsPop).toContainText("合并前的值 → 合并后的值");
-      // Round 12 (owner item 5, as corrected): the legend explains 「→」
-      // and the 无 no-value word — the dash row is GONE.
+      // Round 13 (owner item 6): the legend explains the table's two
+      // data COLUMNS once — the 「A → B」 pair notation is gone with
+      // the pair rows; 无 stays, explained.
+      await expect(metricsPop).toContainText("合并之前，英文字体自己的数值");
+      await expect(metricsPop).toContainText("合并之后，从成品文件读回的数值");
       await expect(metricsPop).toContainText("该项在合并前没有数值");
-      await expect(metricsPop).not.toContainText("该项原本没有值");
+      await expect(metricsPop).not.toContainText("A → B");
       await expect(metricsPop).toContainText("UPM");
       await expect(metricsPop).toContainText("中英宽度比");
       await expect(metricsPop).toContainText("行高保持不变");
@@ -483,9 +503,20 @@ test.describe("sidecar synthesize", () => {
         "正在保存",
         { timeout: 30_000 },
       );
-      await expect(panel.locator("[data-build-stage-line]").first()).toHaveText(
-        "正在保存 — 把成品字体写入磁盘。",
-      );
+      // Round 12 (owner item 1; the round-13 panel keeps the shape):
+      // the handoff narrates itself as TWO lines — the stage name and
+      // the dim note under it, never one dash-joined line. Round 13
+      // (owner item 5): the handoff carries NO live column (it is not
+      // pipeline time).
+      const stageLine = panel.locator("[data-build-stage-line]").first();
+      await expect(
+        stageLine.locator("[data-build-stage-name]"),
+      ).toHaveText("正在保存");
+      await expect(
+        stageLine.locator("[data-build-stage-note]"),
+      ).toHaveText("把成品字体写入磁盘。");
+      await expect(stageLine.locator("[data-build-elapsed]")).toBeHidden();
+      await expect(stageLine.locator("[data-build-stage-live]")).toBeHidden();
       const stepStates = await panel
         .locator(".build-step")
         .evaluateAll((steps) =>
@@ -507,15 +538,25 @@ test.describe("sidecar synthesize", () => {
       // The dialog seam was not touched by the automatic save.
       expect(dialogCalls).toEqual([]);
 
-      // Release the handoff: the row settles with the FULL path as page
-      // text and the 另存为 affordance on the completed row.
+      // Release the handoff: the row settles. Round 13 (owner item 4):
+      // the saved line is TWO rows — 「已保存」 on the first, the FULL
+      // path on the second (middle-ellipsized when it overflows; the
+      // whole path rides the title attribute).
       releaseGate();
       await expect(panel.locator("[data-build-stage]").first()).toHaveText(
         "完成",
         { timeout: 30_000 },
       );
+      const savedBlock = panel.locator("[data-build-saved]").first();
+      await expect(
+        savedBlock.locator("[data-build-saved-label]"),
+      ).toHaveText("已保存");
       const savedPath = panel.locator("[data-build-saved-path]").first();
-      await expect(savedPath).toHaveText(/^已保存：.+[\\/]ChHsich\.ttf$/);
+      await expect(savedPath).toHaveAttribute(
+        "title",
+        /^[A-Za-z]:\\.+[\\/]ChHsich\.ttf$/,
+      );
+      await expect(savedPath).toHaveText(/ChHsich\.ttf$/);
       expect(saved.length).toBe(1);
       expect(dialogCalls).toEqual([]);
       const saveAs = panel.locator("[data-build-saveas]").first();
@@ -530,13 +571,17 @@ test.describe("sidecar synthesize", () => {
         );
       expect(settledStates).toEqual(Array.from({ length: 7 }, () => true));
 
-      // 另存为: the DIALOG seam engages and the completion line moves
-      // to the chosen location (a real second file on disk).
+      // 另存为: the DIALOG seam engages and the saved line moves to the
+      // chosen location (a real second file on disk).
       await pointerClick(page, saveAs);
-      await expect(savedPath).toHaveText(
-        /^已保存：.+[\\/]as-ChHsich\.ttf$/,
+      await expect(savedPath).toHaveAttribute(
+        "title",
+        /[\\/]as-ChHsich\.ttf$/,
         { timeout: 30_000 },
       );
+      await expect(savedPath).toHaveText(/as-ChHsich\.ttf$/, {
+        timeout: 30_000,
+      });
       expect(dialogCalls).toEqual(["ChHsich.ttf"]);
       expect(readFileSync(resolve(saveDir, "as-ChHsich.ttf")).length).toBeGreaterThan(
         0,
@@ -1159,7 +1204,13 @@ test.describe("sidecar synthesize", () => {
           labels.map((label) => (label as HTMLElement).textContent),
         );
       expect(slotLabels).toEqual(["700 · 直立", "400 · 直立"]);
-      await expect(weightSection).toContainText(/Maple Mono.* ← \d+（自动取最近）/);
+      // Round 12's ratified borrow direction (this assertion was left
+      // on the pre-round-12 family-first form with full-width parens
+      // and had gone stale): 成品档位 ← 来源字体, the via qualifier
+      // after a ·.
+      await expect(weightSection).toContainText(
+        /\d+ ← Maple Mono .*· 自动取最近/,
+      );
 
       // The saved artifact is the family collection (ttcf magic); its
       // first face parses as the merged font (中 + a Nerd Font

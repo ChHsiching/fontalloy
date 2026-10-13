@@ -55,6 +55,15 @@ export interface BuildDocument {
   id: string;
   status: "queued" | "running" | "done" | "failed";
   stage: string | null;
+  /**
+   * Round 13 (owner item 5): the CURRENT stage's live facts — the
+   * quantitative readout the pipeline already knows (file count and
+   * sizes at loading, slot count at planning, rule/codepoint counts,
+   * format and an estimated size at saving, the check count at
+   * reporting). Null while queued or when the stage carries none;
+   * consumers degrade to stage names alone.
+   */
+  facts: Record<string, string | number> | null;
   format: string;
   submitted_at: string;
   started_at: string | null;

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from itertools import groupby
 from pathlib import Path
 
 import pytest
@@ -512,15 +513,22 @@ class TestBuildProgress:
     def test_build_reports_each_stage_as_it_is_entered(
         self, recipe_file, tmp_path
     ):
-        stages: list[str] = []
+        events: list[tuple[str, object]] = []
 
         result = build(
             recipe_file,
             tmp_path / "out.ttf",
-            progress=stages.append,
+            progress=lambda stage, facts=None: events.append((stage, facts)),
         )
 
-        assert stages == [
+        # Round 13 (owner item 5): an event is a stage ENTRY or a
+        # mid-stage FACTS refresh — a refresh repeats the CURRENT stage
+        # (planning's slot count, resolving's effective count), so the
+        # consecutive duplicates collapsed below are refreshes, never
+        # re-entries.
+        assert [
+            key for key, _ in groupby(stage for stage, _ in events)
+        ] == [
             "loading",
             "planning",
             "resolving",
@@ -531,10 +539,30 @@ class TestBuildProgress:
         ]
         assert result.font_path.is_file()
 
+        merged: dict[str, dict] = {}
+        for stage, facts in events:
+            if isinstance(facts, dict):
+                merged.setdefault(stage, {}).update(facts)
+        assert merged["loading"]["files"] == 2
+        assert merged["loading"]["bytes"] > 0
+        assert merged["planning"] == {"slots": 1}
+        assert merged["resolving"]["rules"] == 0
+        assert (
+            merged["resolving"]["codepoints"]
+            == merged["grafting"]["codepoints"]
+        )
+        assert merged["grafting"]["slots"] == 1
+        assert merged["rewriting"] == {"faces": 1}
+        assert merged["saving"]["format"] == "ttf"
+        assert merged["saving"]["bytes_est"] >= merged["loading"]["bytes"]
+        assert merged["reporting"] == {"checks": 2}
+
     def test_progress_is_optional_and_changes_nothing(self, recipe_file, tmp_path):
         quiet = build(recipe_file, tmp_path / "quiet.ttf")
         loud = build(
-            recipe_file, tmp_path / "loud.ttf", progress=lambda stage: None
+            recipe_file,
+            tmp_path / "loud.ttf",
+            progress=lambda stage, facts=None: None,
         )
 
         # Byte-reproducible builds hold with or without an observer.

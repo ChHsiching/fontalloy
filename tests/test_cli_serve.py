@@ -554,6 +554,68 @@ class TestBuildLifecycle:
         detail = serve_service.get(f"/builds/{build_id}").json()
         assert detail["status"] == "done"
 
+    def test_stage_facts_ride_the_progress_document(
+        self, serve_service, serve_fonts, tmp_path
+    ):
+        """Round 13 (owner item 5): the job document carries a ``facts``
+        object describing the CURRENT stage — the quantitative readout
+        the pipeline already knows. Pinned at three deterministic
+        points: a queued build carries None, the grafting stage of a
+        slow build carries its slot/codepoint counts, and a done build
+        carries the reporting stage's check count."""
+        slow_donor = synth_wide_font(
+            tmp_path / "slow.ttf",
+            family="SlowDonor",
+            # Wide enough that the graft window spans several polling
+            # rounds, not a missed blink (4000 grafts run ~0.3s).
+            count=20_000,
+        )
+        recipe = {
+            "base": str(serve_fonts / "Alpha.ttf"),
+            "donors": [str(slow_donor)],
+            "rules": [{"set": "zh_cn", "fonts": ["base", "donor-0"]}],
+        }
+        first = serve_service.submit(recipe).json()["id"]
+        second = serve_service.submit(recipe).json()["id"]
+
+        # Queued: no stage has run, so no facts either.
+        queued = serve_service.get(f"/builds/{second}").json()
+        assert queued["status"] == "queued"
+        assert queued["facts"] is None
+
+        # The wide donor keeps grafting observable: poll for the stage
+        # and pin the facts that arrived with it.
+        doc = self._wait_for_stage(serve_service, first, "grafting")
+        assert doc["facts"] == {
+            "slots": 1,
+            # 2 base codepoints + the wide donor's run (the union is
+            # the effective table — the zh_cn rule re-routes, never drops).
+            "codepoints": 2 + 20_000,
+        }
+
+        done = serve_service.wait_for_status(first, "done")
+        # 2 checks per face (readback + metrics) + 1 per rule.
+        assert done["facts"] == {"checks": 2 * 1 + 1}
+        serve_service.wait_for_status(second, "done")
+
+    @staticmethod
+    def _wait_for_stage(
+        client: ServeClient, build_id: str, stage: str, timeout: float = 60.0
+    ) -> dict[str, Any]:
+        """Poll one build's document until its stage is ``stage``."""
+        deadline = time.monotonic() + timeout
+        last: dict[str, Any] = {}
+        while time.monotonic() < deadline:
+            last = client.get(f"/builds/{build_id}").json()
+            if last["status"] == "failed":
+                raise AssertionError(f"build failed: {last.get('error')}")
+            if last.get("stage") == stage:
+                return last
+            time.sleep(0.02)
+        raise TimeoutError(
+            f"build {build_id} never reached stage {stage!r}: {last}"
+        )
+
 
 class TestQueueing:
     def test_concurrent_submissions_are_queued_not_lost(

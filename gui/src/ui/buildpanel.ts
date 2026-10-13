@@ -98,6 +98,36 @@
  *   not open. The orchestration lives in synthesize.ts
  *   (`saveBuildAs`); the 设置 entry 输出目录 lives in ui/settings.ts.
  *
+ * Round 13 (the living-progress round — apple-design + better-series
+ * mandate: springs, not scripted animation; state never carried by
+ * motion alone; continuous feedback; every element earns its place):
+ *
+ * - **The saved line is TWO rows** (owner item 4): 「已保存」 on the
+ *   first row (with the 另存为 affordance at its right), the FULL path
+ *   on the row under it — never label and path joined by an auto-wrap.
+ *   The path middle-ellipsizes when it overflows (the whole path rides
+ *   the title attribute), keeping both the head and the file name of
+ *   even a deep temp path readable.
+ * - **Living progress** (owner item 5): the stepper segments light up
+ *   through a ~300ms critically-damped transition instead of snapping
+ *   (opacity/fill; `prefers-reduced-motion` falls back to an
+ *   opacity-only cross-fade), and the current-stage block carries live
+ *   quantitative data right-aligned opposite the two-line stage
+ *   title/description: the elapsed time (mm:ss, ticking) plus the
+ *   stage facts the serve's progress payload now carries (读取字体:
+ *   file count + sizes; 规划字重: slot count; 解析规则: rule count,
+ *   joined by the effective codepoint count once resolved; 移植字形:
+ *   slots + codepoints; 改写名称表: output faces; 保存输出: format +
+ *   an estimated size; 生成报告: check count). The GUI renders what is
+ *   present and degrades to elapsed-only when a stage carries no
+ *   facts; under reduced motion there is no per-second ticker — the
+ *   values still update on every real state change.
+ * - **The metrics section is a real table** (owner item 6): rows are
+ *   the metrics, the two data columns 合并前 / 合并后 are stated ONCE
+ *   in a header row, values are column-aligned (tabular-nums), the
+ *   「无」 placeholder stays, and zero · separators appear anywhere in
+ *   the section — the ?-popover explains the two columns once.
+ *
  * Wording follows the owner-ratified copy spec
  * (`fontalloy-notes/report-copy.md`): real words only, the round-10
  * ruling trims the ?-popovers to one per section heading.
@@ -201,6 +231,125 @@ const NO_VALUE = "无";
 
 function fmt(value: number | null | undefined): string {
   return typeof value === "number" ? value.toLocaleString("en-US") : NO_VALUE;
+}
+
+/* -- round 13, owner item 5: the live facts column ----------------- */
+
+/** How one stage's fact renders (the label word + the value format). */
+interface FactRender {
+  label: string;
+  format: (value: string | number) => string;
+}
+
+/** Bytes as a short human scale (4.4 MB, 820 KB). */
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 KB";
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+  return `${Math.round(bytes / 1024)} KB`;
+}
+
+const plain = (value: string | number): string => String(value);
+
+/**
+ * The serve's fact keys per stage, in display order, with their label
+ * word and value format. Unknown stages or keys render nothing — the
+ * panel degrades forward-compatibly (an older GUI simply ignores a
+ * newer core's extra keys). At most TWO facts render per stage: the
+ * reserved live column holds elapsed + two fact lines.
+ */
+const STAGE_FACTS: Readonly<Record<string, Readonly<Record<string, FactRender>>>> = {
+  loading: {
+    files: { label: "文件", format: (v) => `${v} 个` },
+    bytes: { label: "大小", format: (v) => formatBytes(Number(v)) },
+  },
+  planning: {
+    slots: { label: "档位", format: (v) => `${v} 个` },
+  },
+  resolving: {
+    rules: { label: "规则", format: (v) => `${v} 条` },
+    codepoints: { label: "生效码位", format: (v) => Number(v).toLocaleString("en-US") },
+  },
+  grafting: {
+    slots: { label: "档位", format: (v) => `${v} 个` },
+    codepoints: { label: "码位", format: (v) => Number(v).toLocaleString("en-US") },
+  },
+  rewriting: {
+    faces: { label: "输出面", format: (v) => `${v} 个` },
+  },
+  saving: {
+    format: { label: "格式", format: plain },
+    bytes_est: { label: "估计大小", format: (v) => formatBytes(Number(v)) },
+  },
+  reporting: {
+    checks: { label: "检查", format: (v) => `${v} 项` },
+  },
+};
+
+/**
+ * The current stage's fact lines (`「label value」` strings, at most
+ * two). Absent facts — an older serve, or a stage that carries none —
+ * render nothing and the column shows the elapsed timer alone.
+ */
+function stageFactLines(
+  stage: string | null,
+  facts: Readonly<Record<string, string | number>> | null | undefined,
+): string[] {
+  if (stage === null || facts === null || facts === undefined) return [];
+  const renders = STAGE_FACTS[stage];
+  if (renders === undefined) return [];
+  const lines: string[] = [];
+  for (const key of Object.keys(renders)) {
+    const value = facts[key];
+    if (value === undefined) continue;
+    const render = renders[key]!;
+    lines.push(`${render.label} ${render.format(value)}`);
+    if (lines.length === 2) break;
+  }
+  return lines;
+}
+
+/** Elapsed since an ISO timestamp, as ticking mm:ss (null if unparseable). */
+function elapsedLabel(startedIso: string): string | null {
+  const start = Date.parse(startedIso);
+  if (Number.isNaN(start)) return null;
+  const seconds = Math.max(0, Math.floor((Date.now() - start) / 1000));
+  const mm = Math.floor(seconds / 60);
+  const ss = String(seconds % 60).padStart(2, "0");
+  return `用时 ${mm}:${ss}`;
+}
+
+/* -- round 13, owner item 4: the two-row saved line ---------------- */
+
+/**
+ * Fit a path in its element by MIDDLE-ellipsizing it: the whole path
+ * rides the title attribute (the hover/copy source of truth), the
+ * visible text keeps the head and the tail (the file name survives —
+ * the part a person reads). Binary search over code-point halves, so
+ * surrogate pairs (a CJK directory name) never split.
+ */
+function fitMiddleEllipsis(el: HTMLElement, text: string): void {
+  el.textContent = text;
+  el.title = text;
+  if (el.scrollWidth <= el.clientWidth) return;
+  const chars = Array.from(text);
+  let fitted = "…";
+  let lo = 1;
+  let hi = Math.floor(chars.length / 2);
+  while (lo <= hi) {
+    const half = (lo + hi) >> 1;
+    const candidate = `${chars.slice(0, half).join("")}…${chars
+      .slice(chars.length - half)
+      .join("")}`;
+    el.textContent = candidate;
+    if (el.scrollWidth <= el.clientWidth) {
+      fitted = candidate;
+      lo = half + 1;
+    } else {
+      hi = half - 1;
+    }
+  }
+  el.textContent = fitted;
 }
 
 function basename(path: string | undefined): string {
@@ -311,13 +460,14 @@ const SECTION_HELP: Record<string, SectionHelp> = {
   },
   metrics: {
     note: "描述字体高矮、深浅、行距的一组数值。",
-    // The notation legend keeps its two rows (round 12, owner item 5
-    // as corrected): 「→」 stays, explained; the dash row is GONE —
-    // the no-value placeholder 无 takes its place.
+    // Round 13 (owner item 6): the notation legend explains the table's
+    // two data COLUMNS once — the 「A → B」 pair form is gone with the
+    // pair rows themselves; 无 stays, explained.
     legend: {
-      headers: ["写法", "意思"],
+      headers: ["列", "意思"],
       rows: [
-        ["A → B", "合并前的值 → 合并后的值"],
+        ["合并前", "合并之前，英文字体自己的数值"],
+        ["合并后", "合并之后，从成品文件读回的数值"],
         ["无", "该项在合并前没有数值"],
       ],
     },
@@ -438,6 +588,50 @@ function viaLabel(via: string | undefined): string {
     default:
       return via ?? "?";
   }
+}
+
+/**
+ * The metrics comparison as a REAL table (round 13, owner item 6):
+ * rows are the metrics, the two data columns 合并前 / 合并后 are
+ * stated ONCE in a header row, values are column-aligned
+ * (tabular-nums), the 「无」 placeholder stays for a value the machine
+ * layer could not compute, and zero · separators appear anywhere in
+ * the section — each row is three plain cells.
+ */
+function metricTable(
+  rows: ReadonlyArray<readonly [string, string, string]>,
+): HTMLTableElement {
+  const table = document.createElement("table");
+  table.className = "report-mtable";
+  const head = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  const corner = document.createElement("th");
+  corner.setAttribute("aria-hidden", "true");
+  headRow.append(corner);
+  for (const label of ["合并前", "合并后"]) {
+    const th = document.createElement("th");
+    th.scope = "col";
+    th.textContent = label;
+    headRow.append(th);
+  }
+  head.append(headRow);
+  const body = document.createElement("tbody");
+  for (const [label, before, after] of rows) {
+    const tr = document.createElement("tr");
+    const name = document.createElement("th");
+    name.scope = "row";
+    name.textContent = label;
+    tr.append(name);
+    for (const value of [before, after]) {
+      const td = document.createElement("td");
+      td.textContent = value;
+      if (value === NO_VALUE) td.classList.add("is-none");
+      tr.append(td);
+    }
+    body.append(tr);
+  }
+  table.append(head, body);
+  return table;
 }
 
 /**
@@ -563,31 +757,31 @@ function renderReport(
   }
 
   // v2's before/after metrics, face 0 (the flat sections describe it).
+  // Round 13 (owner item 6): the metrics render as a real TABLE — the
+  // 合并前 / 合并后 columns stated once in the header, values
+  // column-aligned, 「无」 for a value v2 could not compute, no ·
+  // separators anywhere in the section.
   const face = report.metrics?.faces?.[0];
   if (face !== undefined) {
     const section = document.createElement("div");
     section.className = "report-section";
     section.appendChild(sectionHeading("字体尺寸对比", "metrics", helpAnchors));
-    const pair = (
-      label: string,
-      p: { base?: number; output?: number } | undefined,
-    ): void => {
+    const metricRows: Array<[string, string, string]> = [];
+    const pair = (label: string, p: { base?: number; output?: number } | undefined): void => {
       if (p?.base !== undefined || p?.output !== undefined) {
-        // Round 12 (owner item 5, as corrected by the owner):
-        // before/after renders as TWO rows (合并前 / 合并后), never one
-        // 「A — B」-style join; a missing before-value reads 「无」.
-        section.append(
-          fact(`${label} · 合并前`, fmt(p?.base)),
-          fact(`${label} · 合并后`, fmt(p?.output)),
-        );
+        metricRows.push([label, fmt(p?.base), fmt(p?.output)]);
       }
     };
     pair("UPM", face.upem);
     pair("英文宽度", face.latin_advance);
     pair("中文宽度", face.cjk_advance);
+    // The ratio is the OUTPUT's (the machine layer computes no
+    // before-ratio) — a Latin base has no CJK advance to ratio, so
+    // 合并前 reads 「无」.
     if (face.grid_ratio !== undefined) {
-      section.append(fact("中英宽度比", fmt(face.grid_ratio)));
+      metricRows.push(["中英宽度比", NO_VALUE, fmt(face.grid_ratio)]);
     }
+    if (metricRows.length > 0) section.appendChild(metricTable(metricRows));
     const untouched = face.line_height_untouched;
     if (untouched?.hhea || untouched?.typo) {
       section.append(fact("行高保持不变", "是：完全沿用英文字体"));
@@ -629,13 +823,17 @@ function renderReport(
 /**
  * Everything a row can render, collapsed into one comparable string —
  * the poll's 250 ms ticks produce new row objects with IDENTICAL
- * signatures, and identical signatures render NOTHING.
+ * signatures, and identical signatures render NOTHING. The stage facts
+ * serialize by CONTENT (a fresh facts object with the same numbers is
+ * the same signature); the elapsed timer is excluded on purpose — it
+ * updates directly, outside the render.
  */
 function renderSignature(row: BuildRow): string {
   return [
     row.family,
     row.status,
     row.stage ?? "",
+    JSON.stringify(row.stageFacts ?? null),
     row.queuePosition ?? "",
     row.error ?? "",
     row.savedPath ?? "",
@@ -704,6 +902,15 @@ function renderRow(
   // never one dash-joined line. The queue position while queued, the
   // saver note while saving — hidden once the row settles (the saved
   // line / error box own those states).
+  //
+  // Round 13 (owner item 5): the LIVE column sits right-aligned
+  // opposite those two lines — the elapsed timer (mm:ss, ticking while
+  // queued/running) plus up to two stage facts the serve's payload
+  // carries. The artifact handoff (saving) shows no live column: the
+  // handoff is not pipeline time, and the row's own saver note
+  // narrates it. The whole block reserves three lines from the row's
+  // first paint, so differing fact counts never move the rows
+  // underneath (the reserved-height discipline, extended).
   const stageLine = rowEl.querySelector<HTMLElement>("[data-build-stage-line]")!;
   const stageName = rowEl.querySelector<HTMLElement>(
     "[data-build-stage-name]",
@@ -711,29 +918,63 @@ function renderRow(
   const stageNote = rowEl.querySelector<HTMLElement>(
     "[data-build-stage-note]",
   )!;
+  const liveEl = rowEl.querySelector<HTMLElement>("[data-build-stage-live]")!;
+  const elapsedEl = rowEl.querySelector<HTMLElement>(
+    "[data-build-elapsed]",
+  )!;
+  const factEls = rowEl.querySelectorAll<HTMLElement>("[data-build-fact]");
   const parts = stageLineParts(row);
   if (stageName.textContent !== parts.name) stageName.textContent = parts.name;
   if (stageNote.textContent !== parts.note) stageNote.textContent = parts.note;
   stageNote.hidden = parts.note === "";
   stageLine.hidden = parts.name === "" && parts.note === "";
+  const timing = row.status === "queued" || row.status === "running";
+  liveEl.hidden = !timing;
+  elapsedEl.hidden = !timing;
+  if (timing) {
+    elapsedEl.dataset.elapsedFrom = row.submittedAt;
+    const label = elapsedLabel(row.submittedAt);
+    if (label !== null && elapsedEl.textContent !== label) {
+      elapsedEl.textContent = label;
+    }
+  }
+  const factLines = timing
+    ? stageFactLines(row.status === "running" ? row.stage : null, row.stageFacts)
+    : [];
+  factEls.forEach((el, index) => {
+    const line = factLines[index];
+    el.hidden = line === undefined;
+    if (line !== undefined && el.textContent !== line) el.textContent = line;
+  });
 
   const errorEl = rowEl.querySelector<HTMLElement>("[data-build-error]")!;
   errorEl.hidden = row.error === null;
   errorEl.textContent = row.error ?? "";
 
-  // The saved line (round 12): the FULL path as page text (a default
+  // The saved line (round 12; round 13, owner item 4): TWO rows — the
+  // 「已保存」 label on the first (the 另存为 affordance at its right),
+  // the FULL path on the row under it, middle-ellipsized when it
+  // overflows with the whole path in the title attribute (a default
   // directory only the app knows about would be a path nobody can
-  // find), with the 另存为 affordance on the completed row — visible
-  // whenever the artifact is on disk and no handoff is in flight (the
-  // row's own state narrates an in-flight one).
+  // find). The button shows whenever the artifact is on disk and no
+  // handoff is in flight (the row's own state narrates an in-flight
+  // one).
   const savedEl = rowEl.querySelector<HTMLElement>("[data-build-saved]")!;
   savedEl.hidden = row.savedPath === null;
+  const savedLabelEl = rowEl.querySelector<HTMLElement>(
+    "[data-build-saved-label]",
+  )!;
+  // The label word is WRITTEN, not templated: the DOM of a running row
+  // must not carry 「已保存」 at all (hidden text still matches text
+  // locators — a waiting test would read a running build as saved).
+  if (row.savedPath !== null && savedLabelEl.textContent !== "已保存") {
+    savedLabelEl.textContent = "已保存";
+  }
   const savedPathEl = rowEl.querySelector<HTMLElement>(
     "[data-build-saved-path]",
   )!;
   if (row.savedPath !== null) {
-    const line = `已保存：${row.savedPath}`;
-    if (savedPathEl.textContent !== line) savedPathEl.textContent = line;
+    if (savedPathEl.title !== row.savedPath) fitMiddleEllipsis(savedPathEl, row.savedPath);
   }
   const saveAsEl = rowEl.querySelector<HTMLButtonElement>(
     "[data-build-saveas]",
@@ -790,6 +1031,25 @@ export function mountBuildPanel(): void {
 
   const rowsEl = panel.querySelector<HTMLElement>(".build-rows")!;
 
+  // Round 13 (owner item 5): the elapsed ticker. One interval for the
+  // whole panel walks the live elapsed cells (their start timestamp
+  // rides data-elapsed-from) and rewrites the mm:ss text directly —
+  // never through a re-render, so nothing else in a row can move.
+  // Under prefers-reduced-motion there is NO ticking: the interval
+  // stands down and the elapsed value still refreshes on every real
+  // state change (the render writes it too).
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  window.setInterval(() => {
+    if (reducedMotion.matches) return;
+    for (const el of rowsEl.querySelectorAll<HTMLElement>("[data-build-elapsed]")) {
+      if (el.hidden) continue;
+      const from = el.dataset.elapsedFrom;
+      if (from === undefined) continue;
+      const label = elapsedLabel(from);
+      if (label !== null && el.textContent !== label) el.textContent = label;
+    }
+  }, 1000);
+
   // Round 11 (panel sizing): the panel is content-sized (compact) while
   // calm and takes its full ceiling ONLY while a report disclosure is
   // open. The class flips on the details' toggle events and after every
@@ -824,11 +1084,24 @@ export function mountBuildPanel(): void {
       <div class="build-steps">
         ${STAGES.map(([, label]) => `<span class="build-step" title="${label}"></span>`).join("")}
       </div>
-      <div class="build-stage-line" data-build-stage-line><span class="build-stage-name" data-build-stage-name></span><span class="build-stage-note" data-build-stage-note></span></div>
+      <div class="build-stage-line" data-build-stage-line>
+        <div class="build-stage-text">
+          <span class="build-stage-name" data-build-stage-name></span>
+          <span class="build-stage-note" data-build-stage-note></span>
+        </div>
+        <div class="build-stage-live" data-build-stage-live hidden>
+          <span class="build-stage-elapsed" data-build-elapsed hidden></span>
+          <span class="build-stage-fact" data-build-fact="0" hidden></span>
+          <span class="build-stage-fact" data-build-fact="1" hidden></span>
+        </div>
+      </div>
       <div class="build-error" data-build-error role="alert" hidden></div>
       <div class="build-saved" data-build-saved hidden>
+        <div class="build-saved-head">
+          <span class="build-saved-label" data-build-saved-label></span>
+          <button class="build-saveas" data-build-saveas type="button" hidden>另存为</button>
+        </div>
         <span class="build-saved-path" data-build-saved-path></span>
-        <button class="build-saveas" data-build-saveas type="button" hidden>另存为</button>
       </div>
       <div class="build-notice" data-build-notice role="status" hidden></div>
       <div class="build-report" data-build-report hidden></div>

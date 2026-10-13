@@ -339,10 +339,15 @@ test("J11 Web 目标 — detection, picks, preset, live merge, report, download,
       // Round 12 (owner item 3, no web regression): the web save stays
       // the BROWSER download path — the completion line shows it and
       // the completed row carries the same 另存为 affordance (a second
-      // browser download when clicked).
+      // browser download when clicked). Round 13 (owner item 4): the
+      // saved line is TWO rows — 「已保存」 first, the path under it
+      // (the whole path rides the title attribute).
+      await expect(
+        panel.locator("[data-build-saved-label]").first(),
+      ).toHaveText("已保存");
       await expect(
         panel.locator("[data-build-saved-path]").first(),
-      ).toHaveText(/^已保存：ChHsich\.ttf$/);
+      ).toHaveAttribute("title", "ChHsich.ttf");
       await expect(
         panel.locator("[data-build-saveas]").first(),
       ).toBeVisible();
@@ -373,14 +378,23 @@ test("J11 Web 目标 — detection, picks, preset, live merge, report, download,
         "缺失",
         "字体尺寸对比",
         "UPM",
-        "UPM · 合并前",
-        "UPM · 合并后",
+        "英文宽度",
+        "中文宽度",
         "中英宽度比",
         "行高保持不变",
         "字重档位",
       ]) {
         await expect(panel).toContainText(label);
       }
+      // Round 13 (owner item 6): the metrics section is a real table —
+      // the 合并前 / 合并后 data columns stated ONCE in a header row.
+      const metricsTable = panel.locator(".report-mtable").first();
+      await expect(metricsTable).toBeVisible();
+      expect(
+        (await metricsTable.locator("thead th").allTextContents()).filter(
+          (h) => h === "合并前" || h === "合并后",
+        ),
+      ).toEqual(["合并前", "合并后"]);
       // Round 12 (owner item 4): the borrow rows read the ratified
       // 成品档位 ← 来源字体 direction — the output weight LEFT of the
       // arrow, the via qualifier after ·.
