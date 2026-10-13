@@ -828,6 +828,33 @@ test.describe("kit demo page", () => {
     await expect(
       rows.first().locator('[data-role="select-weight"]'),
     ).toBeVisible();
+
+    // Round 13 (owner item 2): the format topic's auto option carries
+    // the SAME badge treatment the siblings give their defaults — the
+    // closed trigger reads 自动 + a 默认 badge (where they say 推荐),
+    // no parenthetical anywhere.
+    const format = page.locator('[data-role="select-outputFormat"]');
+    await expect(format.locator(".kit-csel")).toHaveText(/自动 默认/);
+    await expect(format.locator(".kit-csel .kit-badge")).toHaveText("默认");
+    await expect(format.locator(".kit-csel")).not.toContainText("（");
+
+    // The ?-popover's first worked row is the auto tier, ahead of the
+    // three format rows (which lost their （默认） parenthetical).
+    await pointerClick(
+      page,
+      page.locator(".kit-qh[aria-label='输出格式是什么']"),
+    );
+    const pop = page.locator("[data-help-popup='output-format']");
+    await expect(pop).toBeVisible();
+    const tableRows = pop.locator(".kit-wtab tbody tr");
+    await expect(tableRows).toHaveCount(4);
+    await expect(tableRows.first()).toContainText("自动 · 默认");
+    await expect(tableRows.first()).toContainText(
+      "单一字面基底输出 TTF；家族全字重打包为 TTC",
+    );
+    await expect(pop).not.toContainText("（默认）");
+    await page.keyboard.press("Escape");
+    await expect(pop).toBeHidden();
   });
 
   /* ---------- locate flow ---------- */

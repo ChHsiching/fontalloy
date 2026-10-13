@@ -1989,6 +1989,43 @@ test.describe("user journey", () => {
         }
       });
 
+      await step("J8.3b the format topic: 自动 badge + the auto popover row (round 13)", async () => {
+        // Round 13 (owner item 2): the auto option carries the SAME
+        // badge the sibling settings use (「默认」 where they say
+        // 「推荐」) — no parenthetical anywhere — and the popover's
+        // FIRST worked row explains the auto tier ahead of the three
+        // format rows. The trigger currently reads WOFF2 (J8.2 left
+        // it there — J8.4 resumes from that state), so the badge is
+        // asserted on the option row; the closed trigger's badge has
+        // its own check in the kit demo suite (fresh value = auto).
+        const formatSelect = page.locator("[data-role='select-outputFormat']");
+        await pointerClick(page, formatSelect.locator(".kit-csel"));
+        const autoOption = formatSelect
+          .locator(".kit-cso")
+          .filter({ hasText: /^自动/ });
+        await expect(autoOption).toHaveText(/自动 默认/);
+        await expect(autoOption.locator(".kit-badge")).toHaveText("默认");
+        await expect(autoOption).not.toContainText("（");
+        await expect(formatSelect.locator(".kit-cso")).toHaveCount(4);
+        await page.keyboard.press("Escape");
+        const anchor = page.locator(
+          ".settings-rows .kit-qh[aria-label='输出格式是什么']",
+        );
+        await pointerClick(page, anchor);
+        const pop = page.locator("[data-help-popup='output-format']");
+        await expect(pop).toBeVisible();
+        const rows = pop.locator(".kit-wtab tbody tr");
+        await expect(rows).toHaveCount(4);
+        await expect(rows.first()).toContainText("自动 · 默认");
+        await expect(rows.first()).toContainText(
+          "单一字面基底输出 TTF；家族全字重打包为 TTC",
+        );
+        await expect(rows.nth(1)).toContainText("通用桌面");
+        await expect(pop).not.toContainText("（默认）");
+        await page.keyboard.press("Escape");
+        await expect(pop).toBeHidden();
+      });
+
       await step("J8.4 width chips select 1.8× then 1.5×; the recipe reflects it", async () => {
         // No service: the synthesize flow offers the CLI panel, whose
         // YAML is the recipe the CLI would run — the width knob shows.
@@ -2020,13 +2057,16 @@ test.describe("user journey", () => {
         await expect(yaml).not.toContainText("width_factor");
         // Round 12 (owner item 7): the output-format setting rides the
         // recipe's output.format — J8.2 left it at WOFF2, so the YAML
-        // names woff2; back on TTF（默认） the YAML reads ttf again.
+        // names woff2; back on TTF the YAML reads ttf again. Round 13
+        // (owner item 2): the TTF option label is the bare proper noun
+        // — the 默认 badge moved onto 自动 — so the row is matched by
+        // its exact text (the auto row's description also names TTF).
         await expect(yaml).toContainText("format: woff2");
         const formatSelect = page.locator("[data-role='select-outputFormat']");
         await pointerClick(page, formatSelect.locator(".kit-csel"));
         await pointerClick(
           page,
-          formatSelect.locator(".kit-cso", { hasText: "TTF（默认）" }),
+          formatSelect.locator(".kit-cso").filter({ hasText: /^TTF$/ }),
         );
         await expect(yaml).toContainText("format: ttf");
       });

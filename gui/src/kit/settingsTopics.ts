@@ -13,7 +13,10 @@
  * matches its sibling labels (1.8 倍 / 1.5 倍). The output-format topic
  * (round 12, owner item 7) has no prototype ancestor: its labels are
  * the formats' proper nouns and its popover rows carry the
- * report-copy §2.5 sentences.
+ * report-copy §2.5 sentences. Round 13 (owner item 2) gives its auto
+ * option the same badge treatment the siblings use — 「自动」 + a
+ * 「默认」 badge where they say 「推荐」, no parenthetical anywhere —
+ * and the popover's first worked row explains the auto tier.
  */
 
 import { mountAppSelect, type AppSelect, type AppSelectOption } from "./appSelect";
@@ -149,11 +152,15 @@ export const SETTINGS_TOPICS: readonly SettingsTopic[] = [
   {
     // Round 12, owner item 7: the fourth synthesis setting. The labels
     // are the formats' real proper-noun names (TTF / TTC / WOFF2); the
-    // popover's worked rows use the report-copy §2.5 sentences.
+    // popover's worked rows use the report-copy §2.5 sentences. Round
+    // 13 (owner item 2): the auto option carries the SAME badge the
+    // sibling settings give their defaults (「默认」 where they say
+    // 「推荐」 — no parenthetical anywhere), and the popover opens with
+    // the auto row ahead of the three format rows.
     key: "outputFormat",
     name: "输出格式",
     options: [
-      { value: "auto", label: "自动（默认）" },
+      { value: "auto", label: "自动", badge: "默认" },
       { value: "ttf", label: "TTF" },
       { value: "ttc", label: "TTC" },
       { value: "woff2", label: "WOFF2" },
@@ -168,7 +175,8 @@ export const SETTINGS_TOPICS: readonly SettingsTopic[] = [
         wrap.append(
           helpNote("成品的文件格式，决定体积和用途："),
           workedTable(["格式", "适合"], [
-            ["TTF（默认）", "通用桌面，几乎所有系统都支持"],
+            ["自动 · 默认", "单一字面基底输出 TTF；家族全字重打包为 TTC"],
+            ["TTF", "通用桌面，几乎所有系统都支持"],
             ["TTC", "多字重合一文件，体积更小"],
             ["WOFF2", "网页用，为网页加载设计，文件更小"],
           ]),
