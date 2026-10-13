@@ -21,7 +21,9 @@
  * - **Fixed panel height.** The panel never sizes to its content; the
  *   rows region owns the scrolling (reserved gutter). A build can grow,
  *   settle, and render its report without the panel's clientHeight or
- *   scrollbars ever moving.
+ *   scrollbars ever moving. (Superseded by round 11 below: the panel
+ *   now sizes to content while calm — the no-flicker machinery is what
+ *   survives, not the fixed height.)
  * - **The stepper is the progress.** Upcoming faint / current active /
  *   done lit-solid, plus ONE current-stage line (stage term + ≤30-char
  *   note, doubling as the queue-position line while queued). The
@@ -36,14 +38,47 @@
  *   calm (saved line first). The machine JSON froze the app for tens
  *   of seconds when stringified into a <pre>; it is gone from the UI.
  *
+ * Round 11 (the sizing + terminology round):
+ *
+ * - **Content-sized while calm.** The panel sizes to its content (the
+ *   compact idle/progress state) with the round-10 max as the ceiling,
+ *   and grows to that ceiling ONLY while a report disclosure is open
+ *   (`.is-report-open`). The signature-gated rendering, the reserved
+ *   stage-line block and the reserved scrollbar gutter all survive, so
+ *   the poll still moves nothing — the height changes only on real
+ *   state transitions (a row settling, the disclosure toggling), never
+ *   frame to frame.
+ * - **Panel close ×.** The title row carries the kit close glyph with
+ *   the toast ×'s own treatment; it clears every row any time —
+ *   running builds included (the serve has no abort endpoint; the UI
+ *   simply stops tracking them) — and the next synthesize re-opens
+ *   the panel fresh.
+ * - **英文字体 / 中文字体, real words only** (the round-11 ruling):
+ *   user-facing copy never says 基底 or 供体 — those stay in the
+ *   machine layer (JSON keys `base`/`donor-*`, the glossary doc, code
+ *   identifiers). With exactly one donor the source list drops the
+ *   role numbering entirely and reads the fonts' real names.
+ * - **Full ?-popovers.** One ? per section heading (the round-10
+ *   ruling stands), each popover carrying the title explanation PLUS
+ *   every sub-item of its section as a compact worked table (the
+ *   round-6 verbatim style, no essays) — and the notation legend
+ *   lives where it applies: 「A → B」 and 「—」 in the metrics
+ *   popover, 「X ← Y」 in the weight-slot one.
+ *
  * Wording follows the owner-ratified copy spec
  * (`fontalloy-notes/report-copy.md`): real words only, the round-10
  * ruling trims the ?-popovers to one per section heading.
  */
 
 import { synthStore, removeBuild, type BuildRow } from "../service/state";
-import { mountHelpPopover, type HelpPopover } from "../kit/helpPopover";
+import {
+  mountHelpPopover,
+  helpNote,
+  workedTable,
+  type HelpPopover,
+} from "../kit/helpPopover";
 import { brandMark } from "../kit/topBar";
+import { icon } from "../kit/icons";
 import { store } from "../state";
 import { variantDisplayName } from "./picker";
 
@@ -53,10 +88,10 @@ import { variantDisplayName } from "./picker";
  * line shown while the stage is current.
  */
 const STAGES: ReadonlyArray<readonly [string, string, string]> = [
-  ["loading", "读取字体", "打开基底与供体字体，读取字重、样式和字符范围。"],
+  ["loading", "读取字体", "打开英文与中文字体，读取字重、样式和字符范围。"],
   ["planning", "规划字重", "确定成品要生成哪些字重与样式，每个档位用哪款字体出字。"],
   ["resolving", "解析规则", "把规则展开成一张对照表：每个码位最终由哪款字体提供。"],
-  ["grafting", "移植字形", "把供体字形缩放到基底尺寸后搬进成品，并重建码位对照表。"],
+  ["grafting", "移植字形", "把中文字形缩放到英文字体尺寸后搬进成品，并重建码位对照表。"],
   ["rewriting", "改写名称表", "给成品写入自己的字体名和样式名，并校正字体的尺寸标记。"],
   ["saving", "保存输出", "按选定格式（ttf / ttc / woff2）把成品字体写入磁盘。"],
   ["reporting", "生成报告", "重新打开写好的文件核对一遍，生成这份验证报告。"],
@@ -151,26 +186,128 @@ function sourceName(id: string | undefined, path: string | undefined): string {
 }
 
 /**
- * The section-heading glossary (report-copy §2, one entry per report
- * section — the round-10 ruling: ONE ? per section heading, the
- * per-fact ?'s are gone).
+ * One report section's ?-popover content (round 11, owner items 4–5):
+ * the section title's explanation (`note`, the report-copy §2 glossary
+ * sentence) plus EVERY sub-item the section renders, as a compact
+ * worked table — the round-6 verbatim style, no essays. `legend` is
+ * the notation table that leads the popover where the section's rows
+ * carry notation: 「A → B」 / 「—」 for the metrics pairs, 「X ← Y」 for
+ * the weight-slot borrows. Every explanation string is the glossary's
+ * own sentence (report-copy §2), lightly prefaced for its row.
  */
-const GLOSSARY: Record<string, string> = {
-  report: "合成完成后自动生成的核对结果。",
-  "built-font": "本次合成生成的那份字体文件。",
-  "source-fonts": "基底字体作合并容器，供体字体提供补充字形。",
-  merge: "把多款字体里的字形按规则拼成一套新字体。",
-  precedence: "多条规则同时管到一个字时，谁的规则先算。",
-  "coverage-check": "对照规则要求，逐项看哪些码位没做进去。",
-  metrics: "描述字体高矮、深浅、行距的一组数值。",
-  "weight-slot": "成品要生成的一套字重与样式，如“粗体·斜体”。",
+interface SectionHelp {
+  note: string;
+  headers: readonly string[];
+  rows: readonly (readonly string[])[];
+  legend?: {
+    headers: readonly string[];
+    rows: readonly (readonly string[])[];
+  };
+}
+
+const SECTION_HELP: Record<string, SectionHelp> = {
+  report: {
+    note: "合成完成后自动生成的核对结果。",
+    headers: ["各部分", "是什么"],
+    rows: [
+      ["成品文件", "生成的字体文件、格式与校验值"],
+      ["来源字体", "参与合并的英文与中文字体"],
+      ["合并统计", "码位各来自哪款字体、各有多少"],
+      ["规则优先级", "保留、补字、替换、重叠各多少"],
+      ["覆盖检查", "要求覆盖、实际覆盖与缺失"],
+      ["字体尺寸对比", "合并前后尺寸数值的变化"],
+      ["字重档位", "每一档的字形由哪款字体提供"],
+    ],
+  },
+  "built-font": {
+    note: "本次合成生成的那份字体文件。",
+    headers: ["项目", "是什么"],
+    rows: [
+      ["输出格式", "成品的文件格式，决定体积和用途"],
+      ["SHA-256 校验值", "文件的数字指纹；改动一个字节，值就会变"],
+    ],
+  },
+  "source-fonts": {
+    note: "英文字体作合并容器，中文字体提供补充字形。",
+    headers: ["项目", "是什么"],
+    rows: [
+      ["英文字体", "作为合并容器的字体；成品沿用它的字体名和行高"],
+      ["中文字体", "提供补充字形的字体"],
+      ["N 个码位", "这款字体在本次合并里提供的码位数量"],
+    ],
+  },
+  merge: {
+    note: "把多款字体里的字形按规则拼成一套新字体。",
+    headers: ["项目", "是什么"],
+    rows: [
+      ["参与合并的码位", "本次合成逐一定过出处的码位总数"],
+      ["英文字体提供", "沿用英文字体原本字形的码位数"],
+      ["中文字体补充", "由中文字体补进来的码位数"],
+      ["成品收录", "成品里真的收录了的码位数量"],
+    ],
+  },
+  precedence: {
+    note: "多条规则同时管到一个字时，谁的规则先算。",
+    headers: ["项目", "是什么"],
+    rows: [
+      ["保留", "这个码位用英文字体原本的字形，不做改动"],
+      ["补字", "英文字体没有这个字，用中文字体补上"],
+      ["替换", "这个码位改用中文字体字形，通常是你指定的"],
+      ["规则重叠", "两条同级规则管到同一批字，后写的那条生效"],
+    ],
+  },
+  "coverage-check": {
+    note: "对照规则要求，逐项看哪些码位没做进去。",
+    headers: ["项目", "是什么"],
+    rows: [
+      ["要求覆盖", "规则要求合并进来的码位数量"],
+      ["实际覆盖", "成品里真的收录了的码位数量"],
+      ["缺失", "要求覆盖、但成品里没有的码位"],
+    ],
+  },
+  metrics: {
+    note: "描述字体高矮、深浅、行距的一组数值。",
+    legend: {
+      headers: ["写法", "意思"],
+      rows: [
+        ["A → B", "合并前的值 → 合并后的值"],
+        ["—", "该项原本没有值"],
+      ],
+    },
+    headers: ["项目", "是什么"],
+    rows: [
+      ["UPM", "字体坐标系的刻度，常用 1000 或 2048 格"],
+      ["英文宽度", "英文字符占的宽度"],
+      ["中文宽度", "中文字符占的宽度"],
+      ["中英宽度比", "一个汉字宽度相当于几个英文字符，等宽标准是 2"],
+      ["行高保持不变", "行高数值完全沿用英文字体，没有改写"],
+    ],
+  },
+  "weight-slot": {
+    note: "成品要生成的一套字重与样式，如“粗体·斜体”。",
+    legend: {
+      headers: ["写法", "意思"],
+      rows: [
+        ["X ← Y", "借用来源：Y 这款字体提供了这一档"],
+        ["直立 / 斜体", "这一档的样式：不倾斜 / 向右倾斜"],
+      ],
+    },
+    headers: ["项目", "是什么"],
+    rows: [
+      ["字重编号", "字重的数字编号，400 是常规、700 是粗体"],
+      ["自动取最近", "自动挑笔画粗细最接近的那一款"],
+      ["指定字重", "按你指定的字重精确选取，不做近似"],
+      ["锁定", "不看其他条件，固定用你锁定的那一款"],
+    ],
+  },
 };
 
 /**
- * The section heading's ?-anchor: title `X 是什么`, body the glossary
- * entry. The popup carries `.build-help-pop` so it stacks ABOVE this
- * panel (the popups live on <body>, where the panel's own z-index 880
- * would otherwise cover them).
+ * The section heading's ?-anchor: title `X 是什么`, body the note plus
+ * the compact sub-item tables (and the notation legend first, where the
+ * section carries one). The popup carries `.build-help-pop` so it
+ * stacks ABOVE this panel (the popups live on <body>, where the
+ * panel's own z-index 880 would otherwise cover them).
  */
 function helpAnchor(
   label: string,
@@ -181,11 +318,16 @@ function helpAnchor(
     id: helpKey,
     title: `${label}是什么`,
     buttonLabel: `${label}是什么`,
+    width: 340,
     build: () => {
-      const p = document.createElement("p");
-      p.className = "kit-sub";
-      p.textContent = GLOSSARY[helpKey]!;
-      return p;
+      const wrap = document.createElement("div");
+      const def = SECTION_HELP[helpKey]!;
+      wrap.append(helpNote(def.note));
+      if (def.legend !== undefined) {
+        wrap.append(workedTable(def.legend.headers, def.legend.rows));
+      }
+      wrap.append(workedTable(def.headers, def.rows));
+      return wrap;
     },
   });
   help.popup.classList.add("build-help-pop");
@@ -267,6 +409,7 @@ function renderReport(
   container: HTMLElement,
   row: BuildRow,
   helpAnchors: HelpPopover[],
+  onToggle: () => void,
 ): void {
   container.replaceChildren();
   const report = row.report;
@@ -274,6 +417,9 @@ function renderReport(
 
   const details = document.createElement("details");
   details.className = "report-details";
+  // Round 11 (panel sizing): the disclosure drives the panel's expanded
+  // state — the panel grows to its ceiling only while a report is open.
+  details.addEventListener("toggle", onToggle);
 
   const body = document.createElement("div");
   body.className = "report-body";
@@ -298,14 +444,32 @@ function renderReport(
     const sources = document.createElement("div");
     sources.className = "report-section";
     sources.appendChild(sectionHeading("来源字体", "source-fonts", helpAnchors));
+    // Round 11 (owner item 2): with exactly ONE donor the list drops
+    // the role labels and numbering entirely — the rows read the fonts'
+    // real names (the picker has exactly two slots; the names say which
+    // is which). Numbered 中文字体 N labels exist only once a second
+    // donor joins a report.
+    const donorCount = report.sources.filter((source) =>
+      (source.id ?? source.role ?? "").startsWith("donor"),
+    ).length;
+    const plainNames = donorCount === 1;
+    let donorOrdinal = 0;
     for (const source of report.sources) {
       const id = source.id ?? source.role ?? "字体";
-      const label =
-        id === "base" ? "基底" : id.startsWith("donor") ? `供体 ${Number(id.slice("donor-".length)) + 1}` : id;
+      const name = sourceName(id, source.path);
+      const label = plainNames
+        ? name
+        : id === "base"
+          ? "英文字体"
+          : id.startsWith("donor")
+            ? `中文字体 ${++donorOrdinal}`
+            : id;
       sources.append(
         fact(
           label,
-          `${sourceName(source.id ?? source.role, source.path)} · ${fmt(source.codepoints)} 个码位`,
+          plainNames
+            ? `${fmt(source.codepoints)} 个码位`
+            : `${name} · ${fmt(source.codepoints)} 个码位`,
         ),
       );
     }
@@ -318,8 +482,8 @@ function renderReport(
     section.className = "report-section";
     section.appendChild(sectionHeading("合并统计", "merge", helpAnchors));
     section.append(fact("参与合并的码位", fmt(summary.codepoints_total)));
-    section.append(fact("基底提供", fmt(summary.from_base)));
-    section.append(fact("供体补充", fmt(summary.from_donors)));
+    section.append(fact("英文字体提供", fmt(summary.from_base)));
+    section.append(fact("中文字体补充", fmt(summary.from_donors)));
     section.append(fact("成品收录", fmt(summary.output_codepoints)));
     body.appendChild(section);
   }
@@ -329,9 +493,9 @@ function renderReport(
     const section = document.createElement("div");
     section.className = "report-section";
     section.appendChild(sectionHeading("规则优先级", "precedence", helpAnchors));
-    section.append(fact("保留基字形", fmt(counts.base)));
+    section.append(fact("保留", fmt(counts.base)));
     section.append(fact("补字", fmt(counts.fill)));
-    section.append(fact("替换字形", fmt(counts.override)));
+    section.append(fact("替换", fmt(counts.override)));
     const conflicts = report.precedence?.same_layer_conflicts?.length ?? 0;
     section.append(fact("规则重叠", fmt(conflicts)));
     body.appendChild(section);
@@ -373,7 +537,7 @@ function renderReport(
     }
     const untouched = face.line_height_untouched;
     if (untouched?.hhea || untouched?.typo) {
-      section.append(fact("行高保持不变", "是：完全沿用基底字体"));
+      section.append(fact("行高保持不变", "是：完全沿用英文字体"));
     }
     body.appendChild(section);
   }
@@ -392,7 +556,7 @@ function renderReport(
       section.append(
         fact(
           `${fmt(slot.weight)} · ${slot.style === "italic" ? "斜体" : "直立"}`,
-          borrows || "这一档没有用供体字形",
+          borrows || "这一档没有用中文字体",
         ),
       );
     }
@@ -426,6 +590,7 @@ function renderSignature(row: BuildRow): string {
 function renderRow(
   rowEl: HTMLElement,
   row: BuildRow,
+  onReportToggle: () => void,
 ): void {
   const signature = renderSignature(row);
   if (rowEl.dataset.renderSignature === signature) return;
@@ -491,7 +656,7 @@ function renderRow(
       reportAnchors.delete(rowEl);
     }
     const anchors: HelpPopover[] = [];
-    renderReport(reportEl, row, anchors);
+    renderReport(reportEl, row, anchors, onReportToggle);
     reportAnchors.set(rowEl, anchors);
     renderedReports.set(rowEl, row.report);
   }
@@ -510,7 +675,7 @@ export function mountBuildPanel(): void {
   panel.setAttribute("aria-label", "合成任务");
   panel.hidden = true;
   panel.innerHTML = `
-    <div class="build-panel-title">合成任务</div>
+    <div class="build-panel-title">合成任务<button class="build-close" aria-label="关闭面板" type="button">${icon("close")}</button></div>
     <div class="build-rows" role="status" aria-live="polite"></div>
   `;
   document.body.appendChild(panel);
@@ -518,6 +683,27 @@ export function mountBuildPanel(): void {
   panel.querySelector(".build-panel-title")!.prepend(brandMark(18));
 
   const rowsEl = panel.querySelector<HTMLElement>(".build-rows")!;
+
+  // Round 11 (panel sizing): the panel is content-sized (compact) while
+  // calm and takes its full ceiling ONLY while a report disclosure is
+  // open. The class flips on the details' toggle events and after every
+  // store render (a dismissed row may have been the open one).
+  const syncPanelSize = (): void => {
+    const reportOpen =
+      rowsEl.querySelector("details.report-details[open]") !== null;
+    panel.classList.toggle("is-report-open", reportOpen);
+  };
+
+  // Round 11 (owner item 6): the panel's own close × — the kit close
+  // glyph with the toast ×'s treatment. It clears every row any time
+  // (running builds included: the serve exposes no abort endpoint, so
+  // closing means the UI stops tracking them) and hides the panel; the
+  // next synthesize re-opens it fresh.
+  panel
+    .querySelector<HTMLButtonElement>(".build-close")!
+    .addEventListener("click", () => {
+      for (const row of [...synthStore.get().builds]) removeBuild(row.id);
+    });
 
   const buildRowEl = (): HTMLElement => {
     const row = document.createElement("article");
@@ -604,8 +790,11 @@ export function mountBuildPanel(): void {
         byId.set(row.id, el);
         rowsEl.appendChild(el);
       }
-      renderRow(el, row);
+      renderRow(el, row, syncPanelSize);
     }
+    // A dismissed row may have been the one holding the open report —
+    // re-sync the expanded state after every store render.
+    syncPanelSize();
   };
 
   synthStore.subscribe(render);

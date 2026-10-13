@@ -379,12 +379,16 @@ body {
 
 /* ---------- build panel (issue #16) ----------
    Synthesis progress + verification report as a fixed, non-modal panel
-   above the stats bar. Round 10: the panel height is FIXED (it never
-   sizes to content), and the rows region owns the scrolling with a
-   reserved gutter — a build can grow, settle, and render its report
-   without the panel's clientHeight or scrollbars ever moving (the
-   round-6 oscillation class). The workspace underneath stays fully
-   interactive — builds never block browsing or queueing more. */
+   above the stats bar. Round 11: the panel sizes to CONTENT while
+   idle/progress (compact) with the round-10 max as its ceiling, and
+   takes the full ceiling ONLY while a report disclosure is open
+   (.is-report-open — the class is toggled by the details' toggle
+   events and re-synced on every store render). The rows region still
+   owns the scrolling with a reserved gutter, and the render stays
+   signature-gated — so the 250 ms poll never moves the height: it
+   changes only on real transitions (a row settling, the disclosure
+   toggling), never frame to frame. The workspace underneath stays
+   fully interactive — builds never block browsing or queueing more. */
 
 .build-panel {
   position: fixed;
@@ -392,7 +396,7 @@ body {
   bottom: 52px; /* the 42px stats bar plus a gap */
   z-index: 880;
   width: 400px;
-  height: min(60vh, 520px); /* fixed: no content-driven height change */
+  max-height: min(60vh, 520px); /* the ceiling; content-sized below it */
   display: flex;
   flex-direction: column;
   border-radius: 12px;
@@ -404,6 +408,12 @@ body {
 
 .build-panel[hidden] {
   display: none;
+}
+
+/* The expanded state: only a report disclosure being open buys the
+   full ceiling (round 11). */
+.build-panel.is-report-open {
+  height: min(60vh, 520px);
 }
 
 /* The panel's ?-popovers (mounted on <body> by the kit) stack ABOVE
@@ -426,6 +436,34 @@ body {
   letter-spacing: 0.04em;
 }
 
+/* Round 11 (owner item 6): the panel's close × — the kit close glyph
+   with the toast ×'s own treatment (kit-msg-close): bare button, 3px
+   padding, 4px radius, ink3 resting / ink on hover. It clears every
+   row any time; the next synthesize re-opens the panel fresh. */
+.build-close {
+  margin-left: auto;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  padding: 3px;
+  border-radius: 4px;
+  color: var(--ink3);
+  cursor: pointer;
+}
+
+.build-close svg {
+  width: 12px;
+  height: 12px;
+  display: block;
+}
+
+.build-close:hover {
+  color: var(--ink);
+}
+
 .build-rows {
   flex: 1;
   min-height: 0;
@@ -435,7 +473,13 @@ body {
    * the appear/disappear oscillation. */
   scrollbar-gutter: stable;
   overscroll-behavior: contain;
-  padding: 6px 0;
+  /* The bottom padding SWALLOWS the row entrance's rise (round 11):
+   * the kit-rise-in translate (≤8px) extends a entering row's
+   * scrollable overflow past its rest position — in the content-sized
+   * panel that briefly read as scrollHeight > clientHeight and flipped
+   * a scrollbar for two frames. 14px of reserved space keeps the
+   * transient inside the region, so the scrollbar never appears. */
+  padding: 6px 0 14px;
 }
 
 .build-row {
