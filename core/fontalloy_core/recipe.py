@@ -55,6 +55,8 @@ path string, a mapping with a ``path``, or a mapping naming a catalog
         instance:
           wght: 600
         sha256: "<64 hex chars>"       # optional: pin the file's exact bytes
+      - path: AlloyFamily-Regular.ttf  # round 13: a path may carry a pattern
+        pattern: "AlloyFamily-*"       # same-dir siblings join the reference
     normalization:
       mode: grid
       quote_dash_width: fullwidth
@@ -65,7 +67,12 @@ thing wherever it is run. A path reference may pin its file with
 ``sha256`` (64 lowercase hex): the build verifies the pin when it loads
 the file and fails naming the reference and both hashes on a mismatch;
 without a pin the build proceeds and the report still records the
-file's hash. Catalog references never carry URLs: the
+file's hash. A path reference may also carry a ``pattern`` (round 13):
+a bare-filename glob scanned against the named file's own directory,
+pulling every matching font file (ttf/otf/ttc/woff2) into the
+reference — one reference carrying a whole local family's weight
+matrix, exactly what a catalog ``pattern`` does for a multi-file zip.
+Catalog references never carry URLs: the
 assets machinery resolves them against the sha256-verified fetched
 catalog (``fontalloy assets fetch``), so a recipe names pinned source
 fonts, exactly what CI builds and the storefront releases. :func:`parse_recipe` is the same schema over
@@ -82,10 +89,12 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass, field
+from fnmatch import fnmatchcase
 from pathlib import Path
 
 import yaml
 
+from fontalloy_core.catalog import font_suffixes
 from fontalloy_core.errors import RecipeError
 from fontalloy_core.normalize import (
     DEFAULT_OPTICAL_RATIO,
@@ -137,9 +146,11 @@ _TARGET_FIELDS = (CODEPOINT, RANGE, SET)
 #: The keys a font-reference mapping accepts: ``path`` (a font file,
 #: resolved against the recipe) or ``family`` (a catalog family pinned
 #: by the manifest; ``variant`` disambiguates a family with several
-#: entries, ``pattern`` is a bare-filename glob narrowing a multi-file
-#: artifact such as a Nerd Fonts zip), plus ``face``/``instance`` and
-#: ``sha256`` (a path reference's optional content pin).
+#: entries), plus ``face``/``instance`` and ``sha256`` (a path
+#: reference's optional content pin). ``pattern`` — a bare-filename
+#: glob — narrows a multi-file artifact of either form: a catalog zip's
+#: extracted faces, or (round 13) the named path's same-directory
+#: sibling font files.
 REF_FIELDS = ("path", "face", "instance", "family", "variant", "pattern", "sha256")
 
 #: A pinned source hash: 64 lowercase hex characters, like the catalog
@@ -167,7 +178,11 @@ class FontRef:
     such as a Nerd Fonts zip, whose extracted directory carries several
     internal families) and ``artifact`` with the manifest-pinned file
     the reference resolved through (the zip or the bare font file),
-    which the build's source records carry as provenance.
+    which the build's source records carry as provenance. A path
+    reference with a ``pattern`` (round 13) resolves its own
+    ``paths`` at parse time — the named file's same-directory sibling
+    font files matching the glob — so a local family pick's whole
+    weight matrix rides one reference.
 
     ``face`` selects a face of a TTC collection (``None`` means "not a
     collection reference"). ``instance`` pins variable-font axis values
@@ -699,6 +714,45 @@ def _parse_interval(value: object, where: str) -> Interval:
     return (start, end)
 
 
+def _parse_pattern(value: object, field: str) -> str:
+    """Parse one ``pattern`` — a bare-filename glob, both reference forms."""
+    if not _is_path_string(value) or "/" in value or "\\" in value:
+        raise RecipeError(
+            f"font reference 'pattern' in recipe field {field!r} must be a "
+            f'bare filename glob like "Family-Regular*.ttf" (got {value!r})'
+        )
+    return value
+
+
+def _same_dir_siblings(path: Path, pattern: str, field: str) -> tuple[Path, ...]:
+    """The font files a path reference's ``pattern`` pulls in (round 13).
+
+    The named file's own directory is scanned; every FONT file whose
+    name matches the bare-filename glob joins the reference's ``paths``
+    (sorted, the same deterministic file order the catalog resolution
+    produces), so one path+pattern reference carries a whole family's
+    weight matrix — a local pick's siblings, ttf/otf/ttc/woff2 alike.
+    A pattern that matches nothing is a loud error naming the directory,
+    exactly like a catalog pattern that matches no file of its artifact.
+    """
+    directory = path.parent
+    matched: list[Path] = []
+    if directory.is_dir():
+        matched = sorted(
+            candidate
+            for candidate in directory.iterdir()
+            if candidate.is_file()
+            and candidate.suffix.lower() in font_suffixes()
+            and fnmatchcase(candidate.name, pattern)
+        )
+    if not matched:
+        raise RecipeError(
+            f"font reference 'pattern' in recipe field {field!r} matches no "
+            f"font file of {directory} (pattern {pattern!r})"
+        )
+    return tuple(matched)
+
+
 def _parse_font_ref(value: object, field: str, root: Path) -> FontRef:
     """Parse one font reference (string or mapping) against the recipe root."""
     if isinstance(value, str):
@@ -735,13 +789,16 @@ def _parse_mapping_ref(value: dict, field: str, root: Path) -> FontRef:
             f"font reference in recipe field {field!r} declares both 'path' "
             "and 'family' — a reference is exactly one of them"
         )
-    for dependent in ("variant", "pattern"):
-        if dependent in value and "family" not in value:
-            raise RecipeError(
-                f"font reference field {dependent!r} in recipe field "
-                f"{field!r} requires 'family' (it narrows a catalog-family "
-                "reference)"
-            )
+    if "variant" in value and "family" not in value:
+        raise RecipeError(
+            f"font reference field 'variant' in recipe field {field!r} "
+            "requires 'family' (it disambiguates a catalog-family reference)"
+        )
+    if "pattern" in value and "path" not in value and "family" not in value:
+        raise RecipeError(
+            f"font reference field 'pattern' in recipe field {field!r} "
+            "requires 'family' or 'path' (it narrows a multi-file reference)"
+        )
     if "sha256" in value and "path" not in value:
         raise RecipeError(
             f"font reference field 'sha256' in recipe field {field!r} "
@@ -810,17 +867,7 @@ def _parse_mapping_ref(value: dict, field: str, root: Path) -> FontRef:
                 )
         pattern = None
         if "pattern" in value:
-            pattern = value["pattern"]
-            if (
-                not _is_path_string(pattern)
-                or "/" in pattern
-                or "\\" in pattern
-            ):
-                raise RecipeError(
-                    f"font reference 'pattern' in recipe field {field!r} "
-                    "must be a bare filename glob like "
-                    f'"Family-Regular*.ttf" (got {pattern!r})'
-                )
+            pattern = _parse_pattern(value["pattern"], field)
         return FontRef(
             face=face,
             instance=instance,
@@ -845,8 +892,20 @@ def _parse_mapping_ref(value: dict, field: str, root: Path) -> FontRef:
                 f"got {sha256!r})"
             )
     path = (root / path_text).resolve()
+    pattern = None
+    if "pattern" in value:
+        pattern = _parse_pattern(value["pattern"], field)
+    if pattern is None:
+        return FontRef(
+            path=path, face=face, instance=instance, sha256=sha256, paths=(path,)
+        )
     return FontRef(
-        path=path, face=face, instance=instance, sha256=sha256, paths=(path,)
+        path=path,
+        face=face,
+        instance=instance,
+        sha256=sha256,
+        pattern=pattern,
+        paths=_same_dir_siblings(path, pattern, field),
     )
 
 

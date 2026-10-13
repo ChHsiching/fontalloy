@@ -5,6 +5,7 @@ import {
   type LoadedFont,
 } from "../state";
 import { registerFontBytes, fontDisplayName } from "../fonts/registry";
+import { sweepLocalFamily } from "../fonts/localFamily";
 import { getDefaultManager } from "../catalog/manager";
 import { starsFor, subscribeStars } from "../catalog/stars";
 import {
@@ -268,6 +269,11 @@ export function mountPicker(
             selected: { ...store.get().selected, [options.role]: font.cssFamily },
           });
         }
+        // Round 13 (owner item 7): the pick is the FAMILY — discover and
+        // register the same-directory sibling faces in the background,
+        // the same face-set discipline a catalog pick follows. Never
+        // blocks the pick; a one-file family registers nothing.
+        void sweepLocalFamily(font);
       } catch (err) {
         error = `无法加载 ${entry.fileName}：${
           err instanceof Error ? err.message : "不是有效的字体文件"

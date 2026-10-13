@@ -14,6 +14,7 @@ import { defaultDraft, type FontSlot } from "../recipe/model";
 import { recipeJson } from "../recipe/json";
 import { applySettingsToDraft, fileFaceSlots } from "../recipe/settings";
 import { applyRulesToDraft } from "../precedence/serialize";
+import { localFaceSet } from "../precedence/picks";
 import { saveArtifact, saveArtifactAs } from "../platform/artifacts";
 import { isTauri, readConfig, serveProbeAddress } from "../platform/config";
 import { ServeClient, type CatalogDocument, type FaceDocument } from "./client";
@@ -154,6 +155,28 @@ export function familyCutPattern(fileName: string): string {
 }
 
 /**
+ * The SAME-DIR family pattern of a LOCAL base pick (round 13, owner
+ * item 7): the cut-prefix glob over the representative's own basename,
+ * extension-LESS — `AlloyFamily-Regular.ttf` yields `AlloyFamily-*`,
+ * so the service's directory scan pulls in every sibling face of the
+ * family whatever container it ships in (ttf, otf, ttc, woff2; the
+ * core filters the matches to font files). The dash keeps the glob to
+ * ONE cut exactly like the catalog pattern: `AlloyFamily-*` never
+ * matches `AlloyFamilyMono-Regular.ttf`. A file whose last segment is
+ * not a subfamily word cannot be narrowed mechanically and keeps its
+ * exact name (the reference then stays single-file).
+ */
+export function localFamilyPattern(fileName: string): string {
+  const dot = fileName.lastIndexOf(".");
+  const stem = dot > 0 ? fileName.slice(0, dot) : fileName;
+  const split = /^(.*)([-_])([^-_]+)$/.exec(stem);
+  if (split !== null && SUBFAMILY_WORD.test(split[3]!)) {
+    return `${split[1]!}${split[2]!}*`;
+  }
+  return fileName;
+}
+
+/**
  * The on-disk path of a loaded font, for the recipe: the platform's own
  * path when it has one (catalog storage, the Tauri file dialog), else a
  * match by file name against the service's /fonts listing (the browser
@@ -241,8 +264,10 @@ export function selectedPicks(): {
  * Round 12 (owner item 8): a catalog base pick builds the family's
  * whole weight matrix — the cut pattern resolves to every face of the
  * variant, and a multi-face output can only be packaged as a
- * collection. Local single-file picks (and a catalog reference pinned
- * to exactly one file) keep the plain ttf.
+ * collection. Round 13 (owner item 7): a LOCAL base pick with
+ * same-dir siblings carries the same shape of pattern and follows the
+ * SAME auto tier — no forked format logic, the pattern is the input.
+ * Single-file references (local or catalog) keep the plain ttf.
  */
 export function buildWorkspaceDraft(
   slots: { en: FontSlot; cjk: FontSlot },
@@ -260,10 +285,9 @@ export function buildWorkspaceDraft(
   // overwrites the format when the user chose one ("auto" leaves it,
   // so this resolution is the value that ships).
   if (draft.output.format === "auto") {
-    draft.output.format =
-      slots.en.catalog !== null && (slots.en.pattern ?? "").includes("*")
-        ? "ttc"
-        : "ttf";
+    draft.output.format = (slots.en.pattern ?? "").includes("*")
+      ? "ttc"
+      : "ttf";
   }
   // The SAME rule state the preview grid resolves (issue #18): the
   // build and the preview can never drift apart.
@@ -271,20 +295,21 @@ export function buildWorkspaceDraft(
   // The synthesis settings (issue #19): baseline / CJK width land in
   // the normalization block, the weight merge mode in the weights
   // selection (face data from the service's own /fonts index; a
-  // catalog-family reference has no listing entry, so the selection
-  // degrades to the default — nearest matching).
+  // family-pattern reference — catalog OR local — has no single
+  // listing entry, so the selection degrades to the default — nearest
+  // matching).
   applySettingsToDraft(
     draft,
     settings,
-    fileFaceSlots(faces, slots.en.catalog ? "" : slots.en.path),
-    fileFaceSlots(faces, slots.cjk.catalog ? "" : slots.cjk.path),
+    fileFaceSlots(faces, slots.en.pattern !== undefined ? "" : slots.en.path),
+    fileFaceSlots(faces, slots.cjk.pattern !== undefined ? "" : slots.cjk.path),
   );
   return draft;
 }
 
 /**
  * The recipe slot for one picked font (round 6; round 12 for the base
- * pattern). Order matters:
+ * pattern; round 13 for the LOCAL base pattern). Order matters:
  *
  * 1. The PATH form whenever the service's own /fonts listing can see
  *    the file — the serve vouches for that path, and a bare path is
@@ -292,7 +317,13 @@ export function buildWorkspaceDraft(
  *    answers /catalog with the repo manifest whose artifacts are NOT
  *    fetched; preferring the catalog form there would submit a
  *    reference that dies with "not fetched" while a working path
- *    exists.)
+ *    exists.) A LOCAL base whose load discovered same-directory
+ *    sibling faces (round 13, owner item 7) carries the SAME-DIR
+ *    pattern: the extension-less cut glob over the representative's
+ *    basename, resolving to every sibling face — the pick's whole
+ *    weight matrix — exactly what a catalog base's cut pattern does.
+ *    A one-file family (no siblings, or a name the rule cannot narrow)
+ *    keeps the bare path: single-face semantics.
  * 2. The CATALOG-FAMILY reference — `{family, variant}` naming what
  *    the manifest pins — for catalog picks the listing CANNOT see (the
  *    owner's serve over the fetched layout: assets/fonts/<Family>/
@@ -314,7 +345,18 @@ async function resolvePickSlot(
   role: "base" | "donor",
 ): Promise<FontSlot | null> {
   const path = await resolveFontPathWithRefresh(font);
-  if (path !== null) return { catalog: null, path, face: null };
+  if (path !== null) {
+    const slot: FontSlot = { catalog: null, path, face: null };
+    if (
+      role === "base" &&
+      font.origin === "local" &&
+      localFaceSet(store.get().fonts, font).length > 1
+    ) {
+      const pattern = localFamilyPattern(font.fileName);
+      if (pattern.includes("*")) slot.pattern = pattern;
+    }
+    return slot;
+  }
   if (font.origin === "catalog" && font.catalog) {
     const doc = await ensureCatalogIndex();
     const family = doc?.families.find((f) => f.family === font.catalog!.family);

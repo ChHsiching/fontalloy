@@ -8,6 +8,7 @@ import {
   spawnServeOverFonts,
   startServeFixture,
   generateFamily,
+  generateFonts,
   type ServeFixture,
 } from "./serve";
 import { SimCatalog, injectCatalogConfig, makeZip, sha256hex } from "./catalog-fixtures";
@@ -503,11 +504,9 @@ test.describe("sidecar synthesize", () => {
         "正在保存",
         { timeout: 30_000 },
       );
-      // Round 12 (owner item 1; the round-13 panel keeps the shape):
-      // the handoff narrates itself as TWO lines — the stage name and
-      // the dim note under it, never one dash-joined line. Round 13
-      // (owner item 5): the handoff carries NO live column (it is not
-      // pipeline time).
+      // Round 12/13: the handoff narrates itself as TWO lines (stage
+      // name + dim note, never a dash-join) and carries NO live column
+      // (the save handoff is not pipeline time).
       const stageLine = panel.locator("[data-build-stage-line]").first();
       await expect(
         stageLine.locator("[data-build-stage-name]"),
@@ -515,6 +514,7 @@ test.describe("sidecar synthesize", () => {
       await expect(
         stageLine.locator("[data-build-stage-note]"),
       ).toHaveText("把成品字体写入磁盘。");
+<<<<<<< HEAD
       await expect(stageLine.locator("[data-build-elapsed]")).toBeHidden();
       await expect(stageLine.locator("[data-build-stage-live]")).toBeHidden();
       const stepStates = await panel
@@ -678,6 +678,182 @@ test.describe("sidecar synthesize", () => {
       );
       // The fallback wrote the artifact through the default saver again.
       expect(saved.length).toBe(2);
+    } finally {
+      await service.dispose();
+    }
+  });
+
+  // Round 13, owner item 7 — the local-family parity: a LOCAL-FILE
+  // pick is the family, not one face. A file loaded from a multi-face
+  // directory (the round-12 family fixture: Regular/Bold/Italic of one
+  // name-table family) discovers its same-directory siblings through
+  // the service's /fonts index (the browser stand-in for the Tauri
+  // directory scan), registers them as data-only records behind the
+  // representative, and submits a PATH+PATTERN base reference — the
+  // schema form the catalog flow's cut pattern already uses — so the
+  // service resolves every sibling face, the auto format tier picks
+  // ttc, the report's 字重档位 lists every slot, and the artifact is
+  // the family collection. The single-file donor keeps the plain path
+  // string (single-slot semantics), and the identity surfaces keep
+  // reading the representative's own name.
+  test("round 13: a local file from a multi-face directory builds the family's whole matrix as ttc", async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    const fontsDir = await mkdtemp(resolve(tmpdir(), "fontalloy-localfam-"));
+    const familyFaces = await generateFamily(fontsDir);
+    const donorDir = await mkdtemp(resolve(tmpdir(), "fontalloy-localdon-"));
+    const { donor } = await generateFonts(donorDir);
+    const service = await spawnServeOverFonts(fontsDir, [
+      "--font-dir",
+      donorDir,
+    ]);
+
+    const saved: string[] = [];
+    const saveDir = await mkdtemp(resolve(tmpdir(), "fontalloy-save-"));
+    try {
+      await page.exposeFunction(
+        "__fontalloyTestSave",
+        async (name: string, bytesB64: string): Promise<string | null> => {
+          const bytes = Buffer.from(bytesB64, "base64");
+          const target = resolve(saveDir, name);
+          await writeFile(target, bytes);
+          saved.push(target);
+          return target;
+        },
+      );
+      await page.addInitScript(() => {
+        const config = window as unknown as {
+          __FONTALLOY_CONFIG__: Record<string, unknown>;
+        };
+        config.__FONTALLOY_CONFIG__ = {
+          saveArtifact: async (
+            name: string,
+            bytes: Uint8Array,
+          ): Promise<{ saved: boolean; path: string | null }> => {
+            const b64 = btoa(
+              Array.from(bytes, (b) => String.fromCharCode(b)).join(""),
+            );
+            const path = await window.__fontalloyTestSave(name, b64);
+            return path === null ? { saved: false, path: null } : { saved: true, path };
+          },
+        };
+      });
+      const serveUrl = await service.url;
+      await page.addInitScript((url: string) => {
+        const config = window as unknown as {
+          __FONTALLOY_CONFIG__: Record<string, unknown>;
+        };
+        config.__FONTALLOY_CONFIG__ ??= {};
+        config.__FONTALLOY_CONFIG__.serveUrl = url;
+      }, serveUrl);
+      collectJsErrors(page, jsErrors);
+      await page.goto("/");
+      await waitForFontsReady(page);
+
+      await loadIntoPicker(page, "en", familyFaces[0]!); // AlloyFamily-Regular
+      await loadIntoPicker(page, "cjk", donor);
+
+      // UX parity (unchanged): the pair tag and the picker card read
+      // the loaded family's own name — the representative, never a
+      // sibling weight.
+      await expect(
+        page.locator("[data-role='font-pair'] [data-pair='base']"),
+      ).toHaveText("Alloy Family");
+
+      // The data-only discipline: exactly ONE FontFace of the family
+      // is on document.fonts (the representative; siblings would
+      // collide under the shared css family).
+      await page.waitForTimeout(600);
+      const faceCount = await page.evaluate(
+        () =>
+          [...document.fonts].filter(
+            (face) => face.family.replace(/["']/g, "") === "Alloy Family",
+          ).length,
+      );
+      expect(faceCount).toBe(1);
+
+      // The picker lists ONE local row for the family — the sweep's
+      // data-only siblings never surface as ghost rows.
+      await pointerClick(
+        page,
+        page.locator('[data-role="picker-en"] .kit-hd'),
+      );
+      const popup = page.locator('[data-picker-popup="en"]');
+      await expect(popup).toBeVisible();
+      await expect(
+        popup.locator(".kit-fp", { hasText: "Alloy Family" }),
+      ).toHaveCount(1);
+      await page.keyboard.press("Escape");
+      await expect(popup).toBeHidden();
+
+      // The submission: the base reference KEEPS its path and gains
+      // the same-dir cut pattern (extension-less: every sibling
+      // container); the single-file donor stays the plain path string.
+      const bodyPromise = page
+        .waitForRequest(
+          (request) =>
+            request.method() === "POST" &&
+            new URL(request.url()).pathname.endsWith("/builds"),
+        )
+        .then((request) => request.postDataJSON() as Record<string, unknown>);
+      const synthesize = page.locator(".topbar [data-role='synthesize']");
+      await expect(synthesize).toHaveAttribute("aria-disabled", "false");
+      await pointerClick(page, synthesize);
+      const body = await bodyPromise;
+      expect(body.base).toEqual({
+        path: expect.stringMatching(/AlloyFamily-Regular\.ttf$/),
+        pattern: "AlloyFamily-*",
+      });
+      expect(body.donors).toEqual([
+        expect.stringMatching(/donor\.ttf$/),
+      ]);
+      // The auto format tier resolves the multi-face family as ttc.
+      expect(body.output).toEqual({ format: "ttc", family: "ChHsich" });
+
+      const panel = page.locator('[data-testid="build-panel"]');
+      await expect(panel.locator("[data-build-stage]").first()).toHaveText(
+        "完成",
+        { timeout: 60_000 },
+      );
+      await expect(panel).toContainText("已保存");
+      expect(saved.length).toBe(1);
+
+      // The report's 字重档位 lists the family's whole matrix: one
+      // slot per sibling face, in the reference's deterministic file
+      // order (Bold, Italic, Regular).
+      const disclosure = panel.locator(".report-details > summary");
+      await pointerClick(page, disclosure);
+      const weightSection = panel
+        .locator(".report-section")
+        .filter({ hasText: "字重档位" });
+      await expect(weightSection).toBeVisible();
+      const slotLabels = await weightSection
+        .locator(".report-fact-label")
+        .evaluateAll((labels) =>
+          labels.map((label) => (label as HTMLElement).textContent),
+        );
+      expect(slotLabels).toEqual([
+        "700 · 直立",
+        "400 · 斜体",
+        "400 · 直立",
+      ]);
+
+      // The artifact is the family collection (ttcf magic); its first
+      // face parses as the merged font (the donor's 中 grafted).
+      const savedPath = saved[0]!;
+      expect(savedPath.endsWith("ChHsich.ttc")).toBe(true);
+      const bytes = readFileSync(savedPath);
+      expect(bytes.subarray(0, 4).toString("latin1")).toBe("ttcf");
+      const meta = parseFontMeta(
+        new Uint8Array(bytes).buffer.slice(
+          bytes.byteOffset,
+          bytes.byteOffset + bytes.byteLength,
+        ) as ArrayBuffer,
+      );
+      expect(meta.family).toBe("ChHsich");
+      expect(meta.codepoints).toContain(0x4e2d); // 中
+      expect(meta.codepoints).toContain(0x41); // A (the base family)
     } finally {
       await service.dispose();
     }
@@ -1204,12 +1380,11 @@ test.describe("sidecar synthesize", () => {
           labels.map((label) => (label as HTMLElement).textContent),
         );
       expect(slotLabels).toEqual(["700 · 直立", "400 · 直立"]);
-      // Round 12's ratified borrow direction (this assertion was left
-      // on the pre-round-12 family-first form with full-width parens
-      // and had gone stale): 成品档位 ← 来源字体, the via qualifier
-      // after a ·.
+      // Round 12's ratified borrow direction: 成品档位 ← 来源字体 · via.
+      // (Both streams fixed the same stale pre-round-12 regex; C's
+      // exact-string form is the stronger pin.)
       await expect(weightSection).toContainText(
-        /\d+ ← Maple Mono .*· 自动取最近/,
+        "700 ← Maple Mono CN · 自动取最近",
       );
 
       // The saved artifact is the family collection (ttcf magic); its

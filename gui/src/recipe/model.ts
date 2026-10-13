@@ -53,8 +53,10 @@ export interface FontSlot {
   /** TTC face index (`null` = not a collection reference). */
   face: number | null;
   /**
-   * Bare-filename glob narrowing the catalog artifact (the picked
-   * face); meaningful only with `catalog`.
+   * Bare-filename glob narrowing the reference to a face SET: the
+   * catalog artifact's faces (a catalog pick's variant cut), or —
+   * round 13, owner item 7 — the named path's same-directory sibling
+   * font files (a local family pick's whole weight matrix).
    */
   pattern?: string;
 }
@@ -121,15 +123,22 @@ export const DEFAULT_WIDTH_FACTOR = 2;
 
 /**
  * The recipe font reference: a path string (`path` or the compact
- * `path#face`), or the catalog-family mapping `{family, variant,
- * pattern}` when the slot names a catalog pick (round 6) — the exact
- * schema `fontalloy_core` parses for both forms.
+ * `path#face`), the catalog-family mapping `{family, variant,
+ * pattern}` when the slot names a catalog pick (round 6), or — when a
+ * path-form slot carries a pattern (round 13) — the `{path, pattern}`
+ * mapping the same schema parses for a local family's same-directory
+ * siblings. All three are the exact schema `fontalloy_core` accepts.
  */
 export function fontRef(slot: FontSlot): string | Record<string, unknown> {
   if (slot.catalog !== null) {
     const ref: Record<string, unknown> = { family: slot.catalog.family };
     if (slot.catalog.variant !== null) ref.variant = slot.catalog.variant;
     if (slot.pattern !== undefined) ref.pattern = slot.pattern;
+    return ref;
+  }
+  if (slot.pattern !== undefined) {
+    const ref: Record<string, unknown> = { path: slot.path, pattern: slot.pattern };
+    if (slot.face !== null) ref.face = slot.face;
     return ref;
   }
   return slot.face === null ? slot.path : `${slot.path}#${slot.face}`;

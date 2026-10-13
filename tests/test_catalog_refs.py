@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import synth_font, synth_variable_font
+from conftest import synth_cff_font, synth_font, synth_variable_font
 
 from fontalloy_core.assets import (
     fetch_catalog,
@@ -214,7 +214,9 @@ def test_a_reference_cannot_mix_path_and_family(tmp_path: Path):
         )
 
 
-def test_variant_and_pattern_require_family(tmp_path: Path):
+def test_variant_requires_family_and_a_bare_pattern_requires_either_form(
+    tmp_path: Path,
+):
     with pytest.raises(RecipeError, match="requires 'family'"):
         load_recipe(
             _recipe(
@@ -222,7 +224,8 @@ def test_variant_and_pattern_require_family(tmp_path: Path):
                 "base:\n  path: base.ttf\ndonors:\n  - variant: Pro\n",
             )
         )
-    with pytest.raises(RecipeError, match="requires 'family'"):
+    # A pattern with neither anchor names nothing.
+    with pytest.raises(RecipeError, match="requires 'family' or 'path'"):
         load_recipe(
             _recipe(
                 tmp_path,
@@ -240,6 +243,127 @@ def test_a_pattern_must_be_a_bare_filename_glob(tmp_path: Path):
                 "donors:\n  - d.ttf\n",
             )
         )
+    # The path form validates its pattern the same way.
+    with pytest.raises(RecipeError, match="bare filename glob"):
+        load_recipe(
+            _recipe(
+                tmp_path,
+                'base:\n  path: base.ttf\n  pattern: "sub/*.ttf"\n'
+                "donors:\n  - d.ttf\n",
+            )
+        )
+
+
+# --- the path+pattern form (round 13: a local family's faces) ---------------
+
+
+def _local_family_dir(tmp_path: Path) -> Path:
+    """One family's directory: cut-prefixed faces in mixed containers.
+
+    ``AlloyFamily-<Subfamily>.<ext>`` for the matching cut, plus the
+    decoys the glob must NOT pull in: another cut sharing only the
+    family prefix (no dash), and a non-font file.
+    """
+    synth_font(
+        tmp_path / "AlloyFamily-Regular.ttf",
+        family="Alloy Family",
+        codepoints=BASE_CODEPOINTS,
+        weight=400,
+    )
+    synth_font(
+        tmp_path / "AlloyFamily-Bold.ttf",
+        family="Alloy Family",
+        codepoints=BASE_CODEPOINTS,
+        weight=700,
+    )
+    synth_font(
+        tmp_path / "AlloyFamilyMono-Regular.ttf",
+        family="Alloy Family Mono",
+        codepoints=BASE_CODEPOINTS,
+        weight=400,
+    )
+    (tmp_path / "AlloyFamily-notes.txt").write_text("not a font", encoding="utf-8")
+    return tmp_path
+
+
+def test_a_path_pattern_pulls_in_the_same_directory_siblings(tmp_path: Path):
+    # Round 13, owner item 7: a path reference may carry the bare-filename
+    # pattern the catalog form has — the named file's own directory is
+    # scanned, and every matching FONT file joins the reference's paths
+    # (the extension-less glob catches the .otf sibling too; the other
+    # cut and the non-font file stay out).
+    _local_family_dir(tmp_path)
+    synth_cff_font(tmp_path / "AlloyFamily-Black.otf", family="Alloy Family")
+    recipe = load_recipe(
+        _recipe(
+            tmp_path,
+            "base:\n"
+            "  path: AlloyFamily-Regular.ttf\n"
+            '  pattern: "AlloyFamily-*"\n'
+            "donors:\n"
+            "  - path: AlloyFamilyMono-Regular.ttf\n",
+        )
+    )
+    assert recipe.base.path == (tmp_path / "AlloyFamily-Regular.ttf").resolve()
+    assert recipe.base.pattern == "AlloyFamily-*"
+    assert [p.name for p in recipe.base.paths] == [
+        "AlloyFamily-Black.otf",
+        "AlloyFamily-Bold.ttf",
+        "AlloyFamily-Regular.ttf",
+    ]
+
+
+def test_a_path_pattern_matching_nothing_is_a_loud_error(tmp_path: Path):
+    _local_family_dir(tmp_path)
+    with pytest.raises(RecipeError, match="matches no font file"):
+        load_recipe(
+            _recipe(
+                tmp_path,
+                "base:\n"
+                "  path: AlloyFamily-Regular.ttf\n"
+                '  pattern: "Nope-*"\n'
+                "donors:\n"
+                "  - path: AlloyFamilyMono-Regular.ttf\n",
+            )
+        )
+
+
+def test_a_path_pattern_recipe_builds_the_family_matrix_as_a_collection(
+    tmp_path: Path,
+):
+    # The seam-1 proof: one path+pattern base reference, two sibling
+    # faces — the build loads every matched file, the matrix gains a
+    # slot per face, and the ttc output packages both merged faces.
+    _local_family_dir(tmp_path)
+    synth_font(
+        tmp_path / "donor.ttf",
+        family="AlloyDonor",
+        codepoints=DONOR_CODEPOINTS,
+    )
+    output = build(
+        _recipe(
+            tmp_path,
+            "base:\n"
+            "  path: AlloyFamily-Regular.ttf\n"
+            '  pattern: "AlloyFamily-*"\n'
+            "donors:\n"
+            "  - path: donor.ttf\n"
+            "output:\n"
+            "  format: ttc\n",
+        )
+    )
+    assert output.font_path.name.endswith(".ttc")
+    # Slot order follows the reference's deterministic file order
+    # (Bold sorts before Regular), like a catalog resolution.
+    weights = [slot.weight for slot in output.report.weights]
+    assert weights == [700, 400]
+    # Every slot merged the donor: the CJK pair is in each output face.
+    from fontTools.ttLib import TTFont
+
+    for index in range(2):
+        with TTFont(output.font_path, fontNumber=index) as font:
+            cmap = font.getBestCmap()
+            assert 0x4E2D in cmap and 0x56FD in cmap
 
 
 # --- resolution against the fetched catalog --------------------------------
