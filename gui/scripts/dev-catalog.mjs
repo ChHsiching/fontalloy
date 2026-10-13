@@ -297,10 +297,13 @@ async function fetchFamilyUpstream(entry, force = false) {
   const artifactPath = resolve(familyDir, entry.file);
   const markerPath = resolve(faceDir, ".source-sha256");
 
+  // The marker carries an extraction VERSION: v2 extracts every face
+  // (round 17) — a v1 cache (the one-Regular-face era) fails the check
+  // once and re-extracts the full family.
   const cacheUsable = async () => {
     if (!force && existsSync(markerPath)) {
       const marker = (await readFile(markerPath, "utf8")).trim();
-      if (marker === entry.sha256) return true;
+      if (marker === `v2 ${entry.sha256}`) return true;
     }
     return false;
   };
@@ -350,7 +353,7 @@ async function fetchFamilyUpstream(entry, force = false) {
   } else {
     await writeFile(resolve(faceDir, basename(entry.file)), artifact);
   }
-  await writeFile(markerPath, `${entry.sha256}\n`);
+  await writeFile(markerPath, `v2 ${entry.sha256}\n`);
   return primary.file;
 }
 
@@ -649,25 +652,70 @@ function buildCatalog() {
       // local layout actually carries — FILE_ALIASES pins it).
       if (seen.has(entry.family)) continue;
       seen.add(entry.family);
-      const file =
-        resolveFamilyFile(
-          entry.family,
-          available,
-          manifestFiles.get(entry.family) ?? [],
-        ) ?? upstream.faceMap.get(entry.family) ?? null;
-      if (file === null || !available.has(file)) {
-        misses.push(entry.family);
-        continue;
+
+      // Multi-cut families (round 17, owner item 1: MapleMono pins NF
+      // and NF-CN as two artifacts): every variant entry's artifact stem
+      // resolves its OWN cut's faces — dash-form `Stem-<face>.ttf` files
+      // or an exact `Stem.ttf`. Without this, the single resolved file
+      // below collapses the cuts (and the prototype alias face shadowed
+      // them entirely: every chip served "Maple Mono CN").
+      const cutStems = [
+        ...new Set(
+          byFamily
+            .get(entry.family)
+            ?.map((e) => basename(e.file).replace(/\.(zip|tar\.gz)$/i, "")) ?? [],
+        ),
+      ];
+      const cutFaceNames = new Set();
+      for (const stem of cutStems) {
+        const esc = stem.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const dash = new RegExp(`^${esc}-[^-]+\\.(ttf|otf|ttc|woff2?)$`, "i");
+        const exact = new RegExp(`^${esc}\\.(ttf|otf|ttc|woff2?)$`, "i");
+        for (const name of available.keys()) {
+          if (dash.test(name) || exact.test(name)) cutFaceNames.add(name);
+        }
       }
+
+      let file;
+      let faceNames;
+      if (cutFaceNames.size > 0) {
+        faceNames = [...cutFaceNames].sort();
+        // The primary face: the DEFAULT entry's cut's Regular (variant
+        // resolution and the GUI's representative pick follow it).
+        const defaultStem =
+          basename(defaultEntryFor(byFamily.get(entry.family) ?? [entry]).file).replace(
+            /\.(zip|tar\.gz)$/i,
+            "",
+          );
+        file =
+          faceNames.find(
+            (n) =>
+              new RegExp(`^${defaultStem.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[^-]*regular`, "i").test(n),
+          ) ??
+          faceNames.find((n) => /regular/i.test(n)) ??
+          faceNames[0];
+      } else {
+        file =
+          resolveFamilyFile(
+            entry.family,
+            available,
+            manifestFiles.get(entry.family) ?? [],
+          ) ?? upstream.faceMap.get(entry.family) ?? null;
+        if (file === null || !available.has(file)) {
+          misses.push(entry.family);
+          continue;
+        }
+        faceNames = familyFaces(file, available);
+      }
+
       // EVERY sibling face rides the release (production schema: one
       // zip per family, all faces) — the GUI's weight matrix pools
       // them through the family-cut pattern.
       const faces = await Promise.all(
-        familyFaces(file, available).map(async (name) => ({
-          file: name,
-          data: await readFile(available.get(name)),
-          sha256: sha256hex(await readFile(available.get(name))),
-        })),
+        faceNames.map(async (name) => {
+          const data = await readFile(available.get(name));
+          return { file: name, data, sha256: sha256hex(data) };
+        }),
       );
       const zipBytes = makeZip(faces.map(({ file: name, data }) => ({ name, data })));
       families.push({
@@ -677,7 +725,7 @@ function buildCatalog() {
         zipSha256: sha256hex(zipBytes),
         zipBytes,
         file,
-        fileSha256: faces.find((f) => f.file === file)?.sha256 ?? sha256hex(await readFile(available.get(file))),
+        fileSha256: faces.find((f) => f.file === file)?.sha256 ?? "",
         faces,
       });
     }

@@ -8,6 +8,7 @@ import { parseFontMeta } from "../fonts/sfnt";
 import type { LoadedFont } from "../state";
 import type { BlobStorage } from "../platform/storage";
 import { parseCatalogRelease, type CatalogRelease, type ReleaseFamily, type ReleaseOrigin } from "./release";
+import { variantFaceFiles } from "./faceSet";
 import { unzip } from "./zip";
 
 export interface CatalogManagerDeps {
@@ -41,35 +42,9 @@ function describe(err: unknown): string {
 }
 
 /**
- * Every face of a family+variant (round 12, owner item 8): the release
- * zip carries every variant's faces; match the variant's tokens against
- * the file names (NF→NerdFont, Mono, HW, Screen, GB, TC, weights) — the
- * pick's face SET. Falls back to every file when no token matches (the
- * previous rule) — a one-face family (the dev catalog and the CI zips)
- * resolves to exactly that face.
+ * Every face of a family+variant (round 12, owner item 8) lives in
+ * ./faceSet (pure, spec-exercised) — the cn cut discriminator too.
  */
-function variantFaceFiles(
-  files: ReadonlyArray<{ file: string }>,
-  variant: string | null,
-): ReadonlyArray<{ file: string }> {
-  if (variant === null || files.length <= 1) return files;
-  const lower = variant.toLowerCase();
-  const wants = (token: string): boolean => lower.includes(token);
-  const matches = files.filter((f) => {
-    const name = f.file.toLowerCase();
-    return (
-      (!wants("nf") || /nerd ?font|nf/.test(name)) &&
-      (!wants("mono") || name.includes("mono")) &&
-      (!wants("hw") || name.includes("hw")) &&
-      (!wants("screen") || name.includes("screen")) &&
-      (!wants("gb") || name.includes("gb")) &&
-      (!wants("tc") || name.includes("tc")) &&
-      (!wants("light") || name.includes("light")) &&
-      (!wants("medium") || name.includes("medium"))
-    );
-  });
-  return matches.length > 0 ? matches : files;
-}
 
 /**
  * The stored face a variant selection registers as its REPRESENTATIVE:

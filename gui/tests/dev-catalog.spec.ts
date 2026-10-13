@@ -43,6 +43,44 @@ function fakeRequest(url: string): {
 }
 
 test.describe("the dev catalog generator", () => {
+  test("a multi-cut family serves BOTH cuts' faces — never the shadowed prototype alias", async () => {
+    const fontDir = join(tmpdir(), `fontalloy-devcat-cut-${Date.now()}`);
+    await mkdir(fontDir, { recursive: true });
+    const cutFaces = [
+      "MapleMono-NF-Bold.ttf",
+      "MapleMono-NF-Regular.ttf",
+      "MapleMono-NF-CN-Bold.ttf",
+      "MapleMono-NF-CN-Regular.ttf",
+    ];
+    for (const face of cutFaces) {
+      await writeFile(join(fontDir, face), Buffer.from(`dummy-${face}`));
+    }
+    process.env.FONTALLOY_DEV_FONT_DIR = fontDir;
+
+    try {
+      const { devCatalogPlugin } = await import(SCRIPT);
+      let middleware: ((req: unknown, res: unknown, next: () => void) => Promise<void>) | null =
+        null;
+      devCatalogPlugin().configureServer({
+        middlewares: { use: (fn: typeof middleware) => (middleware = fn) },
+      });
+      const doc = fakeRequest("/dev-catalog/catalog-release.json");
+      await middleware!(doc.req as never, doc.handlerRes as never, () => {});
+      const release = JSON.parse(doc.captured.body.toString("utf8")) as {
+        families: Array<{ family: string; files: Array<{ file: string }> }>;
+      };
+      const maple = release.families.find((f) => f.family === "MapleMono");
+      expect(maple).toBeDefined();
+      // Both cuts ride the release; the prototype-era bare CN face
+      // (MapleMonoCN-Regular.ttf, also present via the prototype layout
+      // the generator scans) matches neither stem and stays out.
+      expect(maple!.files.map((f) => f.file).sort()).toEqual([...cutFaces].sort());
+    } finally {
+      delete process.env.FONTALLOY_DEV_FONT_DIR;
+      await rm(fontDir, { recursive: true, force: true });
+    }
+  });
+
   test("a multi-face family serves EVERY face in its document and zip", async () => {
     const fontDir = join(tmpdir(), `fontalloy-devcat-${Date.now()}`);
     await mkdir(fontDir, { recursive: true });
