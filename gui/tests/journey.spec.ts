@@ -110,6 +110,10 @@ async function writeReport(): Promise<void> {
 const jsErrors: string[] = [];
 /** Where the current journey's saved artifacts land (the save stand-in). */
 let currentSaveDir: string | null = null;
+// Parallel-stream runs drive their own dev-server port; the persistent
+// context's baseURL must name THAT origin (default: the shared port).
+const JOURNEY_ORIGIN =
+  process.env.FONTALLOY_E2E_ORIGIN ?? "http://localhost:5173";
 
 const test = base.extend<{ journeysPage: Page }>({
   journeysPage: [
@@ -118,7 +122,7 @@ const test = base.extend<{ journeysPage: Page }>({
         resolve(tmpdir(), "fontalloy-journey-profile-"),
       );
       const context = await chromium.launchPersistentContext(userDataDir, {
-        baseURL: "http://localhost:5173",
+        baseURL: JOURNEY_ORIGIN,
         viewport: { width: 1440, height: 900 },
         colorScheme: "light",
       });
@@ -1936,14 +1940,56 @@ test.describe("user journey", () => {
           await expect(stage).toHaveText(
             /(正在合成|读取字体|规划字重|解析规则|移植字形|改写名称表|保存输出|生成报告|完成)/,
           );
+          // Round 10 (no flicker): sample the panel's clientHeight and
+          // the rows region's scrollbar state every frame while the
+          // real build walks its stages — the fixed-height panel never
+          // moves and the rows region never toggles a scrollbar.
+          await page.evaluate(() => {
+            const record = { samples: [] as string[], done: false };
+            (window as unknown as { __panelSamples: typeof record })
+              .__panelSamples = record;
+            const panelEl = document.querySelector('[data-testid="build-panel"]')!;
+            const rows = panelEl.querySelector(".build-rows")!;
+            const started = performance.now();
+            const tick = (): void => {
+              record.samples.push(
+                `${panelEl.clientHeight}:${rows.scrollHeight > rows.clientHeight ? 1 : 0}`,
+              );
+              if (performance.now() - started < 10_000) requestAnimationFrame(tick);
+              else record.done = true;
+            };
+            tick();
+          });
           await expect(stage).toHaveText("完成", { timeout: 300_000 });
           await expect(panel).toContainText("已保存");
+          await page.waitForFunction(
+            () =>
+              (window as unknown as { __panelSamples: { done: boolean } })
+                .__panelSamples.done,
+          );
+          const ledger = await page.evaluate(
+            () =>
+              (window as unknown as { __panelSamples: { samples: string[] } })
+                .__panelSamples.samples,
+          );
+          expect(ledger.length).toBeGreaterThan(120);
+          expect(new Set(ledger.map((s) => s.split(":")[0])).size).toBe(1);
+          expect(ledger.some((s) => s.endsWith(":1"))).toBe(false);
+          // Round 10: the vertical journal list is gone — the stepper
+          // is the progress.
+          await expect(panel.locator("[data-build-journal]")).toHaveCount(0);
         });
 
         await step("J9.3 the report renders under the real-term nouns", async () => {
           const panel = page.locator('[data-testid="build-panel"]');
+          // Round 10: the settled row stays calm — the report sits
+          // behind the 查看报告 disclosure (saved line first).
+          const disclosure = panel.locator(".report-details > summary");
+          await expect(disclosure).toHaveText("查看报告");
+          await pointerClick(page, disclosure);
           for (const label of [
             "验证报告",
+            "成品文件",
             "输出格式",
             "SHA-256 校验值",
             "来源字体",
@@ -1971,20 +2017,56 @@ test.describe("user journey", () => {
           // file's OWN name-table string (「Maple Mono CN」), never the
           // raw file name or a curated/hardcoded display name.
           await expect(panel).toContainText("Maple Mono CN");
+          // Round 10: the raw JSON form is gone from the UI.
+          await expect(panel).not.toContainText("fontalloy/verification-report");
         });
 
-      await step("J9.4 the report's nouns carry their ?-popovers (X 是什么)", async () => {
-        const anchor = page.locator(
-          '[data-testid="build-panel"] [data-role="help-upem"]',
-        );
-        await expect(anchor).toBeVisible();
-        await pointerClick(page, anchor);
-        const pop = page.locator("[data-help-popup='upem']");
-        await expect(pop).toBeVisible();
-        await expect(pop).toContainText("字体坐标系的刻度");
-        await page.keyboard.press("Escape");
-        await expect(pop).toBeHidden();
-      });
+      await step("J9.4 one ? per section heading, centered, popover above the panel", async () => {
+          const panel = page.locator('[data-testid="build-panel"]');
+          // Exactly ONE ? per section heading (the report heading
+          // included); the fact lines carry none.
+          const headings = panel.locator(".report-heading, .report-section-title");
+          expect(await headings.count()).toBeGreaterThanOrEqual(7);
+          for (const heading of await headings.all()) {
+            expect(await heading.locator(".kit-qh").count()).toBe(1);
+          }
+          expect(await panel.locator(".report-fact .kit-qh").count()).toBe(0);
+          // The circles sit optically centered with their heading text.
+          const offsets = await panel.evaluate(() => {
+            const center = (el: Element): number => {
+              const r = el.getBoundingClientRect();
+              return (r.top + r.bottom) / 2;
+            };
+            return [...document.querySelectorAll(
+              '[data-testid="build-panel"] .report-heading, [data-testid="build-panel"] .report-section-title',
+            )].map((h) => Math.abs(center(h.firstElementChild!) - center(h.lastElementChild!)));
+          });
+          expect(Math.max(...offsets)).toBeLessThanOrEqual(2);
+          // EVERY ? opens a popover that stacks above the panel — the
+          // topmost element at its center is the popover itself, never
+          // the panel (the owner's covered-popover defect).
+          for (const anchor of await panel.locator(".kit-qh").all()) {
+            await pointerClick(page, anchor);
+            const pop = page.locator(".kit-pop.open");
+            await expect(pop).toBeVisible();
+            const hit = await page.evaluate(() => {
+              const open = document.querySelector(".kit-pop.open")!;
+              const r = open.getBoundingClientRect();
+              const el = document.elementFromPoint(
+                r.left + r.width / 2,
+                r.top + r.height / 2,
+              );
+              return {
+                hitsPopover: el !== null && el.closest(".kit-pop") !== null,
+                hitsPanel: el !== null && el.closest(".build-panel") !== null,
+              };
+            });
+            expect(hit.hitsPopover).toBe(true);
+            expect(hit.hitsPanel).toBe(false);
+            await page.keyboard.press("Escape");
+            await expect(pop).toBeHidden();
+          }
+        });
 
         await step("J9.5 the saved artifact PARSES: family ChHsich, cmap > 0, donor CJK inside", async () => {
           const savedLine = page.locator("[data-build-saved]").first();
