@@ -606,7 +606,8 @@ function metricTable(
   const head = document.createElement("thead");
   const headRow = document.createElement("tr");
   const corner = document.createElement("th");
-  corner.setAttribute("aria-hidden", "true");
+  corner.scope = "col";
+  corner.textContent = "指标";
   headRow.append(corner);
   for (const label of ["合并前", "合并后"]) {
     const th = document.createElement("th");

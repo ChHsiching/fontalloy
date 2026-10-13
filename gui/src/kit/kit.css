@@ -1730,6 +1730,10 @@
 }
 
 .kit-stat .kit-cov {
+  /* Structural CJK↔digit spacing — a trailing text space collapses in flex. */
+  display: flex;
+  align-items: baseline;
+  gap: 0.3em;
   margin-left: auto;
   color: var(--ink3);
   font-size: 12px;

@@ -914,7 +914,7 @@ body {
    already carries the weight). */
 .report-mtable {
   width: 100%;
-  margin-top: 4px;
+  margin: 4px 0 10px;
   border-collapse: collapse;
   font-size: 12px;
   line-height: 1.6;
@@ -932,12 +932,6 @@ body {
   text-align: right;
   background: var(--sf2);
   white-space: nowrap;
-}
-
-.report-mtable thead th[aria-hidden="true"] {
-  border: none;
-  background: none;
-  padding: 0;
 }
 
 .report-mtable tbody th {

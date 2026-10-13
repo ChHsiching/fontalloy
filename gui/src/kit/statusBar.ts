@@ -58,7 +58,7 @@ export function mountStatusBar(host: HTMLElement): StatusBar {
   cov.className = "kit-cov";
   const covLabel = document.createElement("span");
   covLabel.className = "kit-cov-label";
-  covLabel.textContent = "覆盖 ";
+  covLabel.textContent = "覆盖";
   cov.append(covLabel);
   const covValue = document.createElement("b");
   covValue.className = "kit-num";
