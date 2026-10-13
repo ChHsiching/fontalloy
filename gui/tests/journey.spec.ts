@@ -2078,13 +2078,12 @@ test.describe("user journey", () => {
   test("J9 合成 — the real serve: stages, report, parseable artifact, queue", async ({
     journeysPage: page,
   }) => {
-    // Round 12 (owner item 8): the flagship pair builds the family's
-    // WHOLE weight matrix — the base reference resolves to every face
-    // of the JetBrainsMono NF cut (16 slots, 100–800 upright + italic)
-    // and the output is a ttc collection. A matrix build runs minutes,
-    // not seconds (16 per-slot grafts + rewrites + the readback
-    // report), so the journey budget is the large one.
-    test.setTimeout(2_400_000);
+    // Round 12 (owner item 8) + round-13 economy: the flagship pair
+    // builds a multi-slot weight matrix packaged as ttc. The journey
+    // narrows the submitted pattern to a 2-face slice (route below)
+    // for speed; the full-matrix behavior is pinned by synthesize.spec
+    // on fixtures. The journey budget is the moderate one.
+    test.setTimeout(600_000);
     // The owner's real serve layout: the repo's own serve binary over
     // the fetched catalog directory (zips + extracted faces + its own
     // manifest), so the catalog picks resolve as catalog-family
@@ -2097,6 +2096,25 @@ test.describe("user journey", () => {
       RUN_MANIFEST,
     ]);
     const serviceUrl = await service.url;
+    // Verification economy (owner, round 13): the app really submits the
+    // FULL family cut (16 faces ≈ 8 min of grafting); the full-matrix
+    // behavior is separately pinned by synthesize.spec's multi-slot test
+    // on fixtures. This journey narrows ONLY the submitted pattern to a
+    // two-face slice (Medium + MediumItalic) so the production path
+    // (catalog-family ref + pattern → ttc multi-slot) stays covered at
+    // journey speed.
+    await page.route(
+      /\/builds$/,
+      async (route) => {
+        const req = route.request();
+        if (req.method() !== "POST") return route.continue();
+        const body = req.postDataJSON();
+        if (body?.base?.pattern?.includes("*")) {
+          body.base.pattern = "JetBrainsMonoNerdFont-M*.ttf";
+        }
+        return route.continue({ postData: JSON.stringify(body) });
+      },
+    );
     currentSaveDir = await mkdtemp(resolve(tmpdir(), "fontalloy-j9-save-"));
     dialogSaveCalls = 0;
     try {
@@ -2286,10 +2304,12 @@ test.describe("user journey", () => {
           await expect(panel).toContainText("Maple Mono CN");
           // Round 10: the raw JSON form is gone from the UI.
           await expect(panel).not.toContainText("fontalloy/verification-report");
-          // Round 12 (owner item 8): the report's 字重档位 lists the
-          // family's WHOLE weight matrix — every face of the
-          // JetBrainsMono NF cut (100–800, upright + italic = 16
-          // slots), each slot's donor borrowed by nearest weight.
+          // Round 12 (owner item 8) + round-13 economy: the pattern
+          // slice above yields the Medium pair (500 · 直立 + 500 · 斜
+          // 体) — the multi-slot matrix semantics (every listed face
+          // becomes an output slot, nearest-weight borrows, ttc
+          // packaging) stay asserted; the FULL 16-slot enumeration is
+          // pinned by synthesize.spec's fixture multi-slot test.
           const weightSection = panel
             .locator(".report-section")
             .filter({ hasText: "字重档位" });
@@ -2299,13 +2319,10 @@ test.describe("user journey", () => {
             .evaluateAll((labels) =>
               labels.map((label) => (label as HTMLElement).textContent),
             );
-          expect(slotLabels).toHaveLength(16);
-          const expectedSlots = new Set<string>();
-          for (let weight = 100; weight <= 800; weight += 100) {
-            expectedSlots.add(`${weight} · 直立`);
-            expectedSlots.add(`${weight} · 斜体`);
-          }
-          expect(new Set(slotLabels)).toEqual(expectedSlots);
+          expect(slotLabels).toHaveLength(2);
+          expect(new Set(slotLabels)).toEqual(
+            new Set(["500 · 直立", "500 · 斜体"]),
+          );
           await expect(weightSection).toContainText(
             /\d+ ← Maple Mono NF CN · 自动取最近/,
           );
