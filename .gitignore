@@ -51,3 +51,4 @@ Thumbs.db
 # Sidecar binaries are built per-platform (gui/scripts/build-sidecar.py),
 # never committed — CI builds them on their native runners
 gui/src-tauri/binaries/
+fontalloy-notes/
