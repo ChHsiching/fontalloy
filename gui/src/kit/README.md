@@ -74,6 +74,7 @@ They are deliberate, marked, and must not grow without a decision:
 | `sceneContent.ts` `spanAttrs` | Per-char provenance attributes | Same instrumentation discipline. |
 | `charPopup.ts` `note` | The ineffective-assignment reason line under 来自 (round 7) | Absence never overrides: the declared side cannot supply, the popup states it in glossary words (补字) instead of a silent 来自 (owner item 1). |
 | `actionBar.ts` legend `?` | The 已调整 legend carries a help anchor (round 7) | The dot means DECLARED, the glyph follows the actual supplier — the legend says so (owner item 1). |
+| `icons.ts` `copy` glyph | A two-sheet copy icon in the linear family (round 13) | The 输出目录 row's copy-path button (round 13, owner item 3) needs a copy affordance the prototype never drew; the glyph follows the family's 24-viewBox stroke-2 language and swaps to the prototype `check` for the brief copied state. |
 
 App-level PRODUCT-EXTENSION surfaces (NOT kit — they live in `gui/src/ui` /
 `gui/src/catalog` with chrome in `app.css`, and must stay marked): the build

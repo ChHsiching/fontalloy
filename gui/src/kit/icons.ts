@@ -48,6 +48,11 @@ const LINEAR = {
   all: '<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   check: '<path d="m5 12 5 5 9-10"/>',
+  /** PRODUCT-EXTENSION (round 13): two-sheet copy glyph in the same
+   *  24-viewBox stroke-2 language — the 输出目录 row's copy-path
+   *  button (no prototype ancestor; recorded in kit/README.md). */
+  copy:
+    '<rect width="13" height="13" x="9" y="9" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
 } as const;
 
 export type LinearIconName = keyof typeof LINEAR;

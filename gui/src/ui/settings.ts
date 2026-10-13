@@ -2,6 +2,7 @@ import { store, type SynthesisSettings } from "../state";
 import type { AppSelect } from "../kit/appSelect";
 import { SETTINGS_TOPICS, mountSettingRow } from "../kit/settingsTopics";
 import { mountHelpPopover, helpNote, workedTable } from "../kit/helpPopover";
+import { icon } from "../kit/icons";
 import { capabilities } from "../platform";
 import {
   configuredOutputDir,
@@ -23,6 +24,8 @@ import {
  * real output directory (the Tauri shell): 输出目录 — where 合成字体
  * writes its artifacts, no dialog in the path. The plain browser
  * never renders it (its save is the browser's own download flow).
+ * Round 13 (owner item 3) makes that row a single line — see
+ * `middleEllipsize` below.
  */
 
 /** The store key of each kit topic ("weight" is the store's weightMode). */
@@ -38,7 +41,65 @@ const STORE_KEY: Record<string, keyof SynthesisSettings> = {
  * ?-popover) over a read-only directory line with 更改 / 恢复默认 —
  * the native directory picker behind 更改, the localStorage override
  * behind both.
+ *
+ * Round 13 (owner item 3) keeps the value a SINGLE line: the path is
+ * middle-ellipsized in the render (root + trailing segments always
+ * visible — CSS text-overflow cannot truncate the middle), the full
+ * path rides the title attribute, and a quiet kit-icon copy button
+ * puts the full path on the clipboard with a brief icon-swap state
+ * (no toast).
  */
+
+/** The path as the one-line value shows it (round 13, owner item 3).
+ *
+ * CSS text-overflow cannot truncate the MIDDLE, so the render does:
+ * the first and last path segments stay (the root side and the
+ * filename-ish tail), a single ellipsis replaces the middle. The
+ * original separators are carried from the path itself — a Windows
+ * path stays backslashed, a POSIX path stays slashed, a mixed one
+ * keeps its own mix; no separator is hardcoded. Paths of up to four
+ * segments fit the line and pass through verbatim.
+ */
+export function middleEllipsize(path: string, keep = 2): string {
+  // Tokenize into [segment, sep, segment, sep, …, segment]; each part
+  // keeps ITS OWN separator, so joining slices reconstructs the
+  // original text exactly (leading empties are roots: "/" and "\\").
+  const parts = path.split(/([\\/])/);
+  const segments = Math.ceil(parts.length / 2);
+  if (segments <= keep * 2) return path;
+  const head = parts.slice(0, keep * 2).join(""); // seg sep seg sep
+  const tail = parts.slice(-keep * 2).join(""); // sep seg sep seg
+  return `${head}…${tail}`;
+}
+
+/**
+ * Clipboard write with the legacy execCommand fallback; resolves false
+ * when neither path works (the caller then does nothing — a rare
+ * headless failure is not worth a toast).
+ */
+async function writeClipboard(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // Fall through to the legacy selection copy.
+  }
+  try {
+    const scratch = document.createElement("textarea");
+    scratch.value = text;
+    scratch.setAttribute("readonly", "");
+    scratch.style.position = "fixed";
+    scratch.style.opacity = "0";
+    document.body.appendChild(scratch);
+    scratch.select();
+    const ok = document.execCommand("copy");
+    scratch.remove();
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
 function mountOutputDirRow(): HTMLElement {
   const el = document.createElement("div");
   el.className = "kit-setrow settings-outdir";
@@ -78,6 +139,13 @@ function mountOutputDirRow(): HTMLElement {
   const value = document.createElement("span");
   value.className = "settings-outdir-path";
   value.dataset.role = "output-dir-path";
+  const copy = document.createElement("button");
+  copy.type = "button";
+  copy.className = "settings-outdir-copy";
+  copy.dataset.role = "output-dir-copy";
+  copy.setAttribute("aria-label", "复制路径");
+  copy.title = "复制路径";
+  copy.innerHTML = icon("copy");
   const change = document.createElement("button");
   change.type = "button";
   change.className = "settings-outdir-btn";
@@ -89,14 +157,41 @@ function mountOutputDirRow(): HTMLElement {
   reset.dataset.role = "output-dir-reset";
   reset.hidden = true;
   reset.textContent = "恢复默认";
-  valueRow.append(value, change, reset);
+  valueRow.append(value, copy, change, reset);
   el.appendChild(valueRow);
 
+  // The full path the copy button and the title carry (the line itself
+  // shows the middle-ellipsized form).
+  let fullPath = "";
+  let copyResetTimer = 0;
+
   const render = (dir: string, overridden: boolean): void => {
-    value.textContent = dir;
+    fullPath = dir;
+    value.textContent = middleEllipsize(dir);
     value.title = dir;
     reset.hidden = !overridden;
   };
+
+  copy.addEventListener("click", () => {
+    if (fullPath === "") return;
+    const path = fullPath;
+    void writeClipboard(path).then((ok) => {
+      if (!ok) return;
+      // The brief copied state is the ONLY feedback (round 13: no
+      // toast spam) — icon and label swap to a check for a moment.
+      window.clearTimeout(copyResetTimer);
+      copy.classList.add("copied");
+      copy.setAttribute("aria-label", "已复制路径");
+      copy.title = "已复制路径";
+      copy.innerHTML = icon("check");
+      copyResetTimer = window.setTimeout(() => {
+        copy.classList.remove("copied");
+        copy.setAttribute("aria-label", "复制路径");
+        copy.title = "复制路径";
+        copy.innerHTML = icon("copy");
+      }, 1600);
+    });
+  });
 
   // The displayed dir: the override when set, else the shell default.
   void resolveOutputDir()

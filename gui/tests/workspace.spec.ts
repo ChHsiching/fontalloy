@@ -215,7 +215,49 @@ test.describe("workspace shell", () => {
     await expect.poll(() => flag("top")).toBe("1");
     await expect.poll(() => flag("bottom")).toBe("0");
   });
-});
+
+  /* ---------- round 13, owner item 3: the 输出目录 row ---------- */
+
+  test("the Tauri 输出目录 row: single line, middle truncation, copy path", async ({
+    page,
+  }) => {
+    // The web target (this suite's default page) never renders the
+    // row: its save is the browser's own download flow.
+    await expect(page.locator(".settings-outdir")).toHaveCount(0);
+
+    // Fake the Tauri shell for a second load: the internals global the
+    // platform adapter sniffs, a minimal invoke answering exactly the
+    // three commands the row and boot touch, and a persisted output-
+    // directory override (so the row's first render needs no IPC).
+    await page.addInitScript(() => {
+      const w = window as unknown as Record<string, unknown>;
+      const config = (w.__FONTALLOY_CONFIG__ ?? {}) as Record<string, unknown>;
+      config.catalogBootstrapUrl = null; // never reach for GitHub here
+      config.serveUrl = null; // no probe: service honestly absent
+      w.__FONTALLOY_CONFIG__ = config;
+      w.__TAURI_INTERNALS__ = {
+        invoke: (cmd: string): unknown => {
+          if (cmd === "serve_url") return null;
+          if (cmd === "default_output_dir") {
+            return Promise.resolve(
+              "C:\\Users\\Administrator\\Downloads\\fontalloy",
+            );
+          }
+          if (cmd === "pick_output_dir") {
+            // A POSIX-style picked directory: the DISPLAY must keep the
+            // path's own separators — nothing hardcodes \ or /.
+            return Promise.resolve(
+              "/home/owner/works/2026/fonts/outputs/merged",
+            );
+          }
+          return Promise.reject(new Error(`fake shell: ${cmd}`));
+        },
+      };
+      localStorage.setItem(
+        "fontalloy.outputDir",
+        "C:\\Users\\Administrator\\Documents\\FontAlloy\\合成\\很长很长的目录\\输出位置",
+      );
+    });
     await page.goto("/");
     await waitForFontsReady(page);
 
