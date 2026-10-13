@@ -1,6 +1,11 @@
 /**
  * FontAlloy kit — MessageStack (PRODUCT-EXTENSION, round 8; round 9
- * items 3+7; the structured-card redesign).
+ * items 3+7; the structured-card redesign; round 17's action buttons).
+ *
+ * Round 17 (owner item 3) — action buttons: a card may carry a
+ * QUESTION, not just an outcome (`actions`: real buttons, one
+ * optionally danger-toned). An actioned card never counts down and the
+ * cap never evicts it; a click runs the action and closes the card.
  *
  * The kit-level message system the build panel's row mechanism
  * generalizes into: a fixed, non-modal stack of dismissable outcome
@@ -56,6 +61,22 @@ export interface KitMessageStat {
   label: string;
 }
 
+/**
+ * One action button of a card that asks a question (round 17, owner
+ * item 3): the same-name save collision offers 改个名字 / 覆盖保存 —
+ * the USER decides, so the choice must be a real button, never copy
+ * the user has to infer. Clicking runs `onClick` and closes the card;
+ * the × stays the explicit "neither" answer.
+ */
+export interface KitMessageAction {
+  /** The button's word (e.g. 覆盖保存). */
+  label: string;
+  /** `danger` tones the button (a destructive path, e.g. overwrite). */
+  tone?: "normal" | "danger";
+  /** Runs on click; the card closes right after. */
+  onClick(): void;
+}
+
 /** One dismissable outcome card. */
 export interface KitMessage {
   /**
@@ -87,8 +108,16 @@ export interface KitMessage {
   /**
    * Auto-dismiss delay in ms (round 9). `false` opts the card out
    * (it stays until dismissed); default 6000 — the ~6s countdown.
+   * A card WITH actions never counts down whatever this says: a
+   * question may not expire out from under the user (round 17).
    */
   autoDismiss?: number | false;
+  /**
+   * Action buttons (round 17): renders a real button row in the card.
+   * An actioned card stays until a choice is made or the × is pressed
+   * — it never auto-dismisses and the visible cap never evicts it.
+   */
+  actions?: readonly KitMessageAction[];
 }
 
 export interface MessageStack {
@@ -195,8 +224,16 @@ export function mountMessageStack(
   };
 
   const push = (message: KitMessage): void => {
-    while (stack.children.length >= VISIBLE_CAP) {
-      stack.firstElementChild?.remove();
+    const hasActions = message.actions !== undefined && message.actions.length > 0;
+    // The cap: the oldest card drops past it — EXCEPT an actioned card
+    // (round 17): it is a pending question the user has not answered,
+    // and a newer outcome may not silently evict it.
+    const evictable = (): Element[] =>
+      [...stack.children].filter(
+        (el) => !(el instanceof HTMLElement && el.dataset.persist === "true"),
+      );
+    while (evictable().length >= VISIBLE_CAP) {
+      evictable()[0]?.remove();
     }
     const card = document.createElement("div");
     card.className = "kit-msg enter";
@@ -284,9 +321,39 @@ export function mountMessageStack(
       card.appendChild(undo);
     }
 
+    // The action row (round 17): the card's QUESTION as real buttons —
+    // a choice the user makes, never copy to infer. Clicking runs the
+    // action and closes the card (the choice ends the question); the
+    // × remains the explicit neither-answer.
+    if (hasActions) {
+      const row = document.createElement("div");
+      row.className = "kit-msg-actions";
+      row.dataset.role = "message-actions";
+      for (const action of message.actions ?? []) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "kit-msg-act";
+        btn.dataset.role = "message-action";
+        if (action.tone === "danger") btn.dataset.tone = "danger";
+        btn.textContent = action.label;
+        btn.addEventListener("click", () => {
+          dismiss(card);
+          action.onClick();
+        });
+        row.appendChild(btn);
+      }
+      card.appendChild(row);
+    }
+
     // The countdown bar (round 9): a thin edge progress strip along
     // the card's bottom. Hover pauses, leave resumes, × stops outright.
-    const autoDismiss = message.autoDismiss === undefined ? DEFAULT_DISMISS_MS : message.autoDismiss;
+    // An actioned card never counts down (round 17): the question
+    // stands until the user answers it, whatever autoDismiss said.
+    const autoDismiss = hasActions
+      ? (false as const)
+      : message.autoDismiss === undefined
+        ? DEFAULT_DISMISS_MS
+        : message.autoDismiss;
     let countdown: Countdown | null = null;
     if (autoDismiss !== false) {
       const bar = document.createElement("div");
@@ -299,6 +366,10 @@ export function mountMessageStack(
       card.dataset.autoDismiss = String(autoDismiss);
     } else {
       card.dataset.autoDismiss = "none";
+    }
+    if (hasActions) {
+      // Marks the card exempt from the cap (see push's head).
+      card.dataset.persist = "true";
     }
     close.addEventListener("click", () => {
       countdown?.stop();

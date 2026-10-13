@@ -32,10 +32,11 @@
 import {
   isTauri,
   readConfig,
+  type ArtifactProbe,
   type ArtifactSaveResult,
 } from "./config";
 
-export type { ArtifactSaveResult };
+export type { ArtifactProbe, ArtifactSaveResult };
 
 /* ---------------- output directory (the 设置 entry 输出目录) ------------- */
 
@@ -88,6 +89,34 @@ export async function pickOutputDir(): Promise<string | null> {
 }
 
 /* ---------------- the savers ---------------- */
+
+/**
+ * The same-name collision pre-flight (round 17, owner item 3): does a
+ * file already sit at the default-path save target this name resolves
+ * to? Runs BEFORE any write — the caller asks the user when it fires,
+ * never silently overwriting or suffixing. Backends mirror the savers:
+ * the injected prober (tests, against a real save directory), the
+ * Tauri `artifact_exists` command (which joins the configured output
+ * dir and stats the target), and — on the plain web target — always
+ * "no": the browser's own download manager renames on its own, so
+ * there is no collision for the app to ask about.
+ */
+export async function probeArtifact(
+  suggestedName: string,
+): Promise<ArtifactProbe> {
+  const injected = readConfig().probeArtifact;
+  if (injected !== undefined) return injected(suggestedName);
+  if (isTauri()) {
+    const dir = await resolveOutputDir();
+    const { invoke } = await import("@tauri-apps/api/core");
+    const [exists, path] = await invoke<[boolean, string]>(
+      "artifact_exists",
+      { dir, name: suggestedName },
+    );
+    return { exists, path };
+  }
+  return { exists: false, path: suggestedName };
+}
 
 async function tauriSaveToDefault(
   suggestedName: string,

@@ -208,6 +208,31 @@ export function fontNameInput(
   return input;
 }
 
+/**
+ * Focus the font-name input and flash it (round 17, owner item 3):
+ * the same-name save collision's 改个名字 path lands the user on the
+ * field they need to edit — focused (no scroll-jumping: the top bar is
+ * always on screen, so the focus carries preventScroll) and pulsing
+ * its accent halo for ~1s via the kit-flash class. The class drops on
+ * animationend (with a timeout net for environments without
+ * animation events), so a later prompt can flash it again.
+ */
+export function flashFontNameInput(): HTMLInputElement | null {
+  const input = document.querySelector<HTMLInputElement>(
+    "input[data-role='font-name']",
+  );
+  if (input === null) return null;
+  input.focus({ preventScroll: true });
+  input.classList.remove("kit-flash");
+  // Force a style flush so a re-triggered flash restarts the keyframes.
+  void input.offsetWidth;
+  input.classList.add("kit-flash");
+  const clear = (): void => input.classList.remove("kit-flash");
+  input.addEventListener("animationend", clear, { once: true });
+  setTimeout(clear, 2_000);
+  return input;
+}
+
 export interface SynthesizeButtonProps {
   onClick(): void;
 }

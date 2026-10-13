@@ -1032,30 +1032,36 @@ function renderRow(
   // the FULL path on the row under it, middle-ellipsized when it
   // overflows with the whole path in the title attribute (a default
   // directory only the app knows about would be a path nobody can
-  // find). The button shows whenever the artifact is on disk and no
-  // handoff is in flight (the row's own state narrates an in-flight
-  // one).
+  // find). Since round 17 the block also renders for a settled row
+  // whose artifact never reached the disk (the same-name collision
+  // prompt was dismissed): the label honestly says 「未保存」 with no
+  // path line, and the 另存为 button stays reachable — the dialog is
+  // that row's recovery path, so a dismissed question never strands
+  // the built font.
   const savedEl = rowEl.querySelector<HTMLElement>("[data-build-saved]")!;
-  savedEl.hidden = row.savedPath === null;
+  savedEl.hidden = row.savedPath === null && row.status !== "done";
   const savedLabelEl = rowEl.querySelector<HTMLElement>(
     "[data-build-saved-label]",
   )!;
   // The label word is WRITTEN, not templated: the DOM of a running row
   // must not carry 「已保存」 at all (hidden text still matches text
   // locators — a waiting test would read a running build as saved).
-  if (row.savedPath !== null && savedLabelEl.textContent !== "已保存") {
-    savedLabelEl.textContent = "已保存";
+  const labelWord = row.savedPath !== null ? "已保存" : "未保存";
+  if (savedLabelEl.textContent !== labelWord) {
+    savedLabelEl.textContent = labelWord;
   }
   const savedPathEl = rowEl.querySelector<HTMLElement>(
     "[data-build-saved-path]",
   )!;
+  savedPathEl.hidden = row.savedPath === null;
   if (row.savedPath !== null) {
     if (savedPathEl.title !== row.savedPath) fitMiddleEllipsis(savedPathEl, row.savedPath);
   }
   const saveAsEl = rowEl.querySelector<HTMLButtonElement>(
     "[data-build-saveas]",
   )!;
-  saveAsEl.hidden = row.savedPath === null || handoff;
+  saveAsEl.hidden =
+    (row.savedPath === null && row.status !== "done") || handoff;
 
   // The plain notice beside the saved line (round 12): the 另存为
   // fallback to the default directory explains itself here, never as
