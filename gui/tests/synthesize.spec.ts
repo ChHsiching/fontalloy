@@ -514,7 +514,6 @@ test.describe("sidecar synthesize", () => {
       await expect(
         stageLine.locator("[data-build-stage-note]"),
       ).toHaveText("把成品字体写入磁盘。");
-<<<<<<< HEAD
       await expect(stageLine.locator("[data-build-elapsed]")).toBeHidden();
       await expect(stageLine.locator("[data-build-stage-live]")).toBeHidden();
       const stepStates = await panel
