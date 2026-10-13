@@ -484,9 +484,17 @@ test.describe("sidecar synthesize", () => {
         "正在保存",
         { timeout: 30_000 },
       );
-      await expect(panel.locator("[data-build-stage-line]").first()).toHaveText(
-        "正在保存 — 把成品字体写入磁盘。",
-      );
+      // The handoff narrates itself as the panel's committed two-line
+      // stage copy (round 12, items 1–2: the stage name, the dim note
+      // under it — never one dash-joined line). Adjusted at round 13
+      // (stream C): the assertion predated the two-span markup.
+      const stageLine = panel.locator("[data-build-stage-line]").first();
+      await expect(
+        stageLine.locator("[data-build-stage-name]"),
+      ).toHaveText("正在保存");
+      await expect(
+        stageLine.locator("[data-build-stage-note]"),
+      ).toHaveText("把成品字体写入磁盘。");
       const stepStates = await panel
         .locator(".build-step")
         .evaluateAll((steps) =>
@@ -1336,7 +1344,13 @@ test.describe("sidecar synthesize", () => {
           labels.map((label) => (label as HTMLElement).textContent),
         );
       expect(slotLabels).toEqual(["700 · 直立", "400 · 直立"]);
-      await expect(weightSection).toContainText(/Maple Mono.* ← \d+（自动取最近）/);
+      // The borrow rows read the panel's committed copy (round 12,
+      // owner item 4 as rendered): 成品档位 ← 来源字体 · via. Adjusted
+      // at round 13 (stream C) — the regex predated the copy's final
+      // direction and separator.
+      await expect(weightSection).toContainText(
+        "700 ← Maple Mono CN · 自动取最近",
+      );
 
       // The saved artifact is the family collection (ttcf magic); its
       // first face parses as the merged font (中 + a Nerd Font
