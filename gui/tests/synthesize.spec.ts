@@ -286,11 +286,11 @@ test.describe("sidecar synthesize", () => {
       );
       await expect(metricsTable).not.toContainText("·");
       await expect(metricsTable).not.toContainText("—");
-      // Round 12 (owner item 4): the borrow rows read the ratified
-      // 成品档位 ← 来源字体 direction — the output weight LEFT of the
-      // arrow, the source font right of it, the via qualifier after ·.
+      // Round 16 (owner): the weight grid states the source ONCE when
+      // every slot borrows the same — the per-slot 「N ← …」 borrow
+      // lines are gone.
       await expect(panel).toContainText(
-        /\d+ ← .+ · (自动取最近|指定字重|锁定)/,
+        /\d+ 档全部取自 .+（自动取最近|指定字重|锁定）/,
       );
       // Round 12 (owner item 1): NO dash-joins anywhere in the panel —
       // nothing relies on an em-dash to separate.
@@ -354,8 +354,8 @@ test.describe("sidecar synthesize", () => {
       // Round 11 (items 4–5): the section popovers carry FULL content —
       // the title explanation plus every sub-item of the section as a
       // compact table — and the notation legend lives in its own
-      // section's popover (A → B with the metrics; X ← Y with the
-      // weight slots).
+      // section's popover (A → B with the metrics; the grid's ✓ / 无
+      // legend with the weight slots).
       const openHelp = async (label: string): Promise<Locator> => {
         const anchor = panel.locator(`.kit-qh[aria-label='${label}']`);
         await pointerClick(page, anchor);
@@ -380,8 +380,8 @@ test.describe("sidecar synthesize", () => {
       await page.keyboard.press("Escape");
       await expect(metricsPop).toBeHidden();
       const slotPop = await openHelp("字重档位是什么");
-      await expect(slotPop).toContainText("X ← Y");
-      await expect(slotPop).toContainText("借用来源：Y 这款字体提供了这一档");
+      await expect(slotPop).toContainText("常规 / 斜体");
+      await expect(slotPop).toContainText("这一档的中文字形取自来源行写的字体");
       await expect(slotPop).toContainText("自动取最近");
       await expect(slotPop).toContainText("锁定");
       await page.keyboard.press("Escape");
@@ -818,25 +818,25 @@ test.describe("sidecar synthesize", () => {
       await expect(panel).toContainText("已保存");
       expect(saved.length).toBe(1);
 
-      // The report's 字重档位 lists the family's whole matrix: one
-      // slot per sibling face, in the reference's deterministic file
-      // order (Bold, Italic, Regular).
+      // The report's 字重档位 grid (round 16): the family's whole
+      // matrix, one ROW per weight ascending (400 carries both styles,
+      // 700 upright only), the single source stated once above.
       const disclosure = panel.locator(".report-details > summary");
       await pointerClick(page, disclosure);
       const weightSection = panel
         .locator(".report-section")
         .filter({ hasText: "字重档位" });
       await expect(weightSection).toBeVisible();
-      const slotLabels = await weightSection
-        .locator(".report-fact-label")
-        .evaluateAll((labels) =>
-          labels.map((label) => (label as HTMLElement).textContent),
-        );
-      expect(slotLabels).toEqual([
-        "700 · 直立",
-        "400 · 斜体",
-        "400 · 直立",
-      ]);
+      await expect(weightSection).toContainText(
+        /3 档全部取自 .+（自动取最近）/,
+      );
+      const weightGrid = weightSection.locator(".report-mtable");
+      expect(
+        await weightGrid.locator("tbody tr th").allTextContents(),
+      ).toEqual(["400", "700"]);
+      expect(
+        await weightGrid.locator("tbody td").allTextContents(),
+      ).toEqual(["✓", "✓", "✓", "无"]);
 
       // The artifact is the family collection (ttcf magic); its first
       // face parses as the merged font (the donor's 中 grafted).
@@ -1371,27 +1371,25 @@ test.describe("sidecar synthesize", () => {
       expect(saved.length).toBe(1);
 
       // The report lists the family's whole weight matrix (round 12):
-      // one slot per base face, in the base file's own (alphabetical
-      // extract) order — Bold's 700 upright, then the Regular cut's
-      // 400 upright, each with its nearest-matched donor borrow.
+      // Bold's 700 upright and the Regular cut's 400 upright, each
+      // nearest-matched — round 16 renders them as one ROW per weight
+      // with the single source stated once above.
       const disclosure = panel.locator(".report-details > summary");
       await pointerClick(page, disclosure);
       const weightSection = panel
         .locator(".report-section")
         .filter({ hasText: "字重档位" });
       await expect(weightSection).toBeVisible();
-      const slotLabels = await weightSection
-        .locator(".report-fact-label")
-        .evaluateAll((labels) =>
-          labels.map((label) => (label as HTMLElement).textContent),
-        );
-      expect(slotLabels).toEqual(["700 · 直立", "400 · 直立"]);
-      // Round 12's ratified borrow direction: 成品档位 ← 来源字体 · via.
-      // (Both streams fixed the same stale pre-round-12 regex; C's
-      // exact-string form is the stronger pin.)
       await expect(weightSection).toContainText(
-        "700 ← Maple Mono CN · 自动取最近",
+        "2 档全部取自 Maple Mono CN（自动取最近）",
       );
+      const weightGrid = weightSection.locator(".report-mtable");
+      expect(
+        await weightGrid.locator("tbody tr th").allTextContents(),
+      ).toEqual(["400", "700"]);
+      expect(
+        await weightGrid.locator("tbody td").allTextContents(),
+      ).toEqual(["✓", "无", "✓", "无"]);
 
       // The saved artifact is the family collection (ttcf magic); its
       // first face parses as the merged font (中 + a Nerd Font
@@ -1659,9 +1657,14 @@ test.describe("sidecar synthesize", () => {
         .locator(".report-section")
         .filter({ hasText: "字重档位" });
       await expect(weightSection).toBeVisible();
+      // Round 16: the narrowed single-slot build renders one weight row.
+      const singleGrid = weightSection.locator(".report-mtable");
       expect(
-        await weightSection.locator(".report-fact-label").allTextContents(),
-      ).toEqual(["400 · 直立"]);
+        await singleGrid.locator("tbody tr th").allTextContents(),
+      ).toEqual(["400"]);
+      expect(
+        await singleGrid.locator("tbody td").allTextContents(),
+      ).toEqual(["✓", "无"]);
     } finally {
       await service.dispose();
     }

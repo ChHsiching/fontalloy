@@ -143,11 +143,12 @@ test("detects the service, merges live with journal and report, downloads the fo
     await pointerClick(page, panel.locator(".report-details > summary"));
     await expect(panel).toContainText("验证报告");
     await expect(panel).toContainText("码位");
-    // Round 12: the corrected 成品档位 ← 来源字体 borrow direction and
-    // NO dash-joins. Round 13 (owner item 6): the metrics render as a
+    // Round 16 (owner): the borrow source is one sentence above the
+    // weight grid — the per-slot 「N ← …」 lines are gone; NO
+    // dash-joins. Round 13 (owner item 6): the metrics render as a
     // real table — 合并前 / 合并后 stated once in the header row.
     await expect(panel).toContainText(
-      /\d+ ← .+ · (自动取最近|指定字重|锁定)/,
+      /\d+ 档全部取自 .+（自动取最近|指定字重|锁定）/,
     );
     const metricsTable = panel.locator(".report-mtable").first();
     await expect(metricsTable).toBeVisible();

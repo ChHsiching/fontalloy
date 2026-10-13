@@ -485,8 +485,9 @@ const SECTION_HELP: Record<string, SectionHelp> = {
     legend: {
       headers: ["写法", "意思"],
       rows: [
-        ["X ← Y", "借用来源：Y 这款字体提供了这一档"],
-        ["直立 / 斜体", "这一档的样式：不倾斜 / 向右倾斜"],
+        ["常规 / 斜体", "这一档的样式：不倾斜 / 向右倾斜"],
+        ["✓", "这一档的中文字形取自来源行写的字体"],
+        ["无", "成品里没有这一档"],
       ],
     },
     headers: ["项目", "是什么"],
@@ -624,6 +625,52 @@ function metricTable(
     name.textContent = label;
     tr.append(name);
     for (const value of [before, after]) {
+      const td = document.createElement("td");
+      td.textContent = value;
+      if (value === NO_VALUE) td.classList.add("is-none");
+      tr.append(td);
+    }
+    body.append(tr);
+  }
+  table.append(head, body);
+  return table;
+}
+
+/**
+ * The weight-slot grid (round 16, owner): one row per weight, one
+ * column per style — 常规 / 斜体, the words Word's Chinese UI uses for
+ * the style axis (直立 is retired). Same skeleton and .report-mtable
+ * skin as the metrics table; a cell is ✓ (borrowed from the stated
+ * source), a per-slot source label, 「没用中文字体」, or 「无」 (round
+ * 12's no-value word — never a dash) when the build carries no such
+ * slot.
+ */
+function weightTable(
+  rows: ReadonlyArray<readonly [string, string, string]>,
+): HTMLTableElement {
+  const table = document.createElement("table");
+  table.className = "report-mtable";
+  const head = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  const corner = document.createElement("th");
+  corner.scope = "col";
+  corner.textContent = "字重";
+  headRow.append(corner);
+  for (const label of ["常规", "斜体"]) {
+    const th = document.createElement("th");
+    th.scope = "col";
+    th.textContent = label;
+    headRow.append(th);
+  }
+  head.append(headRow);
+  const body = document.createElement("tbody");
+  for (const [weight, upright, italic] of rows) {
+    const tr = document.createElement("tr");
+    const name = document.createElement("th");
+    name.scope = "row";
+    name.textContent = weight;
+    tr.append(name);
+    for (const value of [upright, italic]) {
       const td = document.createElement("td");
       td.textContent = value;
       if (value === NO_VALUE) td.classList.add("is-none");
@@ -794,24 +841,52 @@ function renderReport(
     const section = document.createElement("div");
     section.className = "report-section";
     section.appendChild(sectionHeading("字重档位", "weight-slot", helpAnchors));
-    for (const slot of report.weights) {
-      // Round 12 (owner item 4): the ratified notation is
-      // 成品档位 ← 来源字体 — the OUTPUT weight on the left of the
-      // arrow, the source font on the right, the via qualifier after
-      // a · (never a dash). The old 「family ← weight」 read backwards.
-      const borrows = (slot.borrows ?? [])
-        .map(
-          (borrow) =>
-            `${fmt(slot.weight)} ← ${borrow.family ?? borrow.donor ?? "?"} · ${viaLabel(borrow.via)}`,
-        )
+    // Round 16 (owner): the old per-slot list printed the weight twice
+    // per slot and, with one donor, the same source line for all sixteen
+    // slots. The grid states each weight once with one column per style;
+    // the source is stated ONCE above when every slot borrows from the
+    // same place, and only a differing slot carries its own source in
+    // its cell (「没用中文字体」 for a slot the donor did not feed).
+    const labelOf = (slot: (typeof report.weights)[number]): string =>
+      (slot.borrows ?? [])
+        .map((b) => `${b.family ?? b.donor ?? "?"} · ${viaLabel(b.via)}`)
         .join("；");
+    const slots = [...report.weights].sort(
+      (a, b) => (a.weight ?? 0) - (b.weight ?? 0),
+    );
+    const fed = slots.filter((s) => (s.borrows ?? []).length > 0);
+    const sources = new Set(fed.map(labelOf));
+    const uniform = fed.length === slots.length && sources.size === 1;
+    if (uniform) {
+      const borrow = fed[0]!.borrows![0]!;
       section.append(
         fact(
-          `${fmt(slot.weight)} · ${slot.style === "italic" ? "斜体" : "直立"}`,
-          borrows || "这一档没有用中文字体",
+          "中文字形来源",
+          `${slots.length} 档全部取自 ${borrow.family ?? borrow.donor ?? "?"}（${viaLabel(borrow.via)}）`,
         ),
       );
     }
+    const byWeight = new Map<number, { upright?: string; italic?: string }>();
+    for (const slot of slots) {
+      const row = byWeight.get(slot.weight ?? 0) ?? {};
+      const cell =
+        (slot.borrows ?? []).length === 0
+          ? "没用中文字体"
+          : uniform
+            ? "✓"
+            : labelOf(slot);
+      row[slot.style === "italic" ? "italic" : "upright"] = cell;
+      byWeight.set(slot.weight ?? 0, row);
+    }
+    section.append(
+      weightTable(
+        [...byWeight.entries()].map(([weight, cells]) => [
+          fmt(weight),
+          cells.upright ?? NO_VALUE,
+          cells.italic ?? NO_VALUE,
+        ]),
+      ),
+    );
     body.appendChild(section);
   }
 
