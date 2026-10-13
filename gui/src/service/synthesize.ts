@@ -254,14 +254,17 @@ export function buildWorkspaceDraft(
   draft.donors = [slots.cjk];
   // The top bar's font-name field is the recipe's output family.
   draft.output.family = outputFamily || "ChHsich";
-  // The AUTO default: a multi-face family pick packages the weight
+  // The AUTO tier: a multi-face family pick packages the weight
   // matrix as a collection; anything else is a plain ttf. An explicit
   // 输出格式 setting wins — applySettingsToDraft runs AFTER this and
-  // overwrites the format when the user chose one (auto leaves it).
-  draft.output.format ??=
-    slots.en.catalog !== null && (slots.en.pattern ?? "").includes("*")
-      ? "ttc"
-      : "ttf";
+  // overwrites the format when the user chose one ("auto" leaves it,
+  // so this resolution is the value that ships).
+  if (draft.output.format === "auto") {
+    draft.output.format =
+      slots.en.catalog !== null && (slots.en.pattern ?? "").includes("*")
+        ? "ttc"
+        : "ttf";
+  }
   // The SAME rule state the preview grid resolves (issue #18): the
   // build and the preview can never drift apart.
   applyRulesToDraft(draft, rules);

@@ -154,7 +154,7 @@ export function defaultDraft(): RecipeDraft {
     },
     weights: [],
     // The fixed brand default (spec: never derived from source names).
-    output: { family: "ChHsich", format: "ttf" },
+    output: { family: "ChHsich", format: "auto" },
   };
 }
 
