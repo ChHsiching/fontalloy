@@ -707,11 +707,13 @@ test.describe("user journey", () => {
           ).toBeVisible();
         }
         // Round 8 (owner item 4): the CJK↔digit/latin spacing rule —
-        // the coverage reads 「覆盖 NN.NN%」 (a half-width space, two
-        // decimals), and every counter keeps the kit-level gap between
-        // its number and its unit (the builder-level spacing rule).
+        // the coverage reads 「覆盖 NN.NN%」 (two decimals), and every
+        // counter keeps the kit-level gap between its number and its
+        // unit. Round 15 made the space STRUCTURAL (the .kit-cov flex
+        // gap, 16d3be3 — a trailing text space collapses in flex), so
+        // the DOM text carries no space character.
         await expect(page.locator(".kit-cov")).toHaveText(
-          /^覆盖 \d+\.\d{2}%$/,
+          /^覆盖\d+\.\d{2}%$/,
         );
         const counterGap = await page
           .locator(".kit-stat .kit-c")
@@ -2285,15 +2287,13 @@ test.describe("user journey", () => {
           ).filter((h) => h === "合并前" || h === "合并后");
           expect(columnHeaders).toEqual(["合并前", "合并后"]);
           await expect(metricsTable).not.toContainText("·");
-          // Round 12 (owner item 4): the borrow row reads the ratified
-          // 成品档位 ← 来源字体 order — the output weight LEFT of the
-          // arrow, the source font right of it, the via qualifier
-          // after · (never the inverted family-first form, never a
-          // dash join).
+          // Round 16 (owner): the borrow source is ONE sentence above
+          // the weight grid — the per-slot 「N ← …」 borrow lines are
+          // gone (no arrow survives anywhere in the panel).
           await expect(panel).toContainText(
-            /\d+ ← .+ · (自动取最近|指定字重|锁定)/,
+            /\d+ 档全部取自 .+（自动取最近|指定字重|锁定）/,
           );
-          await expect(panel).not.toContainText(/← \d+（/);
+          await expect(panel).not.toContainText("←");
           // Round 12 (owner item 1): NO dash-joins anywhere in the
           // panel — nothing relies on an em-dash to separate.
           await expect(panel).not.toContainText("—");
@@ -2310,27 +2310,27 @@ test.describe("user journey", () => {
           // Round 10: the raw JSON form is gone from the UI.
           await expect(panel).not.toContainText("fontalloy/verification-report");
           // Round 12 (owner item 8) + round-13 economy: the pattern
-          // slice above yields the Medium pair (500 · 直立 + 500 · 斜
-          // 体) — the multi-slot matrix semantics (every listed face
-          // becomes an output slot, nearest-weight borrows, ttc
-          // packaging) stay asserted; the FULL 16-slot enumeration is
-          // pinned by synthesize.spec's fixture multi-slot test.
+          // slice above yields the Medium pair (500 upright + italic) —
+          // the multi-slot matrix semantics (every listed face becomes
+          // an output slot, nearest-weight borrows, ttc packaging) stay
+          // asserted; the FULL 16-slot enumeration is pinned by
+          // synthesize.spec's fixture multi-slot test. Round 16: the
+          // pair is ONE row of the grid — both style cells ✓, the
+          // single source stated once.
           const weightSection = panel
             .locator(".report-section")
             .filter({ hasText: "字重档位" });
           await expect(weightSection).toBeVisible();
-          const slotLabels = await weightSection
-            .locator(".report-fact-label")
-            .evaluateAll((labels) =>
-              labels.map((label) => (label as HTMLElement).textContent),
-            );
-          expect(slotLabels).toHaveLength(2);
-          expect(new Set(slotLabels)).toEqual(
-            new Set(["500 · 直立", "500 · 斜体"]),
-          );
           await expect(weightSection).toContainText(
-            /\d+ ← Maple Mono NF CN · 自动取最近/,
+            "2 档全部取自 Maple Mono NF CN（自动取最近）",
           );
+          const journeyGrid = weightSection.locator(".report-mtable");
+          expect(
+            await journeyGrid.locator("tbody tr th").allTextContents(),
+          ).toEqual(["500"]);
+          expect(
+            await journeyGrid.locator("tbody td").allTextContents(),
+          ).toEqual(["✓", "✓"]);
           // The output is the family collection, not a single face.
           await expect(panel).toContainText("ttc（多字体合集）");
         });

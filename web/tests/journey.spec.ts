@@ -341,13 +341,16 @@ test("J11 Web 目标 — detection, picks, preset, live merge, report, download,
       // the completed row carries the same 另存为 affordance (a second
       // browser download when clicked). Round 13 (owner item 4): the
       // saved line is TWO rows — 「已保存」 first, the path under it
-      // (the whole path rides the title attribute).
+      // (the whole path rides the title attribute). Round 14 (d243fa9):
+      // every catalog pick carries the family-cut pattern, so even the
+      // FIRST build pools the family's faces — the artifact is the ttc
+      // collection from the start (J11.6 asserts its 16-slot grid).
       await expect(
         panel.locator("[data-build-saved-label]").first(),
       ).toHaveText("已保存");
       await expect(
         panel.locator("[data-build-saved-path]").first(),
-      ).toHaveAttribute("title", "ChHsich.ttf");
+      ).toHaveAttribute("title", "ChHsich.ttc");
       await expect(
         panel.locator("[data-build-saveas]").first(),
       ).toBeVisible();
@@ -395,24 +398,37 @@ test("J11 Web 目标 — detection, picks, preset, live merge, report, download,
           (h) => h === "合并前" || h === "合并后",
         ),
       ).toEqual(["合并前", "合并后"]);
-      // Round 12 (owner item 4): the borrow rows read the ratified
-      // 成品档位 ← 来源字体 direction — the output weight LEFT of the
-      // arrow, the via qualifier after ·.
+      // Round 16 (owner): the borrow source is one sentence above the
+      // weight grid — the per-slot 「N ← …」 borrow lines are gone.
       await expect(panel).toContainText(
-        /\d+ ← .+ · (自动取最近|指定字重|锁定)/,
+        /\d+ 档全部取自 .+（自动取最近|指定字重|锁定）/,
       );
+      await expect(panel).not.toContainText("←");
       // Round 12 (owner item 1): no dash-joins anywhere in the panel.
       await expect(panel).not.toContainText("—");
       await expect(panel).not.toContainText("fontalloy/verification-report");
       // Round 12 (owner item 8): the matrix is the family's own — the
       // JetBrainsMono NF cut's every face (100–800, upright + italic).
+      // Round 16: the grid — one row per weight ascending, a ✓ in
+      // every style cell, the source stated once above.
       const weightSection = panel
         .locator(".report-section")
         .filter({ hasText: "字重档位" });
       await expect(weightSection).toBeVisible();
-      expect(
-        await weightSection.locator(".report-fact-label").count(),
-      ).toBe(16);
+      const matrix = weightSection.locator(".report-mtable");
+      expect(await matrix.locator("tbody tr th").allTextContents()).toEqual([
+        "100",
+        "200",
+        "300",
+        "400",
+        "500",
+        "600",
+        "700",
+        "800",
+      ]);
+      expect(await matrix.locator("tbody td").allTextContents()).toEqual(
+        Array.from({ length: 16 }, () => "✓"),
+      );
     });
 
     await step("J11.7 the artifact downloads and PARSES (family ChHsich, donor CJK inside)", async () => {
