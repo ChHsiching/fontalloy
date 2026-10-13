@@ -56,18 +56,18 @@ function flowList(values: string[]): string {
 }
 
 /**
- * One font reference's YAML fields (round 6): a single quoted path
- * scalar, or the catalog-family mapping fields (`family`, `variant`,
- * `pattern`). Callers assemble the layout — the base is a block
- * mapping, the donors list items carry the first field inline.
+ * One font reference's YAML fields: a single quoted path scalar, or
+ * the mapping fields (`family`/`variant`/`pattern` for a catalog
+ * pick; `path`/`face`/`pattern` for a local family pick, round 13).
+ * Callers assemble the layout — the base is a block mapping, the
+ * donors list items carry the first field inline.
  */
 function refYamlLines(slot: FontSlot): string[] {
   const ref = fontRef(slot);
   if (typeof ref === "string") return [quote(ref)];
-  const fields = [`family: ${quote(String(ref.family))}`];
-  if (ref.variant !== undefined) fields.push(`variant: ${quote(String(ref.variant))}`);
-  if (ref.pattern !== undefined) fields.push(`pattern: ${quote(String(ref.pattern))}`);
-  return fields;
+  return Object.entries(ref).map(([key, value]) =>
+    `${key}: ${typeof value === "number" ? value : quote(String(value))}`,
+  );
 }
 
 /** The base reference: `base: "path"` or a block mapping. */
