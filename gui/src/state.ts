@@ -38,16 +38,25 @@ export type BaselineMode = "auto" | "grid" | "optical";
  */
 export type CjkWidthMode = 2 | 1.8 | 1.5;
 
+/**
+ * Output format — the artifact's container (the recipe's
+ * `output.format`; round 12, owner item 7). The machine layer already
+ * builds all three; the setting only chooses.
+ */
+export type OutputFormat = "ttf" | "ttc" | "woff2";
+
 export interface SynthesisSettings {
   weightMode: WeightMergeMode;
   baseline: BaselineMode;
   cjkWidth: CjkWidthMode;
+  outputFormat: OutputFormat;
 }
 
 export const DEFAULT_SETTINGS: SynthesisSettings = {
   weightMode: "nearest",
   baseline: "auto",
   cjkWidth: 2,
+  outputFormat: "ttf",
 };
 
 /** How a font face entered the registry (local file vs catalog download). */

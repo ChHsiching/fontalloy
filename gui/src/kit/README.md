@@ -212,6 +212,16 @@ instruction from the hands-on review, not a silent drift):
   deviation is recorded here per the invariant rule. The rest of the
   settings topics' copy stays verbatim (`settingsTopics.ts`).
 
+## Round-12 owner rulings (recorded additions)
+
+- **The 输出格式 topic** (owner item 7): a FOURTH settings topic with
+  no prototype ancestor (the prototype's 合成设置 carried three). The
+  option labels are the formats' proper nouns — TTF（默认）/ TTC /
+  WOFF2 — and the popover rows carry the report-copy §2.5 sentences
+  (TTF 通用桌面 / TTC 多字重合一文件 / WOFF2 网页用). The topic wires
+  the store's `settings.outputFormat` onto the recipe's
+  `output.format`.
+
 ## Table-content policy — help content is the prototype's text
 
 Help-popover tables and prose carry the prototype's content VERBATIM

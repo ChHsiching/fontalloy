@@ -10,6 +10,9 @@
  *   1.8 倍 / 1.5 倍 English-width setting — a real pipeline knob; the
  *   halfwidth/fullwidth quotes-dashes convention stays a recipe-level
  *   default the GUI does not expose);
+ * - output format → `output.format` (round 12, owner item 7: ttf /
+ *   ttc / woff2 — the machine layer always supported it; the GUI
+ *   draft just never set it);
  * - weight merge mode → the `weights` selection (ADR-0006: output
  *   slots can only be the base file's faces):
  *     nearest → no selection (the default: every base face, donors
@@ -83,6 +86,12 @@ export function applySettingsToDraft(
 
   // CJK width: the grid school's advance factor (2 / 1.8 / 1.5).
   draft.normalization.widthFactor = settings.cjkWidth;
+
+  // Output format (round 12, owner item 7): the machine layer has
+  // supported `output.format` all along; the GUI draft simply never
+  // set it. The setting lands here so the serve submission and the
+  // no-service YAML carry the same format.
+  draft.output.format = settings.outputFormat;
 
   // Weight merge mode: the weights selection (see the module docstring).
   if (settings.weightMode === "base" && baseFaces.length > 0) {

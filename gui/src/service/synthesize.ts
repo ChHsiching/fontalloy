@@ -401,7 +401,12 @@ export async function synthesize(): Promise<void> {
     const filename =
       synthStore.get().builds.find((candidate) => candidate.id === id)?.family ??
       "ChHsich";
-    const suggested = `${filename}.ttf`;
+    // Round 12 (owner item 7): the saved line shows the ACTUAL
+    // extension — the format the report read back (the honest value;
+    // anything the schema did not name falls back to ttf), never a
+    // hardcoded .ttf.
+    const format = report.output?.format;
+    const suggested = `${filename}.${format === "ttc" || format === "woff2" ? format : "ttf"}`;
     const result = await saveArtifact(suggested, bytes);
     patchBuild(id, {
       status: result.saved ? "saved" : "done",

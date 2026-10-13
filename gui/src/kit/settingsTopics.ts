@@ -1,15 +1,19 @@
 /**
  * FontAlloy kit — the synthesis-settings topics (content data).
  *
- * The three settings (weight merge, baseline alignment, CJK width) with
- * their ?-popover copy. Prose structure and tables follow the validated
- * prototype VERBATIM — including the weight topic's tables (round 5,
- * owner item 11: help content is the prototype's text, full stop — no
- * engineering notes in user-facing popovers; the ADR-0006 correction
- * lives in the docs and the pipeline, not here). ONE deviation (round
- * 11, owner item 7, recorded in the kit README's deviation list): the
- * width option reads 「2 倍英文宽」, not the prototype's 「两倍英文宽」 —
- * the numeric form matches its sibling labels (1.8 倍 / 1.5 倍).
+ * The four settings (weight merge, baseline alignment, CJK width,
+ * output format) with their ?-popover copy. Prose structure and tables
+ * follow the validated prototype VERBATIM — including the weight
+ * topic's tables (round 5, owner item 11: help content is the
+ * prototype's text, full stop — no engineering notes in user-facing
+ * popovers; the ADR-0006 correction lives in the docs and the
+ * pipeline, not here). ONE deviation (round 11, owner item 7, recorded
+ * in the kit README's deviation list): the width option reads
+ * 「2 倍英文宽」, not the prototype's 「两倍英文宽」 — the numeric form
+ * matches its sibling labels (1.8 倍 / 1.5 倍). The output-format topic
+ * (round 12, owner item 7) has no prototype ancestor: its labels are
+ * the formats' proper nouns and its popover rows carry the
+ * report-copy §2.5 sentences.
  */
 
 import { mountAppSelect, type AppSelect, type AppSelectOption } from "./appSelect";
@@ -136,6 +140,36 @@ export const SETTINGS_TOPICS: readonly SettingsTopic[] = [
             ["2 倍英文宽 · 推荐", "标准等宽，一个中文正好对齐两个英文"],
             ["1.8 倍英文宽", "稍紧凑，一行能多放几个字"],
             ["1.5 倍英文宽", "很窄，一行能放更多中文"],
+          ]),
+        );
+        return wrap;
+      },
+    },
+  },
+  {
+    // Round 12, owner item 7: the fourth synthesis setting. The labels
+    // are the formats' real proper-noun names (TTF / TTC / WOFF2); the
+    // popover's worked rows use the report-copy §2.5 sentences.
+    key: "outputFormat",
+    name: "输出格式",
+    options: [
+      { value: "ttf", label: "TTF（默认）" },
+      { value: "ttc", label: "TTC" },
+      { value: "woff2", label: "WOFF2" },
+    ],
+    topic: {
+      id: "output-format",
+      title: "输出格式是什么",
+      buttonLabel: "输出格式是什么",
+      width: 340,
+      build() {
+        const wrap = document.createElement("div");
+        wrap.append(
+          helpNote("成品的文件格式，决定体积和用途："),
+          workedTable(["格式", "适合"], [
+            ["TTF（默认）", "通用桌面，几乎所有系统都支持"],
+            ["TTC", "多字重合一文件，体积更小"],
+            ["WOFF2", "网页用，为网页加载设计，文件更小"],
           ]),
         );
         return wrap;

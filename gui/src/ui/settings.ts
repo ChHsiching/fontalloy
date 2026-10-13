@@ -4,8 +4,9 @@ import { SETTINGS_TOPICS, mountSettingRow } from "../kit/settingsTopics";
 
 /**
  * The synthesis settings (issue #19, ADR-0004 left column): weight
- * merge mode, CJK–Latin baseline alignment, and CJK character width —
- * the prototype's three settings rows, each assembled from the kit
+ * merge mode, CJK–Latin baseline alignment, CJK character width, and
+ * the output format (round 12, owner item 7) — the prototype's three
+ * settings rows plus the format picker, each assembled from the kit
  * (mountSettingRow: label + ?-popover + AppSelect; the weight topic
  * keeps its single ADR-0006 correction — output weight slots come only
  * from the base font's faces). The screen owns only the VALUE wiring.
@@ -16,6 +17,7 @@ const STORE_KEY: Record<string, keyof SynthesisSettings> = {
   weight: "weightMode",
   baseline: "baseline",
   cjkWidth: "cjkWidth",
+  outputFormat: "outputFormat",
 };
 
 export function mountSettings(root: HTMLElement): void {
