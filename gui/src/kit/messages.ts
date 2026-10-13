@@ -231,13 +231,15 @@ export function mountMessageStack(
 
     // The outcome: compact stat pairs in one nowrap row — figures in
     // tabular-nums, labels dim, separated by CSS gaps. The row carries
-    // the full figures as its tooltip for the ellipsized edge case.
+    // the full figures as its `title` tooltip for the ellipsized edge
+    // case (a tooltip only — never a second copy of the text).
     if (message.stats !== undefined && message.stats.length > 0) {
-      const statsRow = nowrapRow(
-        "kit-msg-stats",
-        message.stats.map((s) => `${s.value} ${s.label}`).join(" "),
-        "message-stats",
-      );
+      const statsRow = document.createElement("div");
+      statsRow.className = "kit-msg-stats";
+      statsRow.dataset.role = "message-stats";
+      statsRow.title = message.stats
+        .map((s) => `${s.value} ${s.label}`)
+        .join(" ");
       for (const stat of message.stats) {
         const pair = document.createElement("span");
         pair.className = "kit-msg-stat";
@@ -265,6 +267,7 @@ export function mountMessageStack(
     for (const line of message.lines ?? []) {
       card.appendChild(nowrapRow("kit-msg-line", line));
     }
+
     // The undo hint: the shortcut as a kbd-styled chip (border +
     // radius + tabular figures), the verb as dim text beside it.
     if (message.undo !== undefined && message.undo !== "") {

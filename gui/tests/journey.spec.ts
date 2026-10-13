@@ -1367,6 +1367,11 @@ test.describe("user journey", () => {
         await expect(labels.nth(0)).toHaveText("生效");
         await expect(nums.nth(1)).toHaveText(/^[\d,]+$/);
         await expect(labels.nth(1)).toHaveText("未变");
+        // The stats row carries EXACTLY the two pairs (a tooltip or a
+        // stray text node must never duplicate the figures).
+        await expect(
+          message.locator("[data-role='message-stats']"),
+        ).toHaveText(/^[\d,]+生效[\d,]+未变$/);
         // The donor covers basic latin — no ineffective count, so the
         // reason sub-line is absent (never rendered for zero).
         await expect(
@@ -1479,6 +1484,12 @@ test.describe("user journey", () => {
         await expect(message.locator(".kit-msg-label").nth(1)).toHaveText(
           "未变",
         );
+        // The stats row carries EXACTLY the two pairs (textContent
+        // joins the spans with no whitespace between the figures and
+        // their labels).
+        await expect(
+          message.locator("[data-role='message-stats']"),
+        ).toHaveText(/^[\d,]+生效[\d,]+未变$/);
         await expect(
           message.locator("[data-role='message-reason']"),
         ).toHaveText("英文字体不含此码位");
