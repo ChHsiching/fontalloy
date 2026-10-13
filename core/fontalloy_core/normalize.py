@@ -24,7 +24,13 @@ ADR-0003 — transform only, never reshape, grid school by default:
   data). An ambiguous codepoint the base font already covers stays with
   the base — a corollary of absence-never-overrides, enforced by the
   precedence resolver, not here. Fullwidth quotes/dashes/ellipsis are a
-  recipe option (``quote_dash_width``) for locale conventions;
+  recipe option (``quote_dash_width``) for locale conventions: under
+  ``fullwidth`` the option rewrites the effective table so the set
+  takes the first donor's fullwidth glyphs *and* the wide advance
+  (:func:`apply_quote_dash_policy` — an effective override, because the
+  base typically covers the set and the resolver alone would keep the
+  base's halfwidth forms); under ``halfwidth`` (the default) the base's
+  own forms and advances pass through untouched;
 - **line height inherits the base**: this module never touches hhea or
   the OS/2 typo metrics; only usWinAscent/usWinDescent grow afterwards,
   and only to prevent clipping (never to shrink).
@@ -38,6 +44,7 @@ from __future__ import annotations
 import math
 import unicodedata
 from collections.abc import Mapping
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 
 from fontTools.misc.fixedTools import otRound
@@ -45,6 +52,13 @@ from fontTools.pens.boundsPen import BoundsPen
 from fontTools.ttLib import TTFont
 
 from fontalloy_core.errors import BuildError
+from fontalloy_core.precedence import (
+    VIA_DEFAULT,
+    VIA_POLICY,
+    EffectiveEntry,
+    Resolution,
+    default_font_order,
+)
 
 #: Normalization schools.
 GRID = "grid"
@@ -78,7 +92,7 @@ HAN_COMMON_LAST = 0x9FFF
 INK_PERCENTILE = 90
 
 #: The quote/dash codepoints the fullwidth policy covers: dashes
-#: U+2010-U+2015, quotes U+2018-U+201F, and the horizontal ellipsis
+#: U+2010-U+2015, quotes U+2018-U+201D, and the horizontal ellipsis
 #: U+2026 — the ambiguous set CJK fonts conventionally draw fullwidth.
 QUOTE_DASH_CODEPOINTS = frozenset(
     [*range(0x2010, 0x2016), *range(0x2018, 0x201E), 0x2026]
@@ -149,6 +163,70 @@ class NormalizationPlan:
         if wide:
             return otRound(self.options.width_factor * self.latin_advance)
         return self.latin_advance
+
+
+def apply_quote_dash_policy(
+    resolution: Resolution,
+    coverages: Mapping[str, AbstractSet[int]],
+    options: NormalizationOptions,
+) -> Resolution:
+    """Rewrite the effective table under the quote/dash width policy.
+
+    The defect this closes: a Latin base covers the quote/dash set with
+    halfwidth forms, and absence-never-overrides hands those codepoints
+    to the base through the global default — so ``advance_for``'s wide
+    advance never fired for them (a donor glyph never supplied them)
+    and ``quote_dash_width: fullwidth`` was a no-op on the merged font.
+
+    Under ``fullwidth``, every quote/dash codepoint the global default
+    gave the base is effectively overridden to the first donor (join
+    order) that holds it: the donor's fullwidth glyph lands through the
+    graft at ``advance_for``'s wide advance (two U+2014 em dashes join
+    into one continuous fullwidth line because each becomes a full
+    cell). A codepoint no donor holds keeps the base form — absence
+    never overrides, and the report's provenance states the base keep.
+    A codepoint a declared rule decided is never rewritten: explicit
+    rules outrank the policy at every granularity. Under ``halfwidth``
+    (the default) the resolution returns unchanged.
+
+    The rewritten entries carry ``kind="override"`` and
+    ``via=VIA_POLICY``, so the report's fill/override accounting and
+    provenance reflect exactly what the merged font now contains.
+    """
+    if options.quote_dash_width != FULLWIDTH:
+        return resolution
+    donor_order = [
+        font_id for font_id in default_font_order(coverages) if font_id != "base"
+    ]
+    table = []
+    for entry in resolution.effective_table:
+        if (
+            entry.winner == "base"
+            and entry.via == VIA_DEFAULT
+            and entry.codepoint in QUOTE_DASH_CODEPOINTS
+        ):
+            supplier = next(
+                (
+                    donor_id
+                    for donor_id in donor_order
+                    if entry.codepoint in coverages[donor_id]
+                ),
+                None,
+            )
+            if supplier is not None:
+                table.append(
+                    EffectiveEntry(
+                        codepoint=entry.codepoint,
+                        winner=supplier,
+                        via=VIA_POLICY,
+                        kind="override",
+                    )
+                )
+                continue
+        table.append(entry)
+    return Resolution(
+        effective_table=tuple(table), conflicts=resolution.conflicts
+    )
 
 
 def plan_normalization(

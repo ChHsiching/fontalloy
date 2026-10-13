@@ -4,8 +4,9 @@ Every build emits one (issue #2, and the spec's "every build ships a
 verification report"). The report records the build's sources and the
 effective table — for each codepoint in the union of all source
 coverages, which font wins it (``winner``), through which precedence
-(``via``: the global default or the winning rule), and how the glyph got
-there (``kind``: base keep, fill, or override).
+(``via``: the global default, a declared rule, or the fullwidth
+quote/dash policy), and how the glyph got there (``kind``: base keep,
+fill, or override).
 
 v1 grew through the pipeline tickets: grafting made ``in_output`` an
 honest readback from the built font's cmap (issue #5); output formats
@@ -73,7 +74,7 @@ class ProvenanceEntry:
     codepoint: int
     winner: str  # a SourceRecord id
     in_output: bool  # present in the built font (read back from its cmap)
-    via: str  # "default" or a rule id ("rule-<declaration index>")
+    via: str  # "default", "policy", or a rule id ("rule-<declaration index>")
     kind: str  # "base" | "fill" | "override"
 
 

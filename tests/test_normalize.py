@@ -368,7 +368,213 @@ class TestGridAdvances:
 
 
 class TestQuoteDashWidthPolicy:
-    """Fullwidth quote and dash width is a recipe option (locale knob)."""
+    """Fullwidth quote and dash width is a recipe option (locale knob).
+
+    Under ``fullwidth`` the option is an effective override: the base's
+    halfwidth forms lose the quote/dash set to the donor's fullwidth
+    glyphs at the wide advance, because the merged font must carry the
+    locale's forms, not the base's latin ones. Under ``halfwidth`` (the
+    default) the base's own forms and advances pass through untouched.
+    """
+
+    def test_fullwidth_policy_supplies_the_donor_glyph_at_two_cells(
+        self, tmp_path: Path, synth_font_factory
+    ):
+        """The defect this pins: the base covers U+201C with a halfwidth
+        latin form, so absence-never-overrides alone would keep it — the
+        policy must override that keep, grafting the donor's glyph with
+        the wide advance (glyph identity, not just the advance)."""
+        base = synth_font_factory(
+            tmp_path / "base.ttf",
+            family="SynthBase",
+            codepoints=(0x41, 0x201C, 0x201D, 0x2014),
+        )
+        donor = synth_font_factory(
+            tmp_path / "donor.ttf",
+            family="SynthDonor",
+            codepoints=(0x201C, 0x201D, 0x2014),
+            advance=700,  # a wider donor cell makes the ink traceable
+        )
+        recipe = _write_recipe(
+            tmp_path,
+            base,
+            donor,
+            extra="normalization:\n  quote_dash_width: fullwidth\n",
+        )
+
+        result = build(recipe, tmp_path / "out.ttf")
+
+        out = TTFont(result.font_path)
+        cmap = out.getBestCmap()
+        # The donor supplies the glyph: the grafted namespace, never the
+        # base's own name.
+        for cp in (0x201C, 0x201D, 0x2014):
+            assert cmap[cp] == f"d0.uni{cp:04X}"
+            assert _advance(out, cp) == 1200  # 2A, the wide advance
+        # Glyph identity via bounds: the donor's ink (40, 0, 660, 400)
+        # lands unscaled (no Han sample, so scale = s0 = 1) — the base's
+        # own glyph for the same codepoint boxes at xMax 560.
+        assert _bounds(out, cmap[0x201C]) == (40, 0, 660, 400)
+        base_cmap = TTFont(base).getBestCmap()
+        assert _bounds(out, base_cmap[0x201C]) == (40, 0, 560, 500)
+        assert cmap[0x201C] != base_cmap[0x201C]
+
+    def test_halfwidth_default_keeps_the_base_form_untouched(
+        self, tmp_path: Path, synth_font_factory
+    ):
+        base = synth_font_factory(
+            tmp_path / "base.ttf",
+            family="SynthBase",
+            codepoints=(0x41, 0x201C, 0x201D, 0x2014),
+        )
+        donor = synth_font_factory(
+            tmp_path / "donor.ttf",
+            family="SynthDonor",
+            codepoints=(0x201C, 0x201D, 0x2014),
+            advance=700,
+        )
+        recipe = _write_recipe(tmp_path, base, donor)  # default: halfwidth
+
+        result = build(recipe, tmp_path / "out.ttf")
+
+        out, base_font = TTFont(result.font_path), TTFont(base)
+        base_cmap = base_font.getBestCmap()
+        for cp in (0x201C, 0x201D, 0x2014):
+            assert out.getBestCmap()[cp] == base_cmap[cp]  # the base glyph
+            assert _advance(out, cp) == 600  # the base's single cell
+
+    @pytest.mark.parametrize(
+        "cp",
+        [
+            0x2010, 0x2011, 0x2012, 0x2013, 0x2014, 0x2015,  # dashes
+            0x2018, 0x2019, 0x201A, 0x201B, 0x201C, 0x201D,  # quotes
+            0x2026,  # horizontal ellipsis
+        ],
+    )
+    def test_the_whole_quote_dash_set_is_covered(
+        self, tmp_path: Path, synth_font_factory, cp
+    ):
+        """Dashes U+2010-U+2015, quotes U+2018-U+201F, ellipsis U+2026 —
+        the ambiguous set CJK fonts conventionally draw fullwidth."""
+        base = synth_font_factory(
+            tmp_path / "base.ttf", family="SynthBase", codepoints=(0x41, cp)
+        )
+        donor = synth_font_factory(
+            tmp_path / "donor.ttf", family="SynthDonor", codepoints=(cp,)
+        )
+        recipe = _write_recipe(
+            tmp_path,
+            base,
+            donor,
+            extra="normalization:\n  quote_dash_width: fullwidth\n",
+        )
+
+        result = build(recipe, tmp_path / "out.ttf")
+
+        out = TTFont(result.font_path)
+        assert out.getBestCmap()[cp] == f"d0.uni{cp:04X}"
+        assert _advance(out, cp) == 1200
+
+    def test_absence_keeps_the_base_form_and_the_report_states_it(
+        self, tmp_path: Path, synth_font_factory
+    ):
+        """A quote codepoint no donor holds keeps the base's halfwidth
+        form — absence never overrides, and the report says so."""
+        base = synth_font_factory(
+            tmp_path / "base.ttf",
+            family="SynthBase",
+            codepoints=(0x41, 0x201C, 0x201D),
+        )
+        donor = synth_font_factory(
+            tmp_path / "donor.ttf", family="SynthDonor", codepoints=(0x201C,)
+        )
+        recipe = _write_recipe(
+            tmp_path,
+            base,
+            donor,
+            extra="normalization:\n  quote_dash_width: fullwidth\n",
+        )
+
+        result = build(recipe, tmp_path / "out.ttf")
+
+        out, base_font = TTFont(result.font_path), TTFont(base)
+        # The donor-backed quote goes fullwidth...
+        assert out.getBestCmap()[0x201C] == "d0.uni201C"
+        assert _advance(out, 0x201C) == 1200
+        # ...the absent one keeps the base glyph and its single cell.
+        assert out.getBestCmap()[0x201D] == base_font.getBestCmap()[0x201D]
+        assert _advance(out, 0x201D) == 600
+
+        report = json.loads(result.report_path.read_text(encoding="utf-8"))
+        entries = {e["codepoint"]: e for e in report["provenance"]}
+        assert entries[0x201C]["winner"] == "donor-0"
+        assert entries[0x201C]["via"] == "policy"
+        assert entries[0x201C]["kind"] == "override"
+        assert entries[0x201D]["winner"] == "base"
+        assert entries[0x201D]["via"] == "default"
+        assert entries[0x201D]["kind"] == "base"
+
+    def test_the_reports_accounting_reflects_the_policy(
+        self, tmp_path: Path, synth_font_factory
+    ):
+        base = synth_font_factory(
+            tmp_path / "base.ttf", family="SynthBase", codepoints=(0x41, 0x201C)
+        )
+        donor = synth_font_factory(
+            tmp_path / "donor.ttf", family="SynthDonor", codepoints=(0x201C,)
+        )
+        recipe = _write_recipe(
+            tmp_path,
+            base,
+            donor,
+            extra="normalization:\n  quote_dash_width: fullwidth\n",
+        )
+
+        result = build(recipe, tmp_path / "out.ttf")
+
+        report = json.loads(result.report_path.read_text(encoding="utf-8"))
+        # The override the policy created is counted, never hidden.
+        assert report["precedence"]["counts"] == {
+            "base": 1,  # 0x41
+            "fill": 0,
+            "override": 1,  # 0x201C via the policy
+        }
+        assert report["summary"]["from_donors"] == 1
+
+    def test_an_explicit_rule_beats_the_policy(
+        self, tmp_path: Path, synth_font_factory
+    ):
+        """A declared rule's decision stands: pinning one quote to the
+        base keeps its halfwidth form even under fullwidth."""
+        base = synth_font_factory(
+            tmp_path / "base.ttf", family="SynthBase", codepoints=(0x41, 0x201C)
+        )
+        donor = synth_font_factory(
+            tmp_path / "donor.ttf", family="SynthDonor", codepoints=(0x201C,)
+        )
+        recipe = _write_recipe(
+            tmp_path,
+            base,
+            donor,
+            extra=(
+                "normalization:\n"
+                "  quote_dash_width: fullwidth\n"
+                "rules:\n"
+                "  - codepoint: 0x201C\n"
+                "    fonts: [base]\n"
+            ),
+        )
+
+        result = build(recipe, tmp_path / "out.ttf")
+
+        out, base_font = TTFont(result.font_path), TTFont(base)
+        assert out.getBestCmap()[0x201C] == base_font.getBestCmap()[0x201C]
+        assert _advance(out, 0x201C) == 600
+
+        report = json.loads(result.report_path.read_text(encoding="utf-8"))
+        entries = {e["codepoint"]: e for e in report["provenance"]}
+        assert entries[0x201C]["via"] == "rule-0"
+        assert entries[0x201C]["kind"] == "base"
 
     def test_quotes_dashes_and_ellipsis_default_to_one_cell(
         self, tmp_path: Path, synth_font_factory
@@ -415,33 +621,6 @@ class TestQuoteDashWidthPolicy:
             assert _advance(out, cp) == 1200
         # The policy touches only quotes/dashes: narrow stays one cell.
         assert _advance(out, 0x00E9) == 600
-
-    def test_the_policy_never_displaces_base_covered_ambiguous(
-        self, tmp_path: Path, synth_font_factory
-    ):
-        base = synth_font_factory(
-            tmp_path / "base.ttf", family="SynthBase", codepoints=(0x41, 0x201C)
-        )
-        donor = synth_font_factory(
-            tmp_path / "donor.ttf",
-            family="SynthDonor",
-            codepoints=(0x201C, 0x2018),
-        )
-        recipe = _write_recipe(
-            tmp_path,
-            base,
-            donor,
-            extra="normalization:\n  quote_dash_width: fullwidth\n",
-        )
-
-        result = build(recipe, tmp_path / "out.ttf")
-
-        out = TTFont(result.font_path)
-        # Base-covered “ keeps the base glyph and its single cell; the
-        # donor-only ‘ goes two cells under the policy.
-        assert out.getBestCmap()[0x201C] == TTFont(base).getBestCmap()[0x201C]
-        assert _advance(out, 0x201C) == 600
-        assert _advance(out, 0x2018) == 1200
 
 
 # --- the k formula: grid term, optical knob, overflow guard -----------------
