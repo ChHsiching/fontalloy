@@ -15,6 +15,12 @@
  * popup opens, no extra clicks), instead of an enabled button whose
  * assignment could never take effect.
  *
+ * Round 11 (owner item 8): "attached" must mean PAINTED — the show
+ * path sets an explicit inline `display:block` (clearing the inline
+ * style fell through to the sheet's `display:none` default, so the
+ * copy existed in the DOM but never rendered), and the disabled dim
+ * lives in the label's color so the reason keeps legible contrast.
+ *
  * The FACTS — including the three action callbacks, which close over
  * the open codepoint — are the consumer's; the kit renders what it is
  * given, reports the actions, and closes after each.
@@ -132,7 +138,11 @@ export function mountCharPopup(): CharPopup {
     code.textContent = next.code;
     from.textContent = next.from;
     note.textContent = next.note ?? "";
-    note.style.display = next.note ? "" : "none";
+    // Show = an EXPLICIT inline "block". Clearing the inline style
+    // ("") would fall back to the sheet's `display:none` default
+    // (both lines are hidden-by-default in kit.css) and the copy
+    // would never render — round 11, owner item 8.
+    note.style.display = next.note ? "block" : "none";
     if (next.missing || !next.glyphFamily) {
       glyph.style.fontFamily = "'Microsoft YaHei',serif";
       glyph.style.color = next.missing ? "var(--ink3)" : "";
@@ -149,7 +159,9 @@ export function mountCharPopup(): CharPopup {
     const reasonText = (btn: HTMLButtonElement, text: string | undefined): void => {
       const node = btn.querySelector<HTMLElement>(".kit-pop-side-reason")!;
       node.textContent = text ?? "";
-      node.style.display = text ? "" : "none";
+      // The same explicit-"block" rule as the note line above: the
+      // sheet hides the reason by default, so "" would keep it hidden.
+      node.style.display = text ? "block" : "none";
     };
     reasonText(baseBtn, next.baseReason);
     reasonText(donorBtn, next.donorReason);

@@ -432,8 +432,11 @@
 
 /* Round 8 (owner item 1): a side whose font lacks this codepoint
  * renders its button disabled with the reason INSIDE it — a column of
- * the label and the dim 10px reason line, visible the moment the
- * popup opens. */
+ * the label and the dim reason line, visible the moment the popup
+ * opens. Round 11 (owner item 8): the disabled state dims the LABEL
+ * (color), never the whole button — a whole-button opacity would wash
+ * the reason line down to ~2.4:1 against the popup surface in both
+ * themes; the reason itself stays at full ink3 opacity (≥4.4:1). */
 .kit-pop .kit-pop-side {
   display: inline-flex;
   flex-direction: column;
@@ -445,7 +448,7 @@
 
 .kit-pop .kit-pop-side-reason {
   display: none;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 400;
   line-height: 1.4;
   color: var(--ink3);
@@ -453,7 +456,13 @@
 
 .kit-pop .kit-pop-side:disabled {
   cursor: default;
-  opacity: 0.6;
+  /* Explicit 1 beats .kit-btn:disabled's 0.4 — the dim lives in the
+   * label color so the reason line keeps its own contrast. */
+  opacity: 1;
+}
+
+.kit-pop .kit-pop-side:disabled .kit-pop-side-label {
+  color: var(--ink3);
 }
 
 .kit-pop .kit-pop-rest {
