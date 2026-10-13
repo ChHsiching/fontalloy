@@ -23,10 +23,14 @@
  *    gitignored everywhere and are only ever READ here;
  * 2. the pinned UPSTREAM artifact, fetched ONCE over the network into
  *    a gitignored cache (`gui/.dev-catalog-cache/`), sha256-verified
- *    against the manifest's pin, and (for zip artifacts) unpacked to
- *    the one Regular face the dev catalog serves. The cache is reused
- *    verbatim on later boots; a stale entry (manifest sha moved) is
- *    fetched again.
+ *    against the manifest's pin, and (for zip artifacts) unpacked —
+ *    EVERY face the artifact carries, because the dev catalog honors
+ *    the production release schema (catalog-release.yml: one zip per
+ *    family, ALL faces). A one-face catalog starves the weight matrix:
+ *    the family-cut pattern pools what exists, and a Regular-only
+ *    layout builds a single 400 slot (the round-15/16 owner report).
+ *    The cache is reused verbatim on later boots; a stale entry
+ *    (manifest sha moved) is fetched again.
  *
  * The per-family file mapping below is explicit (Nerd Fonts renames
  * several families in their patched binaries); the upstream path falls
@@ -255,6 +259,32 @@ function pickFaceFromArtifact(family, fileName, entries) {
 }
 
 /**
+ * The face-stem prefix a font file belongs to: everything before the
+ * last dash segment (NF and CJK naming alike, `<Family>-<Style>.ttf`;
+ * a dashless name is its own prefix). Sibling faces share the prefix,
+ * look-alike families do not (JetBrainsMonoNerdFont vs
+ * JetBrainsMonoNLNerdFont).
+ */
+function faceStemPrefix(file) {
+  const stem = file.replace(/\.[^.]+$/, "");
+  const idx = stem.lastIndexOf("-");
+  return idx === -1 ? stem : stem.slice(0, idx);
+}
+
+/**
+ * Every face of the family the resolved file belongs to, across the
+ * scanned layouts: all available files sharing its face-stem prefix,
+ * the resolved face always among them. Sorted for byte-reproducible
+ * zips.
+ */
+function familyFaces(resolvedFile, available) {
+  const prefix = faceStemPrefix(resolvedFile);
+  return [...available.keys()]
+    .filter((name) => FONT_EXT_RE.test(name) && faceStemPrefix(name) === prefix)
+    .sort();
+}
+
+/**
  * Fetch ONE family's pinned upstream artifact (cached, sha256-verified)
  * and extract the face the dev catalog serves into the cache's faces
  * layout. Returns the face file name, or null on any failure (the
@@ -302,13 +332,26 @@ async function fetchFamilyUpstream(entry, force = false) {
     await writeFile(artifactPath, artifact);
   }
 
-  const face = /\.zip$/i.test(entry.file)
-    ? pickFaceFromArtifact(entry.family, entry.file, readZipEntries(artifact))
-    : { file: basename(entry.file), data: artifact };
+  // Unpack EVERY face (the dev catalog serves full families — a
+  // Regular-only cache starves the weight matrix); the primary is the
+  // face the alias/Regular preference names, for variant resolution.
+  const isZip = /\.zip$/i.test(entry.file);
+  const unzipped = isZip ? readZipEntries(artifact) : null;
+  const primary = isZip
+    ? pickFaceFromArtifact(entry.family, entry.file, unzipped)
+    : { file: basename(entry.file) };
   await mkdir(faceDir, { recursive: true });
-  await writeFile(resolve(faceDir, face.file), face.data);
+  if (unzipped !== null) {
+    for (const name of unzipped.keys()) {
+      if (FONT_EXT_RE.test(name)) {
+        await writeFile(resolve(faceDir, name), unzipped.get(name));
+      }
+    }
+  } else {
+    await writeFile(resolve(faceDir, basename(entry.file)), artifact);
+  }
   await writeFile(markerPath, `${entry.sha256}\n`);
-  return face.file;
+  return primary.file;
 }
 
 /** Fill the cache's faces layout for every family the locals lack. */
@@ -467,7 +510,8 @@ function resolveFamilyFile(family, available, manifestFiles = []) {
   return null;
 }/**
  * @typedef {{family: string, variant: string | undefined, zip: string, zipSha256: string,
- *            zipBytes: Buffer, file: string, fileSha256: string}} CatalogFamily
+ *            zipBytes: Buffer, file: string, fileSha256: string,
+ *            faces: Array<{file: string, sha256: string, data: Buffer}>}} CatalogFamily
  */
 
 /** @type {Promise<{families: CatalogFamily[], misses: string[]}> | null} */
@@ -615,8 +659,17 @@ function buildCatalog() {
         misses.push(entry.family);
         continue;
       }
-      const data = await readFile(available.get(file));
-      const zipBytes = makeZip([{ name: file, data }]);
+      // EVERY sibling face rides the release (production schema: one
+      // zip per family, all faces) — the GUI's weight matrix pools
+      // them through the family-cut pattern.
+      const faces = await Promise.all(
+        familyFaces(file, available).map(async (name) => ({
+          file: name,
+          data: await readFile(available.get(name)),
+          sha256: sha256hex(await readFile(available.get(name))),
+        })),
+      );
+      const zipBytes = makeZip(faces.map(({ file: name, data }) => ({ name, data })));
       families.push({
         family: entry.family,
         variant: chooseVariant(entry.family, file, manifest),
@@ -624,7 +677,8 @@ function buildCatalog() {
         zipSha256: sha256hex(zipBytes),
         zipBytes,
         file,
-        fileSha256: sha256hex(data),
+        fileSha256: faces.find((f) => f.file === file)?.sha256 ?? sha256hex(await readFile(available.get(file))),
+        faces,
       });
     }
     // The prototype-only CJK families (dev-only; see EXTRA_DEV_FAMILIES).
@@ -633,15 +687,22 @@ function buildCatalog() {
         misses.push(`${entry.family} (dev-only extra)`);
         continue;
       }
-      const data = await readFile(available.get(entry.file));
-      const zipBytes = makeZip([{ name: entry.file, data }]);
+      const faces = await Promise.all(
+        familyFaces(entry.file, available).map(async (name) => ({
+          file: name,
+          data: await readFile(available.get(name)),
+          sha256: sha256hex(await readFile(available.get(name))),
+        })),
+      );
+      const zipBytes = makeZip(faces.map(({ file: name, data }) => ({ name, data })));
       families.push({
         family: entry.family,
         zip: `${entry.family}.zip`,
         zipSha256: sha256hex(zipBytes),
         zipBytes,
         file: entry.file,
-        fileSha256: sha256hex(data),
+        fileSha256: faces.find((f) => f.file === entry.file)?.sha256 ?? "",
+        faces,
       });
     }
     console.info(
@@ -669,7 +730,7 @@ function releaseDocument(families, baseUrl) {
         ...(f.variant === undefined ? {} : { variant: f.variant }),
         zip: f.zip,
         sha256: f.zipSha256,
-        files: [{ file: f.file, sha256: f.fileSha256 }],
+        files: f.faces.map(({ file, sha256 }) => ({ file, sha256 })),
       })),
     },
     null,
