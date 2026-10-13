@@ -33,6 +33,21 @@ body {
   display: flex;
 }
 
+/* Round 13, owner item 1: the rail's fade flags are registered as
+   animatable numbers so the scroll fades EASE in and out instead of
+   snapping (unregistered custom properties cannot transition). */
+@property --rail-fade-top {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+
+@property --rail-fade-bottom {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+
 .workspace-rail {
   flex: none;
   width: 260px;
@@ -42,6 +57,40 @@ body {
   border-right: 1px solid var(--ln);
   background: var(--sf);
   padding: 12px 12px 20px;
+  /* Round 13, owner item 1: the rail NEVER shows a scrollbar — the
+     scroll itself stays (wheel / touch / keyboard; overflow-y above),
+     the bar is hidden in both engines, and the scroll affordance is
+     the gradient fades the mask below paints at the overflowing
+     edges. The mask is alpha-only, so it reads identically in both
+     themes. The two 0/1 flags come from a tiny scroll listener
+     (ui/rail.ts): top fade once the rail is scrolled down, bottom
+     fade while more content sits below, neither at rest at an end. */
+  scrollbar-width: none; /* Firefox / the standard property */
+  --rail-fade-top: 0;
+  --rail-fade-bottom: 0;
+  --rail-fade-size: 28px;
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 calc(var(--rail-fade-size) * var(--rail-fade-top)),
+    #000 calc(100% - var(--rail-fade-size) * var(--rail-fade-bottom)),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 calc(var(--rail-fade-size) * var(--rail-fade-top)),
+    #000 calc(100% - var(--rail-fade-size) * var(--rail-fade-bottom)),
+    transparent 100%
+  );
+  transition:
+    --rail-fade-top 0.18s ease,
+    --rail-fade-bottom 0.18s ease;
+}
+
+/* The Chromium / WebView2 half of the hidden scrollbar. */
+.workspace-rail::-webkit-scrollbar {
+  display: none;
 }
 
 .workspace-content {

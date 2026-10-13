@@ -146,4 +146,139 @@ test.describe("workspace shell", () => {
     await expect(tags.locator("[data-pair='donor']")).toBeHidden();
     expect((await tags.textContent()) ?? "").not.toContain("—");
   });
+
+  /* ---------- round 13, owner item 1: the rail's hidden scrollbar ---------- */
+
+  test("the rail never shows a scrollbar; scroll fades mark the hidden overflow", async ({
+    page,
+  }) => {
+    const rail = page.locator(".workspace-rail");
+
+    // The bar is hidden in BOTH engines (the standard property computes
+    // to none in Chromium; the ::-webkit-scrollbar rule is asserted
+    // against the served stylesheets — getComputedStyle cannot read
+    // vendor pseudo-elements).
+    expect(
+      await rail.evaluate((el) => getComputedStyle(el).scrollbarWidth),
+    ).toBe("none");
+    const webkitRulePresent = await page.evaluate(() =>
+      [...document.styleSheets].some((sheet) =>
+        [...sheet.cssRules].some((rule) =>
+          rule.cssText.includes(".workspace-rail::-webkit-scrollbar") &&
+          rule.cssText.includes("display: none"),
+        ),
+      ),
+    );
+    expect(webkitRulePresent).toBe(true);
+
+    // The scroll affordance is the fade mask — alpha-only, so it reads
+    // the same in both themes (no color stops to theme-switch).
+    expect(
+      await rail.evaluate((el) => getComputedStyle(el).maskImage),
+    ).toContain("linear-gradient");
+
+    // The two 0/1 fade flags (set by ui/rail.ts's tiny scroll
+    // listener) drive which edges fade. Read through expect.poll: the
+    // flag flips ride a ResizeObserver frame under load.
+    const flag = (name: "top" | "bottom") =>
+      rail.evaluate((el, key) => el.style.getPropertyValue(`--rail-fade-${key}`), name);
+    const maxScroll = () =>
+      rail.evaluate((el) => el.scrollHeight - el.clientHeight);
+
+    // No overflow at all (a viewport taller than the rail's content):
+    // neither edge fades.
+    await page.setViewportSize({ width: 1440, height: 1600 });
+    await expect.poll(() => maxScroll()).toBeLessThanOrEqual(0);
+    await expect.poll(() => flag("top")).toBe("0");
+    await expect.poll(() => flag("bottom")).toBe("0");
+
+    // Overflow at rest at the TOP: only the bottom edge fades.
+    await page.setViewportSize({ width: 1440, height: 420 });
+    await expect.poll(() => maxScroll()).toBeGreaterThan(0);
+    await expect.poll(() => flag("top")).toBe("0");
+    await expect.poll(() => flag("bottom")).toBe("1");
+
+    // The scroll itself lives on: a real wheel event over the rail
+    // moves it, and once scrolled the top fade joins in.
+    await page.mouse.move(130, 220);
+    await page.mouse.wheel(0, 80);
+    await expect
+      .poll(() => rail.evaluate((el) => el.scrollTop))
+      .toBeGreaterThan(0);
+    await expect.poll(() => flag("top")).toBe("1");
+    await expect.poll(() => flag("bottom")).toBe("1");
+
+    // At rest at the BOTTOM: only the top edge fades.
+    await rail.evaluate((el) => {
+      el.scrollTop = el.scrollHeight;
+    });
+    await expect.poll(() => flag("top")).toBe("1");
+    await expect.poll(() => flag("bottom")).toBe("0");
+  });
+});
+    await page.goto("/");
+    await waitForFontsReady(page);
+
+    const row = page.locator(".settings-outdir");
+    await expect(row).toBeVisible();
+    const value = page.locator("[data-role='output-dir-path']");
+    const fullOverride =
+      "C:\\Users\\Administrator\\Documents\\FontAlloy\\合成\\很长很长的目录\\输出位置";
+
+    // Single line, middle-ellipsized in the RENDER: the root pair and
+    // the tail pair survive with the ORIGINAL backslashes, one
+    // ellipsis in the middle; the full path rides the title.
+    await expect(value).toHaveText(
+      "C:\\Users\\…\\很长很长的目录\\输出位置",
+    );
+    await expect(value).toHaveAttribute("title", fullOverride);
+    const singleLine = await page
+      .locator(".settings-outdir-value")
+      .evaluate((el) => {
+        const boxes = [...el.children].map((c) => c.getBoundingClientRect());
+        const centers = boxes.map((b) => (b.top + b.bottom) / 2);
+        return (
+          el.getBoundingClientRect().height < 30 &&
+          Math.max(...centers) - Math.min(...centers) < 2
+        );
+      });
+    expect(singleLine).toBe(true);
+
+    // 更改 picks the POSIX directory: the display keeps ITS slashes,
+    // and 恢复默认 appears (an override now exists).
+    await pointerClick(page, page.locator("[data-role='output-dir-change']"));
+    await expect(value).toHaveText("/home/…/outputs/merged");
+    await expect(value).toHaveAttribute(
+      "title",
+      "/home/owner/works/2026/fonts/outputs/merged",
+    );
+    await expect(page.locator("[data-role='output-dir-reset']")).toBeVisible();
+
+    // The copy-path icon button puts the FULL path on the clipboard
+    // and shows a brief copied state — the only feedback (no toast).
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+    await pointerClick(page, page.locator("[data-role='output-dir-copy']"));
+    await expect
+      .poll(() =>
+        page.evaluate(() => navigator.clipboard.readText()),
+      )
+      .toBe("/home/owner/works/2026/fonts/outputs/merged");
+    const copy = page.locator("[data-role='output-dir-copy']");
+    await expect(copy).toHaveAttribute("aria-label", "已复制路径");
+    await expect(copy).toHaveClass(/copied/);
+    await page.waitForTimeout(1800);
+    await expect(copy).toHaveAttribute("aria-label", "复制路径");
+    await expect(copy).not.toHaveClass(/copied/);
+
+    // 恢复默认 clears the override: the shell default renders — a
+    // five-segment path, so it middle-truncates too — and the reset
+    // button hides again.
+    await pointerClick(page, page.locator("[data-role='output-dir-reset']"));
+    await expect(value).toHaveText("C:\\Users\\…\\Downloads\\fontalloy");
+    await expect(value).toHaveAttribute(
+      "title",
+      "C:\\Users\\Administrator\\Downloads\\fontalloy",
+    );
+    await expect(page.locator("[data-role='output-dir-reset']")).toBeHidden();
+  });
 });

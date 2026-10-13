@@ -49,5 +49,34 @@ export function mountRail(root: HTMLElement): { en: FontPicker; cjk: FontPicker 
   mountPresetSection(presetSlot);
   mountRulesSection(rulesSlot);
   mountSettings(settingsSlot);
+
+  syncScrollFade(root);
   return { en, cjk };
+}
+
+/**
+ * Round 13, owner item 1: the rail scrolls without ever SHOWING a
+ * scrollbar (app.css hides it in both engines); the affordance is a
+ * pair of gradient fade masks the scroll position drives — a top fade
+ * once the rail is scrolled down, a bottom fade while more content
+ * sits below, neither at rest at an end. The listener only toggles
+ * two 0/1 custom properties; the mask and its easing are pure CSS.
+ * A ResizeObserver re-syncs when the content grows or shrinks under
+ * the user (rules added, the Tauri-only 输出目录 row mounting, a
+ * viewport resize) — those change scrollability without a scroll
+ * event ever firing.
+ */
+function syncScrollFade(root: HTMLElement): void {
+  const update = (): void => {
+    const more = root.scrollHeight - root.clientHeight - root.scrollTop;
+    root.style.setProperty("--rail-fade-top", root.scrollTop > 0.5 ? "1" : "0");
+    root.style.setProperty("--rail-fade-bottom", more > 1 ? "1" : "0");
+  };
+  root.addEventListener("scroll", update, { passive: true });
+  const observer = new ResizeObserver(update);
+  observer.observe(root); // the box itself: viewport resizes
+  for (const child of root.children) {
+    if (child instanceof Element) observer.observe(child); // content growth
+  }
+  update();
 }
