@@ -233,13 +233,24 @@ function applyBatchRule(fonts: string[]): void {
  * The app-level message stack (round 8, owner item 2): one dismissable
  * corner card per operation outcome. Mounted ONCE for the page (body
  * level, fixed position — pushing a message can never reflow the
- * workspace); the charmap's assignment paths are its writer.
+ * workspace); the charmap's assignment paths and the synthesize flow's
+ * save-collision prompt (round 17) are its writers.
  */
 let messageStack: MessageStack | null = null;
 
 function messages(): MessageStack {
   messageStack ??= mountMessageStack();
   return messageStack;
+}
+
+/**
+ * The page's single message stack for writers OUTSIDE the charmap
+ * (round 17: the synthesize flow's same-name collision card). Same
+ * singleton, same corner — every outcome of the app lands in one
+ * place.
+ */
+export function appMessages(): MessageStack {
+  return messages();
 }
 
 /** The pick coverages as the resolver's map (shared builder). */

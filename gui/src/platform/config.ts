@@ -71,6 +71,22 @@ export interface ArtifactSaveResult {
 }
 
 /**
+ * The pre-flight existence check on the default-path save target
+ * (round 17, owner item 3): does a file already sit where this save
+ * would land, and where exactly is that? The answer drives the
+ * same-name collision prompt — never a silent overwrite.
+ */
+export interface ArtifactProbe {
+  /** True when the resolved target already holds a file. */
+  exists: boolean;
+  /** The resolved target path (display copy for the collision card). */
+  path: string;
+}
+
+/** Answers the pre-flight question for one suggested artifact name. */
+export type ArtifactProber = (suggestedName: string) => Promise<ArtifactProbe>;
+
+/**
  * Saves one built artifact. `bytes` is the font file exactly as the
  * service produced it; `suggestedName` is e.g. `ChHsich.ttf`.
  */
@@ -94,6 +110,11 @@ export interface FontalloyConfig {
   saveArtifact?: ArtifactSaver;
   /** The 另存为 dialog saver (injected by tests; Tauri dialog otherwise). */
   saveArtifactAs?: ArtifactSaver;
+  /**
+   * The collision pre-flight (round 17): injected by tests against a
+   * real save directory; the Tauri `artifact_exists` command otherwise.
+   */
+  probeArtifact?: ArtifactProber;
 }
 
 declare global {
@@ -170,5 +191,6 @@ export function readConfig(): FontalloyConfig {
     serveUrl: injected?.serveUrl,
     saveArtifact: injected?.saveArtifact,
     saveArtifactAs: injected?.saveArtifactAs,
+    probeArtifact: injected?.probeArtifact,
   };
 }

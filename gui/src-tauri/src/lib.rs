@@ -277,6 +277,19 @@ fn save_artifact(state: State<'_, ShellState>, request: tauri::ipc::Request) -> 
     std::fs::write(&path, bytes).map_err(|err| format!("无法写入 {}: {err}", path.display()))
 }
 
+/// The same-name collision pre-flight (round 17, owner item 3): does
+/// the default-path save target `<dir>/<name>` already hold a file?
+/// Joins and stats WITHOUT writing; returns `(exists, joined_path)`
+/// so the frontend can name the exact colliding target in its prompt.
+#[tauri::command]
+fn artifact_exists(dir: String, name: String) -> (bool, String) {
+    let path = PathBuf::from(&dir).join(&name);
+    (
+        path.symlink_metadata().is_ok(),
+        path.to_string_lossy().into_owned(),
+    )
+}
+
 /// Open a URL in the SYSTEM browser (round 5, owner item 12): the
 /// webview's `<a target="_blank">` is a no-op here, so the top bar's
 /// GitHub link routes through this command. https-only by contract.
@@ -376,6 +389,7 @@ pub fn run() {
             default_output_dir,
             pick_output_dir,
             park_save_path,
+            artifact_exists,
             open_external
         ])
         .setup(|app| {

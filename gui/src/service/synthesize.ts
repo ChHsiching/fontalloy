@@ -20,9 +20,11 @@ import {
 } from "../recipe/settings";
 import { applyRulesToDraft } from "../precedence/serialize";
 import { localFaceSet } from "../precedence/picks";
-import { saveArtifact, saveArtifactAs } from "../platform/artifacts";
+import { probeArtifact, saveArtifact, saveArtifactAs } from "../platform/artifacts";
 import { isTauri, readConfig, serveProbeAddress } from "../platform/config";
-import { ServeClient, type CatalogDocument, type FaceDocument } from "./client";
+import { flashFontNameInput } from "../kit/topBar";
+import { appMessages } from "../ui/charmap";
+import { ServeClient, type CatalogDocument, type FaceDocument, type ReportDocument } from "./client";
 import {
   addBuild,
   patchBuild,
@@ -542,7 +544,10 @@ export async function synthesize(): Promise<void> {
   // Fetch artifact + report, then hand the font to the platform's
   // DEFAULT-PATH saver (round 12: the configured output directory, no
   // dialog anywhere in the saving path — a dialog is never a
-  // dependency of saving).
+  // dependency of saving). Round 17 (owner item 3) adds the PRE-FLIGHT:
+  // when the resolved target already holds a same-named file (the user
+  // forgot to rename; the default name is ChHsich), the USER decides —
+  // never a silent overwrite, never a silent suffix.
   patchBuild(id, { status: "saving" });
   try {
     const [bytes, report] = await Promise.all([
@@ -556,16 +561,135 @@ export async function synthesize(): Promise<void> {
     // what the report read back (family picks package the whole weight
     // matrix as ttc); anything the schema did not name falls back to ttf.
     const format = report.output?.format ?? "ttf";
-    const suggested = `${filename}.${format === "ttc" || format === "woff2" ? format : "ttf"}`;
-    const result = await saveArtifact(suggested, bytes);
-    patchBuild(id, {
-      status: result.saved ? "saved" : "done",
-      savedPath: result.path,
-      savedNotice: result.notice ?? null,
-      report,
-    });
+    const ext = format === "ttc" || format === "woff2" ? format : "ttf";
+    const suggested = `${filename}.${ext}`;
+    const probe = await probeArtifact(suggested);
+    if (probe.exists) {
+      // NOTHING is written: the row settles as built-but-unsaved (the
+      // artifact stays in the service's scratch, retrievable from the
+      // row's 另存为) while the card asks the user.
+      patchBuild(id, { status: "done", savedPath: null, report });
+      askOverwriteOrRename({ id, suggested, target: probe.path, ext, bytes, report });
+      return;
+    }
+    await settleSaved(id, suggested, bytes, report);
   } catch (err) {
     patchBuild(id, {
+      status: "error",
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+/**
+ * The artifact of a finished build whose save is waiting on the
+ * same-name collision answer (round 17). The bytes are fetched once;
+ * whichever path the user chooses writes THESE bytes (a rename changes
+ * the file's name, not the font's already-written name table).
+ */
+interface CollisionJob {
+  /** The build row the artifact belongs to. */
+  id: string;
+  /** The suggested file name the collision fired on. */
+  suggested: string;
+  /** The resolved target path the card names for the user. */
+  target: string;
+  /** The artifact's extension (the rename retry rebuilds the name). */
+  ext: string;
+  /** The built font exactly as the service produced it. */
+  bytes: Uint8Array;
+  /** The verification report fetched alongside the bytes. */
+  report: ReportDocument;
+}
+
+/** Save through the default path and settle the row with the outcome. */
+async function settleSaved(
+  id: string,
+  suggested: string,
+  bytes: Uint8Array,
+  report: ReportDocument,
+): Promise<void> {
+  const result = await saveArtifact(suggested, bytes);
+  patchBuild(id, {
+    status: result.saved ? "saved" : "done",
+    savedPath: result.path,
+    savedNotice: result.notice ?? null,
+    report,
+  });
+}
+
+/**
+ * Ask the user about a same-name save target (round 17, owner item 3).
+ * One message card names the exact colliding path and offers BOTH
+ * paths — 改个名字 (the font-name input takes the focus and flashes;
+ * the save completes once the new name is committed) and 覆盖保存
+ * (the explicit write, danger-toned). Neither is the default. Without
+ * a choice nothing is written; the artifact stays in the service's
+ * scratch, retrievable from the row.
+ */
+function askOverwriteOrRename(job: CollisionJob): void {
+  appMessages().push({
+    icon: "warn",
+    title: "已有同名文件",
+    reason: job.target,
+    actions: [
+      {
+        label: "改个名字",
+        onClick: () => armRenameRetry(job),
+      },
+      {
+        label: "覆盖保存",
+        tone: "danger",
+        onClick: () => {
+          void settleUnderCollision(job, job.suggested);
+        },
+      },
+    ],
+  });
+}
+
+/**
+ * The 改个名字 path: the field takes the focus and flashes, and the
+ * save retries once the user COMMITS a new name — the input's `change`
+ * event (Enter / blur, and only when the value actually changed), so
+ * nothing writes while the user is still typing.
+ */
+function armRenameRetry(job: CollisionJob): void {
+  const input = flashFontNameInput();
+  if (input === null) return;
+  input.addEventListener(
+    "change",
+    () => {
+      const family = store.get().outputFamily || "ChHsich";
+      void settleUnderCollision(job, `${family}.${job.ext}`);
+    },
+    { once: true },
+  );
+}
+
+/**
+ * Complete a collision-blocked save under `suggested`. The overwrite
+ * choice reuses the known collision; a renamed target gets its own
+ * pre-flight — a rename onto ANOTHER existing file asks again rather
+ * than overwriting. Errors land in the row as inline text, like every
+ * save path.
+ */
+async function settleUnderCollision(
+  job: CollisionJob,
+  suggested: string,
+): Promise<void> {
+  try {
+    if (suggested !== job.suggested) {
+      const probe = await probeArtifact(suggested);
+      if (probe.exists) {
+        askOverwriteOrRename({ ...job, suggested, target: probe.path });
+        return;
+      }
+    }
+    patchBuild(job.id, { status: "saving", error: null });
+    await settleSaved(job.id, suggested, job.bytes, job.report);
+  } catch (err) {
+    patchBuild(job.id, {
       status: "error",
       error: err instanceof Error ? err.message : String(err),
     });
