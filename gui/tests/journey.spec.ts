@@ -110,10 +110,11 @@ async function writeReport(): Promise<void> {
 const jsErrors: string[] = [];
 /** Where the current journey's saved artifacts land (the save stand-in). */
 let currentSaveDir: string | null = null;
-// Parallel-stream runs drive their own dev-server port; the persistent
-// context's baseURL must name THAT origin (default: the shared port).
+// Parallel-stream runs: an explicit FONTALLOY_E2E_ORIGIN wins, else the
+// PLAYWRIGHT_DEV_PORT the configs picked (default: the shared 5173).
 const JOURNEY_ORIGIN =
-  process.env.FONTALLOY_E2E_ORIGIN ?? "http://localhost:5173";
+  process.env.FONTALLOY_E2E_ORIGIN ??
+  `http://localhost:${process.env.PLAYWRIGHT_DEV_PORT ?? "5173"}`;
 
 const test = base.extend<{ journeysPage: Page }>({
   journeysPage: [
@@ -122,9 +123,7 @@ const test = base.extend<{ journeysPage: Page }>({
         resolve(tmpdir(), "fontalloy-journey-profile-"),
       );
       const context = await chromium.launchPersistentContext(userDataDir, {
-        baseURL:
-          process.env.FONTALLOY_E2E_ORIGIN ??
-          `http://localhost:${process.env.PLAYWRIGHT_DEV_PORT ?? "5173"}`,
+        baseURL: JOURNEY_ORIGIN,
         viewport: { width: 1440, height: 900 },
         colorScheme: "light",
       });
