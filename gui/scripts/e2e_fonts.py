@@ -50,8 +50,18 @@ def synth_font(
     family: str,
     codepoints: tuple[int, ...],
     advance: int = 600,
+    weight: int = 400,
+    style: str = "Regular",
+    italic: bool = False,
 ) -> None:
-    """Write a small synthetic TTF covering exactly ``codepoints``."""
+    """Write a small synthetic TTF covering exactly ``codepoints``.
+
+    ``weight``/``style`` name the face's own identity (OS/2
+    usWeightClass, the italic bits, the name table's subfamily) so one
+    ``family`` can ship several faces — the round-12 family-pick
+    fixtures: a Regular/Bold/Italic trio that parses to ONE css family
+    with a real weight matrix.
+    """
     glyph_names = [".notdef"] + [f"uni{cp:04X}" for cp in codepoints]
     glyphs = {".notdef": _box_glyph(0, 0, 500, 700)}
     metrics = {".notdef": (advance, 40)}
@@ -74,14 +84,46 @@ def synth_font(
         sTypoDescender=-200,
         usWinAscent=900,
         usWinDescent=300,
-        usWeightClass=400,
+        usWeightClass=weight,
     )
-    builder.setupNameTable({"familyName": family, "styleName": "Regular"})
+    builder.setupNameTable({"familyName": family, "styleName": style})
     builder.setupPost()
     builder.setupHead(
         unitsPerEm=1000, created=FIXED_TIMESTAMP, modified=FIXED_TIMESTAMP
     )
+    font = builder.font
+    if italic:
+        # The italic bits both the core and the browser read.
+        font["OS/2"].fsSelection = (font["OS/2"].fsSelection & ~0x40) | 0x01
+        font["head"].macStyle |= 0x02
     builder.save(path)
+
+
+#: The round-12 family-pick fixture: one family, three faces — the
+#: weight matrix a catalog pick registers (Regular 400, Bold 700,
+#: Italic 400-italic; RIBBI subfamilies keep the shared family name).
+FAMILY_FACES = (
+    ("Regular", 400, False),
+    ("Bold", 700, False),
+    ("Italic", 400, True),
+)
+
+
+def synth_family(outdir: Path, *, family: str, stem: str) -> list[Path]:
+    """Write the family's faces as ``<stem>-<Subfamily>.ttf`` files."""
+    paths = []
+    for style, weight, italic in FAMILY_FACES:
+        path = outdir / f"{stem}-{style}.ttf"
+        synth_font(
+            path,
+            family=family,
+            codepoints=BASE_CODEPOINTS,
+            weight=weight,
+            style=style,
+            italic=italic,
+        )
+        paths.append(path)
+    return paths
 
 
 def main() -> int:
@@ -100,9 +142,34 @@ def main() -> int:
         help="the donor ALSO covers the first N ASCII letters "
         "(overlap knob: makes override cases observable)",
     )
+    parser.add_argument(
+        "--family",
+        action="store_true",
+        help="write a three-face family (Regular/Bold/Italic, one "
+        "shared family name) instead of the base/donor pair — the "
+        "round-12 family-pick fixture",
+    )
+    parser.add_argument(
+        "--family-name",
+        default="Alloy Family",
+        help="the family fixture's family name (--family only)",
+    )
+    parser.add_argument(
+        "--family-stem",
+        default="AlloyFamily",
+        help="the family fixture's file stem (--family only)",
+    )
     args = parser.parse_args()
 
     args.outdir.mkdir(parents=True, exist_ok=True)
+    if args.family:
+        paths = synth_family(
+            args.outdir,
+            family=args.family_name,
+            stem=args.family_stem,
+        )
+        print("wrote " + ", ".join(str(p) for p in paths))
+        return 0
     synth_font(
         args.outdir / "base.ttf",
         family="AlloyBase",

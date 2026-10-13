@@ -115,6 +115,15 @@ export function makeZip(entries: ZipEntryInput[]): Buffer {
 
 /* ---------- simulated catalog-release ---------- */
 
+export interface SimFaceSpec {
+  /** Face file name inside the family zip. */
+  file: string;
+  /** Real host font binary backing the face (font binaries never enter git). */
+  fontPath: string;
+  /** Compress this face's zip entry with deflate (default: stored). */
+  deflate?: boolean;
+}
+
 export interface SimFamilySpec {
   /** Metadata family display name (what the pickers list). */
   family: string;
@@ -124,12 +133,17 @@ export interface SimFamilySpec {
    * family with several variants REQUIRES one in the recipe.
    */
   variant?: string;
-  /** Face file name inside the family zip. */
-  file: string;
-  /** Real host font binary backing the face (font binaries never enter git). */
-  fontPath: string;
+  /** Single-face sugar: the one face of the family zip. */
+  file?: string;
+  /** The single face's host font binary (single-face form). */
+  fontPath?: string;
   /** Compress this family's zip with deflate (default: stored). */
   deflate?: boolean;
+  /**
+   * The family's FACE SET (round 12, owner item 8): every face of the
+   * variant the release zip carries — a pick registers them all.
+   */
+  faces?: SimFaceSpec[];
 }
 
 export interface SimFamily {
@@ -160,17 +174,39 @@ export class SimCatalog {
   static async create(specs: SimFamilySpec[]): Promise<SimCatalog> {
     const families: SimFamily[] = [];
     for (const spec of specs) {
-      const data = await readFile(spec.fontPath);
-      const zipBytes = makeZip([
-        { name: spec.file, data, deflate: spec.deflate },
-      ]);
+      const faces: SimFaceSpec[] =
+        spec.faces ??
+        (spec.file !== undefined && spec.fontPath !== undefined
+          ? [{ file: spec.file, fontPath: spec.fontPath, deflate: spec.deflate }]
+          : []);
+      if (faces.length === 0) {
+        throw new Error(
+          `sim family ${spec.family}: pass file+fontPath or faces[]`,
+        );
+      }
+      const binaries = await Promise.all(
+        faces.map(async (face) => ({
+          face,
+          data: await readFile(face.fontPath),
+        })),
+      );
+      const zipBytes = makeZip(
+        binaries.map(({ face, data }) => ({
+          name: face.file,
+          data,
+          deflate: face.deflate ?? spec.deflate,
+        })),
+      );
       families.push({
         family: spec.family,
         variant: spec.variant,
         zip: `${spec.family.replace(/\s+/g, "")}.zip`,
         zipSha256: sha256hex(zipBytes),
         zipBytes,
-        files: [{ file: spec.file, sha256: sha256hex(data) }],
+        files: binaries.map(({ face, data }) => ({
+          file: face.file,
+          sha256: sha256hex(data),
+        })),
       });
     }
     // Mirrors the real schema (fontalloy/catalog-release@v1): ordered

@@ -4,6 +4,7 @@ import {
   type CatalogState,
 } from "../state";
 import { registerFontBytes } from "../fonts/registry";
+import { parseFontMeta } from "../fonts/sfnt";
 import type { LoadedFont } from "../state";
 import type { BlobStorage } from "../platform/storage";
 import { parseCatalogRelease, type CatalogRelease, type ReleaseFamily, type ReleaseOrigin } from "./release";
@@ -40,21 +41,18 @@ function describe(err: unknown): string {
 }
 
 /**
- * The stored face a variant selection registers (round 7): the release
+ * Every face of a family+variant (round 12, owner item 8): the release
  * zip carries every variant's faces; match the variant's tokens against
- * the file names (NF→NerdFont, Mono, HW, Screen, GB, TC, weights),
- * preferring Regular among equals. Falls back to the previous rule
- * (first Regular-named face, else the first file) — a one-face family
- * (the dev catalog and the CI zips) resolves to exactly that face.
+ * the file names (NF→NerdFont, Mono, HW, Screen, GB, TC, weights) — the
+ * pick's face SET. Falls back to every file when no token matches (the
+ * previous rule) — a one-face family (the dev catalog and the CI zips)
+ * resolves to exactly that face.
  */
-function pickFaceForVariant(
+function variantFaceFiles(
   files: ReadonlyArray<{ file: string }>,
   variant: string | null,
-): { file: string } {
-  const preferRegular = (list: ReadonlyArray<{ file: string }>) =>
-    list.find((f) => /regular/i.test(f.file)) ?? list[0]!;
-  if (variant === null || files.length <= 1) return preferRegular(files);
-
+): ReadonlyArray<{ file: string }> {
+  if (variant === null || files.length <= 1) return files;
   const lower = variant.toLowerCase();
   const wants = (token: string): boolean => lower.includes(token);
   const matches = files.filter((f) => {
@@ -70,7 +68,20 @@ function pickFaceForVariant(
       (!wants("medium") || name.includes("medium"))
     );
   });
-  return preferRegular(matches.length > 0 ? matches : files);
+  return matches.length > 0 ? matches : files;
+}
+
+/**
+ * The stored face a variant selection registers as its REPRESENTATIVE:
+ * the Regular-named face of the variant's set (the first otherwise) —
+ * the pick key, the preview face, the identity every surface reads.
+ */
+function pickFaceForVariant(
+  files: ReadonlyArray<{ file: string }>,
+  variant: string | null,
+): { file: string } {
+  const set = variantFaceFiles(files, variant);
+  return set.find((f) => /regular/i.test(f.file)) ?? set[0]!;
 }
 
 /**
@@ -290,16 +301,22 @@ export class CatalogManager {
   }
 
   /**
-   * Make one catalog family selectable: read a face from storage,
-   * register it through the same FontFace(arrayBuffer) path as local
-   * files, and record family -> cssFamily for the picker rows.
-   * Idempotent — including mid-sweep, through the pending map (the
-   * sweep defers its store patches). Returns the cssFamily, or null
+   * Make one catalog family selectable (round 12, owner item 8): a pick
+   * is the FAMILY, not one face. The representative face (Regular
+   * preferred) registers through the same FontFace(arrayBuffer) path as
+   * local files — it is the pick key, the preview face, and the identity
+   * every surface reads — while the variant's OTHER stored faces
+   * register as data-only records (no FontFace: they would collide with
+   * the representative under the shared css family, and nothing renders
+   * in them; the weight matrix comes from the service). Idempotent —
+   * including mid-sweep, through the pending map (the sweep defers its
+   * store patches). Returns the representative's cssFamily, or null
    * when the family is not usable. `silent` skips both store patches
-   * (the sweep batches its own).
+   * (the sweep batches its own) AND the face set — the boot sweep
+   * registers preview faces only, never a whole catalog's weights.
    *
    * `variant` (round 7, the variant chips): the manifest VARIANT the
-   * user picked. It selects the stored face whose file name matches the
+   * user picked. It selects the stored faces whose file names match the
    * variant (the production release zip carries every variant's faces;
    * token matching — NF→NerdFont, Mono, HW, Screen, GB, TC, weights)
    * and rides the registration as the catalog identity, so the recipe
@@ -322,6 +339,10 @@ export class CatalogManager {
     const primary = pickFaceForVariant(family.files, variant);
     const buffer = await this.deps.storage.read(`${dir}/${primary.file}`);
     if (!buffer) return null;
+    // The representative's OWN parsed family: the cut the face set
+    // keeps (a release zip may carry several sub-variants' faces; only
+    // the representative's family is the pick).
+    const repFamily = parseFontMeta(buffer, { coverage: false }).family;
     try {
       const { font } = await registerFontBytes(buffer, {
         family: family.family,
@@ -350,10 +371,86 @@ export class CatalogManager {
           },
         });
       }
+      // The pick's face set (round 12): every fetched face of the
+      // family+variant, registered in the BACKGROUND so the pick itself
+      // stays instant — the rail card and the grid only ever wait on
+      // the representative. Never on the boot sweep (silent).
+      if (!opts.silent) {
+        void this.registerFamilyFaces(family, variant, primary.file, repFamily);
+      }
       return font.cssFamily;
     } catch {
       // A stored face that no longer parses stays a plain picker row.
       return null;
+    }
+  }
+
+  /** Family face-set sweeps in flight (one per family+variant). */
+  private readonly faceSetRuns = new Set<string>();
+
+  /**
+   * Register the variant's non-representative faces as data-only
+   * records (round 12, owner item 8). Yields between faces so a large
+   * family never blocks the UI thread; patches the store ONCE at the
+   * end. Faces whose own name-table family differs from the
+   * representative's cut are skipped — a pick carries ONE family, the
+   * one the user picked (a Nerd Fonts zip mixes NL/Mono/Propo cuts in
+   * one artifact). Idempotent per file: already-recorded faces (an
+   * earlier pick, a mid-flight sweep) are not re-registered.
+   */
+  private async registerFamilyFaces(
+    family: ReleaseFamily,
+    variant: string | null,
+    repFile: string,
+    repCssFamily: string,
+  ): Promise<void> {
+    const runKey = `${family.family}::${variant}`;
+    if (this.faceSetRuns.has(runKey)) return;
+    this.faceSetRuns.add(runKey);
+    try {
+      const dir = familyDir(family.family);
+      const identity = { family: family.family, variant };
+      const recorded = (file: string): boolean =>
+        store
+          .get()
+          .fonts.some(
+            (f) =>
+              f.catalog?.family === identity.family &&
+              f.catalog?.variant === identity.variant &&
+              f.fileName === file,
+          );
+      const faces: LoadedFont[] = [];
+      for (const face of variantFaceFiles(family.files, variant)) {
+        if (face.file === repFile || recorded(face.file)) continue;
+        const buffer = await this.deps.storage.read(`${dir}/${face.file}`);
+        if (buffer === null) continue;
+        try {
+          // Names only — the cmap enumeration is the expensive half of
+          // the parse and no consumer reads a sibling's coverage (the
+          // grid renders the representative; the matrix comes from the
+          // service). One read per face, one yield between faces.
+          const meta = parseFontMeta(buffer, { coverage: false });
+          if (meta.family !== repCssFamily) continue;
+          faces.push({
+            cssFamily: meta.family,
+            family: family.family,
+            names: meta.names,
+            fileName: face.file,
+            origin: "catalog",
+            path: this.deps.storage.absPath?.(`${dir}/${face.file}`) ?? undefined,
+            catalog: { family: identity.family, variant: identity.variant },
+            codepoints: [],
+          });
+        } catch {
+          // A face that no longer parses is simply absent from the set.
+        }
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      if (faces.length > 0) {
+        store.set({ fonts: [...store.get().fonts, ...faces] });
+      }
+    } finally {
+      this.faceSetRuns.delete(runKey);
     }
   }
 

@@ -1,5 +1,8 @@
 import { test, expect, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { resolve } from "node:path";
 import { parseFontMeta } from "../src/fonts/sfnt";
 import {
   assertNoJsErrors,
@@ -8,6 +11,7 @@ import {
   pointerClick,
   waitForFontsReady,
 } from "./helpers";
+import { generateFamily } from "./serve";
 import { SimCatalog, injectCatalogConfig } from "./catalog-fixtures";
 
 /**
@@ -445,6 +449,88 @@ test.describe("first-run catalog download", () => {
       .evaluate((el) => getComputedStyle(el).fontFamily);
     expect(cellFont).toContain(cssA);
     await expect(page.locator("[data-stat='en']")).not.toHaveText("0");
+  });
+
+  test("a family pick registers every fetched face of the variant — one family, one preview face", async ({
+    page,
+  }) => {
+    // Round 12 (owner item 8): the release zip carries the variant's
+    // whole weight matrix; the pick registers EVERY fetched face — as
+    // data-only records behind the representative. The rail card, the
+    // pair tag, and the charmap preview keep reading the
+    // representative face (Regular-preferred), exactly ONE FontFace
+    // lands on document.fonts (siblings would collide under the
+    // shared css family and nothing renders in them), and the picker
+    // still lists ONE row for the family — never ghost rows for the
+    // sibling weights.
+    const root = await mkdtemp(resolve(tmpdir(), "fontalloy-family-"));
+    const [regular, bold, italic] = await generateFamily(root);
+    const sim = await SimCatalog.create([
+      {
+        family: "Alloy Family",
+        file: "AlloyFamily-Regular.ttf",
+        fontPath: regular,
+        faces: [
+          { file: "AlloyFamily-Regular.ttf", fontPath: regular },
+          { file: "AlloyFamily-Bold.ttf", fontPath: bold },
+          { file: "AlloyFamily-Italic.ttf", fontPath: italic },
+        ],
+      },
+    ]);
+    await sim.install(page);
+    await injectCatalogConfig(page);
+    await page.goto("/");
+    await expect(catalogDone(page)).toHaveText("1");
+
+    await pointerClick(
+      page,
+      page.locator('[data-role="picker-en"] .kit-hd'),
+    );
+    await pointerClick(page, catalogRow(page, "Alloy Family").first());
+    await waitForFontsReady(page);
+
+    // The identity surfaces read the representative's own name.
+    await expect(
+      page.locator('[data-role="picker-en"] .kit-hd b'),
+    ).toHaveText("Alloy Family");
+    await expect(
+      page.locator("[data-role='font-pair'] [data-pair='base']"),
+    ).toHaveText("Alloy Family");
+
+    // The face-set sweep runs in the background (data-only records);
+    // give it a settle window, then prove the FontFace discipline:
+    // exactly one face of the family is on document.fonts.
+    await page.waitForTimeout(600);
+    const faceCount = await page.evaluate(
+      () =>
+        [...document.fonts].filter(
+          (face) => face.family.replace(/["']/g, "") === "Alloy Family",
+        ).length,
+    );
+    expect(faceCount).toBe(1);
+    const loaded = await page.evaluate(() =>
+      document.fonts.check('16px "Alloy Family"', "A"),
+    );
+    expect(loaded).toBe(true);
+
+    // The preview keeps the representative: cells paint in the
+    // family's one registered face.
+    const cellFont = await page
+      .locator(".charmap-grid .kit-cell[data-cp='U+0041']")
+      .evaluate((el) => getComputedStyle(el).fontFamily);
+    expect(cellFont).toContain("Alloy Family");
+
+    // The picker lists the FAMILY — the sibling weights never surface
+    // as their own rows (they are catalog faces of the pick, not
+    // local files).
+    await pointerClick(
+      page,
+      page.locator('[data-role="picker-en"] .kit-hd'),
+    );
+    await expect(
+      enPopup(page).locator(".kit-fp", { hasText: "Alloy Family" }),
+    ).toHaveCount(1);
+    await page.keyboard.press("Escape");
   });
 
   test("live GitHub stars: fetched at startup, cached for offline launches", async ({
