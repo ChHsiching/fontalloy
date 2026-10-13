@@ -7,6 +7,7 @@ import { parseFontMeta } from "../src/fonts/sfnt";
 import {
   spawnServeOverFonts,
   startServeFixture,
+  generateFamily,
   type ServeFixture,
 } from "./serve";
 import { SimCatalog, injectCatalogConfig, makeZip, sha256hex } from "./catalog-fixtures";
@@ -937,6 +938,13 @@ test.describe("sidecar synthesize", () => {
   // top-level scan does not list the extracted faces, so the old
   // basename matching died with 无法定位字体文件路径. This test builds
   // exactly that layout and proves the flow green end to end.
+  //
+  // Round 12 (owner item 8): the base zip carries the cut's SECOND
+  // weight (Bold, a synthesized 700 face), so the family pick submits
+  // the FAMILY CUT pattern (`JetBrainsMonoNerdFont-*.ttf`), the build
+  // emits the family's whole weight matrix as a ttc collection, and
+  // the report's 字重档位 lists every slot. The donor stays
+  // pattern-free — the whole variant pools into nearest matching.
   test("catalog picks submit catalog-family references against a manifest serve", async ({
     page,
   }) => {
@@ -951,12 +959,21 @@ test.describe("sidecar synthesize", () => {
     await mkdir(resolve(fontsDir, "JetBrainsMono"), { recursive: true });
     await mkdir(resolve(fontsDir, "MapleMono-NF-CN"), { recursive: true });
     const baseFace = "JetBrainsMonoNerdFont-Regular.ttf";
+    const boldFace = "JetBrainsMonoNerdFont-Bold.ttf";
     const donorFace = "MapleMono-NF-CN-Regular.ttf";
+    const [, boldPath] = await generateFamily(
+      await mkdtemp(resolve(tmpdir(), "fontalloy-bold-")),
+    );
     await copyFile(real.base, resolve(fontsDir, "JetBrainsMono", baseFace));
+    await copyFile(boldPath, resolve(fontsDir, "JetBrainsMono", boldFace));
     await copyFile(real.donor, resolve(fontsDir, "MapleMono-NF-CN", donorFace));
     const baseBytes = readFileSync(real.base);
+    const boldBytes = readFileSync(boldPath);
     const donorBytes = readFileSync(real.donor);
-    const baseZip = makeZip([{ name: baseFace, data: baseBytes }]);
+    const baseZip = makeZip([
+      { name: baseFace, data: baseBytes },
+      { name: boldFace, data: boldBytes },
+    ]);
     const donorZip = makeZip([{ name: donorFace, data: donorBytes }]);
     await writeFile(resolve(fontsDir, "JetBrainsMono.zip"), baseZip);
     await writeFile(resolve(fontsDir, "MapleMono-NF-CN.zip"), donorZip);
@@ -1001,10 +1018,24 @@ test.describe("sidecar synthesize", () => {
     const saveDir = await mkdtemp(resolve(tmpdir(), "fontalloy-save-"));
     try {
       // The catalog release names the manifest variants (round 6), so
-      // the GUI can emit {family, variant} references.
+      // the GUI can emit {family, variant} references. The base family
+      // carries BOTH faces of its cut (round 12) — the GUI registers
+      // the set, the recipe narrows by the cut pattern.
       const sim = await SimCatalog.create([
-        { family: "JetBrainsMono", variant: "Nerd Font", file: baseFace, fontPath: real.base },
-        { family: "MapleMono", variant: "NF-CN", file: donorFace, fontPath: real.donor },
+        {
+          family: "JetBrainsMono",
+          variant: "Nerd Font",
+          faces: [
+            { file: baseFace, fontPath: real.base },
+            { file: boldFace, fontPath: boldPath },
+          ],
+        },
+        {
+          family: "MapleMono",
+          variant: "NF-CN",
+          file: donorFace,
+          fontPath: real.donor,
+        },
       ]);
       await sim.install(page);
       await injectCatalogConfig(page);
@@ -1077,8 +1108,10 @@ test.describe("sidecar synthesize", () => {
       );
       await waitForFontsReady(page);
 
-      // The submission body names the catalog families — the base
-      // narrowed to the picked face, the donor the whole variant.
+      // The submission body names the catalog families (round 6). The
+      // base carries the FAMILY CUT pattern (round 12: every face of
+      // the picked variant's cut — the output's weight matrix); the
+      // donor references the whole variant, pattern-free as before.
       const bodyPromise = page
         .waitForRequest(
           (request) =>
@@ -1093,11 +1126,14 @@ test.describe("sidecar synthesize", () => {
       expect(body.base).toEqual({
         family: "JetBrainsMono",
         variant: "Nerd Font",
-        pattern: baseFace,
+        pattern: "JetBrainsMonoNerdFont-*.ttf",
       });
       expect(body.donors).toEqual([
         { family: "MapleMono", variant: "NF-CN" },
       ]);
+      // A family pick builds the whole matrix — a multi-face output is
+      // a ttc collection.
+      expect(body.output).toEqual({ format: "ttc", family: "ChHsich" });
 
       const panel = page.locator('[data-testid="build-panel"]');
       await expect(panel).toBeVisible();
@@ -1107,13 +1143,36 @@ test.describe("sidecar synthesize", () => {
       await expect(panel).toContainText("已保存");
       expect(saved.length).toBe(1);
 
-      // The saved artifact parses as the merged font (中 + a Nerd Font
+      // The report lists the family's whole weight matrix (round 12):
+      // one slot per base face, in the base file's own (alphabetical
+      // extract) order — Bold's 700 upright, then the Regular cut's
+      // 400 upright, each with its nearest-matched donor borrow.
+      const disclosure = panel.locator(".report-details > summary");
+      await pointerClick(page, disclosure);
+      const weightSection = panel
+        .locator(".report-section")
+        .filter({ hasText: "字重档位" });
+      await expect(weightSection).toBeVisible();
+      const slotLabels = await weightSection
+        .locator(".report-fact-label")
+        .evaluateAll((labels) =>
+          labels.map((label) => (label as HTMLElement).textContent),
+        );
+      expect(slotLabels).toEqual(["700 · 直立", "400 · 直立"]);
+      await expect(weightSection).toContainText(/Maple Mono.* ← \d+（自动取最近）/);
+
+      // The saved artifact is the family collection (ttcf magic); its
+      // first face parses as the merged font (中 + a Nerd Font
       // powerline glyph — the manifest-resolved sources both grafted).
-      const bytes = readFileSync(saved[0]!);
-      expect(bytes[0]).toBe(0x00);
-      expect(bytes[1]).toBe(0x01);
+      const savedPath = saved[0]!;
+      expect(savedPath.endsWith("ChHsich.ttc")).toBe(true);
+      const bytes = readFileSync(savedPath);
+      expect(bytes.subarray(0, 4).toString("latin1")).toBe("ttcf");
       const meta = parseFontMeta(
-        new Uint8Array(bytes).buffer as ArrayBuffer,
+        new Uint8Array(bytes).buffer.slice(
+          bytes.byteOffset,
+          bytes.byteOffset + bytes.byteLength,
+        ) as ArrayBuffer,
       );
       expect(meta.family).toBe("ChHsich");
       expect(meta.codepoints).toContain(0x4e2d); // 中

@@ -190,6 +190,22 @@ const test = base.extend<{ journeysPage: Page }>({
           name: string,
           bytes: Uint8Array,
         ): Promise<{ saved: boolean; path: string | null }> => {
+          // Chunked base64: a round-12 family build saves a ttc
+          // collection of hundreds of MB — the one-shot
+          // Array.from().join() would build gigabytes of intermediate
+          // strings and crash the page. The chunk size must be a
+          // multiple of 3 (btoa then emits no '=' padding — a padded
+          // group mid-string would truncate the decode at the first
+          // '=') and modest enough to stay under the spread
+          // argument-count limit.
+          let b64 = "";
+          const chunk = 30_720;
+          for (let i = 0; i < bytes.length; i += chunk) {
+            b64 += btoa(
+              String.fromCharCode(...bytes.subarray(i, i + chunk)),
+            );
+          }
+>>>>>>> fix/family-weights
           const path = await (
             window as unknown as {
               __fontalloyJourneySave(
@@ -557,7 +573,8 @@ function venvPython(): string {
   return resolve(repoRoot, ".venv/Scripts/python.exe");
 }
 
-/** Parse a built font with fontTools: family, cmap size, CJK presence. */
+/** Parse a built font with fontTools: family, cmap size, CJK presence.
+ *  A round-12 family artifact is a ttc collection — read its face 0. */
 async function parseBuiltFont(path: string): Promise<{
   family: string | null;
   cmap: number;
@@ -572,7 +589,9 @@ async function parseBuiltFont(path: string): Promise<{
     [
       "import json, sys",
       "from fontTools.ttLib import TTFont",
-      "font = TTFont(sys.argv[1])",
+      "with open(sys.argv[1], 'rb') as stream:",
+      "    collection = stream.read(4) == b'ttcf'",
+      "font = TTFont(sys.argv[1], fontNumber=0 if collection else None)",
       "cmap = font.getBestCmap() or {}",
       "print(json.dumps({",
       "    'family': font['name'].getDebugName(1),",
@@ -2020,7 +2039,13 @@ test.describe("user journey", () => {
   test("J9 合成 — the real serve: stages, report, parseable artifact, queue", async ({
     journeysPage: page,
   }) => {
-    test.setTimeout(900_000);
+    // Round 12 (owner item 8): the flagship pair builds the family's
+    // WHOLE weight matrix — the base reference resolves to every face
+    // of the JetBrainsMono NF cut (16 slots, 100–800 upright + italic)
+    // and the output is a ttc collection. A matrix build runs minutes,
+    // not seconds (16 per-slot grafts + rewrites + the readback
+    // report), so the journey budget is the large one.
+    test.setTimeout(2_400_000);
     // The owner's real serve layout: the repo's own serve binary over
     // the fetched catalog directory (zips + extracted faces + its own
     // manifest), so the catalog picks resolve as catalog-family
@@ -2104,7 +2129,7 @@ test.describe("user journey", () => {
             };
             tick();
           });
-          await expect(stage).toHaveText("完成", { timeout: 300_000 });
+          await expect(stage).toHaveText("完成", { timeout: 900_000 });
           await expect(panel).toContainText("已保存");
           // Round 12 (owner item 3): the automatic save is DIALOG-FREE
           // — the default-path seam landed the font and the 另存为
@@ -2197,6 +2222,31 @@ test.describe("user journey", () => {
           await expect(panel).toContainText("Maple Mono CN");
           // Round 10: the raw JSON form is gone from the UI.
           await expect(panel).not.toContainText("fontalloy/verification-report");
+          // Round 12 (owner item 8): the report's 字重档位 lists the
+          // family's WHOLE weight matrix — every face of the
+          // JetBrainsMono NF cut (100–800, upright + italic = 16
+          // slots), each slot's donor borrowed by nearest weight.
+          const weightSection = panel
+            .locator(".report-section")
+            .filter({ hasText: "字重档位" });
+          await expect(weightSection).toBeVisible();
+          const slotLabels = await weightSection
+            .locator(".report-fact-label")
+            .evaluateAll((labels) =>
+              labels.map((label) => (label as HTMLElement).textContent),
+            );
+          expect(slotLabels).toHaveLength(16);
+          const expectedSlots = new Set<string>();
+          for (let weight = 100; weight <= 800; weight += 100) {
+            expectedSlots.add(`${weight} · 直立`);
+            expectedSlots.add(`${weight} · 斜体`);
+          }
+          expect(new Set(slotLabels)).toEqual(expectedSlots);
+          await expect(weightSection).toContainText(
+            /Maple Mono NF CN ← \d+（自动取最近）/,
+          );
+          // The output is the family collection, not a single face.
+          await expect(panel).toContainText("ttc（多字体合集）");
         });
 
       await step("J9.4 one ? per section heading, centered, popover above the panel", async () => {
@@ -2247,8 +2297,10 @@ test.describe("user journey", () => {
         });
 
         await step("J9.5 the saved artifact PARSES: family ChHsich, cmap > 0, donor CJK inside", async () => {
+          // V2's dedicated path locator; V3's family-matrix .ttc
+          // expectation (catalog family picks package the collection).
           const savedLine = page.locator("[data-build-saved-path]").first();
-          await expect(savedLine).toContainText(/\.ttf$/);
+          await expect(savedLine).toContainText(/\.ttc$/);
           const savedPath = (await savedLine.textContent())!.replace(
             /^已保存：/,
             "",
@@ -2274,21 +2326,33 @@ test.describe("user journey", () => {
         });
 
         await step("J9.6 a second build queues while the first owns the worker", async () => {
+          // Row 0 is J9.2's settled matrix build; the two clicks below
+          // append rows 1 (starts on the free worker) and 2 (queues).
           const synthesize = page.locator(".topbar [data-role='synthesize']");
           await pointerClick(page, synthesize);
-          const firstStage = page
-            .locator("[data-build-stage]")
-            .first();
-          // Fire the second build immediately: the serve runs builds
-          // serially, so the second row must read 排队中 first.
+          const running = page.locator("[data-build-stage]").nth(1);
+          await expect(running).toHaveText(
+            /(排队中|正在合成|读取字体)/,
+            { timeout: 10_000 },
+          );
           await pointerClick(page, synthesize);
-          const secondStage = page.locator("[data-build-stage]").nth(1);
-          await expect(secondStage).toHaveText(/排队中|正在合成|读取字体/, {
-            timeout: 10_000,
-          });
-          // Both settle to 完成.
-          await expect(firstStage).toHaveText("完成", { timeout: 300_000 });
-          await expect(secondStage).toHaveText("完成", { timeout: 300_000 });
+          const queued = page.locator("[data-build-stage]").nth(2);
+          // The serve runs builds serially: row 1 owns the worker
+          // (a running stage, never the queue), row 2 reads 排队中.
+          await expect(running).toHaveText(
+            /正在合成|读取字体|规划字重|解析规则|移植字形|改写名称表|保存输出|生成报告/,
+            { timeout: 30_000 },
+          );
+          await expect(queued).toHaveText(/排队中/, { timeout: 30_000 });
+          // The handoff: row 1's family matrix completes, and the queued
+          // build then LEAVES the queue and starts. Waiting for the
+          // queued matrix to fully settle would double the journey's
+          // multi-minute build cost for no additional queue semantics.
+          await expect(running).toHaveText("完成", { timeout: 900_000 });
+          await expect(queued).toHaveText(
+            /正在合成|读取字体|规划字重|解析规则|移植字形|改写名称表|保存输出|生成报告|完成/,
+            { timeout: 900_000 },
+          );
         });
 
         await step("J9.7 zero JS errors across the journey", assertNoJsErrors);

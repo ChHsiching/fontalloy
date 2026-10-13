@@ -39,7 +39,20 @@ export interface FontMeta {
   codepoints: number[];
 }
 
-export function parseFontMeta(buffer: ArrayBuffer): FontMeta {
+export interface ParseFontMetaOptions {
+  /**
+   * Enumerate the cmap coverage (default true). The enumeration is the
+   * expensive half of the parse — a consumer that only needs the names
+   * (the catalog's family face-set records, round 12) passes false and
+   * gets `codepoints: []`.
+   */
+  coverage?: boolean;
+}
+
+export function parseFontMeta(
+  buffer: ArrayBuffer,
+  options: ParseFontMetaOptions = {},
+): FontMeta {
   const view = new DataView(buffer);
   if (view.byteLength < 12) throw new Error("file too small to be a font");
 
@@ -73,7 +86,10 @@ export function parseFontMeta(buffer: ArrayBuffer): FontMeta {
 
   const names =
     nameOffset >= 0 ? readFamilyName(view, nameOffset) : null;
-  const codepoints = cmapOffset >= 0 ? readCoverage(view, cmapOffset) : [];
+  const codepoints =
+    cmapOffset >= 0 && (options.coverage ?? true)
+      ? readCoverage(view, cmapOffset)
+      : [];
   if (names === null || !names.family) {
     throw new Error("font has no readable family name");
   }

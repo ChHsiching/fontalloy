@@ -123,7 +123,8 @@ function venvPython(): string {
   return path.join(REPO_ROOT, ".venv", "Scripts", "python.exe");
 }
 
-/** Parse a built font with fontTools: family, cmap size, CJK presence. */
+/** Parse a built font with fontTools: family, cmap size, CJK presence.
+ *  A round-12 family artifact is a ttc collection — read its face 0. */
 async function parseBuiltFont(
   fontPath: string,
 ): Promise<{ family: string | null; cmap: number; cjkCodepoints: number }> {
@@ -134,7 +135,9 @@ async function parseBuiltFont(
     [
       "import json, sys",
       "from fontTools.ttLib import TTFont",
-      "font = TTFont(sys.argv[1])",
+      "with open(sys.argv[1], 'rb') as stream:",
+      "    collection = stream.read(4) == b'ttcf'",
+      "font = TTFont(sys.argv[1], fontNumber=0 if collection else None)",
       "cmap = font.getBestCmap() or {}",
       "print(json.dumps({",
       "    'family': font['name'].getDebugName(1),",
@@ -246,7 +249,10 @@ async function pickFlagshipPair(page: Page): Promise<void> {
 /* The journey                                                          */
 /* ------------------------------------------------------------------ */
 
-test.setTimeout(900_000);
+// Round 12 (owner item 8): the flagship pair builds the family's whole
+// weight matrix as a ttc collection — a multi-minute build, twice
+// (the merge, then the download run).
+test.setTimeout(2_400_000);
 
 test("J11 Web 目标 — detection, picks, preset, live merge, report, download, degrade", async ({
   page,
@@ -328,7 +334,7 @@ test("J11 Web 目标 — detection, picks, preset, live merge, report, download,
       ]);
       await expect(panel.locator("[data-build-stage]").first()).toHaveText(
         "完成",
-        { timeout: 300_000 },
+        { timeout: 900_000 },
       );
       // Round 12 (owner item 3, no web regression): the web save stays
       // the BROWSER download path — the completion line shows it and
@@ -384,18 +390,28 @@ test("J11 Web 目标 — detection, picks, preset, live merge, report, download,
       // Round 12 (owner item 1): no dash-joins anywhere in the panel.
       await expect(panel).not.toContainText("—");
       await expect(panel).not.toContainText("fontalloy/verification-report");
+      // Round 12 (owner item 8): the matrix is the family's own — the
+      // JetBrainsMono NF cut's every face (100–800, upright + italic).
+      const weightSection = panel
+        .locator(".report-section")
+        .filter({ hasText: "字重档位" });
+      await expect(weightSection).toBeVisible();
+      expect(
+        await weightSection.locator(".report-fact-label").count(),
+      ).toBe(16);
     });
 
     await step("J11.7 the artifact downloads and PARSES (family ChHsich, donor CJK inside)", async () => {
       // The web target's save flow is the browser's own download,
       // fired by the run itself when the build settles.
-      const download = page.waitForEvent("download", { timeout: 300_000 });
+      const download = page.waitForEvent("download", { timeout: 900_000 });
       await pointerClick(page, page.locator(".topbar [data-role='synthesize']"));
       const downloaded = await download;
-      expect(await downloaded.suggestedFilename()).toBe("ChHsich.ttf");
+      // Round 12: the family matrix artifact is the ttc collection.
+      expect(await downloaded.suggestedFilename()).toBe("ChHsich.ttc");
       const target = path.join(
         await mkdtemp(path.join(tmpdir(), "fontalloy-j11-save-")),
-        "ChHsich.ttf",
+        "ChHsich.ttc",
       );
       await downloaded.saveAs(target);
       const parsed = await parseBuiltFont(target);

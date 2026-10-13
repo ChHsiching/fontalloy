@@ -70,6 +70,35 @@ export async function generateFonts(
   };
 }
 
+/**
+ * Generate the round-12 family fixture into `outdir` (no service): one
+ * family, three faces (Regular 400 / Bold 700 / Italic 400-italic,
+ * one shared name-table family). Returns the face file paths.
+ */
+export async function generateFamily(
+  outdir: string,
+  familyName = "Alloy Family",
+  stem = "AlloyFamily",
+): Promise<string[]> {
+  const python = process.env.FONTALLOY_PYTHON ?? "python";
+  await run(
+    python,
+    [
+      resolve(repoRoot, "gui/scripts/e2e_fonts.py"),
+      outdir,
+      "--family",
+      "--family-name",
+      familyName,
+      "--family-stem",
+      stem,
+    ],
+    repoRoot,
+  );
+  return ["Regular", "Bold", "Italic"].map((style) =>
+    resolve(outdir, `${stem}-${style}.ttf`),
+  );
+}
+
 /** Run a command to completion, failing loudly with its output. */
 function run(
   command: string,

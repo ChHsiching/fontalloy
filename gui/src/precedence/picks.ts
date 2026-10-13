@@ -3,6 +3,11 @@
  * base (`base`), the CJK pick the one donor (`donor-0`) — the same join
  * order the synthesize recipe uses. Shared by the character map and the
  * rail rule editors so every rule editor offers the same ref list.
+ *
+ * Round 12 (owner item 8): a catalog pick carries a FACE SET — every
+ * registered face of the picked family+variant, the representative
+ * first. Local single-file picks (and a pick whose store holds one
+ * face) carry just the representative: that file IS the user's pick.
  */
 
 import { store, type LoadedFont } from "../state";
@@ -11,8 +16,34 @@ import { store, type LoadedFont } from "../state";
 export interface PickRefs {
   /** Font refs in join order: `base` then `donor-0` (absent when unpicked). */
   refs: string[];
+  /**
+   * The representative face of each pick — the Regular-preferred face a
+   * catalog pick registered first, or the local file itself. The
+   * preview/identity face; what every ref resolves to.
+   */
   base: LoadedFont | null;
   donor: LoadedFont | null;
+  /**
+   * The pick's face set (round 12): every registered face of a catalog
+   * family pick, the representative first. Single-face picks carry one
+   * entry — the representative.
+   */
+  baseFaces: LoadedFont[];
+  donorFaces: LoadedFont[];
+}
+
+/** One pick's face set: the catalog identity's faces, else the pick. */
+function faceSet(fonts: readonly LoadedFont[], font: LoadedFont | null): LoadedFont[] {
+  if (font === null) return [];
+  if (font.catalog !== undefined) {
+    const faces = fonts.filter(
+      (f) =>
+        f.catalog?.family === font.catalog!.family &&
+        f.catalog?.variant === font.catalog!.variant,
+    );
+    if (faces.length > 0) return faces;
+  }
+  return [font];
 }
 
 /** The picks of the current state (null picks drop out entirely). */
@@ -23,7 +54,13 @@ export function pickRefs(): PickRefs {
   const refs: string[] = [];
   if (base) refs.push("base");
   if (donor) refs.push("donor-0");
-  return { refs, base, donor };
+  return {
+    refs,
+    base,
+    donor,
+    baseFaces: faceSet(fonts, base),
+    donorFaces: faceSet(fonts, donor),
+  };
 }
 
 /** The LoadedFont behind a font ref, when picked. */

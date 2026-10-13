@@ -28,8 +28,13 @@ import {
 /** Poll cadence from the serve contract's guidance (ticket #11). */
 const RUNNING_POLL_MS = 250;
 const QUEUED_POLL_MS = 1_000;
-/** A build that never settles must not wedge a poll loop forever. */
-const BUILD_TIMEOUT_MS = 10 * 60_000;
+/**
+ * A build that never settles must not wedge a poll loop forever. Round
+ * 12: a family pick builds the whole weight matrix — 16 slots × graft
+ * + rewrite + the readback report run to many minutes on the flagship
+ * pair (measured ~6–9 min), so the cap is 20 minutes.
+ */
+const BUILD_TIMEOUT_MS = 20 * 60_000;
 /** How long the web target's load-time probe may take before absence. */
 export const PROBE_TIMEOUT_MS = 1_500;
 
@@ -118,6 +123,37 @@ function basename(path: string): string {
 }
 
 /**
+ * The subfamily words a release face's last name segment can carry
+ * (OS/2 weight names + the italic composites). Order matters: the
+ * composites must precede their prefixes in the alternation.
+ */
+const SUBFAMILY_WORD =
+  /^(?:regular|italic|bolditalic|bold ?italic|bold|semibold|demibold|medium|extralight|extra ?light|extrabold|extra ?bold|light|thin|hairline|black|heavy|book)$/i;
+
+/**
+ * The FAMILY CUT pattern of a catalog pick (round 12, owner item 8):
+ * a bare-filename glob covering every face of the picked variant's
+ * cut, derived from the representative face's own file name —
+ * `JetBrainsMonoNerdFont-Regular.ttf` yields
+ * `JetBrainsMonoNerdFont-*.ttf`, so the service's resolved reference
+ * carries the family's whole weight matrix (the release zip mixes
+ * other cuts — Mono/Propo/NL — into the same artifact; the cut keeps
+ * the pick to ONE family). A file whose last segment is not a
+ * subfamily word cannot be narrowed mechanically and keeps its exact
+ * name (single-face semantics — today's behavior).
+ */
+export function familyCutPattern(fileName: string): string {
+  const dot = fileName.lastIndexOf(".");
+  const ext = dot > 0 ? fileName.slice(dot) : "";
+  const stem = dot > 0 ? fileName.slice(0, dot) : fileName;
+  const split = /^(.*)([-_])([^-_]+)$/.exec(stem);
+  if (split !== null && SUBFAMILY_WORD.test(split[3]!)) {
+    return `${split[1]!}${split[2]!}*${ext}`;
+  }
+  return fileName;
+}
+
+/**
  * The on-disk path of a loaded font, for the recipe: the platform's own
  * path when it has one (catalog storage, the Tauri file dialog), else a
  * match by file name against the service's /fonts listing (the browser
@@ -197,10 +233,16 @@ export function selectedPicks(): {
 }
 
 /**
- * The workspace's recipe draft for the given font slots. `faces` is the
+ * The recipe draft for the given font slots. `faces` is the
  * service's /fonts index when one is connected (weight-slot selection);
  * empty degrades the weight selection to the default — normalization
  * needs no face data.
+ *
+ * Round 12 (owner item 8): a catalog base pick builds the family's
+ * whole weight matrix — the cut pattern resolves to every face of the
+ * variant, and a multi-face output can only be packaged as a
+ * collection. Local single-file picks (and a catalog reference pinned
+ * to exactly one file) keep the plain ttf.
  */
 export function buildWorkspaceDraft(
   slots: { en: FontSlot; cjk: FontSlot },
@@ -212,6 +254,10 @@ export function buildWorkspaceDraft(
   draft.donors = [slots.cjk];
   // The top bar's font-name field is the recipe's output family.
   draft.output.family = outputFamily || "ChHsich";
+  draft.output.format =
+    slots.en.catalog !== null && (slots.en.pattern ?? "").includes("*")
+      ? "ttc"
+      : "ttf";
   // The SAME rule state the preview grid resolves (issue #18): the
   // build and the preview can never drift apart.
   applyRulesToDraft(draft, rules);
@@ -230,7 +276,8 @@ export function buildWorkspaceDraft(
 }
 
 /**
- * The recipe slot for one picked font (round 6). Order matters:
+ * The recipe slot for one picked font (round 6; round 12 for the base
+ * pattern). Order matters:
  *
  * 1. The PATH form whenever the service's own /fonts listing can see
  *    the file — the serve vouches for that path, and a bare path is
@@ -243,10 +290,15 @@ export function buildWorkspaceDraft(
  *    the manifest pins — for catalog picks the listing CANNOT see (the
  *    owner's serve over the fetched layout: assets/fonts/<Family>/
  *    extracted faces, which the top-level /fonts scan skips). The BASE
- *    is narrowed by a `pattern` (the exact picked face; a ttf output
- *    carries one face and the artifact's zip holds several), the DONOR
- *    references the whole variant (its faces pool into nearest weight
- *    matching).
+ *    carries the FAMILY CUT pattern (round 12): a glob over the
+ *    representative face's own file name that resolves to every face
+ *    of the picked variant's cut, so the base's faces — and only those
+ *    — become the output weight matrix (a Nerd Fonts zip mixes other
+ *    cuts into the same artifact; the manifest entry's variant already
+ *    narrowed the variant, the cut keeps the pick to ONE family). The
+ *    DONOR references the whole variant pattern-free, as before: its
+ *    faces pool into nearest-weight matching, and its stored file
+ *    naming need not match the service's artifact faces.
  *
  * Null when neither form resolves (the caller's inline failure).
  */
@@ -273,7 +325,7 @@ async function resolvePickSlot(
           path: "",
           face: null,
         };
-        if (role === "base") slot.pattern = font.fileName;
+        if (role === "base") slot.pattern = familyCutPattern(font.fileName);
         return slot;
       }
     }
@@ -406,11 +458,10 @@ export async function synthesize(): Promise<void> {
     const filename =
       synthStore.get().builds.find((candidate) => candidate.id === id)?.family ??
       "ChHsich";
-    // Round 12 (owner item 7): the saved line shows the ACTUAL
-    // extension — the format the report read back (the honest value;
-    // anything the schema did not name falls back to ttf), never a
-    // hardcoded .ttf.
-    const format = report.output?.format;
+    // Round 12: the saved line shows the artifact's ACTUAL format —
+    // what the report read back (family picks package the whole weight
+    // matrix as ttc); anything the schema did not name falls back to ttf.
+    const format = report.output?.format ?? "ttf";
     const suggested = `${filename}.${format === "ttc" || format === "woff2" ? format : "ttf"}`;
     const result = await saveArtifact(suggested, bytes);
     patchBuild(id, {
