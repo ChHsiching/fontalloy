@@ -1834,8 +1834,15 @@
  * The kit-level message system the build panel's row mechanism
  * generalizes into: fixed cards in a bottom corner (never in the flow
  * — pushing a message can never reflow the workspace), columned
- * bottom-up, capped at four visible, dismissable by ×. Enter/leave
- * animate transform + opacity only.
+ * bottom-up, capped at four visible, dismissable by ×.
+ *
+ * The structured-card redesign (the owner's vision pass): an outcome
+ * is a small STRUCTURE, never a sentence — a status-icon head row,
+ * one row of compact stat pairs (tabular-nums figures, dim labels), a
+ * dim reason sub-line only when the count it explains is nonzero, and
+ * the undo shortcut as a kbd-styled chip. Every line is nowrap; a
+ * would-be overflow truncates with an ellipsis and a `title` tooltip.
+ * Separators are CSS gaps (margins), never glyphs; icons are SVGs.
  *
  * Round 9 (owner item 7): each card auto-dismisses after ~6s — a thin
  * progress bar shrinking along the card's bottom edge announces the
@@ -1866,39 +1873,62 @@
   border-radius: 10px;
   background: var(--sf);
   box-shadow: var(--sh3);
-  padding: 8px 26px 10px 12px;
+  padding: 9px 10px 12px;
   font-size: 12px;
   color: var(--ink2);
-  line-height: 1.6;
+  line-height: 1.5;
   overflow: hidden; /* the countdown bar bleeds to the card's edges */
 }
 
+/* The head: [status icon] [action title] [×] — one flex row, aligned
+ * by the layout, not by absolute offsets. The title takes the slack
+ * and ellipsizes; the × is a flex-none hit target at the row's end. */
+.kit-msg-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin-right: -3px; /* the ×'s padding bleeds into the card's inset */
+}
+
+.kit-msg-icon {
+  flex: none;
+  display: inline-flex;
+  color: var(--ac); /* the default verdict: something took effect */
+}
+
+.kit-msg-icon[data-icon="warn"] {
+  color: var(--dgr);
+}
+
+.kit-msg-icon svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
 .kit-msg-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-weight: 600;
   color: var(--ink);
   font-size: 12.5px;
-  margin-bottom: 2px;
-}
-
-.kit-msg-line {
-  white-space: normal;
-  overflow-wrap: anywhere;
 }
 
 .kit-msg-close {
-  position: absolute;
-  /* Vertically centered against the one-line copy (round-9 vision note). */
-  top: 50%;
-  transform: translateY(-50%);
-  right: 6px;
+  flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border: none;
   background: none;
-  padding: 2px;
+  padding: 3px;
+  margin-left: 2px;
   border-radius: 4px;
-  color: var(--ink2);
+  color: var(--ink3);
   cursor: pointer;
 }
 
@@ -1910,6 +1940,86 @@
 
 .kit-msg-close:hover {
   color: var(--ink);
+}
+
+/* The outcome row: compact stat pairs on ONE nowrap line — the figure
+ * in tabular-nums (strong ink), the label dim, the pairs separated by
+ * a CSS gap (margin), never by a glyph. The block-level row carries
+ * the ellipsis for the too-long edge case; the pairs are inline. */
+.kit-msg-stats {
+  margin-top: 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12.5px;
+}
+
+.kit-msg-stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-right: 14px;
+}
+
+.kit-msg-stat:last-child {
+  margin-right: 0;
+}
+
+.kit-msg-num {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.kit-msg-label {
+  color: var(--ink3);
+}
+
+/* The reason sub-line: dim, quieter than the stats, present only when
+ * the producer has a nonzero count to explain. */
+.kit-msg-reason {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--ink3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The plain-lines variant: one nowrap row each, ellipsized. */
+.kit-msg-line {
+  margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The undo hint: the shortcut as a kbd chip — border + radius +
+ * tabular figures, padded like a key cap — with the verb dim beside
+ * it. Never inline prose, never a Unicode separator. */
+.kit-msg-undo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 7px;
+  white-space: nowrap;
+}
+
+.kit-msg-kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  border: 1px solid var(--ln2);
+  border-radius: 4px;
+  background: var(--sf2);
+  font-size: 10.5px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink2);
+}
+
+.kit-msg-verb {
+  font-size: 11px;
+  color: var(--ink3);
 }
 
 /* The auto-dismiss countdown bar (round 9): a 2px strip pinned to the
@@ -1928,18 +2038,45 @@
   will-change: transform;
 }
 
+/* Enter: a critically-damped settle — 8px up + fade over ~250ms with
+ * the ease-out spring token (its curve tops out at 1, so no
+ * overshoot). Leave mirrors it: fade + 8px down, ease-in. */
 .kit-msg.enter {
-  animation: kit-msg-in 0.18s var(--spring-out);
+  animation: kit-msg-in 0.25s var(--spring-out);
 }
 
 .kit-msg.leave {
   opacity: 0;
-  transition: opacity 0.15s ease-in;
+  transform: translateY(8px);
+  transition:
+    opacity 0.2s ease-in,
+    transform 0.2s ease-in;
 }
 
 @keyframes kit-msg-in {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(8px);
   }
 }
+
+/* Reduced motion: a plain fade, both ways, no travel. Class selectors
+ * plus !important out-rank the global `*` duration killer in
+ * tokens.css, so the fade actually reads instead of snapping. */
+@media (prefers-reduced-motion: reduce) {
+  .kit-msg.enter {
+    animation: kit-msg-in-reduced 0.15s linear !important;
+  }
+
+  .kit-msg.leave {
+    transform: none;
+    transition: opacity 0.15s linear !important;
+  }
+}
+
+@keyframes kit-msg-in-reduced {
+  from {
+    opacity: 0;
+  }
+}
+
