@@ -128,6 +128,18 @@
  *   「无」 placeholder stays, and zero · separators appear anywhere in
  *   the section — the ?-popover explains the two columns once.
  *
+ * Round 17 (the tag round, owner item 2): the report's parenthetical
+ * qualifiers — 「ttc（多字体合集）」, 「…（自动取最近）」, the per-cell
+ * 「family · via」 — never ride the value text as brackets or dot-joins
+ * again. Each qualifier is a small badge TAG beside the text
+ * (`.report-tag`, the picker's 未下载 chip idiom: tiny, muted border +
+ * fill on theme tokens, no shadows), carried by a stable
+ * `data-role="report-tag"`. The tag is a decorative qualifier of the
+ * adjacent text: a real span, never nested inside an ellipsizing text
+ * span, never wrapping mid-word. Stage-note enumerations inside a
+ * sentence (「按选定格式（ttf / ttc / woff2）」) are NOT qualifiers and
+ * keep their brackets.
+ *
  * Wording follows the owner-ratified copy spec
  * (`fontalloy-notes/report-copy.md`): real words only, the round-10
  * ruling trims the ?-popovers to one per section heading.
@@ -551,29 +563,85 @@ function sectionHeading(
   return title;
 }
 
-/** A labeled value line (no ? — the section heading carries the one). */
-function fact(label: string, value: string): HTMLDivElement {
+/**
+ * A labeled value line (no ? — the section heading carries the one).
+ * The value is text, or a pre-built element (a text-plus-tags value
+ * from `taggedValue`, round 17); every string call site renders
+ * exactly as before.
+ */
+function fact(label: string, value: string | HTMLElement): HTMLDivElement {
   const line = document.createElement("div");
   line.className = "report-fact";
   const name = document.createElement("span");
   name.className = "report-fact-label";
   name.textContent = label;
-  const val = document.createElement("span");
-  val.textContent = value;
-  line.append(name, val);
+  if (typeof value === "string") {
+    const val = document.createElement("span");
+    val.textContent = value;
+    line.append(name, val);
+  } else {
+    line.append(name, value);
+  }
   return line;
 }
 
-/** The output-format label with its plain-Chinese qualifier. */
-function formatLabel(format: string | undefined): string {
+/**
+ * One report qualifier TAG (round 17, owner item 2): what used to ride
+ * the value as bracket text — 「ttc（多字体合集）」 — renders as a small
+ * badge chip BESIDE it (the owner: tags, not brackets). The idiom is
+ * the picker's 未下载 chip (`kit-vchip`): tiny, muted border + fill on
+ * theme tokens, no shadows, never wrapping mid-word. Decorative
+ * qualifier of the adjacent text — a real span with a stable
+ * data-role for tests, no aria-label of its own, and never nested
+ * inside an ellipsizing text span (the nowrap chip must not clip).
+ */
+function reportTag(text: string): HTMLElement {
+  const tag = document.createElement("span");
+  tag.className = "report-tag";
+  tag.dataset.role = "report-tag";
+  tag.textContent = text;
+  return tag;
+}
+
+/**
+ * A fact value as plain text plus qualifier tags: the text rides its
+ * own span (a shrinking or ellipsizing value could never clip a tag),
+ * every qualifier a tag after it.
+ */
+function taggedValue(text: string, tags: readonly string[]): HTMLElement {
+  const value = document.createElement("span");
+  value.className = "report-fact-value";
+  const label = document.createElement("span");
+  label.className = "report-fact-value-text";
+  label.textContent = text;
+  value.append(label);
+  for (const qualifier of tags) value.append(reportTag(qualifier));
+  return value;
+}
+
+/** The output format's plain word (the qualifier rides a tag). */
+function formatWord(format: string | undefined): string {
   switch (format) {
     case "ttc":
-      return "ttc（多字体合集）";
+      return "ttc";
     case "woff2":
-      return "woff2（网页用）";
+      return "woff2";
     case "ttf":
     default:
-      return "ttf（通用）";
+      return "ttf";
+  }
+}
+
+/** The output format's plain-Chinese qualifier (report-copy §3.1). */
+function formatQualifier(format: string | undefined): string {
+  switch (format) {
+    case "ttc":
+      return "多字体合集";
+    case "woff2":
+      return "网页用";
+    case "ttf":
+    default:
+      return "通用";
   }
 }
 
@@ -637,6 +705,14 @@ function metricTable(
 }
 
 /**
+ * One weight-grid cell (round 17): plain cells stay plain strings — ✓ /
+ * 「无」 / 「没用中文字体」 — while a differing slot's source line is its
+ * family text plus the via qualifier as a TAG (the old 「family · via」
+ * dot-join is gone, like the bracket forms above).
+ */
+type WeightCell = string | { text: string; tags: readonly string[] };
+
+/**
  * The weight-slot grid (round 16, owner): one row per weight, one
  * column per style — 常规 / 斜体, the words Word's Chinese UI uses for
  * the style axis (直立 is retired). Same skeleton and .report-mtable
@@ -646,7 +722,7 @@ function metricTable(
  * slot.
  */
 function weightTable(
-  rows: ReadonlyArray<readonly [string, string, string]>,
+  rows: ReadonlyArray<readonly [string, WeightCell, WeightCell]>,
 ): HTMLTableElement {
   const table = document.createElement("table");
   table.className = "report-mtable";
@@ -672,8 +748,16 @@ function weightTable(
     tr.append(name);
     for (const value of [upright, italic]) {
       const td = document.createElement("td");
-      td.textContent = value;
-      if (value === NO_VALUE) td.classList.add("is-none");
+      if (typeof value === "string") {
+        td.textContent = value;
+        if (value === NO_VALUE) td.classList.add("is-none");
+      } else {
+        const text = document.createElement("span");
+        text.className = "report-cell-text";
+        text.textContent = value.text;
+        td.append(text);
+        for (const qualifier of value.tags) td.append(reportTag(qualifier));
+      }
       tr.append(td);
     }
     body.append(tr);
@@ -723,7 +807,16 @@ function renderReport(
   const output = document.createElement("div");
   output.className = "report-section";
   output.appendChild(sectionHeading("成品文件", "built-font", helpAnchors));
-  output.append(fact("输出格式", formatLabel(report.output?.format)));
+  // Round 17 (owner item 2): the format word plus its qualifier TAG —
+  // 「ttc」 + 「多字体合集」, never 「ttc（多字体合集）」.
+  output.append(
+    fact(
+      "输出格式",
+      taggedValue(formatWord(report.output?.format), [
+        formatQualifier(report.output?.format),
+      ]),
+    ),
+  );
   if (report.output?.sha256) {
     output.append(fact("SHA-256 校验值", report.output.sha256.slice(0, 12)));
   }
@@ -847,34 +940,49 @@ function renderReport(
     // the source is stated ONCE above when every slot borrows from the
     // same place, and only a differing slot carries its own source in
     // its cell (「没用中文字体」 for a slot the donor did not feed).
-    const labelOf = (slot: (typeof report.weights)[number]): string =>
+    // Round 17 (owner item 2): the via qualifier rides a TAG beside
+    // the text — the uniform sentence's brackets and the per-cell
+    // 「family · via」 dot-join are gone. The uniformity key stays a
+    // plain string (dedup only, never rendered).
+    const slotKey = (slot: (typeof report.weights)[number]): string =>
       (slot.borrows ?? [])
-        .map((b) => `${b.family ?? b.donor ?? "?"} · ${viaLabel(b.via)}`)
-        .join("；");
+        .map((b) => `${b.family ?? b.donor ?? "?"}|${b.via ?? "?"}`)
+        .join(";");
+    const cellOf = (slot: (typeof report.weights)[number]): WeightCell => {
+      const borrows = slot.borrows ?? [];
+      if (borrows.length === 0) return "没用中文字体";
+      return {
+        text: borrows.map((b) => b.family ?? b.donor ?? "?").join("；"),
+        tags: borrows.map((b) => viaLabel(b.via)),
+      };
+    };
     const slots = [...report.weights].sort(
       (a, b) => (a.weight ?? 0) - (b.weight ?? 0),
     );
     const fed = slots.filter((s) => (s.borrows ?? []).length > 0);
-    const sources = new Set(fed.map(labelOf));
+    const sources = new Set(fed.map(slotKey));
     const uniform = fed.length === slots.length && sources.size === 1;
     if (uniform) {
       const borrow = fed[0]!.borrows![0]!;
       section.append(
         fact(
           "中文字形来源",
-          `${slots.length} 档全部取自 ${borrow.family ?? borrow.donor ?? "?"}（${viaLabel(borrow.via)}）`,
+          taggedValue(
+            `${slots.length} 档全部取自 ${borrow.family ?? borrow.donor ?? "?"}`,
+            [viaLabel(borrow.via)],
+          ),
         ),
       );
     }
-    const byWeight = new Map<number, { upright?: string; italic?: string }>();
+    const byWeight = new Map<number, { upright?: WeightCell; italic?: WeightCell }>();
     for (const slot of slots) {
       const row = byWeight.get(slot.weight ?? 0) ?? {};
-      const cell =
+      const cell: WeightCell =
         (slot.borrows ?? []).length === 0
           ? "没用中文字体"
           : uniform
             ? "✓"
-            : labelOf(slot);
+            : cellOf(slot);
       row[slot.style === "italic" ? "italic" : "upright"] = cell;
       byWeight.set(slot.weight ?? 0, row);
     }

@@ -288,10 +288,14 @@ test.describe("sidecar synthesize", () => {
       await expect(metricsTable).not.toContainText("—");
       // Round 16 (owner): the weight grid states the source ONCE when
       // every slot borrows the same — the per-slot 「N ← …」 borrow
-      // lines are gone.
-      await expect(panel).toContainText(
-        /\d+ 档全部取自 .+（自动取最近|指定字重|锁定）/,
-      );
+      // lines are gone. Round 17 (owner item 2): the via qualifier
+      // rides a TAG beside the sentence, never bracket text.
+      await expect(panel).toContainText(/\d+ 档全部取自 .+/);
+      await expect(
+        panel
+          .locator('[data-role="report-tag"]')
+          .filter({ hasText: /自动取最近|指定字重|锁定/ }),
+      ).toHaveCount(1);
       // Round 12 (owner item 1): NO dash-joins anywhere in the panel —
       // nothing relies on an em-dash to separate.
       await expect(panel).not.toContainText("—");
@@ -827,9 +831,12 @@ test.describe("sidecar synthesize", () => {
         .locator(".report-section")
         .filter({ hasText: "字重档位" });
       await expect(weightSection).toBeVisible();
-      await expect(weightSection).toContainText(
-        /3 档全部取自 .+（自动取最近）/,
-      );
+      await expect(weightSection).toContainText(/3 档全部取自 .+/);
+      await expect(
+        weightSection
+          .locator('[data-role="report-tag"]')
+          .filter({ hasText: "自动取最近" }),
+      ).toHaveCount(1);
       const weightGrid = weightSection.locator(".report-mtable");
       expect(
         await weightGrid.locator("tbody tr th").allTextContents(),
@@ -1380,9 +1387,12 @@ test.describe("sidecar synthesize", () => {
         .locator(".report-section")
         .filter({ hasText: "字重档位" });
       await expect(weightSection).toBeVisible();
-      await expect(weightSection).toContainText(
-        "2 档全部取自 Maple Mono CN（自动取最近）",
-      );
+      await expect(weightSection).toContainText("2 档全部取自 Maple Mono CN");
+      await expect(
+        weightSection
+          .locator('[data-role="report-tag"]')
+          .filter({ hasText: "自动取最近" }),
+      ).toHaveCount(1);
       const weightGrid = weightSection.locator(".report-mtable");
       expect(
         await weightGrid.locator("tbody tr th").allTextContents(),

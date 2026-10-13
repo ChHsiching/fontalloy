@@ -2289,10 +2289,15 @@ test.describe("user journey", () => {
           await expect(metricsTable).not.toContainText("·");
           // Round 16 (owner): the borrow source is ONE sentence above
           // the weight grid — the per-slot 「N ← …」 borrow lines are
-          // gone (no arrow survives anywhere in the panel).
-          await expect(panel).toContainText(
-            /\d+ 档全部取自 .+（自动取最近|指定字重|锁定）/,
-          );
+          // gone (no arrow survives anywhere in the panel). Round 17
+          // (owner item 2): the via qualifier rides a TAG beside the
+          // sentence, never bracket text.
+          await expect(panel).toContainText(/\d+ 档全部取自 .+/);
+          await expect(
+            panel
+              .locator('[data-role="report-tag"]')
+              .filter({ hasText: /自动取最近|指定字重|锁定/ }),
+          ).toHaveCount(1);
           await expect(panel).not.toContainText("←");
           // Round 12 (owner item 1): NO dash-joins anywhere in the
           // panel — nothing relies on an em-dash to separate.
@@ -2322,8 +2327,13 @@ test.describe("user journey", () => {
             .filter({ hasText: "字重档位" });
           await expect(weightSection).toBeVisible();
           await expect(weightSection).toContainText(
-            "2 档全部取自 Maple Mono NF CN（自动取最近）",
+            "2 档全部取自 Maple Mono NF CN",
           );
+          await expect(
+            weightSection
+              .locator('[data-role="report-tag"]')
+              .filter({ hasText: "自动取最近" }),
+          ).toHaveCount(1);
           const journeyGrid = weightSection.locator(".report-mtable");
           expect(
             await journeyGrid.locator("tbody tr th").allTextContents(),
@@ -2331,8 +2341,18 @@ test.describe("user journey", () => {
           expect(
             await journeyGrid.locator("tbody td").allTextContents(),
           ).toEqual(["✓", "✓"]);
-          // The output is the family collection, not a single face.
-          await expect(panel).toContainText("ttc（多字体合集）");
+          // The output is the family collection, not a single face —
+          // the format word plus its qualifier TAG (round 17, owner
+          // item 2: tags, never bracket text).
+          const formatFact = panel
+            .locator(".report-fact")
+            .filter({ hasText: "输出格式" });
+          await expect(formatFact).toContainText("ttc");
+          await expect(
+            formatFact
+              .locator('[data-role="report-tag"]')
+              .filter({ hasText: "多字体合集" }),
+          ).toHaveCount(1);
         });
 
       await step("J9.4 one ? per section heading, centered, popover above the panel", async () => {
