@@ -141,11 +141,14 @@ test.describe("kit demo page", () => {
     );
     expect(behavior).toContain("allow-discrete");
 
-    // Ratified option labels, Chinese verbatim.
+    // Ratified option labels, Chinese verbatim. The 推荐 mark is a
+    // badge element now (icon-purge round) — its text rides after the
+    // label, one normalized space between.
     await expect(popup.locator(".kit-cso")).toHaveCount(3);
     await expect(popup.locator(".kit-cso").first()).toHaveText(
-      "双方字重全部保留 · 推荐",
+      "双方字重全部保留 推荐",
     );
+    await expect(popup.locator(".kit-cso .kit-badge")).toHaveText("推荐");
 
     // Escape closes.
     await page.keyboard.press("Escape");
@@ -165,9 +168,11 @@ test.describe("kit demo page", () => {
     const popup = page.locator('[data-role="select-baseline"] .kit-csel-pk');
     await expect(popup).toBeVisible();
     await page.keyboard.press("ArrowDown");
-    await expect(select.locator("span")).toHaveText("中文字和英文底边一样高");
+    // The trigger carries label (+ badge) spans — assert on the whole
+    // button text (whitespace-normalized), not a lone span.
+    await expect(select).toHaveText("中文字和英文底边一样高");
     await page.keyboard.press("ArrowUp");
-    await expect(select.locator("span")).toHaveText("自动 · 推荐");
+    await expect(select).toHaveText("自动 推荐");
   });
 
   test("opening one AppSelect closes the other", async ({ page }) => {
@@ -509,7 +514,11 @@ test.describe("kit demo page", () => {
     await expect(row.locator('[data-role="batch-count"]')).toHaveText(
       "已选 1 个",
     );
-    await expect(row).toContainText("按住拖动连选 · Shift+点击 范围选择");
+    // Icon-purge round: the two hint clauses are joined by a divider
+    // element — the parts assert separately.
+    await expect(row).toContainText("按住拖动连选");
+    await expect(row).toContainText("Shift+点击 范围选择");
+    await expect(row.locator(".kit-sep")).toHaveCount(1);
     await expect(page.locator(".kit-cell.sel")).toHaveCount(1);
   });
 

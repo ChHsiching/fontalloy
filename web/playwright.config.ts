@@ -5,6 +5,12 @@ import { defineConfig } from "@playwright/test";
 // the webServer builds once and serves `dist/` through
 // `vite preview`, so relative-path correctness (base "./") is part of
 // what is under test.
+
+// Parallel worktrees: PLAYWRIGHT_PREVIEW_PORT moves this preview
+// server and the serve fixture's PREVIEW_ORIGIN together, so sibling
+// checkouts can run their suites side by side. Default 4173.
+const previewPort = process.env.PLAYWRIGHT_PREVIEW_PORT ?? "4173";
+
 export default defineConfig({
   testDir: "tests",
   // The user-journey suite (J11) has its own project —
@@ -19,12 +25,12 @@ export default defineConfig({
   reporter: [["list"]],
   outputDir: "test-results",
   use: {
-    baseURL: "http://localhost:4173",
+    baseURL: `http://localhost:${previewPort}`,
     viewport: { width: 1440, height: 900 },
   },
   webServer: {
-    command: "npm run build && npm run preview",
-    url: "http://localhost:4173",
+    command: `npm run build && npm run preview -- --port ${previewPort} --strictPort`,
+    url: `http://localhost:${previewPort}`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
     stdout: "ignore",

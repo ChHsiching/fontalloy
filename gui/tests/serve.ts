@@ -17,9 +17,12 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "../..");
-// Parallel-stream runs drive their own dev-server port; the serve's
-// CORS allow-origin must name THAT origin (default: the shared port).
-const devOrigin = process.env.FONTALLOY_E2E_ORIGIN ?? "http://localhost:5173";
+// Parallel-stream runs: the allow-origin must name whichever origin the
+// Playwright configs actually use — an explicit FONTALLOY_E2E_ORIGIN wins,
+// else derive from PLAYWRIGHT_DEV_PORT (default: the shared 5173).
+const devOrigin =
+  process.env.FONTALLOY_E2E_ORIGIN ??
+  `http://localhost:${process.env.PLAYWRIGHT_DEV_PORT ?? "5173"}`;
 
 /** The startup-line contract from ticket #11 (the port discovery regex). */
 const STARTUP_LINE = /^http:\/\/127\.0\.0\.1:(\d+)\r?\n?$/;

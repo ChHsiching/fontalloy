@@ -1,6 +1,7 @@
 import { store, type CatalogFamilyStatus } from "../state";
 import { getDefaultManager } from "./manager";
 import { brandMark } from "../kit/topBar";
+import { sep } from "../kit/icons";
 
 /**
  * The first-run progress screen (issue #17, ADR-0005): a dismissable
@@ -30,7 +31,7 @@ export function mountCatalogScreen(): void {
   screen.innerHTML = `
     <div class="catalog-panel">
       <div class="catalog-head">
-        <h2 class="catalog-title">首次运行 · 正在下载字体目录</h2>
+        <h2 class="catalog-title"><span>首次运行</span>${sep().outerHTML}<span>正在下载字体目录</span></h2>
         <div class="catalog-progress">已完成 <b data-stat="catalog-done">0</b> / <span data-stat="catalog-total">0</span> 个字体家族</div>
       </div>
       <div class="catalog-list"></div>

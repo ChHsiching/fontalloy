@@ -170,8 +170,8 @@ export function refLabel(draft: RecipeDraft, ref: string): string {
       ? `${slot.catalog.family} ${slot.catalog.variant ?? ""}`.trim()
       : null;
   if (ref === "base") {
-    return `base · ${slotLabel(draft.base) ?? "基底字体"}`;
+    return `base：${slotLabel(draft.base) ?? "基底字体"}`;
   }
   const index = Number(ref.slice("donor-".length));
-  return `${ref} · ${slotLabel(draft.donors[index]) ?? `供体 ${index + 1}`}`;
+  return `${ref}：${slotLabel(draft.donors[index]) ?? `供体 ${index + 1}`}`;
 }

@@ -229,12 +229,21 @@ body {
   display: none;
 }
 
+/* Icon-purge round: the text × became the kit's close glyph (16
+ * viewBox, the rule-delete stroke weight) at 12px in a 16px hit row. */
 .synthesize-notice .notice-close {
   float: right;
+  display: flex;
+  align-items: center;
   color: var(--ink3);
   padding: 0 2px;
   margin-left: 8px;
-  font-size: 14px;
+}
+
+.synthesize-notice .notice-close svg {
+  width: 12px;
+  height: 12px;
+  display: block;
 }
 
 .synthesize-notice .notice-close:hover {
@@ -281,11 +290,16 @@ body {
 }
 
 /* Round 7: the brand mark heads the first-run panel (the same kit mark
- * the top bar carries, adopted product-wide). */
+ * the top bar carries, adopted product-wide). The title's field divider
+ * drops its own margins — the flex gap already owns the spacing. */
 .catalog-title {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.catalog-title .kit-sep {
+  margin: 0;
 }
 
 .catalog-progress {
@@ -675,11 +689,20 @@ body {
   letter-spacing: 0.04em;
 }
 
+/* Icon-purge round: the text × became the kit's close glyph (12px,
+ * vertically centered in the head row like the brand mark). */
 .cli-close {
   margin-left: auto;
+  display: flex;
+  align-items: center;
   color: var(--ink3);
   padding: 0 2px;
-  font-size: 14px;
+}
+
+.cli-close svg {
+  width: 12px;
+  height: 12px;
+  display: block;
 }
 
 .cli-close:hover {

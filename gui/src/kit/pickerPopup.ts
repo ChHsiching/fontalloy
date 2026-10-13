@@ -416,7 +416,9 @@ export function mountPickerPopup(
 
   const renderHeader = (): void => {
     const selected = props.fonts.find((f) => f.id === props.selectedId);
-    const fallback = props.emptyLabel ?? props.fonts[0]?.name ?? "—";
+    // Icon-purge round: the last-resort head label is plain words —
+    // never an em-dash placeholder glyph.
+    const fallback = props.emptyLabel ?? props.fonts[0]?.name ?? "未选择";
     // Node persistence: rebuild the header only when what it SHOWS
     // changed. The workspace patches the store for every catalog family
     // (download status, lazy registration) — rebuilding the card header

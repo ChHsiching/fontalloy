@@ -21,10 +21,11 @@ export const REPO_ROOT = path.resolve(HERE, "..", "..");
 const READY_LINE = /^http:\/\/127\.0\.0\.1:(\d+)\s*$/;
 
 /** The origin the built site is previewed at (playwright baseURL).
- *  Parallel-stream runs preview on their own port; the serve's CORS
- *  allow-origin must name THAT origin (default: the shared port). */
+ *  Parallel-stream runs: an explicit FONTALLOY_E2E_ORIGIN wins, else the
+ *  PLAYWRIGHT_PREVIEW_PORT the configs picked (default: shared 4173). */
 export const PREVIEW_ORIGIN =
-  process.env.FONTALLOY_E2E_ORIGIN ?? "http://localhost:4173";
+  process.env.FONTALLOY_E2E_ORIGIN ??
+  `http://localhost:${process.env.PLAYWRIGHT_PREVIEW_PORT ?? "4173"}`;
 
 /** A serve allowlist entry that is NOT the preview origin (CORS tests). */
 export const OTHER_ORIGIN = "http://allowlist.example";

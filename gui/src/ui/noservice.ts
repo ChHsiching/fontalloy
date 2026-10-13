@@ -24,6 +24,7 @@ import { buildCommand, recipeFileName, recipeYaml } from "../recipe/yaml";
 import { validateDraft } from "../recipe/validate";
 import type { FontSlot, Preset } from "../recipe/model";
 import { brandMark } from "../kit/topBar";
+import { icon, sep } from "../kit/icons";
 import presetsJson from "../data/presets.json";
 import catalogManifest from "../data/catalog.json";
 
@@ -85,12 +86,12 @@ export function mountCliPanel(): void {
   const root = document.createElement("section");
   root.className = "cli-panel";
   root.dataset.testid = "cli-panel";
-  root.setAttribute("aria-label", "离线合成 · CLI 方案");
+  root.setAttribute("aria-label", "离线合成 CLI 方案");
   root.hidden = true;
   root.innerHTML = `
     <div class="cli-head">
-      <span class="cli-title">离线合成 · CLI 方案</span>
-      <button class="cli-close" type="button" aria-label="关闭">×</button>
+      <span class="cli-title"><span>离线合成</span>${sep().outerHTML}<span>CLI 方案</span></span>
+      <button class="cli-close" type="button" aria-label="关闭">${icon("close")}</button>
     </div>
     <div class="cli-notice" data-testid="service-notice"></div>
     <div class="cli-actions">

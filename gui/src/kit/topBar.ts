@@ -79,7 +79,8 @@ export function brandMark(size: number): HTMLElement {
 }
 
 /**
- * The base + donor pair: two tags joined by a dimmed `+`. Empty sides
+ * The base + donor pair: two tags joined by the kit's plus glyph
+ * (icon-purge round: a dimmed text `+` used to sit here). Empty sides
  * hide their tag (and the separator) — the prototype never shows a
  * placeholder: its tags always carry real picks, so the honest empty
  * state is no pill at all, not an em-dash one.
@@ -94,8 +95,8 @@ export function fontPairTags(
   baseTag.className = "kit-tag";
   baseTag.dataset.pair = "base";
   const plus = document.createElement("span");
-  plus.style.color = "var(--ink3)";
-  plus.textContent = "+";
+  plus.className = "kit-pair-plus";
+  plus.innerHTML = icon("plus");
   const donorTag = document.createElement("span");
   donorTag.className = "kit-tag";
   donorTag.dataset.pair = "donor";
@@ -171,7 +172,7 @@ export function themeToggle(props: ThemeToggleProps = {}): HTMLButtonElement {
     const effective = effectiveTheme(pref);
     btn.dataset.themeMode = pref;
     btn.setAttribute("aria-label", "切换明暗");
-    btn.title = `主题：${themePreferenceLabel(pref)}${pref === "auto" ? "（跟随系统）" : ""} · 点击切换`;
+    btn.title = `主题：${themePreferenceLabel(pref)}${pref === "auto" ? "（跟随系统）" : ""}，点击切换`;
     btn.innerHTML =
       icon(effective === "dark" ? "moon" : "theme") +
       (pref === "auto" ? '<span class="kit-theme-auto">自动</span>' : "");

@@ -19,6 +19,10 @@ import { defineConfig } from "@playwright/test";
  * server serves the real local catalog (/dev-catalog, the same plugin
  * the gui dev server runs).
  */
+// Parallel worktrees: PLAYWRIGHT_PREVIEW_PORT (default 4173) keeps
+// sibling checkouts' preview servers off each other's port.
+const previewPort = process.env.PLAYWRIGHT_PREVIEW_PORT ?? "4173";
+
 export default defineConfig({
   testDir: "tests",
   testMatch: /journey\.spec\.ts$/,
@@ -29,13 +33,13 @@ export default defineConfig({
   reporter: [["list"]],
   outputDir: "test-results-journey",
   use: {
-    baseURL: "http://localhost:4173",
+    baseURL: `http://localhost:${previewPort}`,
     viewport: { width: 1440, height: 900 },
     colorScheme: "light",
   },
   webServer: {
-    command: "npm run build && npm run preview",
-    url: "http://localhost:4173",
+    command: `npm run build && npm run preview -- --port ${previewPort} --strictPort`,
+    url: `http://localhost:${previewPort}`,
     reuseExistingServer: false,
     timeout: 180_000,
     stdout: "ignore",

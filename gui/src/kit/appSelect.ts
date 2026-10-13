@@ -18,6 +18,13 @@
 export interface AppSelectOption {
   value: string;
   label: string;
+  /**
+   * Optional inline badge after the label (icon-purge round): the
+   * `label · 推荐` text suffix became a real styled element. Rendered
+   * in both the closed trigger and the popup row; the accessible
+   * text keeps a plain space between label and badge.
+   */
+  badge?: string;
 }
 
 export interface AppSelectProps {
@@ -82,11 +89,22 @@ export function mountAppSelect(props: AppSelectProps): AppSelect {
 
   const current = (): AppSelectOption | undefined => options[idx];
 
+  /** Label (+ optional badge) as DOM, shared by trigger and rows. */
+  const optionContent = (option: AppSelectOption): Node[] => {
+    const span = document.createElement("span");
+    span.textContent = option.label;
+    if (!option.badge) return [span];
+    const badge = document.createElement("span");
+    badge.className = "kit-badge";
+    badge.textContent = option.badge;
+    // A real space keeps the concatenated text readable (the badge's
+    // own margin owns the visual gap).
+    return [span, document.createTextNode(" "), badge];
+  };
+
   const drawTrigger = (): void => {
     trigger.innerHTML = "";
-    const span = document.createElement("span");
-    span.textContent = current()?.label ?? "";
-    trigger.appendChild(span);
+    trigger.append(...optionContent(current() ?? { value: "", label: "" }));
   };
 
   const drawRows = (): void => {
@@ -98,7 +116,7 @@ export function mountAppSelect(props: AppSelectProps): AppSelect {
       row.setAttribute("role", "option");
       row.setAttribute("aria-selected", String(i === idx));
       row.dataset.value = option.value;
-      row.textContent = option.label;
+      row.append(...optionContent(option));
       list.appendChild(row);
     });
   };

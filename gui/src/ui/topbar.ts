@@ -2,6 +2,7 @@ import { store } from "../state";
 import { synthStore } from "../service/state";
 import { synthesize, synthesizeReady } from "../service/synthesize";
 import { mountTopBar, type TopBar } from "../kit/topBar";
+import { icon } from "../kit/icons";
 import { applyStoredThemePreference } from "../kit/theme";
 import { variantDisplayName } from "./picker";
 import { openCliPanel } from "./noservice";
@@ -109,12 +110,13 @@ export function mountTopbar(root: HTMLElement): TopBar {
   }
 
   // The notice lives in the document (not inside the button) so the text is
-  // real page content reachable by a click.
+  // real page content reachable by a click. The close is the kit's SVG
+  // glyph (icon-purge round: a text × used to sit here).
   const notice = document.createElement("div");
   notice.className = "synthesize-notice";
   notice.hidden = true;
   notice.innerHTML = `
-    <button class="notice-close" aria-label="关闭">×</button>
+    <button class="notice-close" aria-label="关闭" type="button">${icon("close")}</button>
     <span class="notice-text"></span>
   `;
   document.body.appendChild(notice);

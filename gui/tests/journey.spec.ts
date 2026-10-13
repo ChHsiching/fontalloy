@@ -122,7 +122,9 @@ const test = base.extend<{ journeysPage: Page }>({
         resolve(tmpdir(), "fontalloy-journey-profile-"),
       );
       const context = await chromium.launchPersistentContext(userDataDir, {
-        baseURL: JOURNEY_ORIGIN,
+        baseURL:
+          process.env.FONTALLOY_E2E_ORIGIN ??
+          `http://localhost:${process.env.PLAYWRIGHT_DEV_PORT ?? "5173"}`,
         viewport: { width: 1440, height: 900 },
         colorScheme: "light",
       });
