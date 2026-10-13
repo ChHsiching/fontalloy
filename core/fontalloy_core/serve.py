@@ -36,7 +36,12 @@ path           method  response
 =============  ======  ==================================================
 
 Progress transport is polling: ``GET /builds/{id}`` reports the stage
-the pipeline entered (``loading`` … ``reporting``, then ``done``).
+the pipeline entered (``loading`` … ``reporting``, then ``done``) plus
+a ``facts`` object — the quantitative readout the pipeline already
+knows at that point (file count/sizes, slot count, rule and codepoint
+counts, format and an estimated size, the check count), refreshed
+mid-stage as numbers resolve (round 13, owner item 5). A stage without
+facts carries ``null``; consumers degrade to stage names alone.
 Polling over a stateless endpoint is the lean choice for a stdlib
 threaded server — an SSE stream would pin one thread per watcher and
 complicate graceful shutdown — and stage granularity fits builds that
@@ -177,6 +182,11 @@ class BuildJob:
     submitted_at: str = field(default_factory=_now)
     status: str = "queued"  # queued | running | done | failed
     stage: str | None = None
+    #: Round 13 (owner item 5): the live facts of the CURRENT stage —
+    #: the quantitative readout (file count/sizes, slot count, rule
+    #: count, …) the pipeline already knows. Replaced on every stage
+    #: entry (None clears it), refreshed in place mid-stage.
+    facts: dict[str, Any] | None = None
     started_at: str | None = None
     finished_at: str | None = None
     error: str | None = None
@@ -302,15 +312,18 @@ class ServeState:
     def progress_of(self, job: BuildJob):
         """The stage callback handed to the build pipeline.
 
-        Doubles as the cooperative shutdown point: a build between
-        stages aborts the moment shutdown is requested, so no
-        half-written artifact outlives the service.
+        Carries the stage's live ``facts`` (round 13, owner item 5) onto
+        the job — a stage entry without facts clears the previous
+        stage's, so the document's ``facts`` always describes the
+        document's ``stage``. Doubles as the cooperative shutdown point:
+        a build between stages aborts the moment shutdown is requested,
+        so no half-written artifact outlives the service.
         """
 
-        def progress(stage: str) -> None:
+        def progress(stage: str, facts: dict[str, Any] | None = None) -> None:
             if self.stop.is_set():
                 raise _BuildAborted()
-            self.mark(job, stage=stage)
+            self.mark(job, stage=stage, facts=facts)
 
         return progress
 
@@ -353,6 +366,7 @@ class ServeState:
                 for field in (
                     "status",
                     "stage",
+                    "facts",
                     "started_at",
                     "finished_at",
                     "error",
