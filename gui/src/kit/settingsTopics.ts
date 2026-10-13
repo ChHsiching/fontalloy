@@ -34,7 +34,7 @@ export const SETTINGS_TOPICS: readonly SettingsTopic[] = [
     key: "weight",
     name: "字重合并方式",
     options: [
-      { value: "nearest", label: "双方字重全部保留 · 推荐" },
+      { value: "nearest", label: "双方字重全部保留", badge: "推荐" },
       { value: "base", label: "仅保留英文字体提供的字重" },
       { value: "donor", label: "仅保留中文字体提供的字重" },
     ],
@@ -78,7 +78,7 @@ export const SETTINGS_TOPICS: readonly SettingsTopic[] = [
     key: "baseline",
     name: "中英文的基线对齐",
     options: [
-      { value: "auto", label: "自动 · 推荐" },
+      { value: "auto", label: "自动", badge: "推荐" },
       { value: "grid", label: "中文字和英文底边一样高" },
       { value: "optical", label: "中文字缩小一点更匀称" },
     ],
@@ -111,7 +111,7 @@ export const SETTINGS_TOPICS: readonly SettingsTopic[] = [
     key: "cjkWidth",
     name: "中文字符宽度",
     options: [
-      { value: "2", label: "两倍英文宽 · 推荐" },
+      { value: "2", label: "两倍英文宽", badge: "推荐" },
       { value: "1.8", label: "1.8 倍英文宽" },
       { value: "1.5", label: "1.5 倍英文宽" },
     ],

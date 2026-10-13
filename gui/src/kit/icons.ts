@@ -90,3 +90,18 @@ export function icon(name: IconName): string {
   if (name in SPECIAL) return SPECIAL[name as SpecialIconName];
   return `<svg class="kit-ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${LINEAR[name as LinearIconName]}</svg>`;
 }
+
+/**
+ * The inline field separator (icon-purge round): a styled 1px divider
+ * element that replaces the text interpunct / em-dash the UI used to
+ * join peer fields (titles, label+count notes, hint clauses). It is
+ * chrome, not content — hidden from assistive tech; the joined parts
+ * carry the information, the divider only the visual boundary
+ * (`.kit-sep` in kit.css owns the size and color).
+ */
+export function sep(): HTMLElement {
+  const el = document.createElement("span");
+  el.className = "kit-sep";
+  el.setAttribute("aria-hidden", "true");
+  return el;
+}

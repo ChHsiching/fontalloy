@@ -13,10 +13,11 @@
  * - the pager (‹ 第 n/m 页 ›), the 已调整 legend with its dot, the
  *   codepoint locate field, and 按编码指定;
  * - the batch variant: 已选 n 个 + apply segments + 取消 / 撤销选择 +
- *   the drag hint (按住拖动连选 · Shift+点击 范围选择).
+ *   the drag hint (按住拖动连选 / Shift+点击 范围选择, joined by a
+ *   styled divider — the icon-purge round).
  */
 
-import { icon } from "./icons";
+import { icon, sep } from "./icons";
 import { helpNote, mountHelpPopover, type HelpPopover } from "./helpPopover";
 
 export type FontSide = "base" | "donor";
@@ -332,9 +333,16 @@ export function mountActionBar(
       const grow = document.createElement("span");
       grow.className = "kit-grow";
       el.appendChild(grow);
-      const hint = labelSpan("按住拖动连选 · Shift+点击 范围选择", true);
+      // Icon-purge round: the two hint clauses were joined by a text
+      // interpunct; a styled divider element owns the boundary now.
+      const hint = labelSpan("", true);
       hint.style.fontSize = "11px";
       hint.style.color = "var(--ink3)";
+      hint.append(
+        document.createTextNode("按住拖动连选"),
+        sep(),
+        document.createTextNode("Shift+点击 范围选择"),
+      );
       el.appendChild(hint);
       return;
     }
@@ -367,12 +375,17 @@ export function mountActionBar(
       }
       if (props.block) {
         if (props.block.aggregate) {
-          el.appendChild(
-            labelSpan(
-              `${props.block.label} · ${props.block.count.toLocaleString("en-US")} 字符`,
-              true,
+          // Icon-purge round: the label and its cell count were joined
+          // by a text interpunct; the styled divider owns the boundary.
+          const note = labelSpan("", true);
+          note.append(
+            document.createTextNode(props.block.label),
+            sep(),
+            document.createTextNode(
+              `${props.block.count.toLocaleString("en-US")} 字符`,
             ),
           );
+          el.appendChild(note);
         } else {
           el.appendChild(labelSpan(props.block.label));
           el.appendChild(

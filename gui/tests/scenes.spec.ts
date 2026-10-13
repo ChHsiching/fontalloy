@@ -419,32 +419,37 @@ test.describe("scene previews and synthesis settings", () => {
     const fonts = await makeLocalFixtures();
     await openWithFonts(page, fonts);
 
-    // The three settings with their ratified option labels.
+    // The three settings with their ratified option labels. The 推荐
+    // mark is a badge element (icon-purge round): its text rides after
+    // the label, one normalized space between.
     const weight = page.locator("[data-role='select-weightMode']");
     const baseline = page.locator("[data-role='select-baseline']");
     const width = page.locator("[data-role='select-cjkWidth']");
     await expect(weight.locator(".kit-csel")).toHaveText(
-      "双方字重全部保留 · 推荐",
+      "双方字重全部保留 推荐",
     );
-    await expect(baseline.locator(".kit-csel")).toHaveText("自动 · 推荐");
-    await expect(width.locator(".kit-csel")).toHaveText("两倍英文宽 · 推荐");
+    await expect(baseline.locator(".kit-csel")).toHaveText("自动 推荐");
+    await expect(width.locator(".kit-csel")).toHaveText("两倍英文宽 推荐");
+    await expect(
+      weight.locator(".kit-csel .kit-badge"),
+    ).toHaveText("推荐");
     await pointerClick(page, weight.locator(".kit-csel"));
     expect(await weight.locator(".kit-cso").allTextContents()).toEqual([
-      "双方字重全部保留 · 推荐",
+      "双方字重全部保留 推荐",
       "仅保留英文字体提供的字重",
       "仅保留中文字体提供的字重",
     ]);
     await page.keyboard.press("Escape");
     await pointerClick(page, baseline.locator(".kit-csel"));
     expect(await baseline.locator(".kit-cso").allTextContents()).toEqual([
-      "自动 · 推荐",
+      "自动 推荐",
       "中文字和英文底边一样高",
       "中文字缩小一点更匀称",
     ]);
     await page.keyboard.press("Escape");
     await pointerClick(page, width.locator(".kit-csel"));
     expect(await width.locator(".kit-cso").allTextContents()).toEqual([
-      "两倍英文宽 · 推荐",
+      "两倍英文宽 推荐",
       "1.8 倍英文宽",
       "1.5 倍英文宽",
     ]);

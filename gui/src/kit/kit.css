@@ -100,6 +100,39 @@
   flex: 1;
 }
 
+/*
+ * The inline field divider (icon-purge round): replaces the text
+ * interpunct / em-dash that used to join peer fields. A 1px rule at
+ * 90% of the x-height, vertically centered on the line, half an em
+ * of air on each side — pure chrome, aria-hidden at the element
+ * level (see icons.ts `sep()`).
+ */
+.kit-sep {
+  display: inline-block;
+  width: 1px;
+  height: 0.9em;
+  margin: 0 0.5em;
+  vertical-align: -0.12em;
+  background: var(--ln2);
+  flex: none;
+}
+
+/*
+ * The font-pair joiner (icon-purge round): the dimmed text `+`
+ * became the kit's own plus glyph at 11px — the same ink3 tone the
+ * text character carried.
+ */
+.kit-pair-plus {
+  display: inline-flex;
+  align-items: center;
+  color: var(--ink3);
+}
+
+.kit-pair-plus .kit-ci {
+  width: 11px;
+  height: 11px;
+}
+
 .kit-fontname-input {
   background: var(--sf);
   border: 1px solid var(--ln2);
@@ -620,6 +653,35 @@
   background: var(--acsoft);
   color: var(--ink);
   font-weight: 600;
+}
+
+/*
+ * The option badge (icon-purge round): the `label · 推荐` text suffix
+ * became a real badge element — the same accent-tinted tag language as
+ * the theme toggle's 自动 corner badge. It rides inline after the
+ * label in BOTH the closed trigger and the popup row.
+ */
+.kit-badge {
+  display: inline-block;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--acsoft);
+  color: var(--ac);
+  font-size: 9.5px;
+  line-height: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  vertical-align: 1px;
+  white-space: nowrap;
+}
+
+.kit-csel .kit-badge {
+  flex: none;
+  margin-left: 2px;
+}
+
+.kit-cso .kit-badge {
+  margin-left: 6px;
 }
 
 /* ============ font picker (fsel) ============ */

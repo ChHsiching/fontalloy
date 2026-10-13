@@ -81,7 +81,9 @@ function ensureFileInput(): HTMLInputElement {
 
 /** Inline status tag for a catalog row that cannot be picked (yet). */
 function catalogTag(family: CatalogFamilyEntry): string | undefined {
-  if (family.status === "failed") return "未下载 · 下次启动自动重试";
+  // Icon-purge round: the status and its remedy are one sentence — a
+  // comma joins them (the interpunct was glyph-as-chrome).
+  if (family.status === "failed") return "未下载，下次启动自动重试";
   if (family.status === "downloading") return "下载中…";
   if (family.status === "pending") return "等待下载";
   return undefined;

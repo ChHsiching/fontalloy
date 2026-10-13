@@ -244,11 +244,13 @@ function pickerOnPickCjk(id: string): void {
   topBar.setPair(enName(), cjkName());
 }
 
+// Icon-purge round: an absent pick renders NO tag (fontPairTags hides
+// the empty side) — never an em-dash placeholder glyph.
 function enName(): string {
-  return EN_FONTS.find((f) => f.id === state.enId)?.name ?? "—";
+  return EN_FONTS.find((f) => f.id === state.enId)?.name ?? "";
 }
 function cjkName(): string {
-  return CJK_FONTS.find((f) => f.id === state.cjkId)?.name ?? "—";
+  return CJK_FONTS.find((f) => f.id === state.cjkId)?.name ?? "";
 }
 
 /* ---------- rail: language chips (kit/langChips) ---------- */
