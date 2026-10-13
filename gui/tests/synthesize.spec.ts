@@ -261,6 +261,19 @@ test.describe("sidecar synthesize", () => {
       await expect(panel).toContainText("覆盖检查");
       await expect(panel).toContainText("字体尺寸对比");
       await expect(panel).toContainText("行高保持不变");
+      // Round 12 (owner item 5): before/after renders as TWO rows
+      // (合并前 / 合并后) — never one dash-joined line.
+      await expect(panel).toContainText("UPM · 合并前");
+      await expect(panel).toContainText("UPM · 合并后");
+      // Round 12 (owner item 4): the borrow rows read the ratified
+      // 成品档位 ← 来源字体 direction — the output weight LEFT of the
+      // arrow, the source font right of it, the via qualifier after ·.
+      await expect(panel).toContainText(
+        /\d+ ← .+ · (自动取最近|指定字重|锁定)/,
+      );
+      // Round 12 (owner item 1): NO dash-joins anywhere in the panel —
+      // nothing relies on an em-dash to separate.
+      await expect(panel).not.toContainText("—");
       // Round 11 (owner item 2): the single-donor source list reads the
       // fonts' real names only — no 基底/供体/role wording, no numbering.
       await expect(panel).not.toContainText("基底");
@@ -320,7 +333,7 @@ test.describe("sidecar synthesize", () => {
       // Round 11 (items 4–5): the section popovers carry FULL content —
       // the title explanation plus every sub-item of the section as a
       // compact table — and the notation legend lives in its own
-      // section's popover (A → B / — with the metrics; X ← Y with the
+      // section's popover (A → B with the metrics; X ← Y with the
       // weight slots).
       const openHelp = async (label: string): Promise<Locator> => {
         const anchor = panel.locator(`.kit-qh[aria-label='${label}']`);
@@ -335,7 +348,10 @@ test.describe("sidecar synthesize", () => {
       );
       await expect(metricsPop).toContainText("A → B");
       await expect(metricsPop).toContainText("合并前的值 → 合并后的值");
-      await expect(metricsPop).toContainText("该项原本没有值");
+      // Round 12 (owner item 5, as corrected): the legend explains 「→」
+      // and the 无 no-value word — the dash row is GONE.
+      await expect(metricsPop).toContainText("该项在合并前没有数值");
+      await expect(metricsPop).not.toContainText("该项原本没有值");
       await expect(metricsPop).toContainText("UPM");
       await expect(metricsPop).toContainText("中英宽度比");
       await expect(metricsPop).toContainText("行高保持不变");

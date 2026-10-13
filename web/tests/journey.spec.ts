@@ -357,12 +357,22 @@ test("J11 Web 目标 — detection, picks, preset, live merge, report, download,
         "缺失",
         "字体尺寸对比",
         "UPM",
+        "UPM · 合并前",
+        "UPM · 合并后",
         "中英宽度比",
         "行高保持不变",
         "字重档位",
       ]) {
         await expect(panel).toContainText(label);
       }
+      // Round 12 (owner item 4): the borrow rows read the ratified
+      // 成品档位 ← 来源字体 direction — the output weight LEFT of the
+      // arrow, the via qualifier after ·.
+      await expect(panel).toContainText(
+        /\d+ ← .+ · (自动取最近|指定字重|锁定)/,
+      );
+      // Round 12 (owner item 1): no dash-joins anywhere in the panel.
+      await expect(panel).not.toContainText("—");
       await expect(panel).not.toContainText("fontalloy/verification-report");
     });
 

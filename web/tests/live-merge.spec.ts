@@ -143,6 +143,13 @@ test("detects the service, merges live with journal and report, downloads the fo
     await pointerClick(page, panel.locator(".report-details > summary"));
     await expect(panel).toContainText("验证报告");
     await expect(panel).toContainText("码位");
+    // Round 12: the corrected 成品档位 ← 来源字体 borrow direction, the
+    // two-line 合并前 / 合并后 metric rows, and NO dash-joins.
+    await expect(panel).toContainText(
+      /\d+ ← .+ · (自动取最近|指定字重|锁定)/,
+    );
+    await expect(panel).toContainText("UPM · 合并前");
+    await expect(panel).not.toContainText("—");
     await expect(panel).not.toContainText("fontalloy/verification-report");
 
     // The saved artifact is a real font download: real bytes, TTF magic.

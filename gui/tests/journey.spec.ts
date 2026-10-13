@@ -1864,7 +1864,7 @@ test.describe("user journey", () => {
     });
   });
 
-  test("J8 合成设置 — three settings, verbatim help, width chips in the recipe", async ({
+  test("J8 合成设置 — four settings, verbatim help, width chips and format in the recipe", async ({
     journeysPage: page,
   }) => {
     await journey("J8 合成设置", async (step) => {
@@ -1873,9 +1873,11 @@ test.describe("user journey", () => {
         await pickFlagshipPair(page);
       });
 
-      await step("J8.2 all three settings open and change", async () => {
+      await step("J8.2 all four settings open and change", async () => {
         // The selects carry the settings' STORE keys (weightMode /
-        // baseline / cjkWidth — see ui/settings.ts).
+        // baseline / cjkWidth / outputFormat — see ui/settings.ts).
+        // Round 12 (owner item 7): the output format is the fourth
+        // setting; its options are the formats' proper nouns.
         const cases = [
           {
             key: "weightMode",
@@ -1883,6 +1885,7 @@ test.describe("user journey", () => {
           },
           { key: "baseline", pick: "中文字和英文底边一样高" },
           { key: "cjkWidth", pick: "1.8 倍英文宽" },
+          { key: "outputFormat", pick: "WOFF2" },
         ] as const;
         for (const { key, pick } of cases) {
           const select = page.locator(`[data-role='select-${key}']`);
@@ -1914,6 +1917,12 @@ test.describe("user journey", () => {
             "cjk-width",
             "中文字符宽度是什么",
             /等宽环境里，每个字符占的位置按英文字符的宽度计算/,
+          ],
+          [
+            "输出格式是什么",
+            "output-format",
+            "输出格式是什么",
+            /成品的文件格式，决定体积和用途/,
           ],
         ];
         for (const [buttonLabel, popId, title, body] of expects) {
@@ -1960,6 +1969,17 @@ test.describe("user journey", () => {
           select.locator(".kit-cso", { hasText: "2 倍英文宽" }),
         );
         await expect(yaml).not.toContainText("width_factor");
+        // Round 12 (owner item 7): the output-format setting rides the
+        // recipe's output.format — J8.2 left it at WOFF2, so the YAML
+        // names woff2; back on TTF（默认） the YAML reads ttf again.
+        await expect(yaml).toContainText("format: woff2");
+        const formatSelect = page.locator("[data-role='select-outputFormat']");
+        await pointerClick(page, formatSelect.locator(".kit-csel"));
+        await pointerClick(
+          page,
+          formatSelect.locator(".kit-cso", { hasText: "TTF（默认）" }),
+        );
+        await expect(yaml).toContainText("format: ttf");
       });
 
       await step("J8.5 zero JS errors across the journey", assertNoJsErrors);
@@ -2016,6 +2036,19 @@ test.describe("user journey", () => {
           await expect(stage).toHaveText(
             /(正在合成|读取字体|规划字重|解析规则|移植字形|改写名称表|保存输出|生成报告|完成)/,
           );
+          // Round 12 (owner item 1): the stage line is TWO lines — the
+          // stage name line with the dim note line UNDER it, never one
+          // dash-joined 「name — note」 line. Catch it while a stage is
+          // actually current (the reserved two-line block keeps the
+          // rows underneath still).
+          const stageLine = panel.locator("[data-build-stage-line]").first();
+          await expect(stageLine).toBeVisible();
+          await expect(
+            stageLine.locator("[data-build-stage-name]"),
+          ).not.toBeEmpty();
+          await expect(
+            stageLine.locator("[data-build-stage-note]"),
+          ).not.toBeEmpty();
           // Round 10 (no flicker), round 11 (content sizing): sample
           // the panel's clientHeight and the rows region's scrollbar
           // state every frame while the real build walks its stages —
@@ -2086,6 +2119,8 @@ test.describe("user journey", () => {
             "缺失",
             "字体尺寸对比",
             "UPM",
+            "UPM · 合并前",
+            "UPM · 合并后",
             "英文宽度",
             "中文宽度",
             "中英宽度比",
@@ -2094,6 +2129,18 @@ test.describe("user journey", () => {
           ]) {
             await expect(panel).toContainText(label);
           }
+          // Round 12 (owner item 4): the borrow row reads the ratified
+          // 成品档位 ← 来源字体 order — the output weight LEFT of the
+          // arrow, the source font right of it, the via qualifier
+          // after · (never the inverted family-first form, never a
+          // dash join).
+          await expect(panel).toContainText(
+            /\d+ ← .+ · (自动取最近|指定字重|锁定)/,
+          );
+          await expect(panel).not.toContainText(/← \d+（/);
+          // Round 12 (owner item 1): NO dash-joins anywhere in the
+          // panel — nothing relies on an em-dash to separate.
+          await expect(panel).not.toContainText("—");
           // Round 11 (terminology ruling): user-facing copy never says
           // 基底 or 供体 — those stay in the machine layer only.
           await expect(panel).not.toContainText("基底");

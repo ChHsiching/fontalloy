@@ -817,8 +817,10 @@ test.describe("kit demo page", () => {
   test("settings rows assemble label, ? help, and the AppSelect", async ({
     page,
   }) => {
+    // Round 12 (owner item 7): the fourth topic — 输出格式 — joins
+    // the three prototype-derived rows.
     const rows = page.locator(".kit-setrow");
-    await expect(rows).toHaveCount(3);
+    await expect(rows).toHaveCount(4);
     await expect(rows.first().locator(".kit-setname")).toHaveText(
       "字重合并方式",
     );
