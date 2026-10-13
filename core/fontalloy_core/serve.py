@@ -432,11 +432,27 @@ class ServeState:
         service runs). Files fontTools cannot read are skipped and
         reported, not fatal: a stray file in a user directory must not
         take the enumeration down.
+
+        The scan descends ONE level into subdirectories (round 14): the
+        layouts a real consumer points ``--font-dir`` at nest their font
+        files there — the fetched catalog extracts each archive's faces
+        into ``<fonts>/<archive stem>/``, and the Tauri shell's catalog
+        storage keeps per-family directories under ``catalog/families``.
+        A flat ``glob("*")`` lists none of those faces, so the GUI's
+        weight-slot selection had no face data for family picks. The
+        descent is bounded at one level exactly like the dev catalog's
+        scan of the same layouts; deeper trees are not wandered.
         """
         skipped: list[str] = []
         faces: list[FaceInfo] = []
         for directory in self.options.font_dirs:
-            for path in sorted(Path(directory).glob("*")):
+            # Depth-1 entries plus the FILES one level deeper (the two
+            # globs cannot overlap: "*/*" is exactly depth 2).
+            entries = [
+                *sorted(Path(directory).glob("*")),
+                *sorted(Path(directory).glob("*/*")),
+            ]
+            for path in entries:
                 if not path.is_file() or path.suffix.lower() not in _FONT_SUFFIXES:
                     continue
                 try:

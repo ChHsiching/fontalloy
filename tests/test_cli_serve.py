@@ -492,6 +492,65 @@ class TestLocalFonts:
         )
         assert gamma_weights == [400, 700]
 
+    def test_enumerates_one_level_of_extracted_family_dirs(
+        self, serve_exe, serve_manifest, tmp_path
+    ):
+        """Round 14: the fetched-catalog layout lists its nested faces.
+
+        The layout every real consumer points ``--font-dir`` at nests
+        font files one level down — the fetched catalog's extracted
+        ``<fonts>/<archive stem>/`` faces, the Tauri shell's per-family
+        ``catalog/families/<Family>/`` storage. A flat ``glob("*")``
+        listed none of them, so the GUI's weight-slot selection had no
+        face data for family picks; the scan descends exactly one
+        level (deeper trees stay unlisted).
+        """
+        fonts = tmp_path / "fonts"
+        extracted = fonts / "JetBrainsMono"
+        extracted.mkdir(parents=True)
+        synth_font(
+            extracted / "JetBrainsMonoNerdFont-Regular.ttf",
+            family="JetBrainsMono Nerd Font",
+            codepoints=(0x41,),
+        )
+        synth_font(
+            extracted / "JetBrainsMonoNerdFont-Bold.ttf",
+            family="JetBrainsMono Nerd Font",
+            codepoints=(0x41,),
+            weight=700,
+        )
+        # Two levels down: outside the bounded descent.
+        deep = extracted / "licenses"
+        deep.mkdir()
+        synth_font(
+            deep / "Stray.ttf", family="Stray", codepoints=(0x41,)
+        )
+        work = tmp_path / "work"
+        work.mkdir()
+        with running_service(
+            serve_exe,
+            [
+                "--port",
+                "0",
+                "--manifest",
+                str(serve_manifest),
+                "--font-dir",
+                str(fonts),
+                "--work-dir",
+                str(work),
+            ],
+            cwd=tmp_path,
+        ) as (client, _process):
+            families = {
+                family["name"]: family
+                for family in client.get("/fonts").json()["families"]
+            }
+            assert set(families) == {"JetBrainsMono Nerd Font"}
+            weights = sorted(
+                face["weight"] for face in families["JetBrainsMono Nerd Font"]["faces"]
+            )
+            assert weights == [400, 700]
+
 
 class TestBuildLifecycle:
     def test_submit_poll_and_download(self, serve_service, build_recipe_json):
