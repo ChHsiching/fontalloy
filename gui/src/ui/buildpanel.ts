@@ -62,8 +62,25 @@
  *   ruling stands), each popover carrying the title explanation PLUS
  *   every sub-item of its section as a compact worked table (the
  *   round-6 verbatim style, no essays) — and the notation legend
- *   lives where it applies: 「A → B」 and 「—」 in the metrics
- *   popover, 「X ← Y」 in the weight-slot one.
+ *   lives where it applies: 「A → B」 in the metrics popover, 「X ← Y」
+ *   in the weight-slot one.
+ *
+ * Round 12 (the copy-structure round):
+ *
+ * - **No dash-joins anywhere.** The stage line is TWO lines (the stage
+ *   name, the dim note under it — the reserved-height discipline
+ *   survives); every 「 — 」 single-line join in the panel and report
+ *   was restructured as stacked lines/rows. Nothing relies on an
+ *   em-dash to separate.
+ * - **Borrow direction corrected.** The weight-slot rows read the
+ *   ratified 「成品档位 ← 来源字体」 notation (「400 ← Maple Mono CN ·
+ *   自动取最近」), not the inverted family-first form; the via
+ *   qualifier rides after a ·.
+ * - **「无」 for no-value.** A before-value the machine layer could not
+ *   compute reads 「无」 (the metrics rows are 合并前 / 合并后 lines);
+ *   the dash placeholder and its legend row are gone.
+ * - **Section headings regain weight** (600, full ink — distinct from
+ *   the rows in both themes).
  *
  * Wording follows the owner-ratified copy spec
  * (`fontalloy-notes/report-copy.md`): real words only, the round-10
@@ -129,38 +146,48 @@ function statusText(row: BuildRow): string {
 }
 
 /**
- * The ONE line under the stepper (round 10): the current stage term
- * with its ≤30-char note, the queue position while queued, the saver
- * note while the artifact hands off — and nothing once the row has
- * settled (the saved line / error box own those states).
+ * The TWO lines under the stepper (round 12, owner item 1): the stage
+ * term on its own line, the dim ≤30-char note on the line under it —
+ * never one line joined by a dash (nothing in the panel relies on an
+ * em-dash to separate). The queue position while queued and the saver
+ * note while the artifact hands off follow the same two-line shape;
+ * nothing renders once the row has settled (the saved line / error box
+ * own those states).
  */
-function stageLineText(row: BuildRow): string {
+function stageLineParts(row: BuildRow): { name: string; note: string } {
   switch (row.status) {
     case "queued":
-      return row.queuePosition !== null && row.queuePosition > 1
-        ? `排队中（第 ${row.queuePosition} 位）`
-        : "排队中";
+      return {
+        name:
+          row.queuePosition !== null && row.queuePosition > 1
+            ? `排队中（第 ${row.queuePosition} 位）`
+            : "排队中",
+        note: "",
+      };
     case "running":
-      if (row.stage === null) return "正在合成";
-      const note = stageNote(row.stage);
-      return note === null
-        ? stageLabel(row.stage)
-        : `${stageLabel(row.stage)} — ${note}`;
+      if (row.stage === null) return { name: "正在合成", note: "" };
+      return { name: stageLabel(row.stage), note: stageNote(row.stage) ?? "" };
     case "saving":
-      return "正在保存 — 把成品字体写入磁盘。";
+      return { name: "正在保存", note: "把成品字体写入磁盘。" };
     default:
-      return "";
+      return { name: "", note: "" };
   }
 }
 
-/** Number rendering; null/missing fields render as an em dash (v2
- *  omits or nulls metric fields it could not compute). */
+/**
+ * Number rendering; a field the machine layer omitted or nulled reads
+ * as the single word 「无」 (round 12, owner item 5 as corrected by the
+ * owner: the no-value placeholder is 无, never a dash — v2 omits or
+ * nulls metric fields it could not compute).
+ */
+const NO_VALUE = "无";
+
 function fmt(value: number | null | undefined): string {
-  return typeof value === "number" ? value.toLocaleString("en-US") : "—";
+  return typeof value === "number" ? value.toLocaleString("en-US") : NO_VALUE;
 }
 
 function basename(path: string | undefined): string {
-  if (path === undefined) return "—";
+  if (path === undefined) return "未知文件";
   const parts = path.replace(/\\/g, "/").split("/");
   return parts[parts.length - 1] ?? path;
 }
@@ -267,11 +294,14 @@ const SECTION_HELP: Record<string, SectionHelp> = {
   },
   metrics: {
     note: "描述字体高矮、深浅、行距的一组数值。",
+    // The notation legend keeps its two rows (round 12, owner item 5
+    // as corrected): 「→」 stays, explained; the dash row is GONE —
+    // the no-value placeholder 无 takes its place.
     legend: {
       headers: ["写法", "意思"],
       rows: [
         ["A → B", "合并前的值 → 合并后的值"],
-        ["—", "该项原本没有值"],
+        ["无", "该项在合并前没有数值"],
       ],
     },
     headers: ["项目", "是什么"],
@@ -526,7 +556,13 @@ function renderReport(
       p: { base?: number; output?: number } | undefined,
     ): void => {
       if (p?.base !== undefined || p?.output !== undefined) {
-        section.append(fact(label, `${fmt(p?.base)} → ${fmt(p?.output)}`));
+        // Round 12 (owner item 5, as corrected by the owner):
+        // before/after renders as TWO rows (合并前 / 合并后), never one
+        // 「A — B」-style join; a missing before-value reads 「无」.
+        section.append(
+          fact(`${label} · 合并前`, fmt(p?.base)),
+          fact(`${label} · 合并后`, fmt(p?.output)),
+        );
       }
     };
     pair("UPM", face.upem);
@@ -547,10 +583,14 @@ function renderReport(
     section.className = "report-section";
     section.appendChild(sectionHeading("字重档位", "weight-slot", helpAnchors));
     for (const slot of report.weights) {
+      // Round 12 (owner item 4): the ratified notation is
+      // 成品档位 ← 来源字体 — the OUTPUT weight on the left of the
+      // arrow, the source font on the right, the via qualifier after
+      // a · (never a dash). The old 「family ← weight」 read backwards.
       const borrows = (slot.borrows ?? [])
         .map(
           (borrow) =>
-            `${borrow.family ?? borrow.donor ?? "?"} ← ${fmt(borrow.weight)}（${viaLabel(borrow.via)}）`,
+            `${fmt(slot.weight)} ← ${borrow.family ?? borrow.donor ?? "?"} · ${viaLabel(borrow.via)}`,
         )
         .join("；");
       section.append(
@@ -627,13 +667,23 @@ function renderRow(
     dot.classList.toggle("is-failed", isFailing);
   });
 
-  // The ONE line under the stepper: current stage + note, queue
-  // position while queued, the saver note while saving — hidden once
-  // the row settles (the saved line / error box own those states).
+  // The TWO lines under the stepper (round 12, owner item 1): the
+  // stage name on the first line, the dim note on the line under it —
+  // never one dash-joined line. The queue position while queued, the
+  // saver note while saving — hidden once the row settles (the saved
+  // line / error box own those states).
   const stageLine = rowEl.querySelector<HTMLElement>("[data-build-stage-line]")!;
-  const line = stageLineText(row);
-  if (stageLine.textContent !== line) stageLine.textContent = line;
-  stageLine.hidden = line === "";
+  const stageName = rowEl.querySelector<HTMLElement>(
+    "[data-build-stage-name]",
+  )!;
+  const stageNote = rowEl.querySelector<HTMLElement>(
+    "[data-build-stage-note]",
+  )!;
+  const parts = stageLineParts(row);
+  if (stageName.textContent !== parts.name) stageName.textContent = parts.name;
+  if (stageNote.textContent !== parts.note) stageNote.textContent = parts.note;
+  stageNote.hidden = parts.note === "";
+  stageLine.hidden = parts.name === "" && parts.note === "";
 
   const errorEl = rowEl.querySelector<HTMLElement>("[data-build-error]")!;
   errorEl.hidden = row.error === null;
@@ -718,7 +768,7 @@ export function mountBuildPanel(): void {
       <div class="build-steps">
         ${STAGES.map(([, label]) => `<span class="build-step" title="${label}"></span>`).join("")}
       </div>
-      <div class="build-stage-line" data-build-stage-line></div>
+      <div class="build-stage-line" data-build-stage-line><span class="build-stage-name" data-build-stage-name></span><span class="build-stage-note" data-build-stage-note></span></div>
       <div class="build-error" data-build-error role="alert" hidden></div>
       <div class="build-saved" data-build-saved hidden></div>
       <div class="build-report" data-build-report hidden></div>

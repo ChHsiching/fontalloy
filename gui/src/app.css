@@ -564,19 +564,29 @@ body {
   opacity: 1;
 }
 
-/* The ONE line under the stepper (round 10): the current stage name +
-   its ≤30-char explanation (or the queue position while queued). The
-   two-line minimum is RESERVED from the row's first paint, so stage
-   copy of differing lengths never moves the rows underneath it; the
-   text block centers inside the reservation. */
+/* The TWO lines under the stepper (round 12, owner item 1): the stage
+   name on the first line, its dim ≤30-char explanation on the second
+   — never one dash-joined line (the queue position while queued rides
+   the name line alone). The two-line minimum is RESERVED from the
+   row's first paint, so stage copy of differing lengths never moves
+   the rows underneath it; the block centers inside the reservation. */
 .build-stage-line {
   margin-top: 6px;
   min-height: 36px; /* 11px × 1.6 line-height × 2 lines */
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  justify-content: center;
   font-size: 11px;
   line-height: 1.6;
   color: var(--ink3);
+}
+
+.build-stage-name {
+  color: var(--ink2);
+}
+
+.build-stage-note[hidden] {
+  display: none;
 }
 
 .build-stage-line[hidden] {
@@ -637,12 +647,19 @@ body {
  * flex row with align-items: center — the circle sits optically
  * centered with the heading text (the inline baseline rides high; the
  * same inline-flex baseline bug class the status bar's fix came from).
- * One ? per heading (round 10); the fact lines carry none. */
+ * One ? per heading (round 10); the fact lines carry none.
+ *
+ * Round 12 (owner item 6): section headings regain weight — 600, in
+ * the theme's full ink — so they read as headings against the rows
+ * under them (the fact labels stay ink2 regular). Both themes carry a
+ * high-contrast --ink token (near-black on light, near-white on
+ * dark), so the heading stays distinct in either. */
 .report-section-title {
   display: flex;
   align-items: center;
   gap: 5px;
-  color: var(--ink3);
+  color: var(--ink);
+  font-weight: 600;
   margin: 3px 0 2px;
 }
 
