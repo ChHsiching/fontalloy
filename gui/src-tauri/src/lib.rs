@@ -14,6 +14,8 @@
 ///    (`pick_font_files`) returns absolute paths, and `read_font_file`
 ///    streams the bytes back over the raw IPC pipe — recipes can name
 ///    the file, and no fs-scope widening beyond the catalog is needed.
+///    `list_font_dir` (round 13) lists the font files beside a picked
+///    file so one pick registers the family sitting next to it.
 /// 3. **The artifact save** (round 12): synthesis writes each built
 ///    font straight into the configured output directory — `park_save_path`
 ///    joins and parks `<output dir>/<name>` (no dialog), and
@@ -132,6 +134,43 @@ fn read_font_file(path: String) -> Result<tauri::ipc::Response, String> {
     let bytes = std::fs::read(&path)
         .map_err(|err| format!("无法读取 {path}: {err}"))?;
     Ok(tauri::ipc::Response::new(bytes))
+}
+
+/// The font file extensions the sibling scan considers — the same set
+/// the pick dialog filters on.
+const FONT_EXTENSIONS: [&str; 5] = ["ttf", "otf", "ttc", "woff2", "woff"];
+
+/// List the font files beside a picked file (round 13, owner item 7).
+///
+/// The frontend's local family discovery scans the PARENT directory of
+/// a file the user explicitly picked through the dialog — never an
+/// arbitrary path — so one pick can register the whole family's faces
+/// sitting next to it. Entries are filtered to the font suffixes and
+/// returned sorted, as full paths.
+#[tauri::command]
+fn list_font_dir(path: String) -> Result<Vec<String>, String> {
+    let picked = std::path::Path::new(&path);
+    let directory = picked
+        .parent()
+        .ok_or_else(|| "所拾文件没有父目录".to_string())?;
+    let entries = std::fs::read_dir(directory)
+        .map_err(|err| format!("无法列出 {}: {err}", directory.display()))?;
+    let mut fonts = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|err| err.to_string())?;
+        let candidate = entry.path();
+        let is_font = candidate.is_file()
+            && candidate
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .map(|ext| FONT_EXTENSIONS.contains(&ext.to_ascii_lowercase().as_str()))
+                .unwrap_or(false);
+        if is_font {
+            fonts.push(candidate.to_string_lossy().into_owned());
+        }
+    }
+    fonts.sort();
+    Ok(fonts)
 }
 
 /// Run the native save dialog and park the chosen path. `default_name`
@@ -331,6 +370,7 @@ pub fn run() {
             serve_url,
             pick_font_files,
             read_font_file,
+            list_font_dir,
             prepare_save,
             save_artifact,
             default_output_dir,

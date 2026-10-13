@@ -106,7 +106,10 @@ interface NameRecord {
 }
 
 /** Compose the display name: family + the subfamily's own words. */
-function composeDisplay(family: string, subfamily: string | undefined): string {
+export function composeDisplay(
+  family: string,
+  subfamily: string | undefined,
+): string {
   // "Regular" (and 标准) is the everyday member — the author's full
   // name needs no suffix then. Anything else the author wrote stays.
   if (subfamily === undefined || /^(regular|标准)$/i.test(subfamily)) {

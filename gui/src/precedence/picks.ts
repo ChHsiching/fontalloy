@@ -6,8 +6,11 @@
  *
  * Round 12 (owner item 8): a catalog pick carries a FACE SET — every
  * registered face of the picked family+variant, the representative
- * first. Local single-file picks (and a pick whose store holds one
- * face) carry just the representative: that file IS the user's pick.
+ * first. Round 13 (owner item 7): a LOCAL pick carries one too — the
+ * same-directory siblings the load path discovered and registered as
+ * data-only records behind the representative. A pick whose store
+ * holds one face (a one-file family) carries just the representative:
+ * that file IS the user's pick.
  */
 
 import { store, type LoadedFont } from "../state";
@@ -43,7 +46,26 @@ function faceSet(fonts: readonly LoadedFont[], font: LoadedFont | null): LoadedF
     );
     if (faces.length > 0) return faces;
   }
-  return [font];
+  return localFaceSet(fonts, font);
+}
+
+/**
+ * A local pick's face set (round 13, owner item 7): every local record
+ * of the pick's name-table family — the representative first (it is
+ * the pick; the siblings are data-only records the load path's
+ * discovery sweep appended). The css family IS the parsed name-table
+ * family, so same-family records are the same family however it was
+ * picked; a one-file family resolves to the representative alone.
+ */
+export function localFaceSet(
+  fonts: readonly LoadedFont[],
+  font: LoadedFont,
+): LoadedFont[] {
+  if (font.origin !== "local") return [font];
+  const siblings = fonts.filter(
+    (f) => f.origin === "local" && f.cssFamily === font.cssFamily && f !== font,
+  );
+  return [font, ...siblings];
 }
 
 /** The picks of the current state (null picks drop out entirely). */
