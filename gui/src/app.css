@@ -567,7 +567,12 @@ body {
 
 /* Round 6 stepper state model: upcoming faint / current active / done
    lit-solid. A settled build lights every step (never all-gray at
-   save); a failed one turns the failing step danger. */
+   save); a failed one turns the failing step danger.
+   Round 13 (owner item 5): segments light up through a ~300ms
+   critically-damped transition — an ease-out curve with no overshoot
+   (cubic-bezier(0.2, 0, 0, 1) ≈ damping 1.0, response ~0.3s), so a
+   segment settles where it lands instead of snapping. The state
+   itself is color/opacity and persists without the transition. */
 .build-steps {
   display: flex;
   gap: 4px;
@@ -580,7 +585,10 @@ body {
   border-radius: 2px;
   background: var(--ln);
   opacity: 0.6;
-  transition: background 0.2s ease, opacity 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    background-color 0.3s cubic-bezier(0.2, 0, 0, 1),
+    opacity 0.3s cubic-bezier(0.2, 0, 0, 1),
+    box-shadow 0.3s cubic-bezier(0.2, 0, 0, 1);
 }
 
 .build-step.is-passed {
@@ -600,25 +608,71 @@ body {
   opacity: 1;
 }
 
-/* The TWO lines under the stepper (round 12, owner item 1): the stage
-   name on the first line, its dim ≤30-char explanation on the second
-   — never one dash-joined line (the queue position while queued rides
-   the name line alone). The two-line minimum is RESERVED from the
-   row's first paint, so stage copy of differing lengths never moves
-   the rows underneath it; the block centers inside the reservation. */
+/* Round 13 (the motion mandate): under prefers-reduced-motion the
+   segment light-up cross-fades through opacity ONLY (no fill or
+   shadow animation), the panel's per-second elapsed ticker stands
+   down (buildpanel.ts), and every state remains readable without any
+   motion — the segment colors, the stage copy, and the live values
+   persist on their own. */
+@media (prefers-reduced-motion: reduce) {
+  .build-step {
+    transition: opacity 0.2s ease;
+  }
+}
+
+/* The stage block under the stepper (round 12, owner item 1; round 13,
+   owner item 5): the stage name and its dim ≤30-char explanation stack
+   on the LEFT; the LIVE column (elapsed mm:ss + up to two stage facts)
+   sits right-aligned opposite them. The block reserves THREE lines
+   (11px × 1.6 × 3 ≈ 53px) from the row's first paint, so stage copy
+   and fact counts of differing lengths never move the rows
+   underneath; both columns center inside the reservation. */
 .build-stage-line {
   margin-top: 6px;
-  min-height: 36px; /* 11px × 1.6 line-height × 2 lines */
+  min-height: 53px; /* 11px × 1.6 line-height × 3 lines */
   display: flex;
-  flex-direction: column;
-  justify-content: center;
+  align-items: center;
+  gap: 12px;
   font-size: 11px;
   line-height: 1.6;
   color: var(--ink3);
 }
 
+.build-stage-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .build-stage-name {
   color: var(--ink2);
+}
+
+/* The live quantitative column (round 13): elapsed first, then the
+   stage facts; tabular-nums keeps the ticking mm:ss and the counts
+   width-stable so nothing reflows as numbers move. */
+.build-stage-live {
+  margin-left: auto;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.build-stage-live[hidden] {
+  display: none;
+}
+
+.build-stage-elapsed {
+  color: var(--ink2);
+}
+
+.build-stage-elapsed[hidden],
+.build-stage-fact[hidden] {
+  display: none;
 }
 
 .build-stage-note[hidden] {
@@ -645,25 +699,41 @@ body {
   display: none;
 }
 
+/* Round 13 (owner item 4): the saved line is TWO rows — the 「已保存」
+   label first (the 另存为 affordance at its right), the full path on
+   the row under it. The path never wraps into the label (no
+   auto-wrap joins); when it overflows, JS middle-ellipsizes it with
+   the whole path in the title attribute. */
 .build-saved {
   margin-top: 8px;
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  gap: 2px;
   font-size: 12px;
   color: var(--ink2);
-  word-break: break-all;
 }
 
 .build-saved[hidden] {
   display: none;
 }
 
-/* Round 12: the path text wraps freely while the 另存为 button stays
-   whole beside it (flex none keeps the affordance clickable however
-   long the saved path is). */
+.build-saved-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.build-saved-label {
+  font-weight: 600;
+}
+
 .build-saved-path {
+  display: block;
   min-width: 0;
+  font-size: 11px;
+  color: var(--ink3);
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .build-saveas {
@@ -753,6 +823,59 @@ body {
 .report-fact-label {
   color: var(--ink2);
   white-space: nowrap;
+}
+
+/* Round 13 (owner item 6): the metrics comparison is a real TABLE —
+   rows are the metrics, the 合并前 / 合并后 data columns are stated
+   ONCE in the header row, values are column-aligned (tabular-nums,
+   right-aligned so the digits line up place by place), and 「无」
+   stays as the no-value placeholder (dimmed). Collapsed hairline
+   borders like the kit's worked tables; the header row is filled, the
+   row heads are plain label cells (not bold — the section heading
+   already carries the weight). */
+.report-mtable {
+  width: 100%;
+  margin-top: 4px;
+  border-collapse: collapse;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.report-mtable th,
+.report-mtable td {
+  padding: 2px 7px;
+  border: 1px solid var(--ln);
+}
+
+.report-mtable thead th {
+  color: var(--ink2);
+  font-weight: 600;
+  text-align: right;
+  background: var(--sf2);
+  white-space: nowrap;
+}
+
+.report-mtable thead th[aria-hidden="true"] {
+  border: none;
+  background: none;
+  padding: 0;
+}
+
+.report-mtable tbody th {
+  color: var(--ink2);
+  font-weight: 400;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.report-mtable td {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.report-mtable td.is-none {
+  color: var(--ink3);
 }
 
 /* The report disclosure (round 10): a settled row stays calm — the

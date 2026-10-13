@@ -61,6 +61,15 @@ export interface BuildRow {
   status: BuildRowStatus;
   /** The pipeline stage (serve's own stage string, `done` at the end). */
   stage: string | null;
+  /**
+   * The current stage's live facts (round 13, owner item 5): the
+   * serve's quantitative readout of the running stage (file counts and
+   * sizes, slot counts, rule and codepoint counts, format and an
+   * estimated size, the check count). Optional because the synthesize
+   * flow's poll patch decides what it carries — absent/null/empty
+   * degrades the panel to the elapsed timer alone.
+   */
+  stageFacts?: Readonly<Record<string, string | number>> | null;
   /** 1-based queue position while queued, else null. */
   queuePosition: number | null;
   /** Inline failure text (service message or resolution error). */

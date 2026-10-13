@@ -2105,6 +2105,12 @@ test.describe("user journey", () => {
           await expect(
             stageLine.locator("[data-build-stage-note]"),
           ).not.toBeEmpty();
+          // Round 13 (owner item 5): living progress — the elapsed
+          // timer (mm:ss, ticking) renders in the live column opposite
+          // the two-line stage copy while the build runs.
+          await expect(
+            stageLine.locator("[data-build-elapsed]"),
+          ).toHaveText(/用时 \d+:\d{2}/);
           // Round 10 (no flicker), round 11 (content sizing): sample
           // the panel's clientHeight and the rows region's scrollbar
           // state every frame while the real build walks its stages —
@@ -2134,11 +2140,21 @@ test.describe("user journey", () => {
           // — the default-path seam landed the font and the 另存为
           // dialog seam was never touched.
           expect(dialogSaveCalls).toBe(0);
-          // The completion line carries the FULL path (a default
-          // directory only the app knows would be a path nobody can
-          // find), and the completed row offers the 另存为 affordance.
+          // Round 13 (owner item 4): the saved line is TWO rows — the
+          // 「已保存」 label on its own first row, the FULL path on the
+          // row under it (middle-ellipsized when it overflows; the
+          // whole path rides the title attribute). The completed row
+          // offers the 另存为 affordance.
+          const savedBlock = panel.locator("[data-build-saved]").first();
+          await expect(
+            savedBlock.locator("[data-build-saved-label]"),
+          ).toHaveText("已保存");
           const savedLine = panel.locator("[data-build-saved-path]").first();
-          await expect(savedLine).toHaveText(/^已保存：.+[\\/]ChHsich\.ttf$/);
+          await expect(savedLine).toHaveAttribute(
+            "title",
+            /.+[\\/]ChHsich\.ttf$/,
+          );
+          await expect(savedLine).toHaveText(/ChHsich\.ttf$/);
           await expect(
             panel.locator("[data-build-saveas]").first(),
           ).toBeVisible();
@@ -2187,8 +2203,6 @@ test.describe("user journey", () => {
             "缺失",
             "字体尺寸对比",
             "UPM",
-            "UPM · 合并前",
-            "UPM · 合并后",
             "英文宽度",
             "中文宽度",
             "中英宽度比",
@@ -2197,6 +2211,17 @@ test.describe("user journey", () => {
           ]) {
             await expect(panel).toContainText(label);
           }
+          // Round 13 (owner item 6): the metrics section is a real
+          // TABLE — the 合并前 / 合并后 data columns stated ONCE in a
+          // header row, values column-aligned, and zero · separators
+          // anywhere in it.
+          const metricsTable = panel.locator(".report-mtable").first();
+          await expect(metricsTable).toBeVisible();
+          const columnHeaders = (
+            await metricsTable.locator("thead th").allTextContents()
+          ).filter((h) => h === "合并前" || h === "合并后");
+          expect(columnHeaders).toEqual(["合并前", "合并后"]);
+          await expect(metricsTable).not.toContainText("·");
           // Round 12 (owner item 4): the borrow row reads the ratified
           // 成品档位 ← 来源字体 order — the output weight LEFT of the
           // arrow, the source font right of it, the via qualifier
@@ -2242,7 +2267,7 @@ test.describe("user journey", () => {
           }
           expect(new Set(slotLabels)).toEqual(expectedSlots);
           await expect(weightSection).toContainText(
-            /Maple Mono NF CN ← \d+（自动取最近）/,
+            /\d+ ← Maple Mono NF CN · 自动取最近/,
           );
           // The output is the family collection, not a single face.
           await expect(panel).toContainText("ttc（多字体合集）");
@@ -2298,12 +2323,11 @@ test.describe("user journey", () => {
         await step("J9.5 the saved artifact PARSES: family ChHsich, cmap > 0, donor CJK inside", async () => {
           // V2's dedicated path locator; V3's family-matrix .ttc
           // expectation (catalog family picks package the collection).
+          // Round 13 (owner item 4): the full path lives in the title
+          // attribute (the visible line middle-ellipsizes deep paths).
           const savedLine = page.locator("[data-build-saved-path]").first();
           await expect(savedLine).toContainText(/\.ttc$/);
-          const savedPath = (await savedLine.textContent())!.replace(
-            /^已保存：/,
-            "",
-          );
+          const savedPath = (await savedLine.getAttribute("title"))!;
           const parsed = await parseBuiltFont(savedPath.trim());
           expect(parsed.family).toBe("ChHsich");
           expect(parsed.cmap).toBeGreaterThan(0);

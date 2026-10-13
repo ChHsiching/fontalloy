@@ -143,12 +143,19 @@ test("detects the service, merges live with journal and report, downloads the fo
     await pointerClick(page, panel.locator(".report-details > summary"));
     await expect(panel).toContainText("验证报告");
     await expect(panel).toContainText("码位");
-    // Round 12: the corrected 成品档位 ← 来源字体 borrow direction, the
-    // two-line 合并前 / 合并后 metric rows, and NO dash-joins.
+    // Round 12: the corrected 成品档位 ← 来源字体 borrow direction and
+    // NO dash-joins. Round 13 (owner item 6): the metrics render as a
+    // real table — 合并前 / 合并后 stated once in the header row.
     await expect(panel).toContainText(
       /\d+ ← .+ · (自动取最近|指定字重|锁定)/,
     );
-    await expect(panel).toContainText("UPM · 合并前");
+    const metricsTable = panel.locator(".report-mtable").first();
+    await expect(metricsTable).toBeVisible();
+    expect(
+      (await metricsTable.locator("thead th").allTextContents()).filter(
+        (h) => h === "合并前" || h === "合并后",
+      ),
+    ).toEqual(["合并前", "合并后"]);
     await expect(panel).not.toContainText("—");
     await expect(panel).not.toContainText("fontalloy/verification-report");
 
