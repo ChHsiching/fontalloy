@@ -254,7 +254,11 @@ export function buildWorkspaceDraft(
   draft.donors = [slots.cjk];
   // The top bar's font-name field is the recipe's output family.
   draft.output.family = outputFamily || "ChHsich";
-  draft.output.format =
+  // The AUTO default: a multi-face family pick packages the weight
+  // matrix as a collection; anything else is a plain ttf. An explicit
+  // 输出格式 setting wins — applySettingsToDraft runs AFTER this and
+  // overwrites the format when the user chose one (auto leaves it).
+  draft.output.format ??=
     slots.en.catalog !== null && (slots.en.pattern ?? "").includes("*")
       ? "ttc"
       : "ttf";

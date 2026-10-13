@@ -91,7 +91,11 @@ export function applySettingsToDraft(
   // supported `output.format` all along; the GUI draft simply never
   // set it. The setting lands here so the serve submission and the
   // no-service YAML carry the same format.
-  draft.output.format = settings.outputFormat;
+  // "auto" defers to the base's shape (a family pick builds the whole
+  // weight matrix, packaged as ttc); an explicit choice wins.
+  if (settings.outputFormat !== "auto") {
+    draft.output.format = settings.outputFormat;
+  }
 
   // Weight merge mode: the weights selection (see the module docstring).
   if (settings.weightMode === "base" && baseFaces.length > 0) {

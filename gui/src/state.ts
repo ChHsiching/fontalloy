@@ -43,7 +43,7 @@ export type CjkWidthMode = 2 | 1.8 | 1.5;
  * `output.format`; round 12, owner item 7). The machine layer already
  * builds all three; the setting only chooses.
  */
-export type OutputFormat = "ttf" | "ttc" | "woff2";
+export type OutputFormat = "auto" | "ttf" | "ttc" | "woff2";
 
 export interface SynthesisSettings {
   weightMode: WeightMergeMode;
@@ -56,7 +56,7 @@ export const DEFAULT_SETTINGS: SynthesisSettings = {
   weightMode: "nearest",
   baseline: "auto",
   cjkWidth: 2,
-  outputFormat: "ttf",
+  outputFormat: "auto",
 };
 
 /** How a font face entered the registry (local file vs catalog download). */

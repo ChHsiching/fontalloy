@@ -153,7 +153,8 @@ export const SETTINGS_TOPICS: readonly SettingsTopic[] = [
     key: "outputFormat",
     name: "输出格式",
     options: [
-      { value: "ttf", label: "TTF（默认）" },
+      { value: "auto", label: "自动（默认）" },
+      { value: "ttf", label: "TTF" },
       { value: "ttc", label: "TTC" },
       { value: "woff2", label: "WOFF2" },
     ],

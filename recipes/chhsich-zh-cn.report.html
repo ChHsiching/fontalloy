@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FontAlloy verification report (fontalloy/verification-report@v2)</title>
+<style>body{font-family:ui-monospace,Consolas,monospace;margin:2rem;max-width:60rem;color:#1a1a1a;background:#fff}h1{font-size:1.3rem;margin-bottom:0}h2{font-size:1.05rem;margin-top:1.6rem}h3{font-size:0.95rem}table{border-collapse:collapse;margin:0.6rem 0}th,td{border:1px solid #ccc;padding:0.25rem 0.6rem;text-align:left;font-size:0.85rem}th{background:#f3f3f3}.num{text-align:right;font-variant-numeric:tabular-nums}.schema{color:#666;margin-top:0.2rem}code{word-break:break-all}</style>
+</head>
+<body>
+<h1>FontAlloy verification report</h1>
+<p class='schema'>fontalloy/verification-report@v2</p>
+<p class='output'>output <code>recipes\chhsich-zh-cn.ttf</code> (format ttf), sha256 <code>5eec7154ecf3eeea6405fd8c8351e4625420e30ed481f6f06e7e6ff97fa50698</code></p>
+<h2 id='sources'>Sources</h2>
+<table>
+<tr><th>id</th><th>role</th><th>path</th><th>codepoints</th><th>sha256</th></tr>
+<tr><td>base</td><td>base</td><td><code>C:\Users\Administrator\Git\fontalloy-run\assets\fonts\JetBrainsMono.zip</code></td><td class='num'>12226</td><td><code>fab782a66f7d3019da64f6572db9fc5d3a4bcb19f9fa13e2d8a62e3693d6396e</code></td></tr>
+<tr><td>donor-0</td><td>donor</td><td><code>C:\Users\Administrator\Git\fontalloy-run\assets\fonts\MapleMono-NF-CN.zip</code></td><td class='num'>33095</td><td><code>af913b6322905348b3f50e4397fedc35b3a880db5effcce7969003051dcd3e94</code></td></tr>
+</table>
+<h2 id='coverage'>Codepoint coverage</h2>
+<p>overall: 33604 requested, 33604 covered, 0 missing</p>
+<table>
+<tr><th>rule</th><th>target</th><th>requested</th><th>covered</th><th>missing</th></tr>
+<tr><td>rule-0</td><td><code>zh_cn</code></td><td class='num'>6765</td><td class='num'>6765</td><td>&mdash;</td></tr>
+</table>
+<h2 id='weights'>Weight borrow table</h2>
+<table>
+<tr><th>slot</th><th>output</th><th>donor</th><th>family</th><th>donor weight</th><th>style</th><th>via</th></tr>
+<tr><td>0</td><td>400 upright</td><td>donor-0 from 400 (nearest)</td><td>Maple Mono NF CN</td><td>400</td><td>upright</td><td>nearest</td></tr>
+</table>
+<h2 id='metrics'>Metric comparison</h2>
+<h3>slot 0 — weight 400 upright (base face 0)</h3>
+<table>
+<tr><th>metric</th><th>base</th><th>output</th></tr>
+<tr><td>upem</td><td class='num'>1000</td><td class='num'>1000</td></tr>
+<tr><td>latin advance (A)</td><td class='num'>600</td><td class='num'>600</td></tr>
+<tr><td>cjk advance</td><td class='num'>--</td><td class='num'>1200</td></tr>
+<tr><td>grid ratio</td><td></td>2</tr>
+<tr><td>hhea ascent</td><td class='num'>1020</td><td class='num'>1020</td></tr>
+<tr><td>hhea descent</td><td class='num'>-300</td><td class='num'>-300</td></tr>
+<tr><td>hhea line gap</td><td class='num'>0</td><td class='num'>0</td></tr>
+<tr><td>typo ascender</td><td class='num'>1020</td><td class='num'>1020</td></tr>
+<tr><td>typo descender</td><td class='num'>-300</td><td class='num'>-300</td></tr>
+<tr><td>typo line gap</td><td class='num'>0</td><td class='num'>0</td></tr>
+<tr><td>usWin ascent</td><td class='num'>1020</td><td class='num'>1571</td></tr>
+<tr><td>usWin descent</td><td class='num'>300</td><td class='num'>646</td></tr>
+</table>
+<p>line height untouched: hhea yes, typo yes</p>
+<h3>Normalization</h3>
+<table>
+<tr><th>donor</th><th>upem</th><th>s0</th><th>H_ink</th><th>k</th><th>scale</th></tr>
+<tr><td>donor-0</td><td class='num'>1000</td><td class='num'>1</td><td class='num'>924</td><td class='num'>1.2</td><td class='num'>1.2</td></tr>
+</table>
+<h2>Summary</h2><p>33604 codepoints total (12224 from base, 21380 from donors), 33604 in the output; precedence: 12224 base, 21378 fill, 2 override.</p>
+</body>
+</html>
