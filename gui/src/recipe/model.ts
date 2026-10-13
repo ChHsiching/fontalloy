@@ -112,7 +112,7 @@ export interface RecipeDraft {
   sets: Record<string, string[]>;
   normalization: NormalizationDraft;
   weights: WeightSlotDraft[];
-  output: { family: string; format: OutputFormat };
+  output: { family: string; format: OutputFormat | "auto" };
 }
 
 /** The core's defaults — the writer omits an all-defaults block. */

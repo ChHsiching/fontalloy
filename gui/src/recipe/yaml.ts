@@ -30,7 +30,9 @@ function normalizeOutput(draft: RecipeDraft): {
 } {
   return {
     family: normalizeFamilyName(draft.output.family),
-    format: draft.output.format,
+    // "auto" never serializes — the draft builder resolves it
+    // (multi-face family pick = ttc); the guard is belt-and-braces.
+    format: draft.output.format === "auto" ? "ttf" : draft.output.format,
   };
 }
 

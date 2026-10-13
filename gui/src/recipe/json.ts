@@ -89,7 +89,9 @@ export function recipeJson(draft: RecipeDraft): Record<string, unknown> {
   }
 
   out.output = {
-    format: draft.output.format,
+    // "auto" never serializes — the draft builder resolves it
+    // (multi-face family pick = ttc); the guard is belt-and-braces.
+    format: draft.output.format === "auto" ? "ttf" : draft.output.format,
     family: normalizeFamilyName(draft.output.family),
   };
   return out;
