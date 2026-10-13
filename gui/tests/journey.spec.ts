@@ -1351,14 +1351,47 @@ test.describe("user journey", () => {
         await expect(
           page.locator("[data-role='rule-row'][data-kind='block']").first(),
         ).toContainText("基本拉丁用中文字体");
-        // Round 9 (owner item 3): the outcome is ONE terse line,
-        // numbers first — the success count ALWAYS stated, even 0 —
-        // then the undo hint. No title, no repetition.
+        // The structured outcome card (the redesign of round 9, owner
+        // item 3): the action as the title, the counts as TWO compact
+        // stat pairs — the success count ALWAYS stated, even when 0 —
+        // the undo hint as a kbd chip. No prose, no glyph separators.
         const message = page.locator("[data-role='message']").first();
         await expect(message).toBeVisible();
-        await expect(message).toHaveText(
-          /^基本拉丁 → 中文：[\d,]+ 生效 \/ [\d,]+ 未变(（(无字形|[\d,]+ 无字形)）)? · Ctrl\+Z 撤销$/,
-        );
+        await expect(
+          message.locator("[data-role='message-title']"),
+        ).toHaveText("基本拉丁用中文字体");
+        const nums = message.locator(".kit-msg-num");
+        const labels = message.locator(".kit-msg-label");
+        await expect(nums).toHaveCount(2);
+        await expect(nums.nth(0)).toHaveText(/^[\d,]+$/);
+        await expect(labels.nth(0)).toHaveText("生效");
+        await expect(nums.nth(1)).toHaveText(/^[\d,]+$/);
+        await expect(labels.nth(1)).toHaveText("未变");
+        // The donor covers basic latin — no ineffective count, so the
+        // reason sub-line is absent (never rendered for zero).
+        await expect(
+          message.locator("[data-role='message-reason']"),
+        ).toHaveCount(0);
+        // The undo hint: a kbd-styled chip + the verb, one affordance.
+        const undo = message.locator("[data-role='message-undo']");
+        await expect(undo).toBeVisible();
+        await expect(undo.locator(".kit-msg-kbd")).toHaveText("Ctrl+Z");
+        await expect(undo).toContainText("撤销");
+        // Structure, not soup: the status icon is an SVG, every line is
+        // nowrap, the figures are tabular, and no separator glyphs
+        // (·, →, ▶) appear anywhere in the card's copy.
+        await expect(message.locator(".kit-msg-icon svg")).toHaveCount(1);
+        await expect(
+          await message.locator("[data-role='message-title']").evaluate(
+            (el) => getComputedStyle(el).whiteSpace,
+          ),
+        ).toBe("nowrap");
+        expect(
+          await nums.nth(0).evaluate(
+            (el) => getComputedStyle(el).fontVariantNumeric,
+          ),
+        ).toBe("tabular-nums");
+        expect(await message.textContent()).not.toMatch(/[·→▶]/);
         // Round 9 (owner item 7): the card auto-dismisses on a ~6s
         // countdown announced by the bottom-edge progress bar — the
         // bar shrinks, hover FREEZES it, leaving resumes.
@@ -1425,14 +1458,35 @@ test.describe("user journey", () => {
         await expect(
           page.locator("[data-role='rule-row'][data-kind='group']").first(),
         ).toContainText("所有中日韩文字字符用英文字体");
-        // Round 9 (owner item 3): the terse group form — scope → side,
-        // numbers first, the 未变 parenthetical naming the reason.
+        // The structured outcome card (the redesign of round 9, owner
+        // item 3): the terse group form — the action title, the two
+        // stat pairs, and the ineffective reason as a dim sub-line
+        // (nonzero here: the base holds none of the CJK group). The
+        // status icon reads warn for exactly that partial outcome.
         // The stack columns bottom-up: the newest card is the LAST child.
         const message = page.locator("[data-role='message']").last();
         await expect(message).toBeVisible();
-        await expect(message).toHaveText(
-          /^中日韩文字 → 英文：[\d,]+ 生效 \/ [\d,]+ 未变（(无字形|[\d,]+ 无字形)） · Ctrl\+Z 撤销$/,
+        await expect(
+          message.locator("[data-role='message-title']"),
+        ).toHaveText("中日韩文字用英文字体");
+        await expect(message.locator(".kit-msg-num")).toHaveCount(2);
+        await expect(message.locator(".kit-msg-num").nth(0)).toHaveText(
+          /^[\d,]+$/,
         );
+        await expect(message.locator(".kit-msg-label").nth(0)).toHaveText(
+          "生效",
+        );
+        await expect(message.locator(".kit-msg-label").nth(1)).toHaveText(
+          "未变",
+        );
+        await expect(
+          message.locator("[data-role='message-reason']"),
+        ).toHaveText("英文字体不含此码位");
+        await expect(message.locator(".kit-msg-icon")).toHaveAttribute(
+          "data-icon",
+          "warn",
+        );
+        await expect(message.locator(".kit-msg-kbd")).toHaveText("Ctrl+Z");
         await pointerClick(page, message.locator("[data-role='message-dismiss']"));
         // Item 1a's absence check: the declaration says 英文, every
         // glyph on the page still paints its ACTUAL supplier (the donor

@@ -102,8 +102,13 @@ test.describe("round-9 rule × visibility shots", () => {
     await blockRow.locator(".kit-mseg button", { hasText: /^用中文$/ }).click();
 
     // The message card (owner item 7): shoot it with the countdown bar.
+    // The redesigned anatomy is real DOM (status icon, stat pairs, the
+    // kbd undo chip) before the shot is taken.
     const message = page.locator("[data-role='message']").first();
     await expect(message).toBeVisible();
+    await expect(message.locator(".kit-msg-icon svg")).toHaveCount(1);
+    await expect(message.locator(".kit-msg-stat")).toHaveCount(2);
+    await expect(message.locator(".kit-msg-kbd")).toHaveText("Ctrl+Z");
     await expect(message.locator(".kit-msg-bar")).toBeVisible();
     mkdirSync(NOTES_SHOTS, { recursive: true });
     await page.screenshot({
