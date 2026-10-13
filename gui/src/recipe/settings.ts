@@ -22,8 +22,12 @@
  *               (the shared subset; empty intersection degrades to
  *               the default).
  *
- * Face data comes from the serve `/fonts` index (paths + weights). When
- * the index cannot see a pick's file, the weight selection degrades to
+ * Face data comes from the serve `/fonts` index (paths + weights). A
+ * reference that carries a `pattern` enumerates its faces by that
+ * pattern over the index (`patternFaceSlots`, round 14) — the same
+ * faces the service's own resolution pulls in — so the weight modes
+ * stay live for family picks. When the index cannot see a pick's file
+ * (or none of its pattern's faces), the weight selection degrades to
  * the default — normalization is unaffected (it needs no face data).
  */
 
@@ -37,7 +41,9 @@ export interface FaceSlot {
   italic: boolean;
 }
 
-/** The faces of one font file, from the serve /fonts index. */
+/**
+ * The faces of one font file, from the serve /fonts index.
+ */
 export function fileFaceSlots(
   faces: readonly FaceDocument[],
   path: string,
@@ -46,6 +52,52 @@ export function fileFaceSlots(
   const wanted = norm(path);
   return faces
     .filter((face) => norm(face.path) === wanted)
+    .map((face) => ({ weight: face.weight, italic: face.italic }));
+}
+
+/**
+ * The faces a PATTERN reference selects, from the serve /fonts index
+ * (round 14): every indexed face whose bare file name matches the
+ * pattern — the same faces the service's own resolution pulls in
+ * (`_same_dir_siblings` for a path+pattern reference, the manifest
+ * artifact's extracted faces for a catalog+pattern reference). `dir`
+ * (the slot's own path) constrains a PATH-form pattern to its
+ * directory exactly like the core's same-dir rule; null (the catalog
+ * form, whose path is empty) matches by bare name anywhere in the
+ * index — the index mirrors the manifest layout the service resolves
+ * against. An index that sees none of the faces answers empty and the
+ * weight selection degrades to the default (nearest matching).
+ */
+export function patternFaceSlots(
+  faces: readonly FaceDocument[],
+  pattern: string,
+  dir: string | null,
+): FaceSlot[] {
+  const norm = (p: string): string => p.replaceAll("\\", "/").toLowerCase();
+  // The DIRECTORY half of a path ("" for a bare file name).
+  const dirOf = (p: string): string => {
+    const slashed = p.replaceAll("\\", "/");
+    const cut = slashed.lastIndexOf("/");
+    return cut < 0 ? "" : slashed.slice(0, cut);
+  };
+  // `dir` names the reference's own FILE; the same-directory rule
+  // compares directories, so reduce it to its folder half.
+  const dirWanted = dir === null || dir === "" ? null : norm(dirOf(dir));
+  // The bare-filename glob the core's fnmatchcase answers to (`*` and
+  // `?` are the wildcards a cut pattern carries; everything else is
+  // literal), case-sensitive like the server-side match.
+  const re = new RegExp(
+    `^${pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".")}$`,
+  );
+  return faces
+    .filter((face) => {
+      const slashed = face.path.replaceAll("\\", "/");
+      const cut = slashed.lastIndexOf("/");
+      if (dirWanted !== null && norm(slashed.slice(0, cut)) !== dirWanted) {
+        return false;
+      }
+      return re.test(slashed.slice(cut + 1));
+    })
     .map((face) => ({ weight: face.weight, italic: face.italic }));
 }
 

@@ -12,7 +12,12 @@
 import { store, type LoadedFont } from "../state";
 import { defaultDraft, type FontSlot } from "../recipe/model";
 import { recipeJson } from "../recipe/json";
-import { applySettingsToDraft, fileFaceSlots } from "../recipe/settings";
+import {
+  applySettingsToDraft,
+  fileFaceSlots,
+  patternFaceSlots,
+  type FaceSlot,
+} from "../recipe/settings";
 import { applyRulesToDraft } from "../precedence/serialize";
 import { localFaceSet } from "../precedence/picks";
 import { saveArtifact, saveArtifactAs } from "../platform/artifacts";
@@ -268,6 +273,10 @@ export function selectedPicks(): {
  * same-dir siblings carries the same shape of pattern and follows the
  * SAME auto tier — no forked format logic, the pattern is the input.
  * Single-file references (local or catalog) keep the plain ttf.
+ *
+ * Round 14: a pattern slot's weight selection enumerates the index by
+ * the pattern (patternFaceSlots) instead of degrading to the default —
+ * the 字重合并方式 modes stay live for family picks.
  */
 export function buildWorkspaceDraft(
   slots: { en: FontSlot; cjk: FontSlot },
@@ -279,37 +288,75 @@ export function buildWorkspaceDraft(
   draft.donors = [slots.cjk];
   // The top bar's font-name field is the recipe's output family.
   draft.output.family = outputFamily || "ChHsich";
+  // A slot's face data from the service's /fonts index: a pattern
+  // reference enumerates by its pattern (round 14 — the same faces the
+  // service's own resolution pulls in), a single-file reference by its
+  // exact path.
+  const slotFaces = (slot: FontSlot): FaceSlot[] =>
+    slot.pattern !== undefined
+      ? patternFaceSlots(faces, slot.pattern, slot.path !== "" ? slot.path : null)
+      : fileFaceSlots(faces, slot.path);
   // The AUTO tier: a multi-face family pick packages the weight
-  // matrix as a collection; anything else is a plain ttf. An explicit
-  // 输出格式 setting wins — applySettingsToDraft runs AFTER this and
+  // matrix as a collection; anything else is a plain ttf. The face
+  // COUNT comes from the index when it can see the pattern's faces
+  // (round 14): a pick whose family resolves to ONE file builds that
+  // file as a plain ttf, exactly like a single-file reference; an
+  // index that cannot see the faces keeps the round-12 assumption —
+  // a patterned family pick packages as ttc. An explicit 输出格式
+  // setting wins — applySettingsToDraft runs AFTER this and
   // overwrites the format when the user chose one ("auto" leaves it,
   // so this resolution is the value that ships).
+  const baseFaces = slotFaces(slots.en);
   if (draft.output.format === "auto") {
-    draft.output.format = (slots.en.pattern ?? "").includes("*")
-      ? "ttc"
-      : "ttf";
+    draft.output.format =
+      slots.en.pattern !== undefined && baseFaces.length !== 1 ? "ttc" : "ttf";
   }
   // The SAME rule state the preview grid resolves (issue #18): the
   // build and the preview can never drift apart.
   applyRulesToDraft(draft, rules);
   // The synthesis settings (issue #19): baseline / CJK width land in
   // the normalization block, the weight merge mode in the weights
-  // selection (face data from the service's own /fonts index; a
-  // family-pattern reference — catalog OR local — has no single
-  // listing entry, so the selection degrades to the default — nearest
-  // matching).
-  applySettingsToDraft(
-    draft,
-    settings,
-    fileFaceSlots(faces, slots.en.pattern !== undefined ? "" : slots.en.path),
-    fileFaceSlots(faces, slots.cjk.pattern !== undefined ? "" : slots.cjk.path),
-  );
+  // selection, over the same face data the format tier counted.
+  applySettingsToDraft(draft, settings, baseFaces, slotFaces(slots.cjk));
   return draft;
 }
 
 /**
+ * The pattern a pick's PATH-form slot carries (round 14): a LOCAL pick
+ * keeps the round-13 same-dir cut glob (extension-less, only when the
+ * load path actually discovered sibling faces — single-file semantics
+ * otherwise); a CATALOG pick carries the FAMILY CUT pattern of its
+ * representative face whatever the resolution form — the pick is the
+ * family, and a reference that drops the pattern narrows the build to
+ * the representative alone (round 14's owner report: one weight slot
+ * where the family ships sixteen). The donor's pattern pools the
+ * variant's faces into nearest-weight matching — the same pooling the
+ * catalog form's whole-variant reference does. Undefined when the
+ * representative's name cannot be narrowed (no `*` in the pattern).
+ */
+function pickPathPattern(
+  font: LoadedFont,
+  role: "base" | "donor",
+): string | undefined {
+  if (font.origin === "local") {
+    // Round 13: only a base whose load discovered same-dir siblings.
+    if (role !== "base" || localFaceSet(store.get().fonts, font).length <= 1) {
+      return undefined;
+    }
+    const pattern = localFamilyPattern(font.fileName);
+    return pattern.includes("*") ? pattern : undefined;
+  }
+  if (font.origin === "catalog") {
+    const pattern = familyCutPattern(font.fileName);
+    return pattern.includes("*") ? pattern : undefined;
+  }
+  return undefined;
+}
+
+/**
  * The recipe slot for one picked font (round 6; round 12 for the base
- * pattern; round 13 for the LOCAL base pattern). Order matters:
+ * pattern; round 13 for the LOCAL base pattern; round 14 for the
+ * pattern on EVERY catalog pick's path form). Order matters:
  *
  * 1. The PATH form whenever the service's own /fonts listing can see
  *    the file — the serve vouches for that path, and a bare path is
@@ -317,26 +364,30 @@ export function buildWorkspaceDraft(
  *    answers /catalog with the repo manifest whose artifacts are NOT
  *    fetched; preferring the catalog form there would submit a
  *    reference that dies with "not fetched" while a working path
- *    exists.) A LOCAL base whose load discovered same-directory
- *    sibling faces (round 13, owner item 7) carries the SAME-DIR
- *    pattern: the extension-less cut glob over the representative's
- *    basename, resolving to every sibling face — the pick's whole
- *    weight matrix — exactly what a catalog base's cut pattern does.
- *    A one-file family (no siblings, or a name the rule cannot narrow)
- *    keeps the bare path: single-face semantics.
+ *    exists.) The slot carries the pick's family pattern
+ *    (`pickPathPattern`): a LOCAL base whose load discovered
+ *    same-directory sibling faces (round 13, owner item 7) carries the
+ *    extension-less SAME-DIR glob over the representative's basename;
+ *    a CATALOG pick (round 14) carries the FAMILY CUT pattern of its
+ *    representative face in BOTH roles — the pick is the family, and
+ *    without the pattern the path form would narrow the build to the
+ *    representative alone (the round-14 owner report: a 16-face
+ *    JetBrainsMono pick building ONE weight slot). A one-file family
+ *    (no siblings, or a name the rule cannot narrow) keeps the bare
+ *    path: single-face semantics.
  * 2. The CATALOG-FAMILY reference — `{family, variant}` naming what
- *    the manifest pins — for catalog picks the listing CANNOT see (the
- *    owner's serve over the fetched layout: assets/fonts/<Family>/
- *    extracted faces, which the top-level /fonts scan skips). The BASE
- *    carries the FAMILY CUT pattern (round 12): a glob over the
- *    representative face's own file name that resolves to every face
- *    of the picked variant's cut, so the base's faces — and only those
- *    — become the output weight matrix (a Nerd Fonts zip mixes other
- *    cuts into the same artifact; the manifest entry's variant already
- *    narrowed the variant, the cut keeps the pick to ONE family). The
- *    DONOR references the whole variant pattern-free, as before: its
- *    faces pool into nearest-weight matching, and its stored file
- *    naming need not match the service's artifact faces.
+ *    the manifest pins — for catalog picks the listing CANNOT see (a
+ *    serve whose /fonts scan does not reach the catalog layout's
+ *    nested faces). The BASE carries the FAMILY CUT pattern (round
+ *    12): a glob over the representative face's own file name that
+ *    resolves to every face of the picked variant's cut, so the base's
+ *    faces — and only those — become the output weight matrix (a Nerd
+ *    Fonts zip mixes other cuts into the same artifact; the manifest
+ *    entry's variant already narrowed the variant, the cut keeps the
+ *    pick to ONE family). The DONOR references the whole variant
+ *    pattern-free, as before: its faces pool into nearest-weight
+ *    matching, and its stored file naming need not match the service's
+ *    artifact faces.
  *
  * Null when neither form resolves (the caller's inline failure).
  */
@@ -347,14 +398,8 @@ async function resolvePickSlot(
   const path = await resolveFontPathWithRefresh(font);
   if (path !== null) {
     const slot: FontSlot = { catalog: null, path, face: null };
-    if (
-      role === "base" &&
-      font.origin === "local" &&
-      localFaceSet(store.get().fonts, font).length > 1
-    ) {
-      const pattern = localFamilyPattern(font.fileName);
-      if (pattern.includes("*")) slot.pattern = pattern;
-    }
+    const pattern = pickPathPattern(font, role);
+    if (pattern !== undefined) slot.pattern = pattern;
     return slot;
   }
   if (font.origin === "catalog" && font.catalog) {

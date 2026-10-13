@@ -1229,7 +1229,14 @@ test.describe("sidecar synthesize", () => {
         1,
       ),
     );
-    const service = await spawnServeOverFonts(fontsDir, [
+    // Round 14: the /fonts scan now descends one level, so a font-dir
+    // over this nested layout would list the extracted faces and the
+    // picks would resolve through the PATH form (pinned by the sibling
+    // test below). This test pins the CATALOG-FAMILY form, so the serve
+    // watches an EMPTY local-fonts view — exactly the consumer whose
+    // layout the listing cannot see.
+    const emptyFontsDir = await mkdtemp(resolve(tmpdir(), "fontalloy-blind-"));
+    const service = await spawnServeOverFonts(emptyFontsDir, [
       "--manifest",
       resolve(assetsDir, "fonts.manifest.json"),
     ]);
@@ -1402,6 +1409,259 @@ test.describe("sidecar synthesize", () => {
       expect(meta.family).toBe("ChHsich");
       expect(meta.codepoints).toContain(0x4e2d); // 中
       expect(meta.codepoints).toContain(0xe0b0); // a Nerd Font powerline glyph
+    } finally {
+      await service.dispose();
+    }
+  });
+
+  // Round 14 — the owner's P0: a catalog pick the /fonts listing CAN
+  // see resolved through the PATH form, and that form dropped the
+  // family-cut pattern — the reference narrowed to the representative
+  // face alone and the owner's report showed ONE weight slot where the
+  // family ships sixteen (the Tauri sidecar's font-dir IS the catalog
+  // storage, so EVERY pick there takes the path form). The /fonts scan
+  // now descends one level into the extracted-family directories
+  // (round 14), and every catalog pick carries its cut pattern in
+  // either form. This test pins the path form: the same fetched-layout
+  // serve as the catalog-form test above, watched over the fonts dir
+  // itself, plus the weight-mode wiring the pattern keeps alive.
+  test("a catalog pick the /fonts listing sees submits the path form with the family-cut pattern", async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    const real = realCatalogFontPaths();
+
+    // The owner's fetched layout, watched by /fonts: the zips' faces
+    // extracted one level down, exactly what the round-14 scan lists.
+    const root = await mkdtemp(resolve(tmpdir(), "fontalloy-pathpat-"));
+    const assetsDir = resolve(root, "assets");
+    const fontsDir = resolve(assetsDir, "fonts");
+    await mkdir(resolve(fontsDir, "JetBrainsMono"), { recursive: true });
+    await mkdir(resolve(fontsDir, "MapleMono-NF-CN"), { recursive: true });
+    const baseFace = "JetBrainsMonoNerdFont-Regular.ttf";
+    const boldFace = "JetBrainsMonoNerdFont-Bold.ttf";
+    const donorFace = "MapleMono-NF-CN-Regular.ttf";
+    const [, boldPath] = await generateFamily(
+      await mkdtemp(resolve(tmpdir(), "fontalloy-bold-")),
+    );
+    await copyFile(real.base, resolve(fontsDir, "JetBrainsMono", baseFace));
+    await copyFile(boldPath, resolve(fontsDir, "JetBrainsMono", boldFace));
+    await copyFile(real.donor, resolve(fontsDir, "MapleMono-NF-CN", donorFace));
+    const baseZip = makeZip([
+      {
+        name: baseFace,
+        data: readFileSync(resolve(fontsDir, "JetBrainsMono", baseFace)),
+      },
+      {
+        name: boldFace,
+        data: readFileSync(resolve(fontsDir, "JetBrainsMono", boldFace)),
+      },
+    ]);
+    const donorZip = makeZip([
+      {
+        name: donorFace,
+        data: readFileSync(resolve(fontsDir, "MapleMono-NF-CN", donorFace)),
+      },
+    ]);
+    await writeFile(resolve(fontsDir, "JetBrainsMono.zip"), baseZip);
+    await writeFile(resolve(fontsDir, "MapleMono-NF-CN.zip"), donorZip);
+    await writeFile(
+      resolve(assetsDir, "LICENSE.txt"),
+      "Test-only license placeholder.\n",
+    );
+    const entry = (family: string, variant: string, file: string, sha: string) => ({
+      family,
+      variant,
+      file,
+      version: "v3.5.1",
+      upstream_url: "file://localhost/catalog",
+      sha256: sha,
+      license_spdx: "OFL-1.1-no-RFN",
+      rfn: false,
+      rfn_names: [],
+      copyright: null,
+      license_file: "LICENSE.txt",
+      checksum_source: "self-computed",
+    });
+    await writeFile(
+      resolve(assetsDir, "fonts.manifest.json"),
+      JSON.stringify(
+        {
+          schema: "fontalloy/font-catalog@v1",
+          families: [
+            entry("JetBrainsMono", "Nerd Font", "JetBrainsMono.zip", sha256hex(baseZip)),
+            entry("MapleMono", "NF-CN", "MapleMono-NF-CN.zip", sha256hex(donorZip)),
+          ],
+        },
+        null,
+        1,
+      ),
+    );
+    const service = await spawnServeOverFonts(fontsDir, [
+      "--manifest",
+      resolve(assetsDir, "fonts.manifest.json"),
+    ]);
+
+    const saved: string[] = [];
+    const saveDir = await mkdtemp(resolve(tmpdir(), "fontalloy-save-"));
+    const captureBody = (): Promise<Record<string, unknown>> =>
+      page
+        .waitForRequest(
+          (request) =>
+            request.method() === "POST" &&
+            new URL(request.url()).pathname.endsWith("/builds"),
+        )
+        .then((request) => request.postDataJSON() as Record<string, unknown>);
+    try {
+      const sim = await SimCatalog.create([
+        {
+          family: "JetBrainsMono",
+          variant: "Nerd Font",
+          faces: [
+            { file: baseFace, fontPath: real.base },
+            { file: boldFace, fontPath: boldPath },
+          ],
+        },
+        {
+          family: "MapleMono",
+          variant: "NF-CN",
+          file: donorFace,
+          fontPath: real.donor,
+        },
+      ]);
+      await sim.install(page);
+      await injectCatalogConfig(page);
+      const serveUrl = await service.url;
+      await page.addInitScript((serve: string) => {
+        const config = window as unknown as {
+          __FONTALLOY_CONFIG__: Record<string, unknown>;
+        };
+        config.__FONTALLOY_CONFIG__.serveUrl = serve;
+      }, serveUrl);
+      await page.route("https://api.github.com/repos/**", (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ stargazers_count: 1234 }),
+        }),
+      );
+      await page.exposeFunction(
+        "__fontalloyTestSave",
+        async (name: string, bytesB64: string): Promise<string | null> => {
+          const bytes = Buffer.from(bytesB64, "base64");
+          const target = resolve(saveDir, name);
+          await writeFile(target, bytes);
+          saved.push(target);
+          return target;
+        },
+      );
+      await page.addInitScript(() => {
+        const config = window as unknown as {
+          __FONTALLOY_CONFIG__: Record<string, unknown>;
+        };
+        config.__FONTALLOY_CONFIG__.saveArtifact = async (
+          name: string,
+          bytes: Uint8Array,
+        ): Promise<{ saved: boolean; path: string | null }> => {
+          const b64 = btoa(
+            Array.from(bytes, (b) => String.fromCharCode(b)).join(""),
+          );
+          const path = await window.__fontalloyTestSave(name, b64);
+          return path === null ? { saved: false, path: null } : { saved: true, path };
+        };
+      });
+      collectJsErrors(page, jsErrors);
+      await page.goto("/");
+      await waitForFontsReady(page);
+      await expect(page.locator(".catalog-screen")).toBeHidden({
+        timeout: 30_000,
+      });
+
+      const baseName = parseFontMeta(
+        readFileSync(real.base).buffer.slice(0) as ArrayBuffer,
+      ).names.display;
+      const donorName = parseFontMeta(
+        readFileSync(real.donor).buffer.slice(0) as ArrayBuffer,
+      ).names.display;
+      await pointerClick(page, page.locator('[data-role="picker-en"] .kit-hd'));
+      await pointerClick(
+        page,
+        page
+          .locator('[data-picker-popup="en"] .kit-fp', { hasText: baseName })
+          .first(),
+      );
+      await pointerClick(page, page.locator('[data-role="picker-cjk"] .kit-hd'));
+      await pointerClick(
+        page,
+        page
+          .locator('[data-picker-popup="cjk"] .kit-fp', { hasText: donorName })
+          .first(),
+      );
+      await waitForFontsReady(page);
+
+      // The path form carries the family-cut pattern on BOTH refs
+      // (round 14): the base's pattern keeps the pick the family, and
+      // the donor's pools its cut's faces into nearest matching. A
+      // known two-face base resolves the auto format as ttc.
+      const bodyPromise = captureBody();
+      const synthesize = page.locator(".topbar [data-role='synthesize']");
+      await expect(synthesize).toHaveAttribute("aria-disabled", "false");
+      await pointerClick(page, synthesize);
+      const body = await bodyPromise;
+      expect(body.base).toEqual({
+        path: resolve(fontsDir, "JetBrainsMono", baseFace),
+        pattern: "JetBrainsMonoNerdFont-*.ttf",
+      });
+      expect(body.donors).toEqual([
+        {
+          path: resolve(fontsDir, "MapleMono-NF-CN", donorFace),
+          pattern: "MapleMono-NF-CN-*.ttf",
+        },
+      ]);
+      expect(body.output).toEqual({ format: "ttc", family: "ChHsich" });
+
+      const panel = page.locator('[data-testid="build-panel"]');
+      await expect(panel.locator("[data-build-stage]").first()).toHaveText(
+        "完成",
+        { timeout: 120_000 },
+      );
+
+      // The weight-mode wiring the pattern keeps alive (round 14): the
+      // 字重合并方式 donor mode intersects the pattern's faces — the
+      // base's {400, 700} against the donor's {400} keeps one slot.
+      const weightRow = page.locator(
+        ".settings-rows [data-setting='weightMode']",
+      );
+      await pointerClick(page, weightRow.locator(".kit-csel"));
+      await expect(weightRow.locator(".kit-csel-pk")).toBeVisible();
+      await pointerClick(
+        page,
+        weightRow.locator(".kit-cso[data-value='donor']"),
+      );
+      await expect(weightRow.locator(".kit-csel")).toContainText(
+        "仅保留中文字体提供的字重",
+      );
+      const modeBodyPromise = captureBody();
+      await pointerClick(page, synthesize);
+      const modeBody = await modeBodyPromise;
+      expect(modeBody.base).toEqual(body.base);
+      expect(modeBody.weights).toEqual([{ weight: 400 }]);
+      await expect(
+        panel.locator("[data-build-stage]").last(),
+      ).toHaveText("完成", { timeout: 120_000 });
+
+      // The narrowed build's report keeps exactly the shared slot.
+      const rows = panel.locator(".build-row");
+      await expect(rows.last()).toContainText("已保存");
+      await pointerClick(page, rows.last().locator(".report-details > summary"));
+      const weightSection = rows
+        .last()
+        .locator(".report-section")
+        .filter({ hasText: "字重档位" });
+      await expect(weightSection).toBeVisible();
+      expect(
+        await weightSection.locator(".report-fact-label").allTextContents(),
+      ).toEqual(["400 · 直立"]);
     } finally {
       await service.dispose();
     }
