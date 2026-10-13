@@ -518,9 +518,11 @@ test.describe("precedence editing", () => {
     const baseBtn = popup.locator("[data-role='char-base']");
     await expect(baseBtn).toBeVisible();
     await expect(baseBtn).toBeDisabled();
-    await expect(
-      popup.locator("[data-role='char-base-reason']"),
-    ).toHaveText("英文字体不含此码位");
+    // Round 11 (owner item 8): the reason is VISIBLE copy, not DOM-only
+    // text (toBeVisible proves a nonzero painted box, not just textContent).
+    const baseReason = popup.locator("[data-role='char-base-reason']");
+    await expect(baseReason).toBeVisible();
+    await expect(baseReason).toHaveText("英文字体不含此码位");
     await pointerClick(page, baseBtn);
     const cell = page.locator(".charmap-grid .kit-cell[data-cp='U+4E2D']");
     await expect(cell).toHaveAttribute("data-winner", "donor-0");

@@ -586,9 +586,47 @@ test.describe("action bar rule wiring", () => {
     const inertBase = popup.locator("[data-role='char-base']");
     await expect(inertBase).toBeVisible();
     await expect(inertBase).toBeDisabled();
-    await expect(
-      popup.locator("[data-role='char-base-reason']"),
-    ).toHaveText("英文字体不含此码位");
+    const inertReason = popup.locator("[data-role='char-base-reason']");
+    await expect(inertReason).toHaveText("英文字体不含此码位");
+    // Round 11 (owner item 8): the reason PAINTS — textContent alone
+    // passes for a `display:none` node, so the pin is computed style +
+    // geometry: shown, boxed, inside the button, legible, and a color
+    // distinct from the popup surface.
+    const reasonPaint = await inertReason.evaluate((el) => {
+      const cs = getComputedStyle(el);
+      const btn = el.closest("button")!;
+      const btnCs = getComputedStyle(btn);
+      const pop = el.closest(".kit-pop")!;
+      const r = el.getBoundingClientRect();
+      const b = btn.getBoundingClientRect();
+      return {
+        display: cs.display,
+        visibility: cs.visibility,
+        fontSizePx: Number.parseFloat(cs.fontSize),
+        color: cs.color,
+        surface: getComputedStyle(pop).backgroundColor,
+        btnOpacity: Number.parseFloat(btnCs.opacity),
+        w: r.width,
+        h: r.height,
+        insideButton:
+          r.left >= b.left - 0.5 &&
+          r.right <= b.right + 0.5 &&
+          r.top >= b.top - 0.5 &&
+          r.bottom <= b.bottom + 0.5,
+      };
+    });
+    expect(reasonPaint.display, "the reason is not display:none").not.toBe("none");
+    expect(reasonPaint.visibility).toBe("visible");
+    expect(reasonPaint.w, "the reason has width").toBeGreaterThan(0);
+    expect(reasonPaint.h, "the reason has height").toBeGreaterThan(0);
+    expect(reasonPaint.insideButton, "the reason sits inside its button").toBe(true);
+    expect(reasonPaint.fontSizePx, "the reason is >= 11px").toBeGreaterThanOrEqual(11);
+    expect(reasonPaint.color, "reason ink differs from the surface").not.toBe(
+      reasonPaint.surface,
+    );
+    // The disabled dim lives in the label color, never a whole-button
+    // opacity (0.4–0.6 would wash the line to ~2.4:1 in both themes).
+    expect(reasonPaint.btnOpacity).toBeGreaterThanOrEqual(0.99);
     await expect(popup.locator("[data-role='char-reset']")).toBeHidden();
 
     // Back on the Latin view: 用中文字体 on the base-carried A — the

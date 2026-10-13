@@ -1233,9 +1233,11 @@ test.describe("user journey", () => {
         const base = popup.locator("[data-role='char-base']");
         await expect(base).toBeVisible();
         await expect(base).toBeDisabled();
-        await expect(
-          popup.locator("[data-role='char-base-reason']"),
-        ).toHaveText("英文字体不含此码位");
+        // Round 11 (owner item 8): the reason is painted copy —
+        // toBeVisible pins a nonzero box, not just DOM text.
+        const reason = popup.locator("[data-role='char-base-reason']");
+        await expect(reason).toBeVisible();
+        await expect(reason).toHaveText("英文字体不含此码位");
         await expect(base).toContainText("用英文字体");
         // The click cannot write anything: no rule, no dot, no summary.
         await pointerClick(page, base);
@@ -1512,6 +1514,10 @@ test.describe("user journey", () => {
         // plain glossary words instead of a silent 来自.
         await pointerClick(page, cell);
         const popup = page.locator("[data-char-popup]");
+        // Round 11 (owner item 8): the note line PAINTS (toBeVisible,
+        // not just textContent — the show path once fell through to the
+        // sheet's display:none default).
+        await expect(popup.locator("[data-role='char-note']")).toBeVisible();
         await expect(popup.locator("[data-role='char-note']")).toHaveText(
           "英文字体不含此码位，仍由中文字体补字",
         );
@@ -1523,6 +1529,9 @@ test.describe("user journey", () => {
         // with its reason (the winner is the donor, and the base lacks
         // the codepoint).
         await expect(popup.locator("[data-role='char-base']")).toBeDisabled();
+        await expect(
+          popup.locator("[data-role='char-base-reason']"),
+        ).toBeVisible();
         await page.keyboard.press("Escape");
         // The 已调整 legend's ? explains the dot (实际生效, not 已声明).
         const legendHelp = page.locator(
