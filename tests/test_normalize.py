@@ -447,7 +447,8 @@ class TestQuoteDashWidthPolicy:
         "cp",
         [
             0x2010, 0x2011, 0x2012, 0x2013, 0x2014, 0x2015,  # dashes
-            0x2018, 0x2019, 0x201A, 0x201B, 0x201C, 0x201D,  # quotes
+            0x2018, 0x2019, 0x201A, 0x201B, 0x201C, 0x201D, 0x201E,
+            0x201F,  # quotes (U+201E/201F once fell outside the set)
             0x2026,  # horizontal ellipsis
         ],
     )

@@ -92,10 +92,12 @@ HAN_COMMON_LAST = 0x9FFF
 INK_PERCENTILE = 90
 
 #: The quote/dash codepoints the fullwidth policy covers: dashes
-#: U+2010-U+2015, quotes U+2018-U+201D, and the horizontal ellipsis
+#: U+2010-U+2015, quotes U+2018-U+201F, and the horizontal ellipsis
 #: U+2026 — the ambiguous set CJK fonts conventionally draw fullwidth.
+#: (The quotes range once stopped short at U+201D — range ends are
+#: exclusive — silently leaving U+201E/U+201F halfwidth.)
 QUOTE_DASH_CODEPOINTS = frozenset(
-    [*range(0x2010, 0x2016), *range(0x2018, 0x201E), 0x2026]
+    [*range(0x2010, 0x2016), *range(0x2018, 0x2020), 0x2026]
 )
 
 #: East Asian Width classes that occupy two terminal cells.
