@@ -50,10 +50,33 @@ test("the real catalog lists real families with real meta", async ({ page }) => 
   const rows = popup.locator(".kit-fp");
   // Round 5 (the slot split): the EN slot lists the Nerd Fonts CODING
   // families only; round 9 (owner item 1) the upstream pass serves EVERY
-  // manifest family, so the counts are the full manifest's: 71 EN rows
-  // (every coding family; NerdFontsSymbolsOnly never lists) and every
-  // CJK family the slots table names.
-  await expect(rows).toHaveCount(71);
+  // manifest family. Round 21: the suite's dev catalog serves a MANIFEST
+  // SUBSET (playwright.config webServer env — full-family zips made the
+  // whole-catalog first-run download time the suite out), so the count
+  // DERIVES from the release document the origin actually serves:
+  // distinct families − the CJK-side ids − SymbolsOnly (never lists).
+  const release = await page.evaluate(async () => {
+    const res = await fetch("/dev-catalog/catalog-release.json");
+    return (await res.json()) as { families: Array<{ family: string }> };
+  });
+  const cjkSideIds = new Set([
+    "MapleMono",
+    "LXGWWenKai",
+    "LXGWWenKaiMono",
+    "NotoSansSC",
+    // The dev catalog's five prototype-only CJK extras (code-side
+    // EXTRA_DEV_FAMILIES in scripts/dev-catalog.mjs) ride the same
+    // release document; they list on the CJK side only.
+    "SmileySans",
+    "SarasaGothic",
+    "ZhuqueFangsong",
+    "ArkPixel",
+    "FusionPixel",
+  ]);
+  const expectedEnRows = new Set(
+    release.families.map((f) => f.family).filter((id) => !cjkSideIds.has(id) && id !== "SymbolsOnly"),
+  ).size;
+  await expect(rows).toHaveCount(expectedEnRows);
   // And the CJK slot lists exactly those CJK families. (Escape first:
   // the open EN popup physically covers the CJK card below it.)
   await page.keyboard.press("Escape");

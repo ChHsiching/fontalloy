@@ -30,6 +30,15 @@ export default defineConfig({
   },
   webServer: {
     command: `npm run build && npm run preview -- --port ${previewPort} --strictPort`,
+    // The dev catalog serves a MANIFEST SUBSET (the seven families the
+    // real-catalog specs assert on) — round-20's full-family zips grew
+    // the whole catalog to gigabytes, and the app's first-run IndexedDB
+    // download of everything would time the suite out. The acceptance
+    // stack serves the full catalog; tests do not need it.
+    env: {
+      ...process.env,
+      FONTALLOY_DEV_CATALOG_MANIFEST: "tests/fixtures/catalog-subset.manifest.json",
+    },
     url: `http://localhost:${previewPort}`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
