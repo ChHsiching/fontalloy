@@ -964,15 +964,21 @@ body {
   user-select: none;
 }
 
-/* Round 18 (owner item 6): a tag NEVER wraps to the middle of a
- * following line — a tagged fact value is a flex BLOCK. The text span
- * is its first line and wraps freely (font names are never
- * ellipsized — only paths ellipsize); the tag row is the value's own
- * LAST line, right-aligned with the fact row (margin-left: auto; the
- * label/value structure of .report-fact is unchanged). */
+/* Round 19 (owner items 4a+4b — one unified rule replacing round 18's
+ * always-own-next-line): a tagged fact value is ONE flex row that may
+ * wrap — the text span first, then the tag group. The text wraps
+ * freely (font names are never ellipsized — only paths ellipsize);
+ * the tag group rides INLINE after the text on the same line when it
+ * fits and wraps to its OWN next line, as a group, when it does not.
+ * Either way it hugs the right edge (the tag row's margin-left: auto
+ * absorbs the free space on whichever line it lands; the label/value
+ * structure of .report-fact is unchanged). */
 .report-fact-value {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 6px;
+  row-gap: 2px;
   min-width: 0;
 }
 
@@ -980,14 +986,15 @@ body {
   white-space: normal;
 }
 
-/* The tags' one row: right-aligned in BOTH homes — margin-left: auto
- * against the fact value's column stack, and (block-level inside a
- * weight-grid cell) justify-content against the cell's own width, so
- * under the family text the row rides its own right-aligned line. */
+/* The tags' one GROUP — a single wrapping UNIT (the row is one flex
+ * item of the value row above, so it wraps whole, never tag by tag),
+ * pushed flush against the right edge by margin-left: auto in BOTH
+ * homes: sharing the fact value's line, on its own wrapped line, or
+ * filling a weight-grid cell (a .report-fact-value there spans the
+ * cell's width). */
 .report-tag-row {
   display: flex;
   gap: 4px;
-  justify-content: flex-end;
   margin-left: auto;
 }
 

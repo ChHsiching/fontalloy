@@ -18,6 +18,7 @@ import {
   fixtureFontPaths,
   pointerClick,
   realCatalogFontPaths,
+  tagGeometry,
   waitForFontsReady,
 } from "./helpers";
 
@@ -285,6 +286,22 @@ test.describe("sidecar synthesize", () => {
           .locator('[data-role="report-tag"]')
           .filter({ hasText: "完全沿用英文字体" }),
       ).toHaveCount(1);
+      // Round 19 (owner items 4a+4b): the qualifier rides INLINE after
+      // the value on the SAME line, flush to the value container's
+      // right edge — 「是 完全沿用英文字体」 is one line, both hugging
+      // the right (never the tag under the value, left of it).
+      const lineHeightGeometry = await tagGeometry(lineHeightFact);
+      expect(lineHeightGeometry).not.toBeNull();
+      expect(lineHeightGeometry?.rowDisplay).toBe("flex");
+      expect(lineHeightGeometry?.sameLine).toBe(true);
+      expect(lineHeightGeometry?.rightFlush).toBe(true);
+      // The output format is the same shape: 「ttf 通用」 one line.
+      const formatGeometry = await tagGeometry(
+        panel.locator(".report-fact").filter({ hasText: "输出格式" }),
+      );
+      expect(formatGeometry).not.toBeNull();
+      expect(formatGeometry?.sameLine).toBe(true);
+      expect(formatGeometry?.rightFlush).toBe(true);
       // Round 13 (owner item 6): the metrics render as a real TABLE —
       // the 合并前 / 合并后 data columns stated ONCE in a header row,
       // values column-aligned, 「无」 stays, zero · separators in the
@@ -310,33 +327,20 @@ test.describe("sidecar synthesize", () => {
           .locator('[data-role="report-tag"]')
           .filter({ hasText: /自动取最近|指定字重|锁定/ }),
       ).toHaveCount(1);
-      // Round 18 (owner item 6): a tag never wraps to the middle of a
-      // following line — a tagged fact value is a flex block: the text
-      // span wraps freely (font names never ellipsize) while the tag
-      // row rides its OWN line UNDER the text, right-aligned with the
-      // fact row (the label/value structure stays).
+      // Round 19 (owner items 4a+4b): a tag rides INLINE after the
+      // value text, flush right, wrapping to its own NEXT line (still
+      // flush right, as a group) only when the line cannot fit — the
+      // round-18 own-line-under rule is gone. The source sentence is
+      // long (its family name wraps freely; font names never
+      // ellipsize), so only the flush-right edge is pinned here; the
+      // vertical position is wherever the wrap left it.
       const sourceFact = panel
         .locator(".report-fact")
         .filter({ hasText: /档全部取自/ });
-      const tagGeometry = await sourceFact.evaluate((el) => {
-        const text = el.querySelector(".report-fact-value-text");
-        const row = el.querySelector(".report-tag-row");
-        const tag = row?.querySelector('[data-role="report-tag"]');
-        if (text === null || row === null || tag === null) return null;
-        const fact = el.getBoundingClientRect();
-        return {
-          rowDisplay: getComputedStyle(row).display,
-          ownLine:
-            text.getBoundingClientRect().bottom <=
-            row.getBoundingClientRect().top + 0.5,
-          rightAligned:
-            Math.abs(tag.getBoundingClientRect().right - fact.right) <= 1,
-        };
-      });
-      expect(tagGeometry).not.toBeNull();
-      expect(tagGeometry?.rowDisplay).toBe("flex");
-      expect(tagGeometry?.ownLine).toBe(true);
-      expect(tagGeometry?.rightAligned).toBe(true);
+      const sourceGeometry = await tagGeometry(sourceFact);
+      expect(sourceGeometry).not.toBeNull();
+      expect(sourceGeometry?.rowDisplay).toBe("flex");
+      expect(sourceGeometry?.rightFlush).toBe(true);
       // Round 12 (owner item 1): NO dash-joins anywhere in the panel —
       // nothing relies on an em-dash to separate.
       await expect(panel).not.toContainText("—");

@@ -9,6 +9,7 @@ import {
   hitTestCenter,
   isKnownBenignConsoleError,
   pointerClick,
+  tagGeometry,
   waitForFontsReady,
 } from "./helpers";
 import { spawnServeOverFonts } from "./serve";
@@ -2287,6 +2288,14 @@ test.describe("user journey", () => {
               .locator('[data-role="report-tag"]')
               .filter({ hasText: "完全沿用英文字体" }),
           ).toHaveCount(1);
+          // Round 19 (owner items 4a+4b): the qualifier rides INLINE
+          // on the value's line, flush to the value container's right
+          // edge — one line, both hugging the right.
+          const lineHeightGeometry = await tagGeometry(lineHeightFact);
+          expect(lineHeightGeometry).not.toBeNull();
+          expect(lineHeightGeometry?.rowDisplay).toBe("flex");
+          expect(lineHeightGeometry?.sameLine).toBe(true);
+          expect(lineHeightGeometry?.rightFlush).toBe(true);
           // Round 13 (owner item 6): the metrics section is a real
           // TABLE — the 合并前 / 合并后 data columns stated ONCE in a
           // header row, values column-aligned, and zero · separators
@@ -2364,6 +2373,13 @@ test.describe("user journey", () => {
               .locator('[data-role="report-tag"]')
               .filter({ hasText: "多字体合集" }),
           ).toHaveCount(1);
+          // Round 19 (owner items 4a+4b): 「ttc 多字体合集」 is ONE
+          // line — the tag rides inline after the word, flush to the
+          // value container's right edge (no forced second line).
+          const formatGeometry = await tagGeometry(formatFact);
+          expect(formatGeometry).not.toBeNull();
+          expect(formatGeometry?.sameLine).toBe(true);
+          expect(formatGeometry?.rightFlush).toBe(true);
         });
 
       await step("J9.4 one ? per section heading, centered, popover above the panel", async () => {

@@ -10,6 +10,7 @@ import {
   optOutOfCatalog,
   pointerClick,
   synthesizeButton,
+  tagGeometry,
   waitForFontsReady,
 } from "./helpers";
 import {
@@ -155,31 +156,27 @@ test("detects the service, merges live with journal and report, downloads the fo
         .locator('[data-role="report-tag"]')
         .filter({ hasText: /自动取最近|指定字重|锁定/ }),
     ).toHaveCount(1);
-    // Round 18 (owner item 6, no web regression): the tag row rides its
-    // OWN line under the sentence — a flex block value, right-aligned
-    // with the fact row (the tag never wraps mid-line).
+    // Round 19 (owner items 4a+4b, no web regression): the tag rides
+    // INLINE after the value, flush to the value container's right
+    // edge, wrapping to its own next line (still flush right) only
+    // when the line cannot fit. The source sentence is long (its
+    // family name wraps freely), so only the flush-right edge is
+    // pinned; the SHORT values' same-line pin is asserted below.
     const sourceFact = page
       .locator(".report-fact")
       .filter({ hasText: /档全部取自/ });
-    const tagGeometry = await sourceFact.evaluate((el) => {
-      const text = el.querySelector(".report-fact-value-text");
-      const row = el.querySelector(".report-tag-row");
-      const tag = row?.querySelector('[data-role="report-tag"]');
-      if (text === null || row === null || tag === null) return null;
-      const fact = el.getBoundingClientRect();
-      return {
-        rowDisplay: getComputedStyle(row).display,
-        ownLine:
-          text.getBoundingClientRect().bottom <=
-          row.getBoundingClientRect().top + 0.5,
-        rightAligned:
-          Math.abs(tag.getBoundingClientRect().right - fact.right) <= 1,
-      };
-    });
-    expect(tagGeometry).not.toBeNull();
-    expect(tagGeometry?.rowDisplay).toBe("flex");
-    expect(tagGeometry?.ownLine).toBe(true);
-    expect(tagGeometry?.rightAligned).toBe(true);
+    const sourceGeometry = await tagGeometry(sourceFact);
+    expect(sourceGeometry).not.toBeNull();
+    expect(sourceGeometry?.rowDisplay).toBe("flex");
+    expect(sourceGeometry?.rightFlush).toBe(true);
+    // The output format's own qualifier — 「ttf 通用」 is ONE line,
+    // the tag hugging the value container's right edge.
+    const formatGeometry = await tagGeometry(
+      page.locator(".report-fact").filter({ hasText: "输出格式" }),
+    );
+    expect(formatGeometry).not.toBeNull();
+    expect(formatGeometry?.sameLine).toBe(true);
+    expect(formatGeometry?.rightFlush).toBe(true);
     const metricsTable = panel.locator(".report-mtable").first();
     await expect(metricsTable).toBeVisible();
     expect(
