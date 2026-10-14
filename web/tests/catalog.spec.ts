@@ -182,8 +182,12 @@ test("the real catalog drives the panel end to end (YAML, download, copy)", asyn
   await waitForCatalogReady(page);
   await pickCatalogFamily(page, "en", "JetBrainsMono Nerd Font");
   // Round 9 (owner item 2): rows and cards read the faces' OWN
-  // name-table strings — the dev catalog serves the CN face for Maple.
-  await pickCatalogFamily(page, "cjk", "Maple Mono", 240_000, "Maple Mono CN");
+  // name-table strings. Round 20 (owner item 2): the plain family pick
+  // serves the DEFAULT cut's own faces — Maple's NF entry
+  // (MapleMono-NF-Regular.ttf, 「Maple Mono NF」), no longer the
+  // prototype-era shared CN face the old per-family resolution fell
+  // back to.
+  await pickCatalogFamily(page, "cjk", "Maple Mono", 240_000, "Maple Mono NF");
 
   // The pair tags carry both picks as plain text — the name-table
   // display names (the same ones the picker rows and rail cards
@@ -192,7 +196,7 @@ test("the real catalog drives the panel end to end (YAML, download, copy)", asyn
     "JetBrainsMono Nerd Font",
   );
   await expect(page.locator(".topbar [data-pair='donor']")).toHaveText(
-    "Maple Mono CN",
+    "Maple Mono NF",
   );
 
   // Open-at-the-selection: the EN picker reopens with the checked row
@@ -271,11 +275,11 @@ test("the real catalog drives the panel end to end (YAML, download, copy)", asyn
   expect(yamlText).toContain(
     'base: "fonts/JetBrainsMono/JetBrainsMonoNerdFont-Regular.ttf"',
   );
-  expect(yamlText).toContain("MapleMonoCN-Regular.ttf");
+  expect(yamlText).toContain("MapleMono-NF-Regular.ttf");
   const YAMLmod = await import("yaml");
   const recipe = YAMLmod.default.parse(yamlText);
   expect(recipe.donors).toEqual([
-    "fonts/MapleMono-NF/MapleMonoCN-Regular.ttf",
+    "fonts/MapleMono-NF/MapleMono-NF-Regular.ttf",
   ]);
   // The boot-seeded zh_cn preset (the declared 文字范围 scope) first,
   // then the 日文 chip's ja preset, then the 按编码指定 rules (the range

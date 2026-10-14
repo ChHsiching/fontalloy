@@ -399,13 +399,20 @@ async function pickCatalogRow(
  * Maple row narrowed to its NF-CN variant THROUGH THE VARIANT CHIP
  * (round 8's per-cut chips — the chip resolves to the manifest's
  * MapleMono/NF-CN entry, and every identity surface then reads the
- * variant's REAL name, 「Maple Mono NF-CN」).
+ * variant's REAL name, 「Maple Mono NF CN」).
+ *
+ * Round 20 (owner item 2) moved the identities onto the cuts' OWN
+ * faces: the row (unselected) reads the DEFAULT cut's representative —
+ * MapleMono-NF-Regular.ttf, 「Maple Mono NF」 — and the NF-CN chip pick
+ * serves MapleMono-NF-CN-Regular.ttf, 「Maple Mono NF CN」 (before round
+ * 20 both cuts collapsed onto the prototype's single MapleMonoCN face,
+ * 「Maple Mono CN」, because that was the only Maple face resolved).
  */
 async function pickFlagshipPair(page: Page): Promise<void> {
   // Round 9 (owner item 2): rows read the faces' OWN name-table names.
   await pickCatalogRow(page, "en", "JetBrainsMono Nerd Font", /JetBrainsMono/);
   await openPicker(page, "cjk");
-  const mapleRow = pickerRow(page, "cjk", "Maple Mono CN");
+  const mapleRow = pickerRow(page, "cjk", "Maple Mono NF");
   const nfCnChip = mapleRow.locator(".kit-vchip[data-chip='MapleMono::NF-CN']");
   await expect(nfCnChip).toBeVisible();
   await rawClick(page, nfCnChip);
@@ -413,7 +420,7 @@ async function pickFlagshipPair(page: Page): Promise<void> {
   // The identity is the served face's own name-table string (round 9).
   await expect(
     page.locator("[data-role='font-pair'] [data-pair='donor']"),
-  ).toHaveText("Maple Mono CN", { timeout: 20_000 });
+  ).toHaveText("Maple Mono NF CN", { timeout: 20_000 });
   await page.keyboard.press("Escape");
   await expect(pickerPopup(page, "cjk")).toBeHidden();
 }
@@ -786,13 +793,16 @@ test.describe("user journey", () => {
         const rows = pickerPopup(page, "cjk").locator(".kit-fp");
         const count = await rows.count();
         expect(count).toBeGreaterThanOrEqual(10);
-        for (const name of ["Maple Mono CN", "LXGW WenKai"]) {
+        // Round 20: the unselected row reads the DEFAULT cut's own
+        // representative name (「Maple Mono NF」), no longer the
+        // prototype-era shared CN face.
+        for (const name of ["Maple Mono NF", "LXGW WenKai"]) {
           await expect(pickerRow(page, "cjk", name)).toBeVisible();
         }
       });
 
       await step("J2.5 variant chips are official proper nouns (NF / NF-CN, plain default, picker-level help)", async () => {
-        const maple = pickerRow(page, "cjk", "Maple Mono CN");
+        const maple = pickerRow(page, "cjk", "Maple Mono NF");
         // Round 8 final form: one chip per CUT; round 9: the labels are
         // the data's own words — 标准 (the family default) and NF-CN. The
         // default cut renders PLAIN: no 默认 marker, no dashed ring,
@@ -858,11 +868,12 @@ test.describe("user journey", () => {
         await rawClick(page, nfCn);
         await waitForFontsReady(page);
         // The identity follows the font file itself (round 9, owner
-        // item 2): the pair tag carries the served face's OWN
-        // name-table string.
+        // item 2; round 20: the cut's OWN face): the pair tag carries
+        // the served face's OWN name-table string — the NF-CN cut's
+        // MapleMono-NF-CN-Regular.ttf reads 「Maple Mono NF CN」.
         await expect(
           page.locator("[data-role='font-pair'] [data-pair='donor']"),
-        ).toHaveText("Maple Mono CN", { timeout: 20_000 });
+        ).toHaveText("Maple Mono NF CN", { timeout: 20_000 });
         // The chip is the EXPLICIT selection (accent); the default NF
         // cut stays plain.
         await expect(
@@ -886,11 +897,11 @@ test.describe("user journey", () => {
           expect(family.length).toBeGreaterThan(0); // rendered in its own face
         }
         // The CJK card reads the picked face's own name-table string
-        // (round 9, item 2) — the same identity the pair tag and the
-        // report carry.
+        // (round 9, item 2; round 20: the NF-CN cut's own face) — the
+        // same identity the pair tag and the report carry.
         await expect(
           page.locator("[data-role='picker-cjk'] .kit-hd .kit-hdc b"),
-        ).toHaveText("Maple Mono CN");
+        ).toHaveText("Maple Mono NF CN");
       });
 
       await step("J2.8 zero JS errors across the journey", assertNoJsErrors);
@@ -1138,6 +1149,52 @@ test.describe("user journey", () => {
         await pointerClick(page, page.locator("[data-role='undo']"));
         await expect(brace).toHaveAttribute("data-winner", "base");
         await assertWinnerGlyphs(page);
+      });
+
+      await step("J4.8b a lone pick judges: the missing view widens, the region counters partition", async () => {
+        // Round 18's repeat-click unload: clicking the CHECKED row
+        // clears the slot — the journey is left with the lone EN pick.
+        await openPicker(page, "cjk");
+        await rawClick(
+          page,
+          pickerPopup(page, "cjk").locator(".kit-fp[aria-pressed='true']"),
+        );
+        await expect(
+          page.locator("[data-role='picker-cjk'] .kit-hdc"),
+        ).toContainText("尚未加载字体", { timeout: 10_000 });
+        await page.keyboard.press("Escape");
+        await expect(pickerPopup(page, "cjk")).toBeHidden();
+        // One pick already judges (round 19): the donor's whole CJK
+        // run is now missing — the 缺失 chip is live and its view
+        // opens with its notice.
+        const missingChip = page.locator(".kit-cat-g[data-group='missing']");
+        await expect(missingChip).toBeVisible();
+        expect(num(await missingChip.locator(".n").textContent())).toBeGreaterThan(
+          0,
+        );
+        await pointerClick(page, missingChip);
+        await expect(page.locator(".kit-toolrow")).toContainText(
+          "缺失字符无法指定来源",
+        );
+        // The region counters partition the universe (round 20, owner
+        // item 5 — SCRIPT REGION, not supplier): 英文 + 中文 + 缺失 =
+        // 字符 with the lone pick, whichever side supplies a glyph.
+        const stat = async (id: string): Promise<number> =>
+          num(await page.locator(`[data-stat='${id}']`).textContent());
+        expect(
+          (await stat("en")) + (await stat("cjk")) + (await stat("missing")),
+        ).toBe(await stat("total"));
+        // The 图标 planes stay COVERED by the lone base pick (a real
+        // Nerd Font cut): the round-18/20 placeholder heuristics never
+        // mark a catalog font's real icon mappings missing — the icon
+        // ranges count as gaps only where nothing maps them (pinned on
+        // an icon-less fixture by missing.spec).
+        await pointerClick(page, page.locator(".kit-cat-g[data-group='icons']"));
+        const powerline = page.locator(".kit-cat-s[data-block='nf-powerline']");
+        await expect(powerline).toBeVisible();
+        await expect(
+          page.locator(".charmap-grid .kit-cell.miss"),
+        ).toHaveCount(0);
       });
 
       await step("J4.9 zero JS errors across the journey", assertNoJsErrors);
@@ -2058,6 +2115,28 @@ test.describe("user journey", () => {
           select.locator(".kit-cso", { hasText: "2 倍英文宽" }),
         );
         await expect(yaml).not.toContainText("width_factor");
+        // Round 20 (owner item 7): the baseline school writes the
+        // recipe's normalization block ONLY when it is explicit — grid
+        // and optical name their mode; 自动 is the core's default now
+        // and writes NOTHING. J8.2 left the baseline at grid, so the
+        // block is live here; with the width back at the 2× default
+        // and the baseline back on 自动, the block disappears entirely.
+        await expect(yaml).toContainText("normalization:");
+        await expect(yaml).toContainText("mode: grid");
+        const baselineSelect = page.locator("[data-role='select-baseline']");
+        await pointerClick(page, baselineSelect.locator(".kit-csel"));
+        await pointerClick(
+          page,
+          baselineSelect.locator(".kit-cso", { hasText: "中文字缩小一点更匀称" }),
+        );
+        await expect(yaml).toContainText("mode: optical");
+        await pointerClick(page, baselineSelect.locator(".kit-csel"));
+        await pointerClick(
+          page,
+          baselineSelect.locator(".kit-cso", { hasText: /^自动/ }),
+        );
+        await expect(yaml).not.toContainText("normalization");
+        await expect(yaml).not.toContainText("mode:");
         // Round 12 (owner item 7): the output-format setting rides the
         // recipe's output.format — J8.2 left it at WOFF2, so the YAML
         // names woff2; back on TTF the YAML reads ttf again. Round 13
@@ -2327,11 +2406,12 @@ test.describe("user journey", () => {
           await expect(panel).not.toContainText("基底");
           await expect(panel).not.toContainText("供体");
           // Round 9 (owner item 2): the 来源字体 names read the font
-          // file's OWN name-table string (「Maple Mono CN」), never the
-          // raw file name or a curated/hardcoded display name. Round
+          // file's OWN name-table string (round 20: the NF-CN cut's
+          // own face, 「Maple Mono NF CN」), never the raw file name or
+          // a curated/hardcoded display name. Round
           // 11 (owner item 2): with the single donor the rows carry
           // the real names as their labels — no role word, no number.
-          await expect(panel).toContainText("Maple Mono CN");
+          await expect(panel).toContainText("Maple Mono NF CN");
           // Round 10: the raw JSON form is gone from the UI.
           await expect(panel).not.toContainText("fontalloy/verification-report");
           // Round 12 (owner item 8) + round-13 economy: the pattern
