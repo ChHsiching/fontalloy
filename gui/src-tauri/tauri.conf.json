@@ -25,6 +25,11 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "windows": {
+      "nsis": {
+        "deleteAppDataOnUninstall": true
+      }
+    },
     "externalBin": [
       "binaries/fontalloy"
     ],
