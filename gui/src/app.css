@@ -920,10 +920,13 @@ body {
  * fixed at its natural width, the value area STRETCHING over the
  * row's whole remainder (a tagged value's .report-fact-value grows —
  * see its round-20 rule; a plain string value stays content-sized,
- * and space-between still right-aligns it). */
+ * and space-between still right-aligns it). Round 22 (owner): the
+ * label locks to the value's FIRST line — first baseline alignment,
+ * never sinking between a wrapped value's lines. */
 .report-fact {
   display: flex;
   justify-content: space-between;
+  align-items: first baseline;
   gap: 10px;
   line-height: 1.7;
 }
@@ -977,7 +980,13 @@ body {
  * fits and wraps to its OWN next line, as a group, when it does not.
  * Either way it hugs the right edge (the tag row's margin-left: auto
  * absorbs the free space on whichever line it lands; the label/value
- * structure of .report-fact is unchanged). */
+ * structure of .report-fact is unchanged). Round 22 (owner): TRUE
+ * right alignment — text-align: right rides the value area, so the
+ * TEXT inside the wrapping span right-aligns EVERY line (flex's
+ * justify-content only packs flex ITEMS; a long text span is ONE
+ * item whose internal lines follow text-align, which used to be the
+ * default left — the "container on the right, text left-aligned"
+ * defect). */
 .report-fact-value {
   display: flex;
   flex-wrap: wrap;
@@ -985,6 +994,7 @@ body {
   column-gap: 6px;
   row-gap: 2px;
   min-width: 0;
+  text-align: right;
 }
 
 /* Round 20 (owner item 6): in a FACT row the value area STRETCHES —

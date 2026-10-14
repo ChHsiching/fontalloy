@@ -482,12 +482,12 @@ test.describe("sidecar synthesize", () => {
   test("round 20: a wrapped source tag hugs the panel's right edge, not the value box's", async ({
     page,
   }) => {
-    // The owner's shape: a family name long enough that the sentence
-    // stays on ONE line but the tag cannot follow it there (it wraps
-    // to its own next line), like 「16 档全部取自 LXGW WenKai GB Screen」.
+    // The owner's shape: a family name long enough that the SENTENCE
+    // ITSELF wraps to a second line (round 22 strengthens the premise —
+    // every TEXT line, not just the tag, must hug the right edge).
     const service = await startServeFixture({
       donorGlyphs: 2000,
-      donorName: "LXGW WenKai GB Screen Pro",
+      donorName: "LXGW WenKai GB Screen Professional Extended",
     });
     const saved: string[] = [];
     try {
@@ -514,17 +514,39 @@ test.describe("sidecar synthesize", () => {
           const b = x.getBoundingClientRect();
           return { left: b.left, right: b.right, top: b.top, bottom: b.bottom };
         };
+        // The TEXT's own LINE boxes (a wrapping span's bounding rect is
+        // full-width and hides the alignment; the lines are the truth).
+        const textEl = el.querySelector(".report-fact-value-text")!;
+        const range = document.createRange();
+        range.selectNodeContents(textEl);
+        const lineRects = [...range.getClientRects()]
+          .filter((r) => r.width > 1 && r.height > 1)
+          .map((r) => ({ left: r.left, right: r.right, top: r.top, bottom: r.bottom }));
+        const valueEl = el.querySelector(".report-fact-value")!;
         return {
           details: rect(el.closest(".report-details")!),
           label: rect(el.querySelector(".report-fact-label")!),
-          value: rect(el.querySelector(".report-fact-value")!),
-          valueText: rect(el.querySelector(".report-fact-value-text")!),
+          value: rect(valueEl),
+          valueText: rect(textEl),
           tagRow: rect(el.querySelector(".report-tag-row")!),
+          textAlign: getComputedStyle(valueEl).textAlign,
+          lineRects,
         };
       });
-      // The premise: the wrap really happened — the tag row sits BELOW
-      // the text's line, on its own wrapped line.
-      expect(geo.tagRow.top).toBeGreaterThanOrEqual(geo.valueText.bottom - 0.5);
+      // The premise: the TEXT itself wrapped to a second line (the
+      // owner's exact defect shape — a wrapped value, not just a tag).
+      expect(geo.lineRects.length).toBeGreaterThanOrEqual(2);
+      // TRUE right alignment (round 22): the value area right-aligns
+      // its TEXT — computed style, then every LINE box of the text
+      // ends within 2px of the PANEL's edge (never left-parked lines
+      // inside a right-positioned container).
+      expect(geo.textAlign).toBe("right");
+      for (const [i, line] of geo.lineRects.entries()) {
+        expect(
+          Math.abs(line.right - geo.details.right),
+          `text line ${i} ends on the panel edge`,
+        ).toBeLessThanOrEqual(2);
+      }
       // The value area STRETCHES: the box starts right after the fixed
       // label (the row's 10px gap) and ends on the PANEL's edge — its
       // width is the row's value area, never its longest line.
@@ -533,10 +555,30 @@ test.describe("sidecar synthesize", () => {
       // The wrapped TAG lands within 2px of the panel's right edge
       // (margin-left: auto reaches the PANEL, not the box).
       expect(Math.abs(geo.tagRow.right - geo.details.right)).toBeLessThanOrEqual(2);
-      // Every wrapped line lands on the panel's edge — the text's own
-      // line too (the value column is right-anchored, like every short
-      // value already is).
-      expect(Math.abs(geo.valueText.right - geo.details.right)).toBeLessThanOrEqual(2);
+      // Round 22 (owner item 2): the LABEL locks to the value's FIRST
+      // line — never sinking between wrapped lines (first-baseline
+      // alignment; 4px tolerance for line-height rounding).
+      expect(Math.abs(geo.label.top - geo.lineRects[0]!.top)).toBeLessThanOrEqual(4);
+      // Evidence shot for the vision gate.
+      await sourceFact.screenshot({
+        path: "C:/Users/Administrator/Git/fontalloy-notes/shots/r22-align-source.png",
+      });
+      // Round 22 (owner item 2), the second named row: 行高保持不变's
+      // label sits level with its value's first line too.
+      const lineHeightFact = panel
+        .locator(".report-fact")
+        .filter({ hasText: "行高保持不变" });
+      await expect(lineHeightFact).toBeVisible();
+      const lhGeo = await lineHeightFact.evaluate((el) => {
+        const top = (x: Element) => x.getBoundingClientRect().top;
+        const label = el.querySelector(".report-fact-label")!;
+        const valueEl = el.querySelector(".report-fact-value")!;
+        const range = document.createRange();
+        range.selectNodeContents(valueEl);
+        const firstLine = [...range.getClientRects()].find((r) => r.width > 1)!;
+        return { labelTop: top(label), firstLineTop: firstLine.top };
+      });
+      expect(Math.abs(lhGeo.labelTop - lhGeo.firstLineTop)).toBeLessThanOrEqual(4);
       assertNoJsErrors(jsErrors);
     } finally {
       await service.dispose();
