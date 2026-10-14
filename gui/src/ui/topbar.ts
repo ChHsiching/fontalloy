@@ -109,6 +109,17 @@ export function mountTopbar(root: HTMLElement): TopBar {
     mountWindowControls(topBar.el);
   }
 
+  // Round 22 (owner item 3): the DEV-ONLY build stamp at the bar's end
+  // — commit + build time, so a stale window is recognizable at a
+  // glance (the round-15/16 stale-window lesson). Never in production.
+  if (import.meta.env.DEV) {
+    const stamp = document.createElement("span");
+    stamp.className = "dev-build-stamp";
+    stamp.dataset.role = "build-stamp";
+    stamp.textContent = __BUILD_STAMP__;
+    topBar.el.append(stamp);
+  }
+
   // The notice lives in the document (not inside the button) so the text is
   // real page content reachable by a click. The close is the kit's SVG
   // glyph (icon-purge round: a text × used to sit here).
