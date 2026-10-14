@@ -32,6 +32,21 @@
  *    The cache is reused verbatim on later boots; a stale entry
  *    (manifest sha moved) is fetched again.
  *
+ * Round 20 (owner item 2): resolution and fetching are PER VARIANT
+ * ENTRY. Every multi-entry manifest family serves EVERY cut's faces —
+ * each entry's ARTIFACT STEM resolves its own faces (the fetch layout
+ * extracts `<archive stem>/` one level under the fonts dir, robust for
+ * versioned and numbered archive names like HackGen_NF_v2.10.0 and
+ * 14_SourceHanSansHWSC; round 17's cut-stem PREFIX matching never saw
+ * those), and the family's release zip is the UNION of all entries'
+ * faces with the primary face following the DEFAULT entry. The
+ * upstream pass fetches PER ENTRY (the round-9 by-FAMILY fetch pulled
+ * only the DEFAULT entry's artifact, so NotoSansSC's HW and Mono cuts
+ * were never even unpacked locally); each fetched artifact unpacks
+ * into its own cache faces dir keyed by the same artifact stem. An
+ * entry whose fetch fails stays an honest miss (the cut renders 未下载
+ * downstream) — never a silent collapse onto another cut.
+ *
  * The per-family file mapping below is explicit (Nerd Fonts renames
  * several families in their patched binaries); the upstream path falls
  * back to a Regular-face match inside the pinned artifact when the
@@ -52,7 +67,7 @@
 
 import { createHash } from "node:crypto";
 import { readFile, readdir, mkdir, writeFile } from "node:fs/promises";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, statSync, readFileSync } from "node:fs";
 import { inflateRawSync } from "node:zlib";
 import { resolve, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -60,11 +75,22 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "..", "..");
 
-/** Where the repo's font catalog manifest lives (metadata truth). */
-const MANIFEST_PATH = resolve(REPO_ROOT, "assets", "fonts.manifest.json");
+/**
+ * Where the repo's font catalog manifest lives (metadata truth). The
+ * env override is the specs' hermetic seam (a crafted manifest against
+ * a fake upstream), never set outside tests.
+ */
+const MANIFEST_PATH = process.env.FONTALLOY_DEV_CATALOG_MANIFEST
+  ? resolve(process.env.FONTALLOY_DEV_CATALOG_MANIFEST)
+  : resolve(REPO_ROOT, "assets", "fonts.manifest.json");
 
-/** The gitignored upstream-artifact cache (round 9, owner item 1). */
-const UPSTREAM_CACHE = resolve(HERE, "..", ".dev-catalog-cache");
+/**
+ * The gitignored upstream-artifact cache (round 9, owner item 1). The
+ * env override keeps the specs' fetches off the repo's own cache.
+ */
+const UPSTREAM_CACHE = process.env.FONTALLOY_DEV_CATALOG_CACHE
+  ? resolve(process.env.FONTALLOY_DEV_CATALOG_CACHE)
+  : resolve(HERE, "..", ".dev-catalog-cache");
 
 /** Per-artifact fetch timeout — release assets run to tens of MB. */
 const FETCH_TIMEOUT_MS = 180_000;
@@ -242,20 +268,50 @@ function readZipEntries(buf) {
 }
 
 /**
- * The one face a fetched family serves from its pinned artifact: the
- * explicit alias when the artifact carries it, else the Regular-named
- * font file (never an italic/oblique), else the first font file.
+ * The cache identity of one manifest ENTRY: its artifact stem (the
+ * artifact's own name minus its extension — zip, 7z, or a bare font
+ * file alike) — the same name the fetch layout extracts
+ * (`assets/fonts/<stem>/`) and the upstream cache unpacks into
+ * (`faces/<stem>/`). Unique per entry (each entry pins its own
+ * upstream artifact) and a legal directory name on every host; keeping
+ * the extension OUT matters: a `faces/X.ttf/` directory would shadow
+ * the font file `X.ttf` in the flat-name scan.
  */
-function pickFaceFromArtifact(family, fileName, entries) {
-  const alias = FILE_ALIASES[family];
-  if (alias && entries.has(alias)) return { file: alias, data: entries.get(alias) };
-  const fontNames = [...entries.keys()].filter((n) => FONT_EXT_RE.test(n));
-  const regular =
-    fontNames.find((n) => /regular/i.test(n) && !/italic|oblique/i.test(n)) ??
-    fontNames.find((n) => /regular/i.test(n));
-  const chosen = regular ?? fontNames[0];
-  if (!chosen) throw new Error(`${fileName} carries no font file`);
-  return { file: chosen, data: entries.get(chosen) };
+function entryKey(entry) {
+  return basename(entry.file).replace(/\.[^.]+$/, "");
+}
+
+/**
+ * The face names one manifest entry contributes from the scanned local
+ * layouts (round 20, owner item 2):
+ *
+ * - a FONT-file entry (a bare ttf/otf/ttc) is its own face, wherever a
+ *   layout carries it;
+ * - an ARCHIVE entry resolves its extraction directory `<stem>/` —
+ *   `14_SourceHanSansHWSC`, `HackGen_NF_v2.10.0`, the upstream cache's
+ *   per-entry dirs — plus round 17's flat dash/exact stem files for
+ *   prototype-style layouts.
+ *
+ * An entry with zero faces is absent locally: the upstream pass fetches
+ * it (per entry — a family whose DEFAULT entry is present still fetches
+ * its siblings' artifacts).
+ */
+function entryFaceNames(entry, available, bySubdir) {
+  const file = basename(entry.file);
+  if (FONT_EXT_RE.test(file)) {
+    return available.has(file) ? [file] : [];
+  }
+  const stem = entryKey(entry);
+  const out = new Set();
+  const sub = bySubdir.get(stem);
+  if (sub) for (const name of sub.keys()) out.add(name);
+  const esc = stem.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const dash = new RegExp(`^${esc}-[^-]+\\.(ttf|otf|ttc|woff2?)$`, "i");
+  const exact = new RegExp(`^${esc}\\.(ttf|otf|ttc|woff2?)$`, "i");
+  for (const name of available.keys()) {
+    if (dash.test(name) || exact.test(name)) out.add(name);
+  }
+  return [...out].sort();
 }
 
 /**
@@ -285,42 +341,62 @@ function familyFaces(resolvedFile, available) {
 }
 
 /**
- * Fetch ONE family's pinned upstream artifact (cached, sha256-verified)
- * and extract the face the dev catalog serves into the cache's faces
- * layout. Returns the face file name, or null on any failure (the
- * family stays an honest miss). `force` refetches a cached artifact
- * whose bytes no longer match the manifest pin.
+ * Fetch ONE manifest ENTRY's pinned upstream artifact (cached,
+ * sha256-verified) and unpack EVERY face it carries into the cache's
+ * per-entry faces layout (`faces/<artifact stem>/`). Returns the
+ * unpacked face names, or null when the network pass is disabled.
+ * `force` refetches an artifact whose cached bytes no longer match the
+ * manifest pin. An error THROWS to the caller — the entry stays an
+ * honest miss with its reason.
  */
-async function fetchFamilyUpstream(entry, force = false) {
-  const familyDir = resolve(UPSTREAM_CACHE, "artifacts", entry.family);
-  const faceDir = resolve(UPSTREAM_CACHE, "faces", entry.family);
-  const artifactPath = resolve(familyDir, entry.file);
+async function fetchEntryUpstream(entry, force = false) {
+  const file = basename(entry.file);
+  const isFontFile = FONT_EXT_RE.test(file);
+  const isZip = /\.zip$/i.test(file);
+  // 7z/tar artifacts unpack through the Python pipeline
+  // (`fontalloy assets fetch` writes the same `<stem>/` layout this
+  // resolver reads); the JS dev pass reports them honestly BEFORE
+  // touching the network or the cache layout.
+  if (!isFontFile && !isZip) {
+    throw new Error(`${file}: unsupported archive in the JS dev pass — fetch via fontalloy assets fetch`);
+  }
+  const key = entryKey(entry);
+  const artifactDir = resolve(UPSTREAM_CACHE, "artifacts", key);
+  const faceDir = resolve(UPSTREAM_CACHE, "faces", key);
+  const artifactPath = resolve(artifactDir, file);
   const markerPath = resolve(faceDir, ".source-sha256");
 
   // The marker carries an extraction VERSION: v2 extracts every face
   // (round 17) — a v1 cache (the one-Regular-face era) fails the check
-  // once and re-extracts the full family.
-  const cacheUsable = async () => {
-    if (!force && existsSync(markerPath)) {
-      const marker = (await readFile(markerPath, "utf8")).trim();
-      if (marker === `v2 ${entry.sha256}`) return true;
+  // once and re-extracts the full family. A warm entry (marker ok,
+  // faces present) never touches the network or the artifact again.
+  const markerOk = () => {
+    if (force || !existsSync(markerPath)) return false;
+    try {
+      return readFileSync(markerPath, "utf8").trim() === `v2 ${entry.sha256}`;
+    } catch {
+      return false;
     }
-    return false;
   };
+  if (markerOk() && existsSync(faceDir)) {
+    const warm = (await readdir(faceDir)).filter((n) => FONT_EXT_RE.test(n));
+    if (warm.length > 0) return warm.sort();
+  }
 
-  let artifact;
-  if ((await cacheUsable()) && existsSync(artifactPath)) {
-    artifact = await readFile(artifactPath);
-    if (sha256hex(artifact) !== entry.sha256) return fetchFamilyUpstream(entry, true);
-  } else {
+  let artifact = null;
+  if (existsSync(artifactPath)) {
+    const cached = await readFile(artifactPath);
+    if (sha256hex(cached) === entry.sha256) artifact = cached;
+  }
+  if (artifact === null) {
     // Offline/hermetic runs opt out of the network pass entirely.
     if (process.env.FONTALLOY_DEV_CATALOG_FETCH === "0") {
       console.info(
-        `[dev-catalog] upstream fetch disabled (FONTALLOY_DEV_CATALOG_FETCH=0): ${entry.family}`,
+        `[dev-catalog] upstream fetch disabled (FONTALLOY_DEV_CATALOG_FETCH=0): ${entry.family}::${entry.variant}`,
       );
       return null;
     }
-    console.info(`[dev-catalog] fetching upstream ${entry.file} (${entry.family})`);
+    console.info(`[dev-catalog] fetching upstream ${entry.file} (${entry.family}::${entry.variant})`);
     const res = await fetch(entry.upstream_url, {
       redirect: "follow",
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
@@ -331,81 +407,81 @@ async function fetchFamilyUpstream(entry, force = false) {
     if (actual !== entry.sha256) {
       throw new Error(`sha256 mismatch (want ${entry.sha256.slice(0, 12)}…, got ${actual.slice(0, 12)}…)`);
     }
-    await mkdir(familyDir, { recursive: true });
+    await mkdir(artifactDir, { recursive: true });
     await writeFile(artifactPath, artifact);
   }
 
-  // Unpack EVERY face (the dev catalog serves full families — a
-  // Regular-only cache starves the weight matrix); the primary is the
-  // face the alias/Regular preference names, for variant resolution.
-  const isZip = /\.zip$/i.test(entry.file);
-  const unzipped = isZip ? readZipEntries(artifact) : null;
-  const primary = isZip
-    ? pickFaceFromArtifact(entry.family, entry.file, unzipped)
-    : { file: basename(entry.file) };
+  // Unpack EVERY face the artifact carries (the dev catalog serves
+  // full families — a Regular-only cache starves the weight matrix).
   await mkdir(faceDir, { recursive: true });
-  if (unzipped !== null) {
+  if (isFontFile) {
+    // A bare font-file entry: the artifact IS the face.
+    await writeFile(resolve(faceDir, file), artifact);
+  } else {
+    const unzipped = readZipEntries(artifact);
+    let faces = 0;
     for (const name of unzipped.keys()) {
       if (FONT_EXT_RE.test(name)) {
         await writeFile(resolve(faceDir, name), unzipped.get(name));
+        faces++;
       }
     }
-  } else {
-    await writeFile(resolve(faceDir, basename(entry.file)), artifact);
+    if (faces === 0) throw new Error(`${entry.file} carries no font file`);
   }
   await writeFile(markerPath, `v2 ${entry.sha256}\n`);
-  return primary.file;
+  return (await readdir(faceDir)).filter((n) => FONT_EXT_RE.test(n)).sort();
 }
 
-/** Fill the cache's faces layout for every family the locals lack. */
-async function fillUpstreamCache(manifest, available, manifestFiles) {
+/**
+ * Fill the cache's per-entry faces layout for every manifest entry the
+ * local layouts lack (round 20: PER ENTRY — the round-9 pass fetched
+ * only each family's DEFAULT entry, so a family whose default cut was
+ * present never got its siblings). A single-entry family already
+ * served through the prototype-alias fallback counts as present: the
+ * alias IS that family's local serving.
+ */
+async function fillUpstreamCache(manifest, available, bySubdir, manifestFiles) {
   const byFamily = new Map();
   for (const entry of manifest.families) {
     if (!byFamily.has(entry.family)) byFamily.set(entry.family, []);
     byFamily.get(entry.family).push(entry);
   }
-  // The faces already cached (a warm cache serves without the network).
-  const faceMap = new Map();
-  const facesRoot = resolve(UPSTREAM_CACHE, "faces");
-  if (existsSync(facesRoot)) {
-    for (const family of await readdir(facesRoot)) {
-      const dir = resolve(facesRoot, family);
-      if (!statSync(dir).isDirectory()) continue;
-      for (const face of await readdir(dir)) {
-        if (FONT_EXT_RE.test(face) && !faceMap.has(family)) {
-          faceMap.set(family, face);
-        }
-      }
+  const wanted = [];
+  for (const [family, entries] of byFamily) {
+    const aliasPresent =
+      entries.length === 1 &&
+      resolveFamilyFile(family, available, manifestFiles.get(family) ?? []) !== null;
+    for (const entry of entries) {
+      if (aliasPresent) continue;
+      if (entryFaceNames(entry, available, bySubdir).length > 0) continue;
+      wanted.push(entry);
     }
   }
-  const missing = [];
-  for (const [family, entries] of byFamily) {
-    if (faceMap.has(family)) continue;
-    const file = resolveFamilyFile(family, available, manifestFiles.get(family) ?? []);
-    if (file === null) missing.push(defaultEntryFor(entries));
-  }
-  if (missing.length === 0) return { fetched: 0, errors: [], faceMap };
+  if (wanted.length === 0) return { fetched: 0, errors: [] };
   const errors = [];
+  let fetched = 0;
   let done = 0;
-  const queue = [...missing];
+  const queue = [...wanted];
   const worker = async () => {
     for (;;) {
       const entry = queue.shift();
       if (entry === undefined) return;
       try {
-        const face = await fetchFamilyUpstream(entry);
-        if (face !== null) faceMap.set(entry.family, face);
+        const faces = await fetchEntryUpstream(entry);
+        if (faces !== null) fetched++;
       } catch (err) {
-        errors.push(`${entry.family}: ${err instanceof Error ? err.message : String(err)}`);
+        errors.push(
+          `${entry.family}::${entry.variant}: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
       done++;
-      if (done % 5 === 0 || done === missing.length) {
-        console.info(`[dev-catalog] upstream pass ${done}/${missing.length}`);
+      if (done % 10 === 0 || done === wanted.length) {
+        console.info(`[dev-catalog] upstream pass ${done}/${wanted.length}`);
       }
     }
   };
   await Promise.all(Array.from({ length: FETCH_CONCURRENCY }, worker));
-  return { fetched: missing.length, errors, faceMap };
+  return { fetched, errors };
 }
 
 /* ---------- minimal ZIP writer (stored entries) ---------- */
@@ -493,9 +569,10 @@ const sha256hex = (data) => createHash("sha256").update(data).digest("hex");
 /* ---------- the catalog, built once on first request ---------- */
 
 /**
- * The served font file for a family: the explicit alias, the manifest's
- * own pinned file names (the upstream pass caches faces under exactly
- * these basenames — round 9), then the mechanical Nerd Fonts renaming.
+ * The served font file for a family on the FALLBACK path only (round
+ * 20: no entry of the family resolved its own faces): the explicit
+ * alias, the manifest's own pinned font-file names, then the
+ * mechanical Nerd Fonts renaming.
  */
 function resolveFamilyFile(family, available, manifestFiles = []) {
   const alias = FILE_ALIASES[family];
@@ -574,10 +651,14 @@ function buildCatalog() {
     // the flat entries plus one level of subdirectories (the fetch
     // layout extracts archive faces into `<archive stem>/`). A basename
     // seen in an earlier directory wins (the priority order above).
-    /** @type {Map<string, string>} basename -> absolute path */
+    // `bySubdir` indexes the one-level-down faces by their directory
+    // name, so per-ENTRY stem resolution can find an extraction dir
+    // even when its basenames collide with another layout's.
     const scanDirs = async () => {
-      /** @type {Map<string, string>} */
+      /** @type {Map<string, string>} basename -> absolute path */
       const available = new Map();
+      /** @type {Map<string, Map<string, string>>} subdir -> (face -> path) */
+      const bySubdir = new Map();
       const foundDirs = [];
       for (const candidate of fontDirCandidates()) {
         if (!existsSync(candidate)) continue;
@@ -585,26 +666,34 @@ function buildCatalog() {
         const names = (await readdir(candidate)).filter((name) => !name.startsWith("."));
         for (const name of names) {
           const abs = resolve(candidate, name);
-          if (!FONT_EXT_RE.test(name)) {
-            // A directory: scan one level down for extracted faces.
-            if (!existsSync(abs) || !statSync(abs).isDirectory()) continue;
+          // A directory is a directory whatever its name (a cache entry
+          // dir must never shadow a same-named font FILE in the scan).
+          let isDir = false;
+          try {
+            isDir = statSync(abs).isDirectory();
+          } catch {
+            continue;
+          }
+          if (isDir) {
+            const faces = bySubdir.get(name) ?? new Map();
+            bySubdir.set(name, faces);
             for (const inner of await readdir(abs)) {
               if (!FONT_EXT_RE.test(inner)) continue;
+              if (!faces.has(inner)) faces.set(inner, resolve(abs, inner));
               if (!available.has(inner)) available.set(inner, resolve(abs, inner));
             }
             continue;
           }
-          if (!available.has(name)) available.set(name, abs);
+          if (FONT_EXT_RE.test(name) && !available.has(name)) available.set(name, abs);
         }
       }
-      return { available, foundDirs };
+      return { available, bySubdir, foundDirs };
     };
 
-    let { available, foundDirs } = await scanDirs();
+    let { available, bySubdir, foundDirs } = await scanDirs();
 
     // The manifest's own pinned file names per family (the DEFAULT
-    // entry's first — the upstream pass caches its faces under exactly
-    // these basenames).
+    // entry's first — the alias-fallback path consults them).
     const byFamily = new Map();
     for (const entry of manifest.families) {
       if (!byFamily.has(entry.family)) byFamily.set(entry.family, []);
@@ -617,14 +706,17 @@ function buildCatalog() {
       ]),
     );
 
-    // Round 9 (owner item 1): families no local layout carries come from
-    // the manifest's pinned upstream artifacts — fetched ONCE into the
-    // gitignored cache, sha256-verified — then the scan runs again so
-    // the fetched faces ride the exact same serving path as locals.
-    const upstream = await fillUpstreamCache(manifest, available, manifestFiles);
-    if (upstream.fetched > 0) {
+    // Round 9 (owner item 1) / round 20 (per entry): entries no local
+    // layout carries come from the manifest's pinned upstream
+    // artifacts — fetched ONCE into the gitignored cache,
+    // sha256-verified, each unpacked into its OWN faces dir — then the
+    // scan runs again so the fetched faces ride the exact same serving
+    // path as locals.
+    const upstream = await fillUpstreamCache(manifest, available, bySubdir, manifestFiles);
+    if (upstream.fetched > 0 || upstream.errors.length > 0) {
       const rescan = await scanDirs();
       available = rescan.available;
+      bySubdir = rescan.bySubdir;
       foundDirs = rescan.foundDirs;
       if (upstream.errors.length > 0) {
         console.warn(
@@ -648,60 +740,45 @@ function buildCatalog() {
     const seen = new Set();
     for (const entry of manifest.families) {
       // One release family per manifest family id (the release schema is
-      // unique by family; the variant entries collapse onto the face the
-      // local layout actually carries — FILE_ALIASES pins it).
+      // unique by family).
       if (seen.has(entry.family)) continue;
       seen.add(entry.family);
+      const entries = byFamily.get(entry.family) ?? [entry];
 
-      // Multi-cut families (round 17, owner item 1: MapleMono pins NF
-      // and NF-CN as two artifacts): every variant entry's artifact stem
-      // resolves its OWN cut's faces — dash-form `Stem-<face>.ttf` files
-      // or an exact `Stem.ttf`. Without this, the single resolved file
-      // below collapses the cuts (and the prototype alias face shadowed
-      // them entirely: every chip served "Maple Mono CN").
-      const cutStems = [
-        ...new Set(
-          byFamily
-            .get(entry.family)
-            ?.map((e) => basename(e.file).replace(/\.(zip|tar\.gz)$/i, "")) ?? [],
-        ),
-      ];
-      const cutFaceNames = new Set();
-      for (const stem of cutStems) {
-        const esc = stem.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const dash = new RegExp(`^${esc}-[^-]+\\.(ttf|otf|ttc|woff2?)$`, "i");
-        const exact = new RegExp(`^${esc}\\.(ttf|otf|ttc|woff2?)$`, "i");
-        for (const name of available.keys()) {
-          if (dash.test(name) || exact.test(name)) cutFaceNames.add(name);
+      // Round 20 (owner item 2): PER VARIANT ENTRY. Each entry's
+      // artifact stem resolves its OWN cut's faces (its extraction
+      // dir, the upstream cache's per-entry dir, or round 17's flat
+      // dash/exact stem files); the family's release zip is the UNION
+      // of all entries' faces, so every chip serves its own cut. The
+      // primary face follows the DEFAULT entry (its Regular, else its
+      // plainest face) — chooseVariant reads it unchanged.
+      /** @type {Map<string, string>} face -> path */
+      const union = new Map();
+      let defaultFaces = [];
+      const defaultEntry = defaultEntryFor(entries);
+      for (const e of entries) {
+        const names = entryFaceNames(e, available, bySubdir);
+        if (e === defaultEntry) defaultFaces = names;
+        for (const name of names) {
+          if (!union.has(name)) union.set(name, available.get(name));
         }
       }
 
       let file;
       let faceNames;
-      if (cutFaceNames.size > 0) {
-        faceNames = [...cutFaceNames].sort();
-        // The primary face: the DEFAULT entry's cut's Regular (variant
-        // resolution and the GUI's representative pick follow it).
-        const defaultStem =
-          basename(defaultEntryFor(byFamily.get(entry.family) ?? [entry]).file).replace(
-            /\.(zip|tar\.gz)$/i,
-            "",
-          );
+      if (union.size > 0) {
+        faceNames = [...union.keys()].sort();
         file =
-          faceNames.find(
-            (n) =>
-              new RegExp(`^${defaultStem.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[^-]*regular`, "i").test(n),
-          ) ??
+          defaultFaces.find((n) => /regular/i.test(n)) ??
+          defaultFaces[0] ??
           faceNames.find((n) => /regular/i.test(n)) ??
           faceNames[0];
       } else {
-        file =
-          resolveFamilyFile(
-            entry.family,
-            available,
-            manifestFiles.get(entry.family) ?? [],
-          ) ?? upstream.faceMap.get(entry.family) ?? null;
-        if (file === null || !available.has(file)) {
+        // No entry of the family resolved locally: the prototype-alias
+        // fallback (one face pinned by FILE_ALIASES or the manifest's
+        // own file names), else an honest miss.
+        file = resolveFamilyFile(entry.family, available, manifestFiles.get(entry.family) ?? []);
+        if (file === null) {
           misses.push(entry.family);
           continue;
         }
@@ -758,7 +835,10 @@ function buildCatalog() {
         .map((p) => `"${p}"`)
         .join(" + ")}` +
         (upstream.fetched > 0
-          ? `; ${upstream.fetched} families from the pinned upstream cache`
+          ? `; ${upstream.fetched} upstream artifacts fetched into the cache`
+          : "") +
+        (upstream.errors.length > 0
+          ? `; ${upstream.errors.length} upstream fetch(es) failed (honest misses)`
           : "") +
         (misses.length > 0 ? `; no binary for: ${misses.join(", ")}` : ""),
     );

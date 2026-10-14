@@ -8,7 +8,7 @@ import { parseFontMeta } from "../fonts/sfnt";
 import type { LoadedFont } from "../state";
 import type { BlobStorage } from "../platform/storage";
 import { parseCatalogRelease, type CatalogRelease, type ReleaseFamily, type ReleaseOrigin } from "./release";
-import { variantFaceFiles } from "./faceSet";
+import { pickVariantRepresentative, variantFaceFiles } from "./faceSet";
 import { unzip } from "./zip";
 
 export interface CatalogManagerDeps {
@@ -42,22 +42,11 @@ function describe(err: unknown): string {
 }
 
 /**
- * Every face of a family+variant (round 12, owner item 8) lives in
- * ./faceSet (pure, spec-exercised) — the cn cut discriminator too.
+ * Every face of a family+variant (round 12, owner item 8) and the
+ * cut's representative pick (round 20: the plainest Regular of the
+ * cut's OWN faces) live in ./faceSet (pure, spec-exercised) — the IFF
+ * cut discriminators (nf/cn/hw/mono/variable/gb/tc/screen/plus) too.
  */
-
-/**
- * The stored face a variant selection registers as its REPRESENTATIVE:
- * the Regular-named face of the variant's set (the first otherwise) —
- * the pick key, the preview face, the identity every surface reads.
- */
-function pickFaceForVariant(
-  files: ReadonlyArray<{ file: string }>,
-  variant: string | null,
-): { file: string } {
-  const set = variantFaceFiles(files, variant);
-  return set.find((f) => /regular/i.test(f.file)) ?? set[0]!;
-}
 
 /**
  * The first-run catalog downloader (issue #17, ADR-0005).
@@ -311,7 +300,8 @@ export class CatalogManager {
     if (existing) return existing;
 
     const dir = familyDir(family.family);
-    const primary = pickFaceForVariant(family.files, variant);
+    const primary = pickVariantRepresentative(family.files, variant, family.family);
+    if (primary === undefined) return null;
     const buffer = await this.deps.storage.read(`${dir}/${primary.file}`);
     if (!buffer) return null;
     // The representative's OWN parsed family: the cut the face set
@@ -395,7 +385,7 @@ export class CatalogManager {
               f.fileName === file,
           );
       const faces: LoadedFont[] = [];
-      for (const face of variantFaceFiles(family.files, variant)) {
+      for (const face of variantFaceFiles(family.files, variant, family.family)) {
         if (face.file === repFile || recorded(face.file)) continue;
         const buffer = await this.deps.storage.read(`${dir}/${face.file}`);
         if (buffer === null) continue;
