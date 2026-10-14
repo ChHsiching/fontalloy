@@ -12,17 +12,21 @@ fonts, pinned head timestamps); kept standalone so the Playwright
 bootstrap only needs a plain `python` with fontTools, never pytest.
 
 Usage: python e2e-fonts.py <output-dir> [--donor-glyphs N]
-Writes base.ttf and donor.ttf into <output-dir>.
+Writes base.ttf and donor.ttf into <output-dir>. --family writes a
+three-face family; --ttc writes a three-face collection.
 """
 
 from __future__ import annotations
 
 import argparse
+import io
 import sys
 from pathlib import Path
+from typing import BinaryIO
 
 from fontTools.fontBuilder import FontBuilder
 from fontTools.pens.ttGlyphPen import TTGlyphPen
+from fontTools.ttLib import TTCollection, TTFont
 
 #: Fixed head timestamps (2026-01-01 UTC): deterministic, no wall clock.
 FIXED_TIMESTAMP = 1767225600
@@ -48,7 +52,7 @@ def _box_glyph(x_min: int, y_min: int, x_max: int, y_max: int):
 
 
 def synth_font(
-    path: Path,
+    path: Path | BinaryIO,
     *,
     family: str,
     codepoints: tuple[int, ...],
@@ -143,6 +147,46 @@ def synth_family(outdir: Path, *, family: str, stem: str) -> list[Path]:
     return paths
 
 
+#: The round-19 collection fixture: three faces with DISTINCT family
+#: names (the local-load path registers every face as its own font), the
+#: first two Latin cuts (identical glyph programs, so ``shareTables=True``
+#: dedups their glyf/cmap/loca into the shared region exactly like the
+#: pipeline's own ttc output) and one CJK face.
+TTC_FACES = (
+    ("Alloy TTC One", "Regular", 400, BASE_CODEPOINTS),
+    ("Alloy TTC Two", "Bold", 700, BASE_CODEPOINTS),
+    ("Alloy TTC CJK", "Regular", 400, tuple(range(DONOR_FIRST, DONOR_FIRST + 120))),
+)
+
+
+def synth_ttc(outdir: Path, *, stem: str = "AlloyTTC") -> Path:
+    """Write a real three-face .ttc (shared-table dedup, like the build).
+
+    The member faces are built in memory: the only file the directory
+    gains is the collection itself, so a test directory holds exactly
+    what the fixture promises.
+    """
+    faces = []
+    for family, style, weight, codepoints in TTC_FACES:
+        member = io.BytesIO()
+        synth_font(
+            member,
+            family=family,
+            codepoints=codepoints,
+            style=style,
+            weight=weight,
+        )
+        member.seek(0)
+        faces.append(TTFont(member))
+    collection = TTCollection()
+    collection.fonts = faces
+    path = outdir / f"{stem}.ttc"
+    collection.save(path, shareTables=True)
+    for face in faces:
+        face.close()
+    return path
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("outdir", type=Path)
@@ -184,9 +228,25 @@ def main() -> int:
         default="AlloyFamily",
         help="the family fixture's file stem (--family only)",
     )
+    parser.add_argument(
+        "--ttc",
+        action="store_true",
+        help="write a real three-face .ttc collection (distinct family "
+        "names, shared-table dedup) instead of the base/donor pair — "
+        "the round-19 local-load fixture",
+    )
+    parser.add_argument(
+        "--ttc-stem",
+        default="AlloyTTC",
+        help="the collection fixture's file stem (--ttc only)",
+    )
     args = parser.parse_args()
 
     args.outdir.mkdir(parents=True, exist_ok=True)
+    if args.ttc:
+        path = synth_ttc(args.outdir, stem=args.ttc_stem)
+        print(f"wrote {path}")
+        return 0
     if args.family:
         paths = synth_family(
             args.outdir,

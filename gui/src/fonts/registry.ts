@@ -1,4 +1,5 @@
 import { parseFontMeta } from "./sfnt";
+import { expandLocalFontEntries } from "./ttc";
 import { store, type FontCatalogIdentity, type LoadedFont } from "../state";
 
 /**
@@ -98,11 +99,36 @@ export async function registerFontBytes(
 
 /**
  * The local font loading path: read the file bytes and register them.
+ * A collection loads EVERY face (each as its own font); the first
+ * successful face is this helper's result, and a file whose every
+ * face failed rethrows the first failure.
  */
 export async function loadLocalFontFile(file: File): Promise<LoadResult> {
   const buffer = await file.arrayBuffer();
-  return registerFontBytes(buffer, {
-    fileName: file.name,
-    origin: "local",
-  });
+  let first: LoadResult | null = null;
+  let firstError: unknown = null;
+  for (const entry of expandLocalFontEntries([
+    { buffer, fileName: file.name },
+  ])) {
+    if (entry.buffer === undefined) {
+      firstError ??= new Error(
+        `无法加载 ${entry.fileName}：${entry.error ?? "不是有效的字体文件"}`,
+      );
+      continue;
+    }
+    try {
+      const result = await registerFontBytes(entry.buffer, {
+        fileName: entry.fileName,
+        origin: "local",
+      });
+      first ??= result;
+    } catch (err) {
+      firstError ??= err;
+    }
+  }
+  if (first !== null) return first;
+  throw firstError ?? new Error(`无法加载 ${file.name}：不是有效的字体文件`);
 }
+
+/** The local load path's file/face entry types (see ./ttc). */
+export type { LocalFontFile, LocalFontEntry } from "./ttc";
