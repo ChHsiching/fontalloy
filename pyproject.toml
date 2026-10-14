@@ -27,6 +27,6 @@ members = ["core", "cli"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
-    "anchor: downloads and merges the pinned JetBrains Mono x Noto Sans SC pair (network on first run; opt out with FONTALLOY_SKIP_ANCHOR=1)",
+    "anchor: downloads and merges pinned real-font pairs (JetBrains Mono x Noto Sans SC, JetBrains Mono x LXGW WenKai Mono; network on first run; opt out with FONTALLOY_SKIP_ANCHOR=1)",
     "recipes_online: fetches the official recipes' families and builds the flagship against the real pinned pair (network on first run; opt out with FONTALLOY_SKIP_ANCHOR=1)",
 ]

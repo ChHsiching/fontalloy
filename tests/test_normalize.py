@@ -1,6 +1,8 @@
 """Seam 1 tests: normalization onto the base font's metrics (issue #8,
-ADR-0003 — the grid school by default, the optical ratio as the knob,
-transform only and never reshape).
+ADR-0003 — the auto school by default: the grid term capped by the
+optical ratio so the Han ink never leaves the Noto-school zone, the
+bare grid and optical schools as explicit knobs; transform only and
+never reshape).
 
 The oracle is the built font read back with fontTools: grafted ink is the
 donor's ink scaled about the shared baseline (zero vertical displacement),
@@ -10,11 +12,13 @@ typo) passes through untouched while usWinAscent/Descent grow only to
 prevent clipping. Every expectation below is written in base-font units.
 
 Expected scales for the synthetic fixtures (advance 600, typo span 800 +
-200 = 1000, upem 1000 unless stated):
+200 = 1000, upem 1000 unless stated; cap height falls to the 0.7em
+fallback, 700 — the fixtures cover no 'H'):
 
 - a donor whose Han sample heights are [400, 500] has H_ink = p90 = 490,
-  so k = min(2*600/1000, 0.95*1000/490) = min(1.2, 1.9388) = 1.2 — the
-  grid school binds and the guard does not;
+  so the grid term is 1.2, the optical term 1.23*700/490 = 1.7571, and
+  auto takes min(1.2, 1.7571) = 1.2 — the grid school binds; the guard
+  (1.9388) and the optical cap do not;
 - a 2048-upem donor multiplies in s0 = 1000/2048 first: s = 0.5859375.
 """
 
@@ -72,7 +76,7 @@ class TestNormalizationSwitches:
 
         parsed = load_recipe(recipe).normalization
 
-        assert parsed.mode == "grid"
+        assert parsed.mode == "auto"
         assert parsed.optical_ratio == pytest.approx(1.23)
         assert parsed.quote_dash_width == "halfwidth"
         assert parsed.width_factor == pytest.approx(2.0)
@@ -222,7 +226,9 @@ class TestUpemUnification:
 
 class TestNonHanDonor:
     """A donor with no Han sample has no H_ink, so no k applies: its
-    glyphs carry the upem scale s0 alone (still transform-only)."""
+    glyphs carry the upem scale s0 alone (still transform-only). Under
+    the auto default this is exactly the grid school's no-Han behavior
+    (no optical term exists to compare, so no error either)."""
 
     def test_a_symbols_donor_lands_at_the_upem_scale_only(
         self, tmp_path: Path, synth_font_factory
@@ -245,6 +251,92 @@ class TestNonHanDonor:
         # s0 = 1000/2048 = 0.48828125 — NOT multiplied by 1.2.
         assert _bounds(out, cmap[0x2603]) == (20, 0, 273, 195)
         assert _advance(out, 0x2603) == 600  # one cell
+
+
+# --- the auto school: the grid term capped by the optical ratio --------------
+
+
+class TestAutoSchool:
+    """The default (round 20, owner item 7): k = min(grid term, optical
+    term) — the terminal grid when its scale already keeps the Han ink
+    inside the Noto-school optical zone (Han ink ~= ratio x cap height),
+    the optical ratio when the grid term would overshoot it. The scale
+    defect this closes: a real em-filling donor (H_ink ~= 0.92em) under
+    the bare grid term (2A/U = 1.2) put the merged font's Han ink at
+    ~1.5x the Latin cap height — visibly taller than the Latin."""
+
+    def test_auto_keeps_the_grid_term_when_it_stays_inside_the_zone(
+        self, tmp_path: Path, synth_font_factory
+    ):
+        # The default fixtures: H_ink = 490, cap = 700 (the 0.7em
+        # fallback), so the optical term 1.23*700/490 = 1.7571 sits
+        # ABOVE the grid term 1.2 — auto takes the grid scale.
+        base = synth_font_factory(
+            tmp_path / "base.ttf", family="SynthBase", codepoints=BASE_CODEPOINTS
+        )
+        donor = synth_font_factory(
+            tmp_path / "donor.ttf", family="SynthDonor", codepoints=(0x4E2D,)
+        )
+        recipe = _write_recipe(tmp_path, base, donor)
+
+        result = build(recipe, tmp_path / "out.ttf")
+
+        out = TTFont(result.font_path)
+        # Donor ink (40, 0, 560, 400) * 1.2 — the grid school's scale.
+        assert _bounds(out, out.getBestCmap()[0x4E2D]) == (48, 0, 672, 480)
+        assert _advance(out, 0x4E2D) == 1200  # the grid advance stands
+
+    def test_auto_caps_the_grid_term_at_the_optical_ratio_when_it_overshoots(
+        self, tmp_path: Path, synth_font_factory
+    ):
+        # Five Han codepoints make H_ink = p90([400..800]) = 760 — an
+        # em-filling donor. The optical term 1.23*700/760 = 1.1329 now
+        # sits BELOW the grid term 1.2, so auto takes it: the Han ink
+        # lands at exactly ratio x cap height, not the grid's 1.2x.
+        base = synth_font_factory(
+            tmp_path / "base.ttf", family="SynthBase", codepoints=BASE_CODEPOINTS
+        )
+        donor = synth_font_factory(
+            tmp_path / "donor.ttf",
+            family="SynthDonor",
+            codepoints=(0x4E2D, 0x56FD, 0x4EBA, 0x65E5, 0x672C),
+        )
+        recipe = _write_recipe(tmp_path, base, donor)
+
+        result = build(recipe, tmp_path / "out.ttf")
+
+        out = TTFont(result.font_path)
+        donor_font = TTFont(donor)
+        # The tallest fixture glyph (index 4: ink (40, 0, 560, 800)) at
+        # k = 1.23*700/760: ymax = round(800 * 1.132895) = 906.
+        assert _bounds(out, out.getBestCmap()[0x672C]) == (45, 0, 634, 906)
+        assert _bounds(donor_font, donor_font.getBestCmap()[0x672C]) == (40, 0, 560, 800)
+        # The advance discipline is the grid's, unchanged: two cells.
+        assert _advance(out, 0x672C) == 1200
+
+    def test_the_bare_grid_school_still_fills_the_em_the_advance_bought(
+        self, tmp_path: Path, synth_font_factory
+    ):
+        # The explicit grid knob keeps the old default: the same
+        # em-filling donor scales by the pure grid term 1.2 (ink 960 =
+        # 1.37x the cap height — the Maple Mono CN / Sarasa terminal
+        # convention, an explicit choice, never the default).
+        base = synth_font_factory(
+            tmp_path / "base.ttf", family="SynthBase", codepoints=BASE_CODEPOINTS
+        )
+        donor = synth_font_factory(
+            tmp_path / "donor.ttf",
+            family="SynthDonor",
+            codepoints=(0x4E2D, 0x56FD, 0x4EBA, 0x65E5, 0x672C),
+        )
+        recipe = _write_recipe(
+            tmp_path, base, donor, extra="normalization:\n  mode: grid\n"
+        )
+
+        result = build(recipe, tmp_path / "out.ttf")
+
+        out = TTFont(result.font_path)
+        assert _bounds(out, out.getBestCmap()[0x672C]) == (48, 0, 672, 960)
 
 
 # --- the grid school and UAX #11 advances -----------------------------------
@@ -628,8 +720,12 @@ class TestQuoteDashWidthPolicy:
 
 
 class TestScaleFormula:
-    """k = min(k_target, 0.95*(typoAsc + |typoDesc|)/H_ink) with the grid
-    term 2A/U as the default target and the optical ratio as the knob."""
+    """k = min(k_target, 0.95*(typoAsc + |typoDesc|)/H_ink) with the
+    auto school (the grid term capped by the optical term) as the
+    default target. The guard-mechanics tests below pin the bare grid
+    school: with an em-filling donor the auto school's optical cap
+    binds below the guard, so the guard's own arithmetic stays legible
+    only under the school where it is the sole cap."""
 
     def test_the_grid_school_binds_by_default(self, tmp_path: Path,
                                               synth_font_factory):
@@ -653,7 +749,9 @@ class TestScaleFormula:
     def test_the_overflow_guard_caps_k(self, tmp_path: Path, synth_font_factory):
         # Han heights [400..900] (6 codepoints) -> H_ink = p90 = 850;
         # guard = 0.95*1000/850 = 1.1176 < 1.2, so the guard binds and
-        # ink lands at 0.95 of the base's typo span.
+        # ink lands at 0.95 of the base's typo span. (Pinned to the
+        # bare grid school: under auto the optical term 1.23*700/850 =
+        # 1.0129 would cap first, hiding the guard.)
         base = synth_font_factory(
             tmp_path / "base.ttf", family="SynthBase", codepoints=BASE_CODEPOINTS
         )
@@ -662,7 +760,9 @@ class TestScaleFormula:
             family="SynthDonor",
             codepoints=tuple(range(0x4E00, 0x4E06)),
         )
-        recipe = _write_recipe(tmp_path, base, donor)
+        recipe = _write_recipe(
+            tmp_path, base, donor, extra="normalization:\n  mode: grid\n"
+        )
 
         result = build(recipe, tmp_path / "out.ttf")
 
@@ -679,6 +779,7 @@ class TestScaleFormula:
         # Han heights [400..2300] (20 codepoints): H_ink = p90 = 2110, not
         # the 2300 maximum. k = 950/2110 = 0.4502, so the shortest glyph's
         # ink is round(400 * 0.4502) = 180 (it would be 165 at the extreme).
+        # (Bare grid school pinned for the same reason as the guard test.)
         base = synth_font_factory(
             tmp_path / "base.ttf", family="SynthBase", codepoints=BASE_CODEPOINTS
         )
@@ -687,7 +788,9 @@ class TestScaleFormula:
             family="SynthDonor",
             codepoints=tuple(range(0x4E00, 0x4E14)),
         )
-        recipe = _write_recipe(tmp_path, base, donor)
+        recipe = _write_recipe(
+            tmp_path, base, donor, extra="normalization:\n  mode: grid\n"
+        )
 
         result = build(recipe, tmp_path / "out.ttf")
 
@@ -792,6 +895,8 @@ class TestLineHeightInheritance:
     ):
         # Han heights [400..900], guard k = 1.1176: the tallest ink is
         # round(900 * 950/850) = 1006 > the base's 900 win ascent.
+        # (Bare grid school pinned: the usWin growth mechanics are the
+        # point, and auto's optical cap would shrink the ink instead.)
         base = synth_font_factory(
             tmp_path / "base.ttf", family="SynthBase", codepoints=BASE_CODEPOINTS
         )
@@ -800,7 +905,9 @@ class TestLineHeightInheritance:
             family="SynthDonor",
             codepoints=tuple(range(0x4E00, 0x4E06)),
         )
-        recipe = _write_recipe(tmp_path, base, donor)
+        recipe = _write_recipe(
+            tmp_path, base, donor, extra="normalization:\n  mode: grid\n"
+        )
 
         result = build(recipe, tmp_path / "out.ttf")
 
@@ -813,6 +920,7 @@ class TestLineHeightInheritance:
     ):
         # Guard-capped donor (H_ink = 850, k = 1.1176) with ink dipping
         # to -400: round(400 * 950/850) = 447 > the base's 300.
+        # (Bare grid school pinned, same reason as the ascent test.)
         base = synth_font_factory(
             tmp_path / "base.ttf", family="SynthBase", codepoints=BASE_CODEPOINTS
         )
@@ -822,7 +930,9 @@ class TestLineHeightInheritance:
             codepoints=tuple(range(0x4E00, 0x4E06)),
             ink_dy=-400,
         )
-        recipe = _write_recipe(tmp_path, base, donor)
+        recipe = _write_recipe(
+            tmp_path, base, donor, extra="normalization:\n  mode: grid\n"
+        )
 
         result = build(recipe, tmp_path / "out.ttf")
 

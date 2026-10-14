@@ -14,7 +14,8 @@ usWeightClass per slot with recipe overrides beating nearest-match
 (issue #9) — resolve the precedence rules — layered rules at every
 granularity, absence never overrides — into the effective table, plan
 the normalization per slot (ADR-0003, issue #8: upem unified by
-s0 = U/u, the grid school scale k with the optical ratio as the knob,
+s0 = U/u, the auto school's scale k by default — the grid term capped
+by the optical ratio — with the bare schools as the recipe's knobs,
 UAX #11 advances), graft the donor glyphs into each slot's base
 container per the effective table with a rebuilt cmap (the base is the
 container, ADR-0001), each donor glyph normalized onto that base
@@ -352,8 +353,9 @@ def build_recipe(
         # Stage: graft the donor glyphs into each slot's base container
         # and rebuild the cmap (ADR-0001), each glyph normalized onto
         # that slot's base face metrics (ADR-0003, issue #8: upem
-        # unified by s0 = U/u, the grid school scale k with the optical
-        # ratio as the recipe's knob, UAX #11 advances, usWin grown
+        # unified by s0 = U/u, the auto school's scale k by default —
+        # the grid term capped by the optical ratio — with the bare
+        # schools as the recipe's knobs, UAX #11 advances, usWin grown
         # only to prevent clipping). A donor face may serve several
         # slots; grafting takes private glyph copies, so each slot's
         # graft and normalization plan are independent.

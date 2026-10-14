@@ -1,8 +1,11 @@
-"""The measured anchor integration test (issue #8, ADR-0003):
+"""The measured anchor integration test (issue #8, ADR-0003, round-20
+correction):
 
 JetBrains Mono x Noto Sans SC — both 1000 upem — under the default
-(grid-school) normalization: A = 600, k = 1.2, and the Han ink span
-lands entirely inside the base font's existing metrics, with zero
+(auto-school) normalization: A = 600, k = 0.9988 (the optical term
+1.23*730/899 — the grid term 1.2 would put the Han ink at 1.49x the
+cap height, outside the Noto-school zone), and the Han ink span lands
+entirely inside the base font's existing metrics, with zero
 vertical-metric table changes.
 
 Font sourcing: the catalog's pinned pair, fetched through the assets
@@ -27,12 +30,13 @@ measured anchor.
 
 Face notes. The pinned JetBrainsMono artifact is the Nerd Font release
 (v3.5.1); its Regular face carries upstream JetBrains Mono's metrics
-(upem 1000, typo 1020/-300, win 1020/300, Latin advance 600). The
-pinned NotoSansSC artifact is the google/fonts variable font whose fvar
-default is wght=100; the anchor measurement corresponds to that default
-instance (the recipe leaves ``instance`` unset, which is the pipeline's
-documented "default instance" behavior), and the anchor's [-82, +997]
-is exactly the representative common glyph 中 under k = 1.2.
+(upem 1000, typo 1020/-300, win 1020/300, Latin advance 600, declared
+sCapHeight 730). The pinned NotoSansSC artifact is the google/fonts
+variable font whose fvar default is wght=100; the anchor measurement
+corresponds to that default instance (the recipe leaves ``instance``
+unset, which is the pipeline's documented "default instance" behavior),
+and the anchor's [-68, +830] is exactly the representative common
+glyph 中 under the auto k = 0.9988.
 """
 
 from __future__ import annotations
@@ -126,9 +130,20 @@ def _scaled(box: tuple[int, int, int, int], factor: float):
     return tuple(otRound(value * factor) for value in box)
 
 
+#: The auto school's k over the anchor sample: the smaller of the grid
+#: term 2A/U = 1.2 and the optical term ratio*capHeight/H_ink =
+#: 1.23*730/899 = 0.9988 (the subsetted sample's H_ink = p90 = 899).
+#: The optical term binds: the grid term would scale the 899-unit ink
+#: to 1079 = 1.48x the 730-unit cap height, outside the Noto-school
+#: ~1.05-1.3x zone; auto lands the ink at 898 = 1.23x, the native
+#: Noto pairing's own number (Noto Sans SC measures 906/733 = 1.236).
+_K_AUTO = 1.23 * 730 / 899
+
+
 class TestMeasuredAnchor:
-    """JetBrains Mono x Noto/Source Han: A = 600, k = 1.2, Han ink
-    [-82, +997] inside the base's existing metrics, zero table changes."""
+    """JetBrains Mono x Noto/Source Han: A = 600, k = 0.9988 (the auto
+    school's optical term), Han ink [-68, +830] = 1.23x the cap height,
+    inside the base's existing metrics, zero table changes."""
 
     def test_the_anchor_pair_reproduces_the_measured_values(
         self, tmp_path: Path, anchor_pair: tuple[Path, Path]
@@ -162,18 +177,23 @@ class TestMeasuredAnchor:
         for cp in _SAMPLE:
             assert out["hmtx"][cmap[cp]][0] == 2 * latin == 1200
 
-        # k = 1.2: the grid term 2A/U binds (the overflow guard sits at
-        # 0.95*1320/H_ink = ~1.39 and does not bind) — proven by the
-        # ink, which scales by exactly 1.2 about the shared baseline.
+        # k = 0.9988: the auto school's optical term binds (the grid
+        # term 2A/U = 1.2 sits ABOVE it, the overflow guard at
+        # 0.95*1320/899 = 1.39 above both) — proven by the ink, which
+        # scales by exactly _K_AUTO about the shared baseline.
         loaded = load_face(FontRef(path=donor_path), role="donor")
         donor, donor_cmap = loaded.font, loaded.font.getBestCmap()
         for cp in _SAMPLE:
             assert _bounds(out, cmap[cp]) == _scaled(
-                _bounds(donor, donor_cmap[cp]), 1.2
+                _bounds(donor, donor_cmap[cp]), _K_AUTO
             )
 
-        # The anchor's measured Han ink span: 中 lands at [-82, +997].
-        assert _bounds(out, cmap[0x4E2D]) == (126, -82, 1068, 997)
+        # The anchor's measured Han ink span: 中 lands at [-68, +830] —
+        # an ink height of 898 = 1.23x the base's 730-unit cap height,
+        # the Noto native pairing's own ratio (Noto Sans SC itself
+        # measures 906/733 = 1.236).
+        assert _bounds(out, cmap[0x4E2D]) == (105, -68, 889, 830)
+        assert (830 - (-68)) / 730 == pytest.approx(1.23, abs=0.01)
 
         # ...entirely inside the base font's existing metrics (typo
         # 1020/-300, win 1020/300) — and the anchor build therefore
@@ -269,7 +289,7 @@ class TestMeasuredAnchor:
         assert face["ascents"]["typo"]["base"] == os2.sTypoAscender
         assert face["descents"]["typo"]["base"] == os2.sTypoDescender
         assert face["line_gap"]["typo"]["base"] == os2.sTypoLineGap
-        # The anchor's zero-table-changes: the Han ink [-82, +997] sits
+        # The anchor's zero-table-changes: the Han ink [-68, +830] sits
         # inside the base's win metrics, so usWin did not grow.
         assert face["ascents"]["us_win"] == {
             "base": os2.usWinAscent,
@@ -284,13 +304,14 @@ class TestMeasuredAnchor:
         assert face["line_height_untouched"] == {"hhea": True, "typo": True}
 
         # k and s0 actually applied per donor: both fonts run at 1000
-        # upem (s0 = 1), the grid term binds (k = 2A/U = 1.2).
+        # upem (s0 = 1), the auto school's optical term binds
+        # (k = 1.23*730/899 = 0.9988, under the grid term 1.2).
         [record] = face["normalization"]
         assert record["donor"] == "donor-0"
         assert record["upem"] == 1000
         assert record["s0"] == pytest.approx(1.0)
-        assert record["k"] == pytest.approx(1.2)
-        assert record["scale"] == pytest.approx(1.2)
+        assert record["k"] == pytest.approx(_K_AUTO)
+        assert record["scale"] == pytest.approx(_K_AUTO)
 
         # The human form ships with the build and states the same facts.
         assert result.report_html_path is not None

@@ -43,7 +43,7 @@ Language preset data: bundle fontconfig's fc-lang `.orth` files (permissive lice
 3. **Subset donors**: extract the needed glyphs from each donor per the effective table (fontTools subset).
 4. **Normalize** (transform only, never reshape — ADR-0003):
    - Unify upem: scale the donor by s₀ = U/u.
-   - Scale by k = min(2A/U, 0.95·(typoAsc + |typoDesc|)/H_ink) — the grid school by default (CJK advance = 2× the Latin advance), the optical ratio (Han ink ≈ 1.23× cap height) as the knob.
+   - Scale by k = min(school term, 0.95·(typoAsc + |typoDesc|)/H_ink) — the **auto** school by default (round 20): the grid term 2A/U capped by the optical term 1.23·cap/H_ink, so the Han ink stays inside the Noto-school zone (≈1.05–1.3× the Latin cap height; Noto Sans SC's own pairing measures 906/733 = 1.236). The bare grid school (CJK ink fills the em the 2-cell advance bought — the Maple Mono CN / Sarasa convention) and the bare optical school (Han ink pinned at the ratio) are explicit recipe knobs; the interface's 自动 is auto, 底边一样高 is grid, 缩小一点更匀称 is optical.
    - Measure the Han ink height over the U+4E00–9FFF common characters (a percentile, never the header extremes).
    - Zero vertical displacement: one shared baseline; the CJK em box sits at [−0.12em, +0.88em] by convention; no top alignment.
    - Line height fully inherits the base font (hhea/typo untouched); only usWinAscent/Descent grow, to prevent clipping.
@@ -53,7 +53,7 @@ Language preset data: bundle fontconfig's fc-lang `.orth` files (permissive lice
 6. **Rewrite tables**: the full name record set (including nameID 16/17 — a trap the old storefront hit) and OS/2 (xAvgCharWidth, weight class, the PANOSE mono bit).
 7. **Output and verify**: TTF required; TTC packaging with shared-table dedup expected (the old repo's 284 MB lesson); woff2 optional. Every build ships a verification report: codepoint coverage, weight borrow table, metric comparison.
 
-Measured anchor — JetBrains Mono × Noto/Source Han (both 1000 upem): A = 600, k = 1.2, Han ink spans [−82, +997], entirely inside the base font's existing metrics; zero table changes.
+Measured anchor — JetBrains Mono × Noto/Source Han (both 1000 upem): A = 600, k = 0.9988 (the auto school's optical term; the grid term 1.2 would put the ink at 1.48× the cap height), Han ink spans [−68, +830] = 1.23× the cap height, entirely inside the base font's existing metrics; zero table changes. The same measurement on JetBrains Mono × LXGW WenKai Mono (round 20's verdict pair): grid 1.515× (the reported "CJK visibly taller" defect) → auto 1.230×.
 
 ## Weight and style mapping
 

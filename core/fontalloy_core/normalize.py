@@ -1,16 +1,29 @@
 """Pipeline stage 4: normalize donor glyphs onto the base's metrics.
 
-ADR-0003 — transform only, never reshape, grid school by default:
+ADR-0003 — transform only, never reshape; the round-20 correction
+(issue #8 follow-up): the ``auto`` school (the default) keeps the
+grid's advance discipline but never lets the Han ink leave the
+Noto-school optical zone:
 
 - **upem unified**: every donor scales by s0 = U/u (the base's upem over
   the donor's) so all grafted geometry lives in the base's units;
 - **the scale** k = min(k_target, 0.95*(typoAsc + |typoDesc|)/H_ink) where
-  the target is the grid term width_factor*A/U by default (CJK advance =
-  width_factor × the Latin advance — the terminal-grid school, 2× by
-  default; the recipe's ``width_factor`` knob expresses the prototype's
-  两倍 / 1.8 倍 / 1.5 倍 English-width settings) or the optical term
-  ratio * capHeight / H_ink (Han ink ~= 1.23x cap height, the Noto
-  native pairing) when the recipe turns that knob;
+  the target is the grid term width_factor*A/U under the grid school
+  (CJK advance = width_factor × the Latin advance — the terminal-grid
+  school, 2× by default; the recipe's ``width_factor`` knob expresses
+  the prototype's 两倍 / 1.8 倍 / 1.5 倍 English-width settings), the
+  optical term ratio * capHeight / H_ink (Han ink ~= 1.23x cap height,
+  the Noto native pairing) when the recipe turns that knob, or — under
+  ``auto`` (the default, the interface's 自动) — the SMALLER of the two:
+  the terminal grid when its scale already keeps the Han ink inside
+  the optical zone, the optical ratio when the grid term would
+  overshoot it. The measured defect this closes: JetBrainsMono × LXGW
+  WenKai Mono under the bare grid term put the output's Han ink at
+  1.515 × the Latin cap height (k = 1.2 over a 0.921em H_ink) —
+  visibly taller than the Latin, outside the ~1.05–1.3 zone the
+  Noto/Source Han pairing establishes (Noto Sans SC's own numbers: Han
+  ink p90 906 over its Latin cap 733 = 1.236); ``auto`` lands that
+  pair at 1.23 exactly;
 - **H_ink** is the 90th-percentile ink height over the donor's coverage
   of the U+4E00-9FFF common Han block — a percentile, never the header
   extremes; a donor with no Han there has no H_ink, hence no k (its
@@ -60,10 +73,17 @@ from fontalloy_core.precedence import (
     default_font_order,
 )
 
-#: Normalization schools.
+#: Normalization schools. ``auto`` (the default) takes the smaller of
+#: the grid and the optical terms — the grid school's advance
+#: discipline with the Han ink never leaving the Noto-school optical
+#: zone; ``grid`` asks for the bare terminal-grid scale (CJK ink fills
+#: the em the advance bought, the Maple Mono CN / Sarasa convention);
+#: ``optical`` anchors the Han ink at ``optical_ratio`` × the base's
+#: cap height whatever the advance says.
+AUTO = "auto"
 GRID = "grid"
 OPTICAL = "optical"
-MODES = (GRID, OPTICAL)
+MODES = (AUTO, GRID, OPTICAL)
 
 #: Fullwidth quote/dash width policies.
 HALFWIDTH = "halfwidth"
@@ -108,18 +128,21 @@ _WIDE_CLASSES = frozenset(("F", "W"))
 class NormalizationOptions:
     """The recipe's normalization switches (issue #8).
 
-    ``mode`` picks the school: ``grid`` (default — the terminal grid at
-    ``width_factor`` Latin cells per wide glyph) or ``optical`` (Han ink
-    at ``optical_ratio`` times the base's cap height). ``width_factor``
+    ``mode`` picks the school: ``auto`` (the default — the grid term
+    capped by the optical ratio, so the Han ink stays inside the
+    Noto-school zone while the advances keep the grid discipline),
+    ``grid`` (the bare terminal grid at ``width_factor`` Latin cells per
+    wide glyph, ink filling the em), or ``optical`` (Han ink pinned at
+    ``optical_ratio`` times the base's cap height). ``width_factor``
     is the grid school's CJK advance factor (2 by default — the UAX #11
     two-cell convention; 1.8/1.5 for the compacter settings, capped by
     the same ink guard). ``quote_dash_width`` decides whether the
-    ambiguous quotes, dashes, and ellipsis a donor supplies land on the
-    wide advance (``fullwidth``, the CJK locale convention) or one cell
+    ambiguous quotes, dashes, and ellipsis a donor supplies land on
+    the wide advance (``fullwidth``, the CJK locale convention) or one cell
     (``halfwidth``, the UAX #11 default).
     """
 
-    mode: str = GRID
+    mode: str = AUTO
     optical_ratio: float = DEFAULT_OPTICAL_RATIO
     quote_dash_width: str = HALFWIDTH
     width_factor: float = DEFAULT_WIDTH_FACTOR
@@ -290,6 +313,8 @@ def _donor_scale(
                 "cannot apply (the grid school would leave it at the upem "
                 "scale alone)"
             )
+        # auto and grid agree here: no H_ink, no optical term to compare,
+        # so the glyphs carry the upem scale alone.
         return DonorScale(
             donor_id=donor_id, upem_scale=s0, han_ink_height=None,
             k=None, scale=s0,
@@ -299,10 +324,16 @@ def _donor_scale(
     # in base units, so bring the ink across first.
     han_ink_in_base = han_ink * s0
     guard = 0.95 * typo_span / han_ink_in_base
+    grid_term = options.width_factor * latin_advance / upem
+    optical_term = options.optical_ratio * cap_height / han_ink_in_base
     if options.mode == OPTICAL:
-        target = options.optical_ratio * cap_height / han_ink_in_base
+        target = optical_term
+    elif options.mode == AUTO:
+        # The smaller school: the grid's scale unless it would push the
+        # Han ink past the optical zone's anchor (ratio x cap height).
+        target = min(grid_term, optical_term)
     else:
-        target = options.width_factor * latin_advance / upem
+        target = grid_term
     k = min(target, guard)
     return DonorScale(
         donor_id=donor_id,

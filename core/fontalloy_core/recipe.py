@@ -14,7 +14,9 @@ weights since issue #9):
 - ``sets``: user-defined named range sets — a mapping of a name to a
   codepoint, an interval string, or a non-empty list of either
 - ``normalization``: the normalization switches (ADR-0003) — ``mode``
-  (``grid``, the terminal-grid default, or ``optical``),
+  (``auto``, the default: the grid scale capped by the optical ratio
+  so the Han ink stays inside the Noto-school zone; ``grid``, the bare
+  terminal-grid scale; or ``optical``),
   ``optical_ratio`` (Han ink to cap height; default 1.23),
   ``quote_dash_width`` (``halfwidth``, the UAX #11 default, or
   ``fullwidth`` for the CJK locale convention), and ``width_factor``
@@ -97,10 +99,10 @@ import yaml
 from fontalloy_core.catalog import font_suffixes
 from fontalloy_core.errors import RecipeError
 from fontalloy_core.normalize import (
+    AUTO,
     DEFAULT_OPTICAL_RATIO,
     DEFAULT_WIDTH_FACTOR,
     FULLWIDTH,
-    GRID,
     HALFWIDTH,
     MODES,
     NormalizationOptions,
@@ -510,7 +512,7 @@ def _parse_normalization(raw: object) -> NormalizationOptions:
             f"{', '.join(_NORMALIZATION_FIELDS)})"
         )
 
-    mode = GRID
+    mode = AUTO
     if "mode" in raw:
         mode = raw["mode"]
         if mode not in MODES:

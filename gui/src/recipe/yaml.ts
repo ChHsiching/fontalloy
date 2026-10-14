@@ -114,10 +114,13 @@ export function recipeYaml(draft: RecipeDraft): string {
 
   // Normalization: omitted entirely at the core defaults (issue #8's
   // schema — "a recipe without a normalization block builds with the
-  // defaults"); only non-default switches are written.
+  // defaults"); only non-default switches are written. "auto" IS the
+  // core default (round 20), so it stays omitted.
   const normalization: string[] = [];
-  if (draft.normalization.mode !== "grid") {
+  if (draft.normalization.mode !== "auto") {
     normalization.push(`  mode: ${draft.normalization.mode}`);
+  }
+  if (draft.normalization.mode !== "grid") {
     const ratio = draft.normalization.opticalRatio;
     if (ratio !== null && Number.isFinite(ratio) && ratio !== DEFAULT_OPTICAL_RATIO) {
       normalization.push(`  optical_ratio: ${number(ratio)}`);

@@ -3,9 +3,10 @@
  * the recipe draft the synthesize flow submits — the SAME draft rules
  * serialize into — mapping honestly onto the fields the pipeline has:
  *
- * - baseline alignment → `normalization.mode` (auto/grid are the grid
- *   default, optical is the optical school; the shared baseline and
- *   em box are ADR-0003 invariants, not knobs);
+ * - baseline alignment → `normalization.mode` (auto is the core's auto
+ *   school — the grid scale capped by the optical ratio, round 20's
+ *   harmonization default; grid and optical select the bare schools;
+ *   the shared baseline and em box are ADR-0003 invariants, not knobs);
  * - CJK width → `normalization.width_factor` (the prototype's 两倍 /
  *   1.8 倍 / 1.5 倍 English-width setting — a real pipeline knob; the
  *   halfwidth/fullwidth quotes-dashes convention stays a recipe-level
@@ -131,10 +132,11 @@ export function applySettingsToDraft(
   baseFaces: readonly FaceSlot[],
   donorFaces: readonly FaceSlot[],
 ): void {
-  // Baseline: the scale school. auto/grid = the grid default (omitted
-  // by the JSON writer); optical selects the optical school.
-  draft.normalization.mode =
-    settings.baseline === "optical" ? "optical" : "grid";
+  // Baseline: the scale school. auto = the core's auto school (the
+  // grid scale capped by the optical ratio — what the popover's
+  // 按两款字体自带的尺寸数据自动选择 promises); grid and optical pick
+  // the bare schools.
+  draft.normalization.mode = settings.baseline;
 
   // CJK width: the grid school's advance factor (2 / 1.8 / 1.5).
   draft.normalization.widthFactor = settings.cjkWidth;

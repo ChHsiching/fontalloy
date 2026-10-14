@@ -55,9 +55,15 @@ export function recipeJson(draft: RecipeDraft): Record<string, unknown> {
 
   // Normalization: omitted entirely at the core defaults, mirroring the
   // YAML writer (a recipe without the block builds with the defaults).
+  // "auto" IS the core default (round 20), so it stays omitted; the
+  // explicit grid/optical schools are written out. The optical_ratio
+  // knob rides along whenever it applies (auto caps by it, optical
+  // anchors at it; bare grid ignores it).
   const normalization: Record<string, unknown> = {};
-  if (draft.normalization.mode !== "grid") {
+  if (draft.normalization.mode !== "auto") {
     normalization.mode = draft.normalization.mode;
+  }
+  if (draft.normalization.mode !== "grid") {
     const ratio = draft.normalization.opticalRatio;
     if (ratio !== null && Number.isFinite(ratio) && ratio !== DEFAULT_OPTICAL_RATIO) {
       normalization.optical_ratio = Number(ratio);

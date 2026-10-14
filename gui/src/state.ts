@@ -26,8 +26,9 @@ export type WeightMergeMode = "nearest" | "base" | "donor";
 /**
  * CJK–Latin baseline alignment — the vertical/scale school. The shared
  * baseline and the em box are ADR-0003 invariants; this chooses the
- * scale school (`normalization.mode`: `auto`/`grid` are the grid
- * default, `optical` the slightly-smaller optical school).
+ * scale school (`normalization.mode`: `auto` the grid-scale-capped-by-
+ * the-optical-ratio default — round 20's harmonization fix — `grid`
+ * the bare terminal-grid school, `optical` the Han-ink-at-ratio one).
  */
 export type BaselineMode = "auto" | "grid" | "optical";
 

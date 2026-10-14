@@ -197,7 +197,7 @@ class DonorNormalizationRecord:
     ``upem`` is the donor's own; ``s0 = U/u`` unified it onto the base's;
     ``han_ink_height`` is the measured H_ink in donor units (``None``
     when the donor has no common Han sample, hence no k); ``k`` is the
-    school's scale (grid or optical term, guard-capped); ``scale`` is
+    school's scale (auto, grid, or optical term, guard-capped); ``scale`` is
     the per-glyph factor the graft applied — ``s0 * (k or 1)``.
     """
 

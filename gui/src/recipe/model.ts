@@ -77,9 +77,16 @@ export type OutputFormat = "ttf" | "ttc" | "woff2";
 
 /** Normalization switches (ADR-0003 / issue #8 recipe schema). */
 export interface NormalizationDraft {
-  /** `grid` (the terminal-grid default) or `optical`. */
-  mode: "grid" | "optical";
-  /** Han ink to cap-height ratio; only meaningful in optical mode. */
+  /**
+   * `auto` (the default: the grid term capped by the optical ratio, so
+   * the Han ink stays inside the Noto-school zone), `grid` (the bare
+   * terminal-grid scale), or `optical` (Han ink pinned at the ratio).
+   */
+  mode: "auto" | "grid" | "optical";
+  /**
+   * Han ink to cap-height ratio; the optical school's anchor and the
+   * auto school's cap (meaningless in bare grid mode).
+   */
   opticalRatio: number | null;
   /** Fullwidth quotes/dashes (CJK convention) or halfwidth (UAX #11). */
   quoteDashWidth: "halfwidth" | "fullwidth";
@@ -156,7 +163,7 @@ export function defaultDraft(): RecipeDraft {
     rules: [],
     sets: {},
     normalization: {
-      mode: "grid",
+      mode: "auto",
       opticalRatio: DEFAULT_OPTICAL_RATIO,
       quoteDashWidth: "halfwidth",
       widthFactor: DEFAULT_WIDTH_FACTOR,
