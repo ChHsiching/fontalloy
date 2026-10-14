@@ -1,0 +1,294 @@
+import { test, expect, type Page } from "@playwright/test";
+import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  assertNoJsErrors,
+  collectJsErrors,
+  pointerClick,
+  waitForFontsReady,
+} from "./helpers";
+import { SimCatalog, injectCatalogConfig } from "./catalog-fixtures";
+import {
+  BROWSE_UNIVERSE,
+  CJK_UNIVERSE,
+  browseUniverseSize,
+} from "../src/unicode/universe";
+
+/**
+ * Round 21 (owner item 4): the status-bar counters PROVEN against an
+ * independently computed ground truth — no eyeballing.
+ *
+ * The pair is REAL and goes through the app's real pick path (the
+ * catalog fixture harness over real binaries: a real JetBrainsMono
+ * Nerd Font face in the EN slot, a real LXGW WenKai face in the CJK
+ * slot). The ground truth is computed in node, OUTSIDE the app's
+ * counting code path: gui/scripts/counter_truth.py reads the very same
+ * font files with fontTools and applies the same effective-coverage
+ * spec the GUI's sfnt reader defines (best cmap subtable by the
+ * platform/encoding/format precedence, glyph-0 mappings absent,
+ * .notdef-outline and mass-duplication placeholders read as missing).
+ *
+ * The universe/region DEFINITIONS are shared (imported from
+ * src/unicode/universe.ts — the definitions ARE the spec under test);
+ * the COUNTING is not: this spec unions the fontTools coverages,
+ * intersects with the universe, and splits by region with its own
+ * interval walks, then requires every counter — 字符 / 英文 / 中文 /
+ * 缺失 / 覆盖率 (and 已调整, pinned 0: no non-preset rule exists) — to
+ * equal the ground truth EXACTLY, under all three pick states (lone
+ * EN, lone CJK, the pair) so the union and both region arms are each
+ * exercised alone and together.
+ */
+
+/* ---------- the real pair (same discovery as helpers.ts) ---------- */
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = resolve(HERE, "../..");
+
+/** Locate the two real catalog binaries (font binaries never enter git). */
+function realFontPaths(): { en: string; cjk: string } {
+  const candidates = [
+    process.env.FONTALLOY_DEV_FONT_DIR,
+    resolve(REPO_ROOT, "..", "fontalloy", "gui", "prototype", "fonts"),
+    resolve(REPO_ROOT, "gui", "prototype", "fonts"),
+  ].filter((p): p is string => typeof p === "string" && p.length > 0);
+  for (const dir of candidates) {
+    const en = resolve(dir, "JetBrainsMonoNerdFont-Regular.ttf");
+    const cjk = resolve(dir, "LXGWWenKai-Regular.ttf");
+    if (existsSync(en) && existsSync(cjk)) return { en, cjk };
+  }
+  throw new Error(
+    "the real catalog fonts were not found (tried " +
+      candidates.map((p) => `"${p}"`).join(", ") +
+      ") — set FONTALLOY_DEV_FONT_DIR to the dev-catalog font directory",
+  );
+}
+
+/* ---------- the independent ground truth ---------- */
+
+interface FontTruth {
+  family: string;
+  display: string;
+  /** Mapped codepoints of the chosen cmap subtable (glyph 0 dropped). */
+  raw: number;
+  /** Effective coverage after the placeholder rules. */
+  effective: number;
+  codepoints: number[];
+}
+
+/** fontTools truth per font file, computed once per worker. */
+const truthCache = new Map<string, FontTruth>();
+
+function fontTruth(path: string): FontTruth {
+  const cached = truthCache.get(path);
+  if (cached) return cached;
+  const python = process.env.FONTALLOY_PYTHON ?? "python";
+  const run = spawnSync(
+    python,
+    [resolve(REPO_ROOT, "gui/scripts/counter_truth.py"), path],
+    { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
+  );
+  if (run.status !== 0 || run.error) {
+    throw new Error(
+      `counter_truth.py failed for ${path}: ${run.error ?? ""}${
+        run.stderr ?? ""
+      }`,
+    );
+  }
+  const truth = (JSON.parse(run.stdout) as Record<string, FontTruth>)[path]!;
+  if (truth === undefined) throw new Error(`no truth emitted for ${path}`);
+  truthCache.set(path, truth);
+  return truth;
+}
+
+/** Membership in sorted disjoint intervals — this spec's own walk. */
+function inIntervals(
+  intervals: ReadonlyArray<readonly [number, number]>,
+  cp: number,
+): boolean {
+  let lo = 0;
+  let hi = intervals.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const [start, end] = intervals[mid]!;
+    if (cp < start) hi = mid - 1;
+    else if (cp > end) lo = mid + 1;
+    else return true;
+  }
+  return false;
+}
+
+interface GroundTruth {
+  total: number;
+  en: number;
+  cjk: number;
+  missing: number;
+  coverage: string;
+}
+
+/**
+ * The counters' expected values for one pick state: the union of the
+ * picks' fontTools coverages intersected with the browsed universe,
+ * split by the CJK script region — 字符 = 英文 + 中文 + 缺失 by
+ * construction, missing = universe − union.
+ */
+function groundTruth(picks: FontTruth[]): GroundTruth {
+  const covered = new Set<number>();
+  for (const pick of picks) {
+    for (const cp of pick.codepoints) {
+      if (inIntervals(BROWSE_UNIVERSE, cp)) covered.add(cp);
+    }
+  }
+  let en = 0;
+  let cjk = 0;
+  for (const cp of covered) {
+    if (inIntervals(CJK_UNIVERSE, cp)) cjk++;
+    else en++;
+  }
+  const total = browseUniverseSize();
+  const missing = total - en - cjk;
+  expect(missing, "the union cannot exceed the universe").toBeGreaterThanOrEqual(0);
+  return {
+    total,
+    en,
+    cjk,
+    missing,
+    coverage: ((100 * (en + cjk)) / total).toFixed(2),
+  };
+}
+
+/** Print one state's ground-truth row for the run log. */
+function logTruth(state: string, picks: FontTruth[], truth: GroundTruth): void {
+  const fmt = (n: number): string => n.toLocaleString("en-US");
+  for (const pick of picks) {
+    console.log(
+      `[countertruth]   font ${pick.display}: raw cmap ${fmt(pick.raw)}, effective ${fmt(pick.effective)}`,
+    );
+  }
+  console.log(
+    `[countertruth] ${state.padEnd(8)} 字符 ${fmt(truth.total)} | 英文 ${fmt(
+      truth.en,
+    )} | 中文 ${fmt(truth.cjk)} | 缺失 ${fmt(truth.missing)} | 覆盖率 ${truth.coverage}%`,
+  );
+}
+
+/* ---------- app-side helpers ---------- */
+
+/** Every counter in the status bar, asserted against the ground truth. */
+async function assertCounters(page: Page, truth: GroundTruth): Promise<void> {
+  const fmt = (n: number): string => n.toLocaleString("en-US");
+  await expect(page.locator("[data-stat='total']")).toHaveText(fmt(truth.total));
+  await expect(page.locator("[data-stat='en']")).toHaveText(fmt(truth.en));
+  await expect(page.locator("[data-stat='cjk']")).toHaveText(fmt(truth.cjk));
+  await expect(page.locator("[data-stat='missing']")).toHaveText(
+    fmt(truth.missing),
+  );
+  await expect(page.locator("[data-stat='coverage']")).toHaveText(
+    truth.coverage,
+  );
+  // No non-preset rule exists in any state here, so nothing can be
+  // adjusted (the boot zh_cn preset rule never counts).
+  await expect(page.locator("[data-stat='adjusted']")).toHaveText("0");
+}
+
+/** Open a picker and pick the one catalog row it lists for the pair. */
+async function pickCatalogFont(
+  page: Page,
+  role: "en" | "cjk",
+  displayName: string,
+): Promise<void> {
+  await pointerClick(page, page.locator(`[data-role="picker-${role}"] .kit-hd`));
+  const popup = page.locator(`[data-picker-popup="${role}"]`);
+  await expect(popup).toBeVisible();
+  await pointerClick(
+    page,
+    popup.locator(".kit-fp", { hasText: displayName }).first(),
+  );
+  // The catalog pick keeps the popup open (a chip may follow); the
+  // pick itself is what the counters read.
+  await page.keyboard.press("Escape");
+  await expect(popup).toBeHidden();
+}
+
+test.describe("status-bar counters vs fontTools ground truth", () => {
+  const jsErrors: string[] = [];
+
+  test.beforeEach(async ({ page }) => {
+    jsErrors.length = 0;
+    collectJsErrors(page, jsErrors);
+    // The catalog fixture families are manifest families, so the stars
+    // refresh fires; keep it hermetic (an empty body reads "no data").
+    await page.route("https://api.github.com/repos/**", (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: "{}" }),
+    );
+  });
+
+  test.afterEach(() => assertNoJsErrors(jsErrors));
+
+  /** The real pair behind the simulated catalog origin, fully fetched. */
+  async function openWithRealCatalog(page: Page): Promise<{
+    en: FontTruth;
+    cjk: FontTruth;
+  }> {
+    const paths = realFontPaths();
+    const [en, cjk] = [fontTruth(paths.en), fontTruth(paths.cjk)];
+    const sim = await SimCatalog.create([
+      {
+        family: "JetBrainsMono",
+        variant: "Nerd Font",
+        file: "JetBrainsMonoNerdFont-Regular.ttf",
+        fontPath: paths.en,
+      },
+      {
+        family: "LXGWWenKai",
+        variant: "Regular",
+        file: "LXGWWenKai-Regular.ttf",
+        fontPath: paths.cjk,
+      },
+    ]);
+    await sim.install(page);
+    await injectCatalogConfig(page);
+    await page.goto("/");
+    await expect(
+      page.locator(".catalog-screen [data-stat='catalog-done']"),
+    ).toHaveText("2");
+    await expect(page.locator(".catalog-screen")).toBeHidden();
+    await waitForFontsReady(page);
+    return { en, cjk };
+  }
+
+  test("a lone EN pick: every counter equals the ground truth", async ({
+    page,
+  }) => {
+    const { en } = await openWithRealCatalog(page);
+    const truth = groundTruth([en]);
+    logTruth("lone EN", [en], truth);
+
+    await pickCatalogFont(page, "en", en.display);
+    await assertCounters(page, truth);
+  });
+
+  test("a lone CJK pick: every counter equals the ground truth", async ({
+    page,
+  }) => {
+    const { cjk } = await openWithRealCatalog(page);
+    const truth = groundTruth([cjk]);
+    logTruth("lone CJK", [cjk], truth);
+
+    await pickCatalogFont(page, "cjk", cjk.display);
+    await assertCounters(page, truth);
+  });
+
+  test("the pair: the union and both region arms equal the ground truth", async ({
+    page,
+  }) => {
+    const { en, cjk } = await openWithRealCatalog(page);
+    const truth = groundTruth([en, cjk]);
+    logTruth("pair", [en, cjk], truth);
+
+    await pickCatalogFont(page, "en", en.display);
+    await pickCatalogFont(page, "cjk", cjk.display);
+    await assertCounters(page, truth);
+  });
+});
