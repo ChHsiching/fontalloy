@@ -63,13 +63,14 @@ export interface KitMessageStat {
 
 /**
  * One action button of a card that asks a question (round 17, owner
- * item 3): the same-name save collision offers 改个名字 / 覆盖保存 —
- * the USER decides, so the choice must be a real button, never copy
- * the user has to infer. Clicking runs `onClick` and closes the card;
- * the × stays the explicit "neither" answer.
+ * item 3; the round-18 same-name gate is the live consumer): the
+ * click-time collision offers 改个名字 / 直接合成 — the USER decides,
+ * so the choice must be a real button, never copy the user has to
+ * infer. Clicking runs `onClick` and closes the card; the × stays the
+ * explicit "neither" answer.
  */
 export interface KitMessageAction {
-  /** The button's word (e.g. 覆盖保存). */
+  /** The button's word (e.g. 直接合成). */
   label: string;
   /** `danger` tones the button (a destructive path, e.g. overwrite). */
   tone?: "normal" | "danger";

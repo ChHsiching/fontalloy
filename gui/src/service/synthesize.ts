@@ -7,6 +7,12 @@
  * fetch the verification report — all without ever blocking the
  * workspace (each build runs as an independent async loop; the UI
  * observes the store).
+ *
+ * Round 18 (owner item 4) moves round 17's same-name gate from the
+ * save to the CLICK: asking after the build wastes it (a rename then
+ * discards the artifact and forces a rebuild anyway). The action
+ * probes the target name BEFORE submitting; a collision starts NO
+ * build — the card asks, and only a choice builds.
  */
 
 import { store, type LoadedFont } from "../state";
@@ -449,40 +455,62 @@ const sleep = (ms: number): Promise<void> =>
   new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
 
 /**
+ * The artifact's file extension for an output format — the same
+ * mapping the report readback uses at save time (anything the schema
+ * did not name falls back to ttf).
+ */
+function artifactExt(format: string): string {
+  return format === "ttc" || format === "woff2" ? format : "ttf";
+}
+
+/**
+ * Land a failure that predates any build as its own error row (the
+ * flow's inline-text contract — the app stays usable, no modals).
+ */
+function failBeforeBuild(message: string): void {
+  const row = newBuildRow(store.get().outputFamily || "ChHsich");
+  addBuild(row);
+  patchBuild(row.id, { status: "error", error: message });
+}
+
+/**
  * Run one synthesis end to end. Never throws: every failure lands in
  * the build row as inline text (the app stays usable, no modals).
+ *
+ * Round 18 (owner item 4): the same-name gate runs HERE, at the click
+ * — before anything is submitted. The target name is probed; a
+ * collision starts NO build and hands the decision to the card
+ * (`askRenameOrBuild`). 「直接合成」 re-enters with the exact draft
+ * that was probed and the overwrite pre-approved (its save writes
+ * exactly like the old explicit overwrite); 「改个名字」 re-runs the
+ * whole action on the committed name, gate first (another collision
+ * asks again).
  */
 export async function synthesize(): Promise<void> {
   const { service } = synthStore.get();
   if (service.status !== "connected" || service.client === null) return;
 
-  const { outputFamily } = store.get();
   const { en, cjk } = selectedPicks();
-  const row = newBuildRow(outputFamily || "ChHsich");
-  addBuild(row);
-
-  const fail = (message: string): void => {
-    patchBuild(row.id, { status: "error", error: message });
-  };
-
   if (!en || !cjk) {
-    fail("请先选择英文字体与中文字体，再进行合成。");
+    failBeforeBuild("请先选择英文字体与中文字体，再进行合成。");
     return;
   }
 
-  // Resolve both picks to recipe slots BEFORE submitting — catalog
+  // Resolve both picks to recipe slots BEFORE anything builds — catalog
   // picks become catalog-family references the service resolves against
   // its own manifest; everything else names an on-disk path, and a font
   // the service cannot see must fail here, as inline text, instead of
-  // as a build that dies for a cryptic reason.
+  // as a build that dies for a cryptic reason. The gate also needs the
+  // slots: the draft's resolved format decides the target's extension
+  // (a family pick packages the weight matrix as ttc).
   const enSlot = await resolvePickSlot(en, "base");
   const cjkSlot = await resolvePickSlot(cjk, "donor");
   if (enSlot === null) {
-    fail(`无法定位字体文件路径：${en.fileName}（服务目录中不存在）。`);
+    failBeforeBuild(`无法定位字体文件路径：${en.fileName}（服务目录中不存在）。`);
     return;
   }
   if (cjkSlot === null) {
-    fail(`无法定位字体文件路径：${cjk.fileName}（服务目录中不存在）。`);
+    failBeforeBuild(`无法定位字体文件路径：${cjk.fileName}（服务目录中不存在）。`);
     return;
   }
 
@@ -494,7 +522,43 @@ export async function synthesize(): Promise<void> {
   ) ?? [];
   const draft = buildWorkspaceDraft({ en: enSlot, cjk: cjkSlot }, faces);
 
-  const client = service.client;
+  // The GATE: does a file already sit at the target this name resolves
+  // to? No collision → build as today. A collision → NO build starts;
+  // the card asks, and only a choice builds (round 17's rule — never a
+  // silent overwrite, never a silent suffix — now answered before the
+  // minutes-long build, not after it).
+  const suggested = `${draft.output.family}.${artifactExt(draft.output.format)}`;
+  const probe = await probeArtifact(suggested);
+  if (probe.exists) {
+    askRenameOrBuild(draft, probe.path);
+    return;
+  }
+  await runBuild(draft, false);
+}
+
+/**
+ * Submit one resolved draft, poll it to completion, and save the
+ * artifact. `overwriteApproved` marks a build that already answered
+ * the same-name gate with 直接合成 (its save writes exactly like the
+ * old explicit overwrite); every other build re-probes at the save —
+ * a name that came free at the click but was taken by the time the
+ * artifact landed (another build's save, an external write) settles
+ * the row as built-but-unsaved rather than silently overwriting. In
+ * the normal flow the click-time gate means that re-probe never fires.
+ */
+async function runBuild(
+  draft: ReturnType<typeof defaultDraft>,
+  overwriteApproved: boolean,
+): Promise<void> {
+  const client = synthStore.get().service.client;
+  if (client === null) return;
+  const row = newBuildRow(draft.output.family);
+  addBuild(row);
+
+  const fail = (message: string): void => {
+    patchBuild(row.id, { status: "error", error: message });
+  };
+
   let submitted;
   try {
     submitted = await client.submit(recipeJson(draft));
@@ -544,10 +608,13 @@ export async function synthesize(): Promise<void> {
   // Fetch artifact + report, then hand the font to the platform's
   // DEFAULT-PATH saver (round 12: the configured output directory, no
   // dialog anywhere in the saving path — a dialog is never a
-  // dependency of saving). Round 17 (owner item 3) adds the PRE-FLIGHT:
-  // when the resolved target already holds a same-named file (the user
-  // forgot to rename; the default name is ChHsich), the USER decides —
-  // never a silent overwrite, never a silent suffix.
+  // dependency of saving). Round 18: the same-name DECISION was made
+  // at the click — a 直接合成 build writes through (the overwrite
+  // happens here, at the save, exactly like the old explicit
+  // overwrite); anything else re-probes defensively and, on a name
+  // that was taken in the meantime, writes NOTHING (the row settles
+  // as built-but-unsaved, the artifact stays in the service's
+  // scratch, retrievable from the row's 另存为).
   patchBuild(id, { status: "saving" });
   try {
     const [bytes, report] = await Promise.all([
@@ -561,16 +628,13 @@ export async function synthesize(): Promise<void> {
     // what the report read back (family picks package the whole weight
     // matrix as ttc); anything the schema did not name falls back to ttf.
     const format = report.output?.format ?? "ttf";
-    const ext = format === "ttc" || format === "woff2" ? format : "ttf";
-    const suggested = `${filename}.${ext}`;
-    const probe = await probeArtifact(suggested);
-    if (probe.exists) {
-      // NOTHING is written: the row settles as built-but-unsaved (the
-      // artifact stays in the service's scratch, retrievable from the
-      // row's 另存为) while the card asks the user.
-      patchBuild(id, { status: "done", savedPath: null, report });
-      askOverwriteOrRename({ id, suggested, target: probe.path, ext, bytes, report });
-      return;
+    const suggested = `${filename}.${artifactExt(format)}`;
+    if (!overwriteApproved) {
+      const probe = await probeArtifact(suggested);
+      if (probe.exists) {
+        patchBuild(id, { status: "done", savedPath: null, report });
+        return;
+      }
     }
     await settleSaved(id, suggested, bytes, report);
   } catch (err) {
@@ -579,27 +643,6 @@ export async function synthesize(): Promise<void> {
       error: err instanceof Error ? err.message : String(err),
     });
   }
-}
-
-/**
- * The artifact of a finished build whose save is waiting on the
- * same-name collision answer (round 17). The bytes are fetched once;
- * whichever path the user chooses writes THESE bytes (a rename changes
- * the file's name, not the font's already-written name table).
- */
-interface CollisionJob {
-  /** The build row the artifact belongs to. */
-  id: string;
-  /** The suggested file name the collision fired on. */
-  suggested: string;
-  /** The resolved target path the card names for the user. */
-  target: string;
-  /** The artifact's extension (the rename retry rebuilds the name). */
-  ext: string;
-  /** The built font exactly as the service produced it. */
-  bytes: Uint8Array;
-  /** The verification report fetched alongside the bytes. */
-  report: ReportDocument;
 }
 
 /** Save through the default path and settle the row with the outcome. */
@@ -619,29 +662,34 @@ async function settleSaved(
 }
 
 /**
- * Ask the user about a same-name save target (round 17, owner item 3).
- * One message card names the exact colliding path and offers BOTH
- * paths — 改个名字 (the font-name input takes the focus and flashes;
- * the save completes once the new name is committed) and 覆盖保存
- * (the explicit write, danger-toned). Neither is the default. Without
- * a choice nothing is written; the artifact stays in the service's
- * scratch, retrievable from the row.
+ * Ask about a same-name target AT THE CLICK (round 18, owner item 4;
+ * the round-17 card moved before the build). One message card names
+ * the exact colliding path and offers BOTH paths — 改个名字 (the
+ * font-name input takes the focus and flashes; the build starts itself
+ * once the new name is committed, re-probed first) and 直接合成 (the
+ * build proceeds on the exact draft that was probed; its save
+ * overwrites — the label says 合成, not 覆盖, because nothing is
+ * overwritten until the save, danger-toned for the same reason).
+ * Neither is the default; the × builds nothing.
  */
-function askOverwriteOrRename(job: CollisionJob): void {
+function askRenameOrBuild(
+  draft: ReturnType<typeof defaultDraft>,
+  target: string,
+): void {
   appMessages().push({
     icon: "warn",
     title: "已有同名文件",
-    reason: job.target,
+    reason: target,
     actions: [
       {
         label: "改个名字",
-        onClick: () => armRenameRetry(job),
+        onClick: () => armRenameBuild(),
       },
       {
-        label: "覆盖保存",
+        label: "直接合成",
         tone: "danger",
         onClick: () => {
-          void settleUnderCollision(job, job.suggested);
+          void runBuild(draft, true);
         },
       },
     ],
@@ -650,50 +698,23 @@ function askOverwriteOrRename(job: CollisionJob): void {
 
 /**
  * The 改个名字 path: the field takes the focus and flashes, and the
- * save retries once the user COMMITS a new name — the input's `change`
- * event (Enter / blur, and only when the value actually changed), so
- * nothing writes while the user is still typing.
+ * build starts itself once the user COMMITS a new name — the input's
+ * `change` event (Enter / blur, and only when the value actually
+ * changed), so nothing builds while the user is still typing. The
+ * re-run is the whole synthesize action on the fresh name: the gate
+ * probes again, and another collision asks again rather than building
+ * onto a taken name.
  */
-function armRenameRetry(job: CollisionJob): void {
+function armRenameBuild(): void {
   const input = flashFontNameInput();
   if (input === null) return;
   input.addEventListener(
     "change",
     () => {
-      const family = store.get().outputFamily || "ChHsich";
-      void settleUnderCollision(job, `${family}.${job.ext}`);
+      void synthesize();
     },
     { once: true },
   );
-}
-
-/**
- * Complete a collision-blocked save under `suggested`. The overwrite
- * choice reuses the known collision; a renamed target gets its own
- * pre-flight — a rename onto ANOTHER existing file asks again rather
- * than overwriting. Errors land in the row as inline text, like every
- * save path.
- */
-async function settleUnderCollision(
-  job: CollisionJob,
-  suggested: string,
-): Promise<void> {
-  try {
-    if (suggested !== job.suggested) {
-      const probe = await probeArtifact(suggested);
-      if (probe.exists) {
-        askOverwriteOrRename({ ...job, suggested, target: probe.path });
-        return;
-      }
-    }
-    patchBuild(job.id, { status: "saving", error: null });
-    await settleSaved(job.id, suggested, job.bytes, job.report);
-  } catch (err) {
-    patchBuild(job.id, {
-      status: "error",
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
 }
 
 /**
