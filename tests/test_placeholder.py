@@ -1,17 +1,24 @@
-"""Rounds 18–19: placeholder glyphs count as missing.
+"""Rounds 18–20: placeholder glyphs count as missing.
 
 Some fonts draw a placeholder glyph (a box, a boxed X, a question face)
 at codepoints they do not really cover — poisoning coverage counts and,
 worse, grafting tofu into builds as if it were a real glyph. Round 19
-(owner ruling) fixed the detection to the OpenType conventions alone —
-no concentration thresholds:
+(owner ruling) fixed the first two rules to the OpenType conventions:
 
 - A codepoint mapped to glyph 0 (``.notdef``) is absent by convention.
 - A codepoint whose mapped glyph has the SAME OUTLINE as the font's own
   ``.notdef`` glyph is a suspected placeholder — the font drew its tofu
-  box under another name. A glyph with its own outline is plain
-  coverage however many codepoints share it (real shared glyphs —
-  space, the big-parenthesis pieces — must keep counting).
+  box under another name.
+
+Round 20 (owner-ratified) adds the third rule, reversing round 19's
+pure concentration negative:
+
+- A glyph NAME absorbing >= 64 mapped codepoints is a suspected
+  MASS-DUPLICATED placeholder — whatever its outline. Real faces
+  practically never do this (the shipped 213-face survey's worst case
+  was 5 codepoints on one glyph name), while publisher fonts that fake
+  whole icon planes map hundreds of codepoints onto one box glyph. A
+  shared glyph below the threshold keeps counting as plain coverage.
 
 The pipeline consequences asserted here: such codepoints never count as
 coverage (report rule records list them missing), never enter the
@@ -71,18 +78,44 @@ class TestFaceCoverage:
         assert coverage.codepoints == frozenset({0x41})
 
     def test_shared_glyph_with_own_outline_is_coverage(self, tmp_path):
-        """The other half of the ruling: one glyph absorbing HUNDREDS of
-        codepoints keeps counting as coverage when its outline is its
-        own (the round-18 concentration heuristic is gone)."""
+        """Below the mass-duplication threshold, a shared glyph keeps
+        counting as coverage: five codepoints on one own-outline glyph
+        is exactly the shipped 213-face survey's worst case — real
+        shared glyphs (space, the big-parenthesis pieces) live there."""
+        few = tuple(range(0xE000, 0xE005))
         font = self._font(
-            tmp_path,
-            codepoints=(0x41,),
-            placeholder_codepoints=PLACEHOLDER_RUN,
+            tmp_path, codepoints=(0x41,), placeholder_codepoints=few,
             notdef_outline=False,
         )
         coverage = face_coverage(font)
         assert coverage.placeholders == frozenset()
-        assert coverage.codepoints == frozenset({0x41, *PLACEHOLDER_RUN})
+        assert coverage.codepoints == frozenset({0x41, *few})
+
+    def test_mass_duplicated_own_outline_glyph_is_placeholder(self, tmp_path):
+        """Round 20, rule 3: one glyph NAME absorbing 64 or more mapped
+        codepoints is a suspected placeholder WHATEVER its outline — the
+        publisher trick of faking a whole icon plane off one box glyph.
+        Round 19's concentration negative is reversed at the threshold."""
+        run = tuple(range(0xE000, 0xE040))  # exactly 64 codepoints
+        font = self._font(
+            tmp_path, codepoints=(0x41,), placeholder_codepoints=run,
+            notdef_outline=False,
+        )
+        coverage = face_coverage(font)
+        assert coverage.placeholders == frozenset(run)
+        assert coverage.codepoints == frozenset({0x41})
+
+    def test_mass_duplication_threshold_is_64(self, tmp_path):
+        """63 codepoints on one own-outline glyph stay coverage; 64 tip
+        it — the ratified threshold is `>= 64`, not `> 64`."""
+        below = tuple(range(0xE000, 0xE03F))  # 63 codepoints
+        font = self._font(
+            tmp_path, codepoints=(0x41,), placeholder_codepoints=below,
+            notdef_outline=False,
+        )
+        coverage = face_coverage(font)
+        assert coverage.placeholders == frozenset()
+        assert coverage.codepoints == frozenset({0x41, *below})
 
     def test_notdef_mapped_codepoints_are_absent(self, tmp_path):
         """Glyph-0 mappings are absent by convention: never coverage,

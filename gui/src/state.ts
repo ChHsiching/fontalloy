@@ -99,6 +99,13 @@ export interface LoadedFont {
   catalog?: FontCatalogIdentity;
   /** Sorted covered codepoints from the cmap table. */
   codepoints: number[];
+  /**
+   * Sorted codepoints the placeholder rules suspect (round 20): the
+   * mappings excluded from `codepoints`. The grid's missing cells for
+   * these codepoints keep rendering the font's own glyph under the
+   * missing style. Absent for the data-only sibling records.
+   */
+  placeholderCodepoints?: number[];
 }
 
 /* ---------- catalog (issue #17: first-run download) ---------- */

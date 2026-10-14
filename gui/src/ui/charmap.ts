@@ -8,6 +8,7 @@ import {
   categorySize,
   categoryName,
   codepointIndex,
+  findBlockOf,
   findGroupCategory,
   groupCategoryId,
   nthCodepoint,
@@ -35,6 +36,8 @@ import {
 } from "../history";
 import { cssFamily } from "../kit/pickerPopup";
 import { fontDisplayName } from "../fonts/registry";
+import type { LoadedFont } from "../state";
+import { isIconCodepoint } from "../unicode/universe";
 import { mountCharPopup, type CharPopupFacts } from "../kit/charPopup";
 import { mountRangePopup } from "../kit/rangePopup";
 import { mountCategoryChips, type CategoryChips } from "../kit/categoryChips";
@@ -593,6 +596,22 @@ function assignBlocks(
 /* ---------------- the char popup (at the cell) ---------------------- */
 
 /**
+ * The character's taxonomy classification for the popup's qualifier tag
+ * (round 20, owner item 4): the block whose enumeration content carries
+ * `cp` (curated intervals respected), named with the taxonomy's own
+ * group and block words, joined by U+00B7 — 「图标 · Powerline 符号」,
+ * 「中日韩文字 · CJK 统一表意文字」. Undefined outside the taxonomy (the
+ * browsable gaps of the 全部 view carry no block to name).
+ */
+function classificationOf(cp: number): string | undefined {
+  const block = findBlockOf(cp);
+  if (block === undefined) return undefined;
+  const group = blockGroup(block.id);
+  if (group === undefined) return undefined;
+  return `${group.name} \u00B7 ${block.name}`;
+}
+
+/**
  * The character popup facts (the kit's CharPopup renders them
  * verbatim): the 44px glyph in the winning font, the `U+XXXX` code,
  * `来自 {字体名}`, one-click side buttons (the carried side hidden, and
@@ -608,6 +627,7 @@ function charFacts(cp: number): CharPopupFacts {
   const effective = picks.refs.length > 0;
   const resolver = effective ? currentResolver(picks) : null;
   const entry = resolver ? resolver.resolve(cp) : null;
+  const classification = classificationOf(cp);
 
   if (entry === null) {
     const missingCopy =
@@ -619,6 +639,7 @@ function charFacts(cp: number): CharPopupFacts {
       missing: true,
       code: formatCp(cp),
       from: effective ? missingCopy : "",
+      ...(classification !== undefined ? { classification } : {}),
       showBase: false,
       showDonor: false,
       showReset: false,
@@ -690,6 +711,7 @@ function charFacts(cp: number): CharPopupFacts {
     // Round 9 (owner item 2): the 来自 line reads the font's OWN name
     // table, verbatim — never the metadata family id.
     from: `来自 ${winnerFont ? fontDisplayName(winnerFont) : ""}`,
+    ...(classification !== undefined ? { classification } : {}),
     note,
     showBase,
     showDonor,
@@ -1256,10 +1278,31 @@ export function mountCharmap(root: HTMLElement): void {
     const first = (page - 1) * livePageSize;
     const count = Math.min(livePageSize, size - first);
     const picks = pickRefs();
-    const effective = picks.base !== null && picks.donor !== null;
-    const resolver = effective ? currentResolver(picks) : null;
-    const base = effective ? defaultResolver(picks) : null;
+    // Round 20 (owner item 1): ONE pick already judges — the grid may
+    // not wait for the pair to mark the gaps (the round-19 plain
+    // preview rendered an icon-less pick's unmapped NF cells as fallback
+    // tofu, exactly the misleading frame the owner rejected). `plain`
+    // stays for the no-pick state only.
+    const judged = picks.base !== null || picks.donor !== null;
+    const resolver = judged ? currentResolver(picks) : null;
+    const base = judged ? defaultResolver(picks) : null;
     const selectionSet = new Set(selection);
+    // The picks' suspected-placeholder sets (round 20): a cell whose
+    // codepoint a pick maps to a placeholder glyph keeps rendering that
+    // font's own glyph under the missing style. Join order decides.
+    const placeholderSets = new Map<LoadedFont, Set<number>>();
+    const placeholderFamilyOf = (cp: number): string | null => {
+      for (const font of [picks.base, picks.donor]) {
+        if (font === null) continue;
+        let set = placeholderSets.get(font);
+        if (set === undefined) {
+          set = new Set(font.placeholderCodepoints ?? []);
+          placeholderSets.set(font, set);
+        }
+        if (set.has(cp)) return cssFamily(font.cssFamily);
+      }
+      return null;
+    };
     // The plain preview stack for cells outside the effective preview
     // (the picked pair first, then the system tail) — the same stack the
     // pre-repair grid set as --font-preview.
@@ -1282,12 +1325,18 @@ export function mountCharmap(root: HTMLElement): void {
     const cells: GridCellData[] = [];
     for (let i = 0; i < count; i++) {
       // The missing view pages its own list: every cell is a dashed
-      // danger cell (no picked font covers it, by construction).
+      // danger cell (no picked font covers it, by construction), the
+      // placeholder glyph and no-fallback rules included.
       if (categoryId === MISSING_CATEGORY_ID) {
         const cp = missing[first + i]!;
+        const placeholderFamily = placeholderFamilyOf(cp);
         cells.push({
           ch: String.fromCodePoint(cp),
           state: "none",
+          ...(placeholderFamily !== null ? { placeholderFamily } : {}),
+          ...(placeholderFamily === null && isIconCodepoint(cp)
+            ? { noFallbackGlyph: true }
+            : {}),
           selected: selectionSet.has(cp),
           cursor: cp === selectedCodepoint,
           cp: formatCp(cp),
@@ -1301,15 +1350,32 @@ export function mountCharmap(root: HTMLElement): void {
       const entry = resolver ? resolver.resolve(cp) : null;
       const baseEntry = base ? base.resolve(cp) : null;
       const winnerFont = entry ? refFont(entry.winner, picks) : null;
+      if (entry === null && judged) {
+        // Missing, two ways (round 20): a pick maps the codepoint to a
+        // suspected placeholder glyph → the font's own glyph rides the
+        // missing frame; nothing maps it inside the 图标 ranges → no
+        // glyph at all, the codepoint row is the only content.
+        const placeholderFamily = placeholderFamilyOf(cp);
+        cells.push({
+          ch,
+          state: "none",
+          ...(placeholderFamily !== null ? { placeholderFamily } : {}),
+          ...(placeholderFamily === null && isIconCodepoint(cp)
+            ? { noFallbackGlyph: true }
+            : {}),
+          selected: selectionSet.has(cp),
+          cursor: cp === selectedCodepoint,
+          cp: formatCp(cp),
+        });
+        continue;
+      }
       cells.push({
         ch,
         state: entry
           ? entry.winner === "base"
             ? "base"
             : "donor"
-          : effective
-            ? "none"
-            : "plain",
+          : "plain",
         // Adjusted = a non-preset rule EFFECTIVELY changes the
         // supplier (see isAdjusted — round 8).
         adjusted: isAdjusted(entry, baseEntry),

@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { parseFontMeta } from "../src/fonts/sfnt";
+import { BROWSE_UNIVERSE, isCjkRegionCodepoint } from "../src/unicode/universe";
 import {
   assertNoJsErrors,
   collectJsErrors,
@@ -150,6 +151,35 @@ async function bootWorkspace(page: Page): Promise<Fixture> {
   return { nameA: metaA.names.display, nameB: metaB.names.display, cssB: metaB.family };
 }
 
+/**
+ * The expected script-region counters (round 20) of the given host
+ * faces' union coverage: the browsed universe's codepoints the faces
+ * cover, split by where each SITS (inside the 中日韩文字 region → 中文,
+ * else → 英文). Host fixtures may carry no CJK at all (Arial stands in
+ * for WenKai on this host) — a Latin-only donor legitimately leaves
+ * 中文 at 0 now, which the old winner-side `not 0` expectation could
+ * never survive.
+ */
+async function expectedRegionCounts(
+  ...fonts: string[]
+): Promise<{ en: string; cjk: string }> {
+  const covered = new Set<string>();
+  for (const path of fonts) {
+    const meta = await parsedMeta(path);
+    for (const cp of meta.codepoints) covered.add(cp);
+  }
+  let en = 0;
+  let cjk = 0;
+  for (const [start, end] of BROWSE_UNIVERSE) {
+    for (let cp = start; cp <= end; cp++) {
+      if (!covered.has(cp)) continue;
+      if (isCjkRegionCodepoint(cp)) cjk++;
+      else en++;
+    }
+  }
+  return { en: en.toLocaleString("en-US"), cjk: cjk.toLocaleString("en-US") };
+}
+
 /* ---------- small shared locators ---------- */
 
 const pairTag = (page: Page, side: "base" | "donor") =>
@@ -234,8 +264,12 @@ test.describe("repeat-click unload (round 18, owner item 3)", () => {
     await waitForFontsReady(page);
     await expect(pairTag(page, "base")).toHaveText(fx.nameA);
     await expect(pairTag(page, "donor")).toHaveText(fx.nameB);
-    await expect(stat(page, "en")).not.toHaveText("0");
-    await expect(stat(page, "cjk")).not.toHaveText("0");
+    // The counters classify by script region (round 20): the pair's
+    // union coverage split by WHERE each codepoint sits, so a Latin-only
+    // donor leaves 中文 exactly at the pair's CJK-region coverage.
+    const regions = await expectedRegionCounts(FONT_A, FONT_B);
+    await expect(stat(page, "en")).toHaveText(regions.en);
+    await expect(stat(page, "cjk")).toHaveText(regions.cjk);
     await expect(synthesize(page)).toHaveAttribute("aria-disabled", "false");
     // A cell both fonts cover resolves to the base under the default
     // precedence (base keeps).
@@ -258,19 +292,21 @@ test.describe("repeat-click unload (round 18, owner item 3)", () => {
     // The CJK slot is untouched.
     await expect(pairTag(page, "donor")).toHaveText(fx.nameB);
     await expect(cardName(page, "cjk")).toHaveText(fx.nameB);
-    // The grid degrades to the lone-pick preview — exactly the
-    // one-side-loaded initial state: the effective (pair) preview is
-    // gone (no data-winner attributes anywhere) and the cells fall
-    // back to the plain stack, which the lone pick leads.
+    // The grid stays judged under the lone pick (round 20): the covered
+    // cells resolve to the remaining pick — its own face leads the
+    // stack — and the winner facts stay exposed exactly like the
+    // popup's (a lone pick has resolved since round 19).
     const cell = page.locator(".charmap-grid .kit-cell[data-cp='U+0041']");
-    await expect(cell).not.toHaveAttribute("data-winner");
+    await expect(cell).toHaveAttribute("data-winner", "donor-0");
     expect(await cell.evaluate((el) => getComputedStyle(el).fontFamily)).toContain(
       fx.cssB,
     );
-    // The stats bar: 英文 back to 0, 中文 still counting (the lone-pick
-    // preview, exactly the one-side-loaded initial state).
-    await expect(stat(page, "en")).toHaveText("0");
-    await expect(stat(page, "cjk")).not.toHaveText("0");
+    // The stats bar (round 20, script region): the lone donor's Latin
+    // coverage counts into 英文 — where it sits — and 中文 holds the
+    // donor's own CJK-region coverage (0 for a Latin-only stand-in).
+    const lone = await expectedRegionCounts(FONT_B);
+    await expect(stat(page, "en")).toHaveText(lone.en);
+    await expect(stat(page, "cjk")).toHaveText(lone.cjk);
     // Synthesize is disabled under the SAME rule as the initial state.
     await expectDisabledNotice(
       page,

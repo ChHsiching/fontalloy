@@ -221,6 +221,26 @@ export function findBlock(id: string): UnicodeBlock | undefined {
   return BLOCK_BY_ID.get(id);
 }
 
+/**
+ * The block whose ENUMERATION content carries `cp` (round 20): curated
+ * blocks match on their curated INTERVALS, not their envelope hull, so
+ * an icon codepoint between two sub-block's allocations (or in a
+ * neighbor's hull) never misclassifies. Undefined outside the taxonomy
+ * (the browsable gaps of the 全部 view). Taxonomy order decides ties.
+ */
+export function findBlockOf(cp: number): UnicodeBlock | undefined {
+  for (const block of ALL_BLOCKS) {
+    if (block.intervals) {
+      if (block.intervals.some(([start, end]) => cp >= start && cp <= end)) {
+        return block;
+      }
+    } else if (cp >= block.start && cp <= block.end) {
+      return block;
+    }
+  }
+  return undefined;
+}
+
 /** The group a block belongs to (undefined for aggregate ids). */
 export function blockGroup(id: string): BlockGroup | undefined {
   const block = BLOCK_BY_ID.get(id);

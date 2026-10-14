@@ -6,15 +6,18 @@
  * for the FontFace rendering path only — the real merge pipeline lives
  * in core/ and never runs here.
  *
- * Rounds 18–19: coverage is the HONEST kind, following the OpenType
+ * Rounds 18–20: coverage is the HONEST kind, following the OpenType
  * conventions alone. A codepoint mapped at glyph 0 is absent by
  * convention, and a mapped glyph whose OUTLINE is the font's own
  * .notdef outline is a suspected placeholder (方框 / boxed X / question
  * face the font draws at codepoints it does not really cover) — those
  * codepoints read as missing here exactly as they do in the core
  * pipeline, so the live grid and status bar agree with the report.
- * Concentration counts for nothing (round 19 — a shared glyph with a
- * real outline is plain coverage). The outline compare is cheap: a
+ * Round 20 adds the mass-duplication rule: a glyph absorbing 64 or
+ * more mapped codepoints is a suspected placeholder whatever its
+ * outline (the shipped 213-face survey's worst legitimate case was 5),
+ * catching publisher fonts that fake whole icon planes off one box.
+ * The outline compare is cheap: a
  * contour-count + bounding-box + point-count pre-filter rejects the
  * face's glyphs from the raw glyf record header (or, on CFF faces, the
  * charstring byte length) before the survivors get the full point
@@ -56,10 +59,11 @@ export interface FontMeta {
    */
   codepoints: number[];
   /**
-   * Sorted codepoints the placeholder rules suspect (rounds 18–19):
+   * Sorted codepoints the placeholder rules suspect (rounds 18–20):
    * the mappings dropped from `codepoints` because their glyph draws
-   * the font's own .notdef outline. A coverage-honest count; no live
-   * view needs the list.
+   * the font's own .notdef outline or absorbs the mass-duplication
+   * threshold's worth of codepoints. Round 20's grid renders these
+   * cells in the missing style while keeping the font's own glyph.
    */
   placeholderCodepoints: number[];
 }
@@ -285,11 +289,19 @@ function readCoverage(
 }
 
 /**
- * Round 19's two conventions, applied to the effective cmap: glyph-0
- * mappings are already absent; among the rest, every glyph whose
- * outline is the font's own .notdef outline (glyph 0) is a suspected
- * placeholder and every codepoint it maps reads as missing.
+ * Round 19's two conventions plus round 20's third, applied to the
+ * effective cmap: glyph-0 mappings are already absent; among the rest,
+ * every glyph whose outline is the font's own .notdef outline (glyph 0)
+ * is a suspected placeholder, and so is every glyph id absorbing
+ * MASS_DUPLICATION_THRESHOLD or more codepoints (the mass-duplicated
+ * placeholder — the publisher trick of faking a whole icon plane off
+ * one own-outline box glyph; glyph ids and names are one-to-one). Every
+ * such codepoint reads as missing.
  */
+
+/** Rule 3's threshold (see core placeholder.py's constant). */
+const MASS_DUPLICATION_THRESHOLD = 64;
+
 function splitPlaceholders(
   view: DataView,
   mapped: Map<number, number>,
@@ -307,10 +319,18 @@ function splitPlaceholders(
     }
     return verdict;
   };
+  // Rule 3's own-outline arm: the mass-duplication count per glyph id.
+  const absorbed = new Map<number, number>();
+  for (const glyph of mapped.values()) {
+    absorbed.set(glyph, (absorbed.get(glyph) ?? 0) + 1);
+  }
+  const massDuplicated = (glyph: number): boolean =>
+    (absorbed.get(glyph) ?? 0) >= MASS_DUPLICATION_THRESHOLD;
   const codepoints: number[] = [];
   const placeholders: number[] = [];
   for (const [cp, glyph] of mapped) {
-    (suspect(glyph) ? placeholders : codepoints).push(cp);
+    (suspect(glyph) || massDuplicated(glyph) ? placeholders : codepoints)
+      .push(cp);
   }
   codepoints.sort((a, b) => a - b);
   placeholders.sort((a, b) => a - b);

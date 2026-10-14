@@ -1,13 +1,11 @@
-"""The placeholder-glyph detection (round 18, rules fixed round 19).
+"""The placeholder-glyph detection (round 18, rules fixed round 19,
+mass-duplication rule added round 20).
 
 Some fonts draw a placeholder glyph — a box, a boxed X, a question
 face — at codepoints they do not really cover. Left undetected, those
 mappings poison coverage counts (the font looks bigger than it is) and,
 worse, graft tofu into builds as if it were a real glyph. This module
-is the single detection point every coverage consumer goes through,
-and it follows the OpenType conventions alone (round 19 — the owner
-rejected the concentration thresholds; a real shared glyph, however
-many codepoints it absorbs, is coverage):
+is the single detection point every coverage consumer goes through:
 
 - Rule 1: a codepoint mapped to glyph 0 (``.notdef``) is absent by
   convention — the font is saying nothing there, so it is neither
@@ -17,6 +15,13 @@ many codepoints it absorbs, is coverage):
   drew its tofu box under another name. Outline equality is geometric
   (the recorded drawing), never nominal: name, advance, and hinting are
   not part of it.
+- Rule 3 (round 20, owner-ratified): a glyph NAME absorbing
+  ``MASS_DUPLICATION_THRESHOLD`` or more mapped codepoints is a
+  suspected MASS-DUPLICATED placeholder, whatever its outline — the
+  publisher trick of faking a whole icon plane off one box glyph. Real
+  faces practically never do this (the shipped 213-face survey's worst
+  case was 5 codepoints on one glyph name), so the threshold of 64
+  carries zero false positives while catching the fonts that mass-map.
 
 The outline compare is kept cheap: a fast pre-filter (same contour
 count + same bounding box + same point count) rejects the overwhelming
@@ -30,7 +35,8 @@ and compared as recorded charstring ops. An EMPTY ``.notdef`` outline
 carries no box evidence — rule 2 never fires for it, so a font with a
 blank ``.notdef`` does not flag its blank glyphs (space, ZWSP).
 
-The GUI preview path (``gui/src/fonts/sfnt.ts``) mirrors both rules so
+The GUI preview path (``gui/src/fonts/sfnt.ts``) mirrors all three
+rules (counting per glyph id there — ids and names are one-to-one) so
 the live coverage numbers match the report's.
 
 The result feeds every downstream stage through
@@ -44,10 +50,17 @@ state how many each source carried (``placeholder_codepoints``).
 from __future__ import annotations
 
 import struct
+from collections import Counter
 from dataclasses import dataclass
 
 from fontTools.pens.recordingPen import DecomposingRecordingPen
 from fontTools.ttLib import TTFont
+
+#: Rule 3's threshold: one glyph name absorbing at least this many
+#: mapped codepoints is a suspected mass-duplicated placeholder. The
+#: shipped 213-face survey's worst case was 5 codepoints on one name,
+#: so 64 sits an order of magnitude above every legitimate share.
+MASS_DUPLICATION_THRESHOLD = 64
 
 
 @dataclass(frozen=True)
@@ -70,7 +83,8 @@ def face_coverage(font: TTFont) -> FaceCoverage:
 
     Rule 1 drops glyph-0 mappings first; rule 2 then tests every
     DISTINCT glyph the effective cmap names against the face's own
-    ``.notdef`` outline.
+    ``.notdef`` outline; rule 3 flags every glyph name that absorbed
+    the mass-duplication threshold's worth of codepoints.
     """
     order = font.getGlyphOrder()
     if not order:
@@ -85,6 +99,7 @@ def face_coverage(font: TTFont) -> FaceCoverage:
         return FaceCoverage(codepoints=frozenset(), placeholders=frozenset())
 
     suspects = _notdef_outline_suspects(font, zero, set(effective.values()))
+    suspects |= _mass_duplicated_suspects(effective)
     if not suspects:
         return FaceCoverage(
             codepoints=frozenset(effective), placeholders=frozenset()
@@ -110,6 +125,22 @@ _GLYPH_HEADER = struct.Struct(">hhhhh")
 
 #: Marks an unknown pre-filter point count (composites must decompose).
 _UNKNOWN = -1
+
+
+def _mass_duplicated_suspects(effective: dict[int, str]) -> set[str]:
+    """Rule 3: glyph names absorbing the threshold's worth of codepoints.
+
+    The count is over the EFFECTIVE cmap (glyph-0 mappings already
+    dropped), and the verdict is nominal only — the outline never
+    enters it, so an own-outline box mass-mapped across a fake plane
+    reads as a placeholder exactly like a .notdef-outline one.
+    """
+    counted = Counter(effective.values())
+    return {
+        name
+        for name, count in counted.items()
+        if count >= MASS_DUPLICATION_THRESHOLD
+    }
 
 
 def _notdef_outline_suspects(

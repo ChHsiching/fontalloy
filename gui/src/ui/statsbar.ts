@@ -3,7 +3,7 @@ import { mountStatusBar, type StatusBar } from "../kit/statusBar";
 import { currentResolver, defaultResolver } from "../precedence/live";
 import { isAdjusted } from "../precedence/resolve";
 import { pickRefs, type PickRefs } from "../precedence/picks";
-import { missingCodepoints, BROWSE_UNIVERSE } from "./missing";
+import { missingCodepoints, BROWSE_UNIVERSE, isCjkRegionCodepoint } from "./missing";
 
 /**
  * Persistent bottom stats bar (ADR-0004), on the kit's StatusBar: the
@@ -20,11 +20,14 @@ import { missingCodepoints, BROWSE_UNIVERSE } from "./missing";
  *
  * - 字符: the browsed universe's size (with at least one pick: the
  *   constant total, exactly the prototype's readout);
- * - 英文 / 中文: the universe codepoints the merge renders from the
- *   base / the donor (rules included) — with a lone pick, that pick's
- *   covered universe codepoints count on its own side (a lone EN pick
- *   fills 英文, a lone CJK pick fills 中文), the same winner-side split
- *   the pair case uses;
+ * - 英文 / 中文 (round 20, owner item 5 — SCRIPT REGION, not supplier):
+ *   the covered universe codepoints OUTSIDE / INSIDE the CJK region
+ *   (the 中日韩文字 group's blocks). Which pick supplies a glyph no
+ *   longer moves the count: a lone CJK pick's Latin coverage lands in
+ *   英文 (round 19 counted it into 中文), and the two regions partition
+ *   the universe, so the invariant below holds by construction. The
+ *   stack semantics stand — either pick covers a codepoint, both
+ *   missing = missing;
  * - 缺失: the universe codepoints NO pick covers — the very cells the
  *   grid shows as dashed, visible the moment any pick exists and gaps
  *   remain, no preset involved;
@@ -86,14 +89,17 @@ function computeStats(state: AppState, picks: PickRefs): LiveStats {
     // The prototype readout under every pick state (round 19): one or
     // two picks, everything counts inside the browsed universe, so
     // 字符 is the constant universe size and en + cjk + 缺失 always add
-    // up to it. A lone pick's covered codepoints resolve to itself, so
-    // they land on that pick's side (adjusted stays 0 — one font means
-    // no rule can move a supplier).
+    // up to it. Round 20 classifies by SCRIPT REGION: a covered
+    // codepoint counts where it SITS (inside the 中日韩文字 region →
+    // 中文, everywhere else of the universe → 英文), never by which
+    // pick supplies it. Resolution still walks every covered codepoint
+    // for the 已调整 verdict (adjusted stays 0 with a lone pick — one
+    // font means no rule can move a supplier).
     forUniverseCodepoint((cp) => {
       const entry = resolver ? resolver.resolve(cp) : null;
       if (!entry) return;
-      if (entry.winner === "base") en++;
-      else cjk++;
+      if (isCjkRegionCodepoint(cp)) cjk++;
+      else en++;
       const baseEntry = base ? base.resolve(cp) : null;
       if (isAdjusted(entry, baseEntry)) adjusted++;
     });
