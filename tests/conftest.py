@@ -78,27 +78,34 @@ def synth_font(
 
 
 def synth_placeholder_font(
-    path: Path | str,
+    path: Path,
     *,
     family: str,
     codepoints: tuple[int, ...],
     placeholder_codepoints: tuple[int, ...],
+    notdef_outline: bool = True,
 ) -> Path:
     """Write a synthetic TTF that fakes coverage the placeholder way.
 
     Every codepoint in ``placeholder_codepoints`` maps to ONE shared box
     glyph (the round-18 placeholder shape: a font drawing 方框 at
     codepoints it does not really cover), while ``codepoints`` get the
-    normal one-glyph-per-codepoint treatment. The placeholder run rides
-    the same skeleton as :func:`synth_font` — deterministic, pinned
+    normal one-glyph-per-codepoint treatment. Round 19: the shared glyph
+    carries ``.notdef``'s exact outline by default (``notdef_outline``
+    True — the same-tofu-box-different-name fixture the outline rule
+    must catch); ``notdef_outline=False`` gives it its own box, the
+    concentration-only NEGATIVE fixture (a shared glyph with real
+    outline keeps counting as coverage). The placeholder run rides the
+    same skeleton as :func:`synth_font` — deterministic, pinned
     timestamps — with the shared glyph named ``placeholderBox``.
     """
     glyph_names = [".notdef", "placeholderBox"] + [
         f"uni{cp:04X}" for cp in codepoints
     ]
+    box = _box_glyph(0, 0, 500, 700) if notdef_outline else _box_glyph(60, 60, 540, 640)
     glyphs: dict[str, object] = {
         ".notdef": _box_glyph(0, 0, 500, 700),
-        "placeholderBox": _box_glyph(60, 60, 540, 640),
+        "placeholderBox": box,
     }
     metrics: dict[str, tuple[int, int]] = {
         ".notdef": (600, 40),

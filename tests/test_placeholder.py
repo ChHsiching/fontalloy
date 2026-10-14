@@ -1,17 +1,17 @@
-"""Round 18 (owner item 2b): placeholder glyphs count as missing.
+"""Rounds 18–19: placeholder glyphs count as missing.
 
 Some fonts draw a placeholder glyph (a box, a boxed X, a question face)
 at codepoints they do not really cover — poisoning coverage counts and,
-worse, grafting tofu into builds as if it were a real glyph. The
-detection heuristic (validated against every face of the shipped
-catalog and the GUI prototype fonts, 213 faces, observed maximum 5
-codepoints on one glyph):
+worse, grafting tofu into builds as if it were a real glyph. Round 19
+(owner ruling) fixed the detection to the OpenType conventions alone —
+no concentration thresholds:
 
 - A codepoint mapped to glyph 0 (``.notdef``) is absent by convention.
-- Concentration: one glyph name absorbing an implausible number of
-  codepoints (>= :data:`PLACEHOLDER_MIN_CODEPOINTS` AND >=
-  :data:`PLACEHOLDER_MIN_SHARE` of the font's cmap) is a suspected
-  placeholder, and every codepoint it absorbs reads as missing.
+- A codepoint whose mapped glyph has the SAME OUTLINE as the font's own
+  ``.notdef`` glyph is a suspected placeholder — the font drew its tofu
+  box under another name. A glyph with its own outline is plain
+  coverage however many codepoints share it (real shared glyphs —
+  space, the big-parenthesis pieces — must keep counting).
 
 The pipeline consequences asserted here: such codepoints never count as
 coverage (report rule records list them missing), never enter the
@@ -27,22 +27,18 @@ from pathlib import Path
 from fontTools.ttLib import TTFont
 
 from fontalloy_core.build import build
-from fontalloy_core.placeholder import (
-    PLACEHOLDER_MIN_CODEPOINTS,
-    PLACEHOLDER_MIN_SHARE,
-    face_coverage,
-)
+from fontalloy_core.placeholder import face_coverage
 
 from conftest import synth_font, synth_placeholder_font
 
 #: The placeholder run the fixtures graft into a font: 300 codepoints of
-#: the private use area, one shared box glyph.
+#: the private use area, one shared glyph with .notdef's outline.
 PLACEHOLDER_RUN = tuple(range(0xE000, 0xE12C))
 PLACEHOLDER_COUNT = len(PLACEHOLDER_RUN)
 
 
 class TestFaceCoverage:
-    """The heuristic itself, over in-memory synthetic fonts."""
+    """The two conventions, over in-memory synthetic fonts."""
 
     def _font(self, tmp_path: Path, **kwargs) -> TTFont:
         path = synth_placeholder_font(
@@ -50,7 +46,10 @@ class TestFaceCoverage:
         )
         return TTFont(path)
 
-    def test_concentrated_glyph_reads_as_placeholder(self, tmp_path):
+    def test_notdef_outline_glyph_reads_as_placeholder(self, tmp_path):
+        """The round-19 rule: a mapped glyph sharing .notdef's exact
+        outline is a suspected placeholder — its codepoints read as
+        missing, whatever the glyph is named and however few they are."""
         font = self._font(
             tmp_path,
             codepoints=(0x41, 0x42),
@@ -60,51 +59,51 @@ class TestFaceCoverage:
         assert coverage.placeholders == frozenset(PLACEHOLDER_RUN)
         assert coverage.codepoints == frozenset({0x41, 0x42})
 
-    def test_count_threshold_arm(self, tmp_path):
-        """Just under the 64-codepoint arm: clean, even at 100% share."""
-        few = tuple(range(0xE000, 0xE000 + PLACEHOLDER_MIN_CODEPOINTS - 1))
+    def test_small_notdef_outline_run_is_detected(self, tmp_path):
+        """No thresholds: THREE codepoints on a .notdef-outline glyph
+        (not glyph 0, not named .notdef) still read as placeholders."""
+        few = (0xE000, 0xE001, 0xE002)
         font = self._font(
             tmp_path, codepoints=(0x41,), placeholder_codepoints=few
         )
         coverage = face_coverage(font)
-        assert coverage.placeholders == frozenset()
-        assert coverage.codepoints == frozenset({0x41, *few})
+        assert coverage.placeholders == frozenset(few)
+        assert coverage.codepoints == frozenset({0x41})
 
-    def test_share_threshold_arm(self, tmp_path):
-        """Past the 64-codepoint arm but under the 5% share: clean."""
-        many = tuple(
-            range(0xE000, 0xE000 + PLACEHOLDER_MIN_CODEPOINTS + 6)
-        )  # 70 codepoints on one glyph
-        crowd = tuple(
-            range(
-                0x3400,
-                0x3400 + 2000,
-            )
-        )  # 2000 real glyphs dilute the cmap below 5%
+    def test_shared_glyph_with_own_outline_is_coverage(self, tmp_path):
+        """The other half of the ruling: one glyph absorbing HUNDREDS of
+        codepoints keeps counting as coverage when its outline is its
+        own (the round-18 concentration heuristic is gone)."""
         font = self._font(
-            tmp_path, codepoints=crowd, placeholder_codepoints=many
+            tmp_path,
+            codepoints=(0x41,),
+            placeholder_codepoints=PLACEHOLDER_RUN,
+            notdef_outline=False,
         )
         coverage = face_coverage(font)
         assert coverage.placeholders == frozenset()
-        assert len(coverage.codepoints) == len(crowd) + len(many)
+        assert coverage.codepoints == frozenset({0x41, *PLACEHOLDER_RUN})
 
     def test_notdef_mapped_codepoints_are_absent(self, tmp_path):
         """Glyph-0 mappings are absent by convention: never coverage,
         never placeholders (they are not a placeholder glyph, they are
-        the font saying nothing)."""
+        the font saying nothing). The real glyph draws its OWN outline —
+        rule 2 must leave it alone."""
         from fontTools.fontBuilder import FontBuilder
         from fontTools.pens.ttGlyphPen import TTGlyphPen
 
-        pen = TTGlyphPen(None)
-        pen.moveTo((0, 0))
-        pen.lineTo((500, 0))
-        pen.lineTo((500, 700))
-        pen.lineTo((0, 700))
-        pen.closePath()
-        box = pen.glyph()
+        def box(x_min, y_min, x_max, y_max):
+            pen = TTGlyphPen(None)
+            pen.moveTo((x_min, y_min))
+            pen.lineTo((x_max, y_min))
+            pen.lineTo((x_max, y_max))
+            pen.lineTo((x_min, y_max))
+            pen.closePath()
+            return pen.glyph()
+
         builder = FontBuilder(unitsPerEm=1000, isTTF=True)
         builder.setupGlyphOrder([".notdef", "uni0041"])
-        builder.setupGlyf({".notdef": box, "uni0041": box})
+        builder.setupGlyf({".notdef": box(0, 0, 500, 700), "uni0041": box(30, 0, 570, 620)})
         builder.setupHorizontalMetrics({".notdef": (600, 40), "uni0041": (600, 40)})
         builder.setupHorizontalHeader(ascent=800, descent=-200)
         # 50 codepoints mapped straight at glyph 0, two real ones (the
@@ -120,6 +119,50 @@ class TestFaceCoverage:
         coverage = face_coverage(font)
         assert coverage.codepoints == frozenset({0x41, 0x42})
         assert coverage.placeholders == frozenset()
+
+    def test_cff_notdef_outline_glyph_is_detected(self, tmp_path):
+        """CFF faces: the same rule through decomposed charstrings — a
+        mapped glyph whose Type 2 program draws .notdef's outline reads
+        as a placeholder; a glyph with its own outline does not."""
+        from fontTools.fontBuilder import FontBuilder
+        from fontTools.pens.t2CharStringPen import T2CharStringPen
+
+        def box_charstring(x0, y0, x1, y1, advance=600):
+            pen = T2CharStringPen(advance, None)
+            pen.moveTo((x0, y0))
+            pen.lineTo((x1, y0))
+            pen.lineTo((x1, y1))
+            pen.lineTo((x0, y1))
+            pen.closePath()
+            return pen.getCharString()
+
+        notdef = box_charstring(0, 0, 500, 700)
+        # "boxGlyph": the SAME outline as .notdef, different name;
+        # "ownGlyph": its own outline (a wider box).
+        glyphs = {
+            ".notdef": notdef,
+            "boxGlyph": box_charstring(0, 0, 500, 700),
+            "ownGlyph": box_charstring(0, 0, 600, 700),
+        }
+        builder = FontBuilder(unitsPerEm=1000, isTTF=False)
+        builder.setupGlyphOrder([".notdef", "boxGlyph", "ownGlyph"])
+        builder.setupCharacterMap(
+            {cp: "boxGlyph" for cp in range(0xE000, 0xE064)}
+            | {0x4E01: "ownGlyph"}
+        )
+        builder.setupCFF("CffCov", {"FullName": "CffCov"}, glyphs, {})
+        builder.setupHorizontalMetrics(
+            {name: (600, 40) for name in [".notdef", "boxGlyph", "ownGlyph"]}
+        )
+        builder.setupHorizontalHeader(ascent=800, descent=-200)
+        builder.setupOS2(sTypoAscender=800, sTypoDescender=-200, usWeightClass=400)
+        builder.setupNameTable({"familyName": "CffCov", "styleName": "Regular"})
+        builder.setupPost()
+        builder.font.save(tmp_path / "cffcov.otf")
+        font = TTFont(tmp_path / "cffcov.otf")
+        coverage = face_coverage(font)
+        assert coverage.placeholders == frozenset(range(0xE000, 0xE064))
+        assert coverage.codepoints == frozenset({0x4E01})
 
 
 class TestBuild:

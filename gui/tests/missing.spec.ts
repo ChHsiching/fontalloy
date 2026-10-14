@@ -13,13 +13,19 @@ import { browseUniverseSize } from "../src/unicode/universe";
 
 /**
  * Round 5 — the missing-glyph scope made AUTOMATIC (owner item 4): the
- * 缺失 chip appears the moment BOTH picks exist and the browsed
- * universe holds codepoints neither font covers — computed from the two
- * cmaps alone, no preset involved, nothing accreting per codepoint. The
- * view it opens (dashed danger cells, the 无法指定来源 notice) pages its
- * own list, the status bar's 缺失 counter agrees, and 覆盖 is the honest
- * covered-by-either ÷ browsed-scope share (owner item 6). The mode
- * bar's 定位 field (jump + select from either content mode) rides along.
+ * 缺失 chip appears the moment picks exist and the browsed universe
+ * holds codepoints the picks do not cover — computed from the cmaps
+ * alone, no preset involved, nothing accreting per codepoint. Round 19
+ * (owner ruling) extended the same discipline to a SINGLE pick: the
+ * covered side is the UNION of whatever is picked (one or two fonts),
+ * so the chip and the counters judge the browsed universe the moment
+ * ANY pick exists.
+ *
+ * The view it opens (dashed danger cells, the 无法指定来源 notice) pages
+ * its own list, the status bar's 缺失 counter agrees, and 覆盖 is the
+ * honest covered-by-either ÷ browsed-scope share (owner item 6). The
+ * mode bar's 定位 field (jump + select from either content mode) rides
+ * along.
  */
 
 const UNIVERSE = browseUniverseSize();
@@ -66,6 +72,25 @@ test.describe("missing glyph scope", () => {
     }
   }
 
+  /** Load exactly ONE font into one picker (the round-19 lone pick). */
+  async function openWithOneFont(
+    page: Page,
+    role: "en" | "cjk",
+    path: string,
+  ): Promise<void> {
+    collectJsErrors(page, jsErrors);
+    await page.goto("/");
+    await waitForFontsReady(page);
+    await pointerClick(
+      page,
+      page.locator(`[data-role="picker-${role}"] .kit-hd`),
+    );
+    const popup = page.locator(`[data-picker-popup="${role}"]`);
+    await expect(popup).toBeVisible();
+    await page.locator("input[data-role='font-file']").setInputFiles(path);
+    await expect(popup).toBeHidden();
+  }
+
   test("the 缺失 chip is automatic: coverage-driven, preset-independent", async ({
     page,
   }) => {
@@ -79,11 +104,16 @@ test.describe("missing glyph scope", () => {
     // Before any pick there is nothing to judge: no chip.
     await expect(chip).toHaveCount(0);
 
-    // ONE pick is still not a merge: no chip.
+    // ONE pick already judges (round 19): 26 letters covered,
+    // everything else of the browsed universe missing.
     await pointerClick(page, page.locator('[data-role="picker-en"] .kit-hd'));
     await page.locator("input[data-role='font-file']").setInputFiles(fonts.base);
     await expect(page.locator('[data-picker-popup="en"]')).toBeHidden();
-    await expect(chip).toHaveCount(0);
+    await expect(chip).toBeVisible();
+    await expect(chip).toHaveClass(/miss/);
+    await expect(chip.locator(".n")).toHaveText(
+      (UNIVERSE - 26).toLocaleString("en-US"),
+    );
 
     // Both picks exist: 26 letters + 64 hanzi covered, everything else
     // of the browsed universe missing — from the cmaps alone, no preset.
@@ -166,6 +196,78 @@ test.describe("missing glyph scope", () => {
     await expect(page.locator(".kit-grid .kit-cell.miss")).toHaveCount(pageSize);
     await expect(page.locator("[data-pager-label]")).toContainText(
       `/${Math.ceil(missing / pageSize)} 页`,
+    );
+  });
+
+  test("a lone EN pick judges the universe: missing = universe − its cmap", async ({
+    page,
+  }) => {
+    const fonts = await makeLocalFixtures(64);
+    await openWithOneFont(page, "en", fonts.base);
+    const missing = UNIVERSE - 26;
+
+    // The chip exists with ONE pick and carries the whole gap.
+    const chip = page.locator(".kit-catbar .kit-cat-g[data-group='missing']");
+    await expect(chip).toBeVisible();
+    await expect(chip.locator(".n")).toHaveText(missing.toLocaleString("en-US"));
+
+    // The invariant survives the lone pick: 字符 = 英文 + 中文 + 缺失,
+    // with the EN pick's covered codepoints on the 英文 side (adjusted
+    // stays 0 — one font means no rule can move a supplier).
+    await expect(page.locator("[data-stat='en']")).toHaveText("26");
+    await expect(page.locator("[data-stat='cjk']")).toHaveText("0");
+    await expect(page.locator("[data-stat='adjusted']")).toHaveText("0");
+    await expect(page.locator("[data-stat='missing']")).toHaveText(
+      missing.toLocaleString("en-US"),
+    );
+    await expect(page.locator("[data-stat='total']")).toHaveText(
+      UNIVERSE.toLocaleString("en-US"),
+    );
+    const coverage = Number(
+      (await page.locator("[data-stat='coverage']").textContent()) ?? "0",
+    );
+    expect(coverage).toBeGreaterThan(0);
+    expect(coverage).toBeLessThan(1);
+
+    // The missing view pages the gap and starts at the universe's first
+    // codepoint (U+0021) — the fixture misses whole blocks (every CJK
+    // ideograph included), and the view shows exactly that.
+    await pointerClick(page, chip);
+    await expect(page.locator(".kit-toolrow")).toContainText(
+      "缺失字符无法指定来源",
+    );
+    await expect(page.locator(".kit-grid .kit-cell.miss").first()).toHaveAttribute(
+      "data-cp",
+      "U+0021",
+    );
+    const pageSize = await page.evaluate(
+      () => document.querySelectorAll(".kit-grid .kit-cell").length,
+    );
+    expect(pageSize).toBeGreaterThan(0);
+    await expect(page.locator("[data-pager-label]")).toContainText(
+      `/${Math.ceil(missing / pageSize)} 页`,
+    );
+  });
+
+  test("a lone CJK pick judges its side the same way", async ({ page }) => {
+    const fonts = await makeLocalFixtures(64);
+    await openWithOneFont(page, "cjk", fonts.donor);
+    const missing = UNIVERSE - 64;
+
+    const chip = page.locator(".kit-catbar .kit-cat-g[data-group='missing']");
+    await expect(chip).toBeVisible();
+    await expect(chip.locator(".n")).toHaveText(missing.toLocaleString("en-US"));
+
+    // The invariant, mirrored: the CJK pick's covered codepoints land
+    // on the 中文 side, everything else of the universe is missing.
+    await expect(page.locator("[data-stat='en']")).toHaveText("0");
+    await expect(page.locator("[data-stat='cjk']")).toHaveText("64");
+    await expect(page.locator("[data-stat='adjusted']")).toHaveText("0");
+    await expect(page.locator("[data-stat='missing']")).toHaveText(
+      missing.toLocaleString("en-US"),
+    );
+    await expect(page.locator("[data-stat='total']")).toHaveText(
+      UNIVERSE.toLocaleString("en-US"),
     );
   });
 

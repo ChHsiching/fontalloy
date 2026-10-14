@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import BinaryIO
 
 from fontTools.fontBuilder import FontBuilder
+from fontTools.pens.t2CharStringPen import T2CharStringPen
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import TTCollection, TTFont
 
@@ -61,6 +62,7 @@ def synth_font(
     style: str = "Regular",
     italic: bool = False,
     placeholder_codepoints: tuple[int, ...] = (),
+    shared_codepoints: tuple[int, ...] = (),
 ) -> None:
     """Write a small synthetic TTF covering exactly ``codepoints``.
 
@@ -70,19 +72,29 @@ def synth_font(
     fixtures: a Regular/Bold/Italic trio that parses to ONE css family
     with a real weight matrix.
 
-    ``placeholder_codepoints`` (round 18) all map to ONE shared
-    ``placeholderBox`` glyph — the fake-coverage shape the placeholder
-    heuristic must catch (a font drawing a box at codepoints it does
-    not really cover).
+    ``placeholder_codepoints`` (round 18, round 19) all map to ONE
+    shared ``placeholderBox`` glyph whose outline IS ``.notdef``'s —
+    the fake-coverage shape the outline rule must catch (a font drawing
+    its own tofu box under another name at codepoints it does not
+    really cover).
+
+    ``shared_codepoints`` (round 19) map to one ``sharedBox`` glyph
+    with its OWN outline — the concentration NEGATIVE: a shared glyph
+    of real shape keeps counting as plain coverage.
     """
-    glyph_names = [".notdef", "placeholderBox"] + [
+    glyph_names = [".notdef", "placeholderBox", "sharedBox"] + [
         f"uni{cp:04X}" for cp in codepoints
     ]
     glyphs = {
         ".notdef": _box_glyph(0, 0, 500, 700),
-        "placeholderBox": _box_glyph(60, 60, 540, 640),
+        "placeholderBox": _box_glyph(0, 0, 500, 700),
+        "sharedBox": _box_glyph(60, 60, 540, 640),
     }
-    metrics = {".notdef": (advance, 40), "placeholderBox": (advance, 40)}
+    metrics = {
+        ".notdef": (advance, 40),
+        "placeholderBox": (advance, 40),
+        "sharedBox": (advance, 40),
+    }
     for index, cp in enumerate(codepoints):
         # Distinct ink height per codepoint so a glyph is traceable to
         # its font of origin (same trick as the core fixtures).
@@ -96,6 +108,7 @@ def synth_font(
     builder.setupCharacterMap(
         {cp: f"uni{cp:04X}" for cp in codepoints}
         | {cp: "placeholderBox" for cp in placeholder_codepoints}
+        | {cp: "sharedBox" for cp in shared_codepoints}
     )
     builder.setupGlyf(glyphs)
     builder.setupHorizontalMetrics(metrics)
@@ -121,13 +134,72 @@ def synth_font(
 
 
 #: The round-12 family-pick fixture: one family, three faces — the
-#: weight matrix a catalog pick registers (Regular 400, Bold 700,
-#: Italic 400-italic; RIBBI subfamilies keep the shared family name).
+# weight matrix a catalog pick registers (Regular 400, Bold 700,
+# Italic 400-italic; RIBBI subfamilies keep the shared family name).
 FAMILY_FACES = (
     ("Regular", 400, False),
     ("Bold", 700, False),
     ("Italic", 400, True),
 )
+
+
+def _t2_box_glyph(x_min, y_min, x_max, y_max, advance):
+    pen = T2CharStringPen(advance, None)
+    pen.moveTo((x_min, y_min))
+    pen.lineTo((x_max, y_min))
+    pen.lineTo((x_max, y_max))
+    pen.lineTo((x_min, y_max))
+    pen.closePath()
+    return pen.getCharString()
+
+
+def synth_cff_donor(
+    path: Path,
+    *,
+    codepoints: tuple[int, ...],
+    placeholder_codepoints: tuple[int, ...] = (),
+) -> None:
+    """Write the donor as a CFF (OTF) face instead of a TTF one.
+
+    Same coverage skeleton as the TTF donor — the shared placeholder
+    glyph carries ``.notdef``'s outline (round 19) — so the GUI's CFF
+    parse path (charstring INDEX compare) is testable exactly like the
+    glyf one.
+    """
+    glyph_names = [".notdef", "placeholderBox"] + [
+        f"uni{cp:04X}" for cp in codepoints
+    ]
+    glyphs = {
+        ".notdef": _t2_box_glyph(0, 0, 500, 700, 600),
+        "placeholderBox": _t2_box_glyph(0, 0, 500, 700, 600),
+    }
+    for index, cp in enumerate(codepoints):
+        glyphs[f"uni{cp:04X}"] = _t2_box_glyph(
+            40, 0, 560, 300 + (100 * (index % 5)), 600
+        )
+
+    builder = FontBuilder(unitsPerEm=1000, isTTF=False)
+    builder.setupGlyphOrder(glyph_names)
+    builder.setupCharacterMap(
+        {cp: f"uni{cp:04X}" for cp in codepoints}
+        | {cp: "placeholderBox" for cp in placeholder_codepoints}
+    )
+    builder.setupCFF("AlloyDonor", {"FullName": "AlloyDonor"}, glyphs, {})
+    builder.setupHorizontalMetrics({name: (600, 40) for name in glyph_names})
+    builder.setupHorizontalHeader(ascent=800, descent=-200)
+    builder.setupOS2(
+        sTypoAscender=800,
+        sTypoDescender=-200,
+        usWinAscent=900,
+        usWinDescent=300,
+        usWeightClass=400,
+    )
+    builder.setupNameTable({"familyName": "AlloyDonor", "styleName": "Regular"})
+    builder.setupPost()
+    builder.setupHead(
+        unitsPerEm=1000, created=FIXED_TIMESTAMP, modified=FIXED_TIMESTAMP
+    )
+    builder.save(path)
 
 
 def synth_family(outdir: Path, *, family: str, stem: str) -> list[Path]:
@@ -208,8 +280,22 @@ def main() -> int:
         type=int,
         default=0,
         help="the donor ALSO maps N private-use codepoints onto ONE "
-        "shared box glyph (round 18: the fake-coverage fixture the "
-        "placeholder heuristic must catch)",
+        "shared glyph carrying .notdef's outline (round 19: the "
+        "fake-coverage fixture the outline rule must catch)",
+    )
+    parser.add_argument(
+        "--shared-glyph-donor",
+        type=int,
+        default=0,
+        help="the donor ALSO maps N private-use codepoints onto ONE "
+        "shared glyph with its OWN outline (round 19: the concentration "
+        "negative — plain coverage, never a placeholder)",
+    )
+    parser.add_argument(
+        "--cff-donor",
+        action="store_true",
+        help="write the donor as a CFF (OTF) face instead of a TTF one "
+        "(the CFF parse path's fixture; combines with --placeholder-donor)",
     )
     parser.add_argument(
         "--family",
@@ -263,14 +349,29 @@ def main() -> int:
     donor_codepoints = tuple(
         range(DONOR_FIRST, DONOR_FIRST + args.donor_glyphs)
     ) + tuple(range(0x41, 0x41 + args.donor_ascii))
-    synth_font(
-        args.outdir / "donor.ttf",
-        family="AlloyDonor",
-        codepoints=donor_codepoints,
-        placeholder_codepoints=tuple(
-            range(PLACEHOLDER_FIRST, PLACEHOLDER_FIRST + args.placeholder_donor)
-        ),
-    )
+    if args.cff_donor:
+        synth_cff_donor(
+            args.outdir / "donor.ttf",
+            codepoints=donor_codepoints,
+            placeholder_codepoints=tuple(
+                range(
+                    PLACEHOLDER_FIRST,
+                    PLACEHOLDER_FIRST + args.placeholder_donor,
+                )
+            ),
+        )
+    else:
+        synth_font(
+            args.outdir / "donor.ttf",
+            family="AlloyDonor",
+            codepoints=donor_codepoints,
+            placeholder_codepoints=tuple(
+                range(PLACEHOLDER_FIRST, PLACEHOLDER_FIRST + args.placeholder_donor)
+            ),
+            shared_codepoints=tuple(
+                range(PLACEHOLDER_FIRST, PLACEHOLDER_FIRST + args.shared_glyph_donor)
+            ),
+        )
     print(f"wrote {args.outdir / 'base.ttf'} and {args.outdir / 'donor.ttf'}")
     return 0
 
