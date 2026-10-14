@@ -335,16 +335,19 @@ export interface TagGeometry {
    */
   sameLine: boolean;
   /**
-   * The tag's right edge is flush (≤1px) with the value container's —
-   * whether it shares the line or wrapped to its own next line, the
-   * tag hugs the right edge.
+   * The tag's right edge is flush (≤1px) with the fact ROW's — the
+   * row spans the report's content width, so this is the PANEL's
+   * right edge (round 20, owner item 6: the value container was the
+   * wrong reference — a content-sized box made the pin true while the
+   * tag sat short of the panel). Whether it shares the line or
+   * wrapped to its own next line, the tag hugs the panel's edge.
    */
   rightFlush: boolean;
 }
 
 /**
  * Round 19 (owner items 4a+4b): read one tagged fact's tag geometry —
- * a SHORT value (输出格式's ttc, 行高保持不变's 是) must pin both
+ * a SHORT value (输出格式's ttf, 行高保持不变's 是) must pin both
  * sameLine and rightFlush true; a long wrapping sentence (the weight
  * grid's source line) pins only rightFlush, the vertical position
  * being wherever the wrap left it.
@@ -365,8 +368,7 @@ export async function tagGeometry(fact: Locator): Promise<TagGeometry | null> {
     return {
       rowDisplay: getComputedStyle(row).display,
       sameLine: overlap > (g.bottom - g.top) / 2,
-      rightFlush:
-        Math.abs(g.right - value.getBoundingClientRect().right) <= 1,
+      rightFlush: Math.abs(g.right - el.getBoundingClientRect().right) <= 1,
     };
   });
 }

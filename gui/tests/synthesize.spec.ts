@@ -472,6 +472,77 @@ test.describe("sidecar synthesize", () => {
     }
   });
 
+  // Round 20 (owner item 6): the 「中文字形来源」 fact's value area
+  // STRETCHES — one long-family build pins the wrapped geometry against
+  // the PANEL's right edge (the details element spans the report's
+  // content width), never against the value box's own edge. A
+  // content-sized box (its width = its longest line) let the wrapped
+  // tag's margin-left: auto stop at the box edge, a large blank short
+  // of the panel.
+  test("round 20: a wrapped source tag hugs the panel's right edge, not the value box's", async ({
+    page,
+  }) => {
+    // The owner's shape: a family name long enough that the sentence
+    // stays on ONE line but the tag cannot follow it there (it wraps
+    // to its own next line), like 「16 档全部取自 LXGW WenKai GB Screen」.
+    const service = await startServeFixture({
+      donorGlyphs: 2000,
+      donorName: "LXGW WenKai GB Screen Pro",
+    });
+    const saved: string[] = [];
+    try {
+      await openWithService(page, service, saved);
+      await loadIntoPicker(page, "en", service.baseFont);
+      await loadIntoPicker(page, "cjk", service.donorFont);
+      const synthesize = page.locator(".topbar [data-role='synthesize']");
+      await expect(synthesize).toHaveAttribute("aria-disabled", "false");
+      await pointerClick(page, synthesize);
+      const panel = page.locator('[data-testid="build-panel"]');
+      await expect(panel).toBeVisible();
+      await expect(panel.locator("[data-build-stage]").first()).toHaveText(
+        "完成",
+        { timeout: 30_000 },
+      );
+      await pointerClick(page, panel.locator(".report-details > summary"));
+      const sourceFact = panel
+        .locator(".report-fact")
+        .filter({ hasText: /档全部取自/ });
+      await expect(sourceFact).toBeVisible();
+
+      const geo = await sourceFact.evaluate((el) => {
+        const rect = (x: Element) => {
+          const b = x.getBoundingClientRect();
+          return { left: b.left, right: b.right, top: b.top, bottom: b.bottom };
+        };
+        return {
+          details: rect(el.closest(".report-details")!),
+          label: rect(el.querySelector(".report-fact-label")!),
+          value: rect(el.querySelector(".report-fact-value")!),
+          valueText: rect(el.querySelector(".report-fact-value-text")!),
+          tagRow: rect(el.querySelector(".report-tag-row")!),
+        };
+      });
+      // The premise: the wrap really happened — the tag row sits BELOW
+      // the text's line, on its own wrapped line.
+      expect(geo.tagRow.top).toBeGreaterThanOrEqual(geo.valueText.bottom - 0.5);
+      // The value area STRETCHES: the box starts right after the fixed
+      // label (the row's 10px gap) and ends on the PANEL's edge — its
+      // width is the row's value area, never its longest line.
+      expect(Math.abs(geo.value.left - (geo.label.right + 10))).toBeLessThanOrEqual(2);
+      expect(Math.abs(geo.value.right - geo.details.right)).toBeLessThanOrEqual(2);
+      // The wrapped TAG lands within 2px of the panel's right edge
+      // (margin-left: auto reaches the PANEL, not the box).
+      expect(Math.abs(geo.tagRow.right - geo.details.right)).toBeLessThanOrEqual(2);
+      // Every wrapped line lands on the panel's edge — the text's own
+      // line too (the value column is right-anchored, like every short
+      // value already is).
+      expect(Math.abs(geo.valueText.right - geo.details.right)).toBeLessThanOrEqual(2);
+      assertNoJsErrors(jsErrors);
+    } finally {
+      await service.dispose();
+    }
+  });
+
   test("round 12: the save handoff needs no dialog, keeps the stepper lit, and offers 另存为", async ({
     page,
   }) => {

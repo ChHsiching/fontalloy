@@ -651,10 +651,14 @@ function reportTag(text: string): HTMLElement {
  * The tags' one GROUP (round 19, owner items 4a+4b — the unified rule
  * replacing round 18's always-own-next-line): every qualifier tag of
  * one value rides a single flex row that (a) SHARES the value text's
- * line when it fits — margin-left: auto pushes it flush against the
- * container's right edge — and (b) wraps to its own NEXT line, still
- * flush right, as a whole group when the line cannot fit (the row is
- * one flex item, so it never wraps tag by tag).
+ * line when it fits and (b) wraps to its own NEXT line, still flush
+ * right, as a whole group when the line cannot fit (the row is one
+ * flex item, so it never wraps tag by tag). What pushes it flush
+ * right is the home's rule: inside a weight-grid cell the row's own
+ * margin-left: auto (round 19); inside a fact row the value area's
+ * right-anchored packing (round 20 — the box STRETCHES over the
+ * row's remainder and packs from the right, keeping the text and its
+ * tag adjacent while every line lands on the panel's edge).
  */
 function reportTagRow(tags: readonly string[]): HTMLElement {
   const row = document.createElement("span");
@@ -668,7 +672,10 @@ function reportTagRow(tags: readonly string[]): HTMLElement {
  * items 4a+4b): ONE flex row that may wrap — the text span first (it
  * wraps freely; font names are never ellipsized, only paths
  * ellipsize), then the tag group inline after it, flush to the right
- * edge — on this line, or its own next one when it must wrap.
+ * edge — on this line, or its own next one when it must wrap. In a
+ * fact row the value area STRETCHES to the panel's right edge (round
+ * 20, owner item 6 — see the app.css scoped rule), so the flush-right
+ * edge every line lands on is the PANEL's, not the box's own.
  */
 function taggedValue(text: string, tags: readonly string[]): HTMLElement {
   const value = document.createElement("span");

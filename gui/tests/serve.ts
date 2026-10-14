@@ -66,6 +66,12 @@ export interface FixtureFontOptions {
    * fixtures the glyf path has).
    */
   cffDonor?: boolean;
+  /**
+   * The donor's family name (round 20: a LONG name forces the report's
+   * 「N 档全部取自 …」 sentence to wrap — the geometry fixture for the
+   * wrapped-tag-flush-right pin).
+   */
+  donorName?: string;
 }
 
 /** Generate the synthetic fixture pair into `fontsDir` (no service). */
@@ -91,6 +97,9 @@ export async function generateFonts(
   }
   if (options.cffDonor) {
     args.push("--cff-donor");
+  }
+  if (options.donorName) {
+    args.push("--donor-name", options.donorName);
   }
   await run(python, args, repoRoot);
   return {
