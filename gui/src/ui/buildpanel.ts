@@ -140,6 +140,16 @@
  * sentence (「按选定格式（ttf / ttc / woff2）」) are NOT qualifiers and
  * keep their brackets.
  *
+ * Round 18 (owner items 5+6): the tags go teal — border and text in
+ * the accent (`--ac`), the fill the kit's faint accent tint
+ * (`--acsoft`) — and a tag NEVER wraps to the middle of a following
+ * line: a tagged value is a flex block whose text span wraps freely
+ * (font names never ellipsize — only paths do) while the tags ride
+ * ONE row on their own last line, right-aligned (`margin-left: auto`
+ * on the row). The 行高保持不变 fact joins the family the same way:
+ * 「是」 + tag 「完全沿用英文字体」 — the last colon-qualifier value is
+ * gone.
+ *
  * Wording follows the owner-ratified copy spec
  * (`fontalloy-notes/report-copy.md`): real words only, the round-10
  * ruling trims the ?-popovers to one per section heading.
@@ -588,12 +598,14 @@ function fact(label: string, value: string | HTMLElement): HTMLDivElement {
 /**
  * One report qualifier TAG (round 17, owner item 2): what used to ride
  * the value as bracket text — 「ttc（多字体合集）」 — renders as a small
- * badge chip BESIDE it (the owner: tags, not brackets). The idiom is
- * the picker's 未下载 chip (`kit-vchip`): tiny, muted border + fill on
- * theme tokens, no shadows, never wrapping mid-word. Decorative
- * qualifier of the adjacent text — a real span with a stable
- * data-role for tests, no aria-label of its own, and never nested
- * inside an ellipsizing text span (the nowrap chip must not clip).
+ * badge chip (the owner: tags, not brackets). Round 18 (owner item 5)
+ * tints the family teal: border and text in the accent, the fill the
+ * kit's faint accent tint — the tag reads as a qualifier OF the value,
+ * not a neutral chip. Tiny, no shadows, never wrapping mid-word.
+ * Decorative qualifier of the adjacent text — a real span with a
+ * stable data-role for tests, no aria-label of its own, and never
+ * nested inside an ellipsizing text span (the nowrap chip must not
+ * clip).
  */
 function reportTag(text: string): HTMLElement {
   const tag = document.createElement("span");
@@ -604,9 +616,24 @@ function reportTag(text: string): HTMLElement {
 }
 
 /**
- * A fact value as plain text plus qualifier tags: the text rides its
- * own span (a shrinking or ellipsizing value could never clip a tag),
- * every qualifier a tag after it.
+ * The tags' own line (round 18, owner item 6): every qualifier tag of
+ * one value rides a single flex row that sits BELOW the text — a tag
+ * never wraps to the middle of a following line (white-space tricks
+ * cannot promise that; layout can). Right-aligned via margin-left:
+ * auto, so the tags hug the value's right edge.
+ */
+function reportTagRow(tags: readonly string[]): HTMLElement {
+  const row = document.createElement("span");
+  row.className = "report-tag-row";
+  for (const qualifier of tags) row.append(reportTag(qualifier));
+  return row;
+}
+
+/**
+ * A fact value as plain text plus qualifier tags (round 18, owner
+ * item 6): a flex BLOCK — the text rides its own span and wraps
+ * freely (font names are never ellipsized; only paths ellipsize),
+ * and the tags ride their own right-aligned row under it.
  */
 function taggedValue(text: string, tags: readonly string[]): HTMLElement {
   const value = document.createElement("span");
@@ -614,8 +641,7 @@ function taggedValue(text: string, tags: readonly string[]): HTMLElement {
   const label = document.createElement("span");
   label.className = "report-fact-value-text";
   label.textContent = text;
-  value.append(label);
-  for (const qualifier of tags) value.append(reportTag(qualifier));
+  value.append(label, reportTagRow(tags));
   return value;
 }
 
@@ -708,7 +734,9 @@ function metricTable(
  * One weight-grid cell (round 17): plain cells stay plain strings — ✓ /
  * 「无」 / 「没用中文字体」 — while a differing slot's source line is its
  * family text plus the via qualifier as a TAG (the old 「family · via」
- * dot-join is gone, like the bracket forms above).
+ * dot-join is gone, like the bracket forms above). Round 18 (owner
+ * item 6): inside a cell the tag row rides its own line UNDER the
+ * family text, right-aligned like the column.
  */
 type WeightCell = string | { text: string; tags: readonly string[] };
 
@@ -755,8 +783,7 @@ function weightTable(
         const text = document.createElement("span");
         text.className = "report-cell-text";
         text.textContent = value.text;
-        td.append(text);
-        for (const qualifier of value.tags) td.append(reportTag(qualifier));
+        td.append(text, reportTagRow(value.tags));
       }
       tr.append(td);
     }
@@ -925,7 +952,10 @@ function renderReport(
     if (metricRows.length > 0) section.appendChild(metricTable(metricRows));
     const untouched = face.line_height_untouched;
     if (untouched?.hhea || untouched?.typo) {
-      section.append(fact("行高保持不变", "是：完全沿用英文字体"));
+      // Round 18 (owner item 5): the qualifier rides a tag like every
+      // other — 「是」 + 「完全沿用英文字体」, never the colon-joined
+      // value text.
+      section.append(fact("行高保持不变", taggedValue("是", ["完全沿用英文字体"])));
     }
     body.appendChild(section);
   }

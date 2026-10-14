@@ -919,28 +919,55 @@ body {
   white-space: nowrap;
 }
 
-/* Round 17 (owner item 2): report qualifier TAGS — what used to ride
- * the value text as brackets (「ttc（多字体合集）」, 「…（自动取最近）」)
- * renders as a small badge chip BESIDE the text. The picker's 未下载
- * chip idiom (kit-vchip): tiny, muted border + fill on theme tokens,
- * the app's small corner radius, no shadows. The chip never wraps
- * mid-word (white-space: nowrap) and never sits inside an
- * ellipsizing text span, so nothing can clip it; the value's own
- * text keeps its normal wrapping in the span before it. Decorative
- * qualifier of the adjacent text — the words carry the meaning. */
+/* Round 17 (owner item 2) + round 18 (owner items 5+6): report
+ * qualifier TAGS — what used to ride the value text as brackets
+ * (「ttc（多字体合集）」, 「…（自动取最近）」) renders as a small badge
+ * chip. Round 18 tints the family TEAL: border and text in the
+ * accent (--ac), the fill the kit's existing faint accent tint
+ * (--acsoft) — the tag reads as a qualifier of the value, not a
+ * neutral chip. The app's small corner radius, no shadows, never
+ * wrapping mid-word (white-space: nowrap), never inside an
+ * ellipsizing text span. Decorative qualifier of the adjacent text —
+ * the words carry the meaning. */
 .report-tag {
   display: inline-flex;
   align-items: center;
-  margin-left: 5px;
   padding: 0 5px;
-  border: 1px solid var(--ln);
+  border: 1px solid var(--ac);
   border-radius: 4px;
-  background: var(--sf2);
+  background: var(--acsoft);
   font-size: 10px;
   line-height: 1.5;
-  color: var(--ink3);
+  color: var(--ac);
   white-space: nowrap;
   user-select: none;
+}
+
+/* Round 18 (owner item 6): a tag NEVER wraps to the middle of a
+ * following line — a tagged fact value is a flex BLOCK. The text span
+ * is its first line and wraps freely (font names are never
+ * ellipsized — only paths ellipsize); the tag row is the value's own
+ * LAST line, right-aligned with the fact row (margin-left: auto; the
+ * label/value structure of .report-fact is unchanged). */
+.report-fact-value {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.report-fact-value-text {
+  white-space: normal;
+}
+
+/* The tags' one row: right-aligned in BOTH homes — margin-left: auto
+ * against the fact value's column stack, and (block-level inside a
+ * weight-grid cell) justify-content against the cell's own width, so
+ * under the family text the row rides its own right-aligned line. */
+.report-tag-row {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+  margin-left: auto;
 }
 
 /* Round 13 (owner item 6): the metrics comparison is a real TABLE —

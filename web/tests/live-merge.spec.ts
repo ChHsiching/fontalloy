@@ -155,6 +155,31 @@ test("detects the service, merges live with journal and report, downloads the fo
         .locator('[data-role="report-tag"]')
         .filter({ hasText: /自动取最近|指定字重|锁定/ }),
     ).toHaveCount(1);
+    // Round 18 (owner item 6, no web regression): the tag row rides its
+    // OWN line under the sentence — a flex block value, right-aligned
+    // with the fact row (the tag never wraps mid-line).
+    const sourceFact = page
+      .locator(".report-fact")
+      .filter({ hasText: /档全部取自/ });
+    const tagGeometry = await sourceFact.evaluate((el) => {
+      const text = el.querySelector(".report-fact-value-text");
+      const row = el.querySelector(".report-tag-row");
+      const tag = row?.querySelector('[data-role="report-tag"]');
+      if (text === null || row === null || tag === null) return null;
+      const fact = el.getBoundingClientRect();
+      return {
+        rowDisplay: getComputedStyle(row).display,
+        ownLine:
+          text.getBoundingClientRect().bottom <=
+          row.getBoundingClientRect().top + 0.5,
+        rightAligned:
+          Math.abs(tag.getBoundingClientRect().right - fact.right) <= 1,
+      };
+    });
+    expect(tagGeometry).not.toBeNull();
+    expect(tagGeometry?.rowDisplay).toBe("flex");
+    expect(tagGeometry?.ownLine).toBe(true);
+    expect(tagGeometry?.rightAligned).toBe(true);
     const metricsTable = panel.locator(".report-mtable").first();
     await expect(metricsTable).toBeVisible();
     expect(

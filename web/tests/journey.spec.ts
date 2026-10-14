@@ -389,6 +389,17 @@ test("J11 Web 目标 — detection, picks, preset, live merge, report, download,
       ]) {
         await expect(panel).toContainText(label);
       }
+      // Round 18 (owner item 5, no web regression): the 行高保持不变
+      // fact is 「是」 plus the qualifier TAG — the colon-qualifier
+      // value text is gone.
+      const lineHeightFact = panel
+        .locator(".report-fact")
+        .filter({ hasText: "行高保持不变" });
+      await expect(
+        lineHeightFact
+          .locator('[data-role="report-tag"]')
+          .filter({ hasText: "完全沿用英文字体" }),
+      ).toHaveCount(1);
       // Round 13 (owner item 6): the metrics section is a real table —
       // the 合并前 / 合并后 data columns stated ONCE in a header row.
       const metricsTable = panel.locator(".report-mtable").first();

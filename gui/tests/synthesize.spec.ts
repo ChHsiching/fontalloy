@@ -271,6 +271,20 @@ test.describe("sidecar synthesize", () => {
       await expect(panel).toContainText("覆盖检查");
       await expect(panel).toContainText("字体尺寸对比");
       await expect(panel).toContainText("行高保持不变");
+      // Round 18 (owner item 5): that fact is 「是」 plus the qualifier
+      // TAG — the colon-qualifier value text 「是：完全沿用英文字体」
+      // is gone.
+      const lineHeightFact = panel
+        .locator(".report-fact")
+        .filter({ hasText: "行高保持不变" });
+      await expect(
+        lineHeightFact.locator(".report-fact-value-text"),
+      ).toHaveText("是");
+      await expect(
+        lineHeightFact
+          .locator('[data-role="report-tag"]')
+          .filter({ hasText: "完全沿用英文字体" }),
+      ).toHaveCount(1);
       // Round 13 (owner item 6): the metrics render as a real TABLE —
       // the 合并前 / 合并后 data columns stated ONCE in a header row,
       // values column-aligned, 「无」 stays, zero · separators in the
@@ -296,6 +310,33 @@ test.describe("sidecar synthesize", () => {
           .locator('[data-role="report-tag"]')
           .filter({ hasText: /自动取最近|指定字重|锁定/ }),
       ).toHaveCount(1);
+      // Round 18 (owner item 6): a tag never wraps to the middle of a
+      // following line — a tagged fact value is a flex block: the text
+      // span wraps freely (font names never ellipsize) while the tag
+      // row rides its OWN line UNDER the text, right-aligned with the
+      // fact row (the label/value structure stays).
+      const sourceFact = panel
+        .locator(".report-fact")
+        .filter({ hasText: /档全部取自/ });
+      const tagGeometry = await sourceFact.evaluate((el) => {
+        const text = el.querySelector(".report-fact-value-text");
+        const row = el.querySelector(".report-tag-row");
+        const tag = row?.querySelector('[data-role="report-tag"]');
+        if (text === null || row === null || tag === null) return null;
+        const fact = el.getBoundingClientRect();
+        return {
+          rowDisplay: getComputedStyle(row).display,
+          ownLine:
+            text.getBoundingClientRect().bottom <=
+            row.getBoundingClientRect().top + 0.5,
+          rightAligned:
+            Math.abs(tag.getBoundingClientRect().right - fact.right) <= 1,
+        };
+      });
+      expect(tagGeometry).not.toBeNull();
+      expect(tagGeometry?.rowDisplay).toBe("flex");
+      expect(tagGeometry?.ownLine).toBe(true);
+      expect(tagGeometry?.rightAligned).toBe(true);
       // Round 12 (owner item 1): NO dash-joins anywhere in the panel —
       // nothing relies on an em-dash to separate.
       await expect(panel).not.toContainText("—");
