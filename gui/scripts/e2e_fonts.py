@@ -259,6 +259,101 @@ def synth_ttc(outdir: Path, *, stem: str = "AlloyTTC") -> Path:
     return path
 
 
+#: The round-20 REAL-family fixture: sixteen faces of ONE family (the
+#: JetBrainsMono Nerd Font cut's own weight × style matrix), derived
+#: from the real release binary — the shape the pipeline's own ttc
+#: output carries (every face one name-table family, sixteen weights).
+NF_FAMILY_FACES = (
+    ("Thin", 100, False),
+    ("ThinItalic", 100, True),
+    ("ExtraLight", 200, False),
+    ("ExtraLightItalic", 200, True),
+    ("Light", 300, False),
+    ("LightItalic", 300, True),
+    ("Regular", 400, False),
+    ("Italic", 400, True),
+    ("Medium", 500, False),
+    ("MediumItalic", 500, True),
+    ("SemiBold", 600, False),
+    ("SemiBoldItalic", 600, True),
+    ("Bold", 700, False),
+    ("BoldItalic", 700, True),
+    ("ExtraBold", 800, False),
+    ("ExtraBoldItalic", 800, True),
+)
+
+
+def synth_nf_family(outdir: Path, src: Path) -> list[Path]:
+    """Write a real 16-face JetBrainsMono family over the release binary.
+
+    Each face is the REAL font with its name table, OS/2 weight and
+    italic bits rewritten to its slot of the matrix (what the upstream
+    release's own family looks like structurally); ``head`` timestamps
+    stay pinned. The files name the family cut the pipeline's cut
+    pattern resolves: ``JetBrainsMonoNerdFont-*``.
+    """
+    paths = []
+    for style, weight, italic in NF_FAMILY_FACES:
+        font = TTFont(src)
+        font["head"].created = FIXED_TIMESTAMP
+        font["head"].modified = FIXED_TIMESTAMP
+        font["OS/2"].usWeightClass = weight
+        if italic:
+            font["head"].macStyle |= 0x02
+            font["OS/2"].fsSelection = (font["OS/2"].fsSelection & ~0x40) | 0x01
+        else:
+            font["head"].macStyle &= ~0x02
+            font["OS/2"].fsSelection &= ~0x01
+        subfamily = (
+            "Italic"
+            if italic and style == "Regular"
+            else (f"{style} Italic" if italic else style)
+        )
+        ribbi = style in ("Regular", "Bold")
+        fam1 = "JetBrainsMono NF" if ribbi else f"JetBrainsMono NF {style}"
+        sub2 = subfamily if ribbi else ("Italic" if italic else "Regular")
+        for rec in font["name"].names:
+            if rec.nameID == 1:
+                rec.string = fam1
+            elif rec.nameID == 2:
+                rec.string = sub2
+            elif rec.nameID == 4:
+                rec.string = f"JetBrainsMono NF {subfamily}"
+            elif rec.nameID == 6:
+                rec.string = f"JetBrainsMonoNerdFont-{style}{'Italic' if italic else ''}"
+        path = outdir / f"JetBrainsMonoNerdFont-{style}{'Italic' if italic else ''}.ttf"
+        font.save(path)
+        font.close()
+        paths.append(path)
+    return paths
+
+
+def synth_subset_donor(outdir: Path, src: Path) -> Path:
+    """Write a real donor subset: the first 400 ideographs of 一.
+
+    The full LXGW binary grafts ~45k glyphs per output face; sixteen
+    faces over it build for minutes. The subset keeps the bytes real
+    (a true fontTools subset of the real font) while the 16-face
+    pipeline build stays a suite-viable ~40s.
+    """
+    from fontTools import subset
+
+    text = "".join(chr(cp) for cp in range(0x4E00, 0x4E00 + 400)) + "AB"
+    options = subset.Options()
+    options.layout_features = ["*"]
+    options.name_IDs = ["*"]
+    options.notdef_outline = True
+    options.recalc_bounds = False
+    options.drop_tables += ["DSIG"]
+    font = subset.load_font(str(src), options)
+    submitter = subset.Subsetter(options)
+    submitter.populate(text=text)
+    submitter.subset(font)
+    path = outdir / "LXGWSubset-Regular.ttf"
+    subset.save_font(font, str(path), options)
+    return path
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("outdir", type=Path)
@@ -326,9 +421,32 @@ def main() -> int:
         default="AlloyTTC",
         help="the collection fixture's file stem (--ttc only)",
     )
+    parser.add_argument(
+        "--nf-family",
+        type=Path,
+        metavar="SRC",
+        help="write the round-20 REAL 16-face JetBrainsMono family "
+        "(weight × style over the given release binary) instead of the "
+        "base/donor pair",
+    )
+    parser.add_argument(
+        "--subset-donor",
+        type=Path,
+        metavar="SRC",
+        help="write LXGWSubset-Regular.ttf — a real fontTools subset of "
+        "the given donor (the round-20 fast fixture donor)",
+    )
     args = parser.parse_args()
 
     args.outdir.mkdir(parents=True, exist_ok=True)
+    if args.nf_family is not None:
+        paths = synth_nf_family(args.outdir, args.nf_family)
+        print("wrote " + ", ".join(path.name for path in paths))
+        return 0
+    if args.subset_donor is not None:
+        path = synth_subset_donor(args.outdir, args.subset_donor)
+        print(f"wrote {path}")
+        return 0
     if args.ttc:
         path = synth_ttc(args.outdir, stem=args.ttc_stem)
         print(f"wrote {path}")

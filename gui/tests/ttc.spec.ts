@@ -8,6 +8,7 @@ import {
   extractCollectionFaces,
   isFontCollection,
 } from "../src/fonts/ttc";
+import type { PickedFont } from "../src/platform/localfonts";
 import { parseFontMeta } from "../src/fonts/sfnt";
 import {
   assertNoJsErrors,
@@ -152,6 +153,36 @@ test.describe("collection extraction (unit)", () => {
       "Alloy TTC Two:ok",
       "Alloy TTC CJK:ok",
     ]);
+  });
+
+  test("readPickedFont's return shape funnels through the per-face expansion (the Tauri seam)", async () => {
+    const { path } = await ttcFixture();
+    // The exact object the TAURI path hands the shared register flow —
+    // pickLocalFonts() → readPickedFont(path) → registerPicked — is a
+    // LocalFontFile with the collection's absolute path (regression
+    // seam, round 20: the browser hidden-input path alone never proved
+    // this funnel, and a Tauri-side divergence — a per-face path that
+    // keeps the #N bookkeeping, or a shape the expansion passes
+    // through unexpanded — must fail HERE, not in the owner's window).
+    const picked: PickedFont[] = [
+      {
+        fileName: "AlloyTTC.ttc",
+        buffer: await readTtcBytes(path),
+        path: "C:\\Downloads\\AlloyTTC.ttc",
+      },
+    ];
+    const entries = expandLocalFontEntries(picked);
+    expect(entries).toHaveLength(3);
+    for (const [i, entry] of entries.entries()) {
+      expect(entry.fileName).toBe(`AlloyTTC.ttc#${i + 1}`);
+      // The #N is the loader's OWN bookkeeping: every face carries the
+      // COLLECTION's path, the file a recipe names.
+      expect(entry.path).toBe("C:\\Downloads\\AlloyTTC.ttc");
+      expect(entry.buffer).toBeDefined();
+      expect(parseFontMeta(entry.buffer!, { coverage: false }).family).toBe(
+        FACE_FAMILIES[i],
+      );
+    }
   });
 
   test("a malformed face is named and never kills its siblings", async () => {

@@ -5,7 +5,16 @@
  * no fs-scope widening beyond the catalog is required. The plain
  * browser keeps the HTML file input (bytes only, no path — the
  * synthesize flow then resolves the path against the service listing).
+ *
+ * Round 20 adds two more entry points into the same register+select
+ * flow, for environments the native dialog cannot serve (Linux without
+ * a DBus file manager): a TYPED absolute path (file or directory —
+ * `readFontPathInput`), and drag-and-drop onto the window (the DOM
+ * drop in the browser; wry intercepts drops under Tauri, so the shell
+ * re-emits them as `tauri://drag-drop` paths).
  */
+
+import { readConfig, type FontPathRead } from "./config";
 
 export interface PickedFont {
   fileName: string;
@@ -54,6 +63,28 @@ export async function readPickedFont(path: string): Promise<PickedFont> {
   const buffer = (await invoke("read_font_file", { path })) as ArrayBuffer;
   const parts = path.replace(/\\/g, "/").split("/");
   return { fileName: parts[parts.length - 1] ?? path, buffer, path };
+}
+
+/**
+ * Read the font files a typed/pasted absolute path names (round 20):
+ * a font file is itself; a DIRECTORY is the font files it holds (the
+ * same suffix sweep the sibling scan uses). The config seam wins when
+ * injected (tests stand it in over real fixture files); the Tauri
+ * `read_font_path` command resolves otherwise, and the bytes travel
+ * the same raw pipe the dialog flow uses. Throws with a plain reason
+ * when the path does not exist or cannot be read — the picker renders
+ * it on its error line.
+ */
+export async function readFontPathInput(path: string): Promise<FontPathRead> {
+  const seam = readConfig().readFontPath;
+  if (seam !== undefined) return seam(path);
+  const { invoke } = await import("@tauri-apps/api/core");
+  const resolution = (await invoke<{ isDirectory: boolean; paths: string[] }>(
+    "read_font_path",
+    { path },
+  )) as { isDirectory: boolean; paths: string[] };
+  const files = await Promise.all(resolution.paths.map(readPickedFont));
+  return { isDirectory: resolution.isDirectory, files };
 }
 
 /**

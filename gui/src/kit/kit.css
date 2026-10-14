@@ -955,10 +955,24 @@
   padding: 0 8px 8px;
 }
 
-/* Footer action — outside the scroll area entirely. Round 5 (owner
+/* Footer row — outside the scroll area entirely. Round 5 (owner
  * item 13): left-aligned with the rows — the plus icon sits at the row
  * names' left edge (scroll padding 8px + row padding 8px), reading as
- * one list instead of a centered caption. */
+ * one list instead of a centered caption. Round 20: the row also
+ * carries the typed-path fallback input (right of the action, shown
+ * only where a path resolver exists). */
+.kit-fpfoot {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  background: var(--sf);
+  border-top: 1px solid var(--ln);
+  border-radius: 0 0 11px 11px;
+  padding: 5px 8px 5px 6px;
+}
+
 .kit-fpsys {
   display: flex;
   flex-direction: row;
@@ -966,10 +980,8 @@
   align-items: center;
   gap: 6px;
   flex: none;
-  background: var(--sf);
-  border-top: 1px solid var(--ln);
-  border-radius: 0 0 11px 11px;
-  padding: 9px 6px 7px 16px;
+  border-radius: 7px;
+  padding: 4px 10px;
   color: var(--ac);
   font-weight: 500;
   font-size: 12px;
@@ -982,6 +994,25 @@
 .kit-fpsys svg {
   width: 13px;
   height: 13px;
+}
+
+/* The typed-path fallback (round 20): a quiet one-line input filling
+ * the footer row's remaining width; Enter commits. */
+.kit-fppath {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--ln);
+  border-radius: 7px;
+  background: var(--sf2);
+  color: var(--ink2);
+  font-size: 11px;
+}
+
+.kit-fppath:focus {
+  outline: none;
+  border-color: var(--ac);
 }
 
 /* Self-rendering row: name in its own font + meta line + check mark. */

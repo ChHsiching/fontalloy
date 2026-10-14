@@ -62,6 +62,15 @@ export interface FontMeta {
    * view needs the list.
    */
   placeholderCodepoints: number[];
+  /**
+   * The OS/2 usWeightClass (round 20; 400 when the face carries no
+   * OS/2 table) — the FontFace weight descriptor a family's sibling
+   * faces register under, so a same-family collection renders each
+   * weight at its own face instead of colliding on `normal`.
+   */
+  weight: number;
+  /** The face's italic flag (OS/2 fsSelection bit 0, head macStyle bit 1). */
+  italic: boolean;
 }
 
 export interface ParseFontMetaOptions {
@@ -82,6 +91,7 @@ const TAG_LOCA = 0x6c6f6361;
 const TAG_HEAD = 0x68656164;
 const TAG_MAXP = 0x6d617870;
 const TAG_CFF = 0x43464620;
+const TAG_OS2 = 0x4f532f32;
 
 export function parseFontMeta(
   buffer: ArrayBuffer,
@@ -126,12 +136,40 @@ export function parseFontMeta(
   if (names === null || !names.family) {
     throw new Error("font has no readable family name");
   }
+  const style = readFaceStyle(view, offsets);
   return {
     family: names.family,
     names,
     codepoints: coverage.codepoints,
     placeholderCodepoints: coverage.placeholders,
+    weight: style.weight,
+    italic: style.italic,
   };
+}
+
+/**
+ * The face's weight/italic identity (round 20): OS/2 usWeightClass and
+ * fsSelection bit 0, with head macStyle bit 1 as the italic fallback —
+ * the descriptors that keep a family's sibling faces distinct under one
+ * css family. A face without OS/2 reads weight 400 (the CSS default).
+ */
+function readFaceStyle(
+  view: DataView,
+  offsets: ReadonlyMap<number, number>,
+): { weight: number; italic: boolean } {
+  let weight = 400;
+  let italic = false;
+  const os2 = offsets.get(TAG_OS2);
+  if (os2 !== undefined && os2 + 64 <= view.byteLength) {
+    weight = view.getUint16(os2 + 4);
+    italic = (view.getUint16(os2 + 62) & 0x0001) !== 0;
+  }
+  const head = offsets.get(TAG_HEAD);
+  if (!italic && head !== undefined && head + 46 <= view.byteLength) {
+    // head.macStyle sits at +44 (bit 1 = italic), past the bbox shorts.
+    italic = (view.getUint16(head + 44) & 0x0002) !== 0;
+  }
+  return { weight: weight || 400, italic };
 }
 
 interface NameRecord {
