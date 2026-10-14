@@ -44,9 +44,14 @@ def render_text(report: VerificationReport) -> str:
     lines.append("")
     lines.append("sources:")
     for source in report.sources:
+        placeholder = (
+            f"  ({source.placeholder_codepoints} placeholder codepoints)"
+            if source.placeholder_codepoints
+            else ""
+        )
         lines.append(
             f"  {source.id:<9} {source.path}  {source.codepoints} codepoints"
-            f"  sha256 {source.sha256}"
+            f"{placeholder}  sha256 {source.sha256}"
         )
     lines.extend(_coverage_lines(report))
     lines.extend(_weights_lines(report))
@@ -93,15 +98,18 @@ def render_html(report: VerificationReport) -> str:
     parts.append("<h2 id='sources'>Sources</h2>")
     parts.append("<table>")
     parts.append("<tr><th>id</th><th>role</th><th>path</th>"
-                 "<th>codepoints</th><th>sha256</th></tr>")
+                 "<th>codepoints</th><th>placeholder codepoints</th>"
+                 "<th>sha256</th></tr>")
     for source in report.sources:
         parts.append(
             "<tr><td>{}</td><td>{}</td><td><code>{}</code></td>"
-            "<td class='num'>{}</td><td><code>{}</code></td></tr>".format(
+            "<td class='num'>{}</td><td class='num'>{}</td>"
+            "<td><code>{}</code></td></tr>".format(
                 html.escape(source.id),
                 html.escape(source.role),
                 html.escape(str(source.path)),
                 source.codepoints,
+                source.placeholder_codepoints,
                 html.escape(source.sha256),
             )
         )

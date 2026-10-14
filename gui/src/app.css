@@ -919,6 +919,18 @@ body {
   white-space: nowrap;
 }
 
+/* Round 18 (owner item 2b): the dim line under a source's count when
+ * the placeholder heuristic suspected some of its codepoints (the count
+ * above is the honest kind — the note says what never entered it).
+ * Right-aligned to sit under the count it qualifies, the panel's small
+ * size and dimmest ink (the stage notes' register). */
+.report-fact-note {
+  color: var(--ink3);
+  font-size: 11px;
+  line-height: 1.6;
+  text-align: right;
+}
+
 /* Round 17 (owner item 2) + round 18 (owner items 5+6): report
  * qualifier TAGS — what used to ride the value text as brackets
  * (「ttc（多字体合集）」, 「…（自动取最近）」) renders as a small badge

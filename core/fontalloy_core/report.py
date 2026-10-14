@@ -30,6 +30,10 @@ build ships, machine-readable plus human-readable:
   inherits the base font.
 - ``weights`` borrows gained ``family`` (the donor family name), making
   the borrow table self-contained for frontends.
+- Round 18 made source coverage honest: a codepoint mapped to a
+  suspected placeholder glyph (or to glyph 0) never counts, and each
+  source record states how many it carried
+  (``placeholder_codepoints``).
 
 The human-readable forms (:mod:`fontalloy_core.render`) are pure
 functions of this object, so they stay byte-reproducible with it. The
@@ -58,13 +62,21 @@ MISSING_CAP = 256
 
 @dataclass(frozen=True)
 class SourceRecord:
-    """One font that took part in the build."""
+    """One font that took part in the build.
+
+    ``codepoints`` is the effective coverage (round 18): the font's own
+    cmap minus glyph-0 mappings minus suspected placeholder mappings —
+    ``placeholder_codepoints`` counts the latter, so a source that fakes
+    a block with one box glyph reports it instead of hiding it inside
+    the coverage number.
+    """
 
     id: str  # "base" or "donor-<index>", stable across the report
     role: str  # "base" | "donor"
     path: Path
     sha256: str
     codepoints: int  # size of this font's own Unicode coverage
+    placeholder_codepoints: int = 0  # suspected placeholder mappings
 
 
 @dataclass(frozen=True)
@@ -333,6 +345,7 @@ class VerificationReport:
                     "path": str(source.path),
                     "sha256": source.sha256,
                     "codepoints": source.codepoints,
+                    "placeholder_codepoints": source.placeholder_codepoints,
                 }
                 for source in self.sources
             ],

@@ -472,7 +472,12 @@ const SECTION_HELP: Record<string, SectionHelp> = {
     ],
   },
   "coverage-check": {
-    note: "对照规则要求，逐项看哪些码位没做进去。",
+    // Round 18 (owner item 2b): the 缺失 gloss gains the placeholder
+    // rule — a font may DRAW something (a box, a boxed X) at a
+    // codepoint it does not cover; those read as missing.
+    note:
+      "对照规则要求，逐项看哪些码位没做进去。" +
+      "部分字体会在缺失的码位画出占位符（方框、叉号等）；这些码位按缺失计。",
     headers: ["项目", "是什么"],
     rows: [
       ["要求覆盖", "规则要求合并进来的码位数量"],
@@ -593,6 +598,22 @@ function fact(label: string, value: string | HTMLElement): HTMLDivElement {
     line.append(name, value);
   }
   return line;
+}
+
+/**
+ * Round 18 (owner item 2b): the dim line under a source's count when
+ * the placeholder heuristic suspected some of its codepoints — they
+ * never entered the count above, and the line says so. Right-aligned
+ * so it sits under the count it qualifies, `--ink3` at the panel's
+ * small size (the same dim register the stage notes use). A real
+ * element with a stable data-role for tests.
+ */
+function placeholderNote(count: string): HTMLDivElement {
+  const note = document.createElement("div");
+  note.className = "report-fact-note";
+  note.dataset.role = "report-placeholder-note";
+  note.textContent = `疑似占位 ${count} 个码位，未计入覆盖`;
+  return note;
 }
 
 /**
@@ -881,6 +902,14 @@ function renderReport(
             : `${name} · ${fmt(source.codepoints)} 个码位`,
         ),
       );
+      // Round 18 (owner item 2b): a source that fakes coverage with a
+      // placeholder glyph states it — one dim line under its count,
+      // never inside it (the count is the honest kind already).
+      if ((source.placeholder_codepoints ?? 0) > 0) {
+        sources.append(
+          placeholderNote(fmt(source.placeholder_codepoints ?? 0)),
+        );
+      }
     }
     body.appendChild(sources);
   }

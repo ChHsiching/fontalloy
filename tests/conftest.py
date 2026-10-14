@@ -77,6 +77,62 @@ def synth_font(
     return Path(path)
 
 
+def synth_placeholder_font(
+    path: Path | str,
+    *,
+    family: str,
+    codepoints: tuple[int, ...],
+    placeholder_codepoints: tuple[int, ...],
+) -> Path:
+    """Write a synthetic TTF that fakes coverage the placeholder way.
+
+    Every codepoint in ``placeholder_codepoints`` maps to ONE shared box
+    glyph (the round-18 placeholder shape: a font drawing 方框 at
+    codepoints it does not really cover), while ``codepoints`` get the
+    normal one-glyph-per-codepoint treatment. The placeholder run rides
+    the same skeleton as :func:`synth_font` — deterministic, pinned
+    timestamps — with the shared glyph named ``placeholderBox``.
+    """
+    glyph_names = [".notdef", "placeholderBox"] + [
+        f"uni{cp:04X}" for cp in codepoints
+    ]
+    glyphs: dict[str, object] = {
+        ".notdef": _box_glyph(0, 0, 500, 700),
+        "placeholderBox": _box_glyph(60, 60, 540, 640),
+    }
+    metrics: dict[str, tuple[int, int]] = {
+        ".notdef": (600, 40),
+        "placeholderBox": (600, 40),
+    }
+    for index, cp in enumerate(codepoints):
+        # Ink height cycles (the e2e fixture trick): crowds of thousands
+        # of codepoints must stay inside int16 glyph bounds.
+        glyphs[f"uni{cp:04X}"] = _box_glyph(40, 0, 560, 300 + 100 * (index % 5))
+        metrics[f"uni{cp:04X}"] = (600, 40)
+
+    builder = FontBuilder(unitsPerEm=1000, isTTF=True)
+    builder.setupGlyphOrder(glyph_names)
+    builder.setupCharacterMap(
+        {cp: f"uni{cp:04X}" for cp in codepoints}
+        | {cp: "placeholderBox" for cp in placeholder_codepoints}
+    )
+    builder.setupGlyf(glyphs)  # type: ignore[arg-type]
+    builder.setupHorizontalMetrics(metrics)
+    builder.setupHorizontalHeader(ascent=800, descent=-200)
+    builder.setupOS2(
+        sTypoAscender=800,
+        sTypoDescender=-200,
+        usWinAscent=900,
+        usWinDescent=300,
+        usWeightClass=400,
+    )
+    builder.setupNameTable({"familyName": family, "styleName": "Regular"})
+    builder.setupPost()
+    builder.setupHead(unitsPerEm=1000, created=FIXED_TIMESTAMP, modified=FIXED_TIMESTAMP)
+    builder.font.save(path)
+    return Path(path)
+
+
 def synth_ttc(
     path: Path | str,
     faces: Sequence[dict],
@@ -342,6 +398,12 @@ def synth_font_factory() -> Callable[..., Path]:
 def synth_ttc_factory() -> Callable[..., Path]:
     """Factory for synthetic TTC collections; returns the written path."""
     return synth_ttc
+
+
+@pytest.fixture
+def synth_placeholder_font_factory() -> Callable[..., Path]:
+    """Factory for placeholder-coverage synthetic fonts (round 18)."""
+    return synth_placeholder_font
 
 
 @pytest.fixture

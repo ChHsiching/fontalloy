@@ -92,6 +92,9 @@ export interface ReportDocument {
     path?: string;
     sha256?: string;
     codepoints?: number;
+    /** Round 18: codepoints the placeholder heuristic suspected in
+     * this source (already excluded from `codepoints`). */
+    placeholder_codepoints?: number;
   }>;
   precedence?: {
     counts?: Record<string, number>;

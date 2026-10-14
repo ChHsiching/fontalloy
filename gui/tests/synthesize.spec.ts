@@ -344,6 +344,13 @@ test.describe("sidecar synthesize", () => {
       // fonts' real names only — no 基底/供体/role wording, no numbering.
       await expect(panel).not.toContainText("基底");
       await expect(panel).not.toContainText("供体");
+      // Round 18 (owner item 2b): CLEAN fixtures carry no placeholder
+      // note — the dim line renders only when the heuristic suspected
+      // fake coverage (placeholder.spec.ts drives that side).
+      await expect(
+        panel.locator('[data-role="report-placeholder-note"]'),
+      ).toHaveCount(0);
+      await expect(panel).not.toContainText("疑似占位");
       // Round 10: the raw JSON report is GONE from the UI — the
       // machine schema string only ever rendered inside the deleted
       // <pre>, and rendering it froze the app for tens of seconds.

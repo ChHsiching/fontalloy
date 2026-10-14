@@ -69,6 +69,7 @@ from fontalloy_core.output import (
     output_timestamp,
     save_output,
 )
+from fontalloy_core.placeholder import face_coverage
 from fontalloy_core.precedence import (
     BUILTIN_NAMED_SETS,
     Resolution,
@@ -269,10 +270,17 @@ def build_recipe(
         timestamp = output_timestamp([slot.base.font for slot in slots])
         # The source records' coverage counts, read while the faces are
         # open: the base file's first face, and each donor file's union
-        # across its faces.
-        base_codepoints = len(_coverage(bases[0].font))
+        # across its faces. Coverage is the effective kind throughout
+        # (round 18): glyph-0 and suspected-placeholder mappings never
+        # count, and the placeholder counts ride the source records.
+        base_face_coverage_ = face_coverage(bases[0].font)
+        base_codepoints = len(base_face_coverage_.codepoints)
+        base_placeholders = len(base_face_coverage_.placeholders)
         donor_codepoints = {
-            donor_id: _pool_codepoints(pool)
+            donor_id: _pool_codepoints(pool) for donor_id, pool in pools.items()
+        }
+        donor_placeholders = {
+            donor_id: _pool_placeholders(pool)
             for donor_id, pool in pools.items()
         }
         # Stage: resolve the precedence rules into the effective table —
@@ -285,6 +293,7 @@ def build_recipe(
         _stage("resolving", {"rules": len(recipe.rules)})
         named_sets = {**BUILTIN_NAMED_SETS, **recipe.named_sets}
         resolutions: list[Resolution] = []
+        effective_union: set[int] = set()
         for slot in slots:
             # Each slot is its own merge: the slot's base container
             # resolved against the donor faces matched for that slot —
@@ -297,6 +306,7 @@ def build_recipe(
                     for match in slot.donors
                 },
             }
+            effective_union.update(*coverages.values())
             resolutions.append(
                 apply_quote_dash_policy(
                     resolve_precedence(
@@ -413,6 +423,7 @@ def build_recipe(
                 recipe.base,
                 id="base",
                 codepoints=base_codepoints,
+                placeholders=base_placeholders,
             )
         ]
     ) + tuple(
@@ -420,6 +431,7 @@ def build_recipe(
             ref,
             id=f"donor-{index}",
             codepoints=donor_codepoints[f"donor-{index}"],
+            placeholders=donor_placeholders[f"donor-{index}"],
         )
         for index, ref in enumerate(recipe.donors)
     )
@@ -484,7 +496,14 @@ def build_recipe(
             for index, slot in enumerate(slots)
         ),
         coverage_rules=_coverage_records(
-            recipe.rules, named_sets, output_cmaps[0]
+            recipe.rules,
+            named_sets,
+            # Round 18: the rule check judges the HONEST readback — a
+            # placeholder mapping that survived into the output bytes
+            # (a no-graft pass-through keeps the base file's own cmap)
+            # still counts as missing, exactly like every other stage
+            # treats it.
+            output_cmaps[0] & effective_union,
         ),
         metrics=tuple(
             _metric_face_record(
@@ -623,7 +642,7 @@ def _verify_pinned_sources(recipe: Recipe) -> None:
 
 
 def _source_record(
-    ref: FontRef, *, id: str, codepoints: int
+    ref: FontRef, *, id: str, codepoints: int, placeholders: int = 0
 ) -> SourceRecord:
     """One source record: the file (or pinned artifact) a reference built from.
 
@@ -631,6 +650,8 @@ def _source_record(
     the manifest-pinned artifact it resolved through (the zip or the
     bare font file) — the build's provenance is the pin itself, so the
     report's source hashes verify a build against the manifest.
+    ``placeholders`` counts the codepoints the placeholder heuristic
+    suspected (round 18); they are already excluded from ``codepoints``.
     """
     path = ref.artifact if ref.artifact is not None else ref.path
     assert path is not None  # a resolved reference always carries one
@@ -640,6 +661,7 @@ def _source_record(
         path=path,
         sha256=file_sha256(path),
         codepoints=codepoints,
+        placeholder_codepoints=placeholders,
     )
 
 
@@ -679,6 +701,15 @@ def _pool_codepoints(pool: DonorPool) -> int:
     union: set[int] = set()
     for face in pool.faces:
         union |= _coverage(face.font)
+    return len(union)
+
+
+def _pool_placeholders(pool: DonorPool) -> int:
+    """A donor pool's suspected-placeholder codepoints, unioned over
+    its faces (the mirror of :func:`_pool_codepoints`)."""
+    union: set[int] = set()
+    for face in pool.faces:
+        union |= face_coverage(face.font).placeholders
     return len(union)
 
 
@@ -872,4 +903,7 @@ def _summary(provenance: tuple[ProvenanceEntry, ...]) -> dict[str, int]:
 
 
 def _coverage(font: TTFont) -> set[int]:
-    return set(font.getBestCmap())
+    """A face's effective coverage (round 18): the cmap with glyph-0
+    and suspected-placeholder mappings dropped — placeholder codepoints
+    never resolve, never fill, never graft."""
+    return set(face_coverage(font).codepoints)
