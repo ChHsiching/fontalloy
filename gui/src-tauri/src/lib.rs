@@ -15,7 +15,10 @@
 ///    streams the bytes back over the raw IPC pipe — recipes can name
 ///    the file, and no fs-scope widening beyond the catalog is needed.
 ///    `list_font_dir` (round 13) lists the font files beside a picked
-///    file so one pick registers the family sitting next to it.
+///    file so one pick registers the family sitting next to it, and
+///    `read_font_path` (round 20) resolves a TYPED absolute path —
+///    file or directory — for environments without a file manager
+///    (the dialog stays primary).
 /// 3. **The artifact save** (round 12): synthesis writes each built
 ///    font straight into the configured output directory — `park_save_path`
 ///    joins and parks `<output dir>/<name>` (no dialog), and
@@ -175,6 +178,59 @@ fn list_font_dir(path: String) -> Result<Vec<String>, String> {
     }
     fonts.sort();
     Ok(fonts)
+}
+
+/// What a typed/pasted path resolved to (round 20, owner item 3): the
+/// font files it names — a FILE is itself; a DIRECTORY is the font
+/// files it holds (the same suffix sweep `list_font_dir` uses). The
+/// bytes then travel the raw pipe through `read_font_file`, exactly
+/// like dialog picks; the frontend funnels them into the same
+/// register+select flow.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FontPathResolution {
+    is_directory: bool,
+    paths: Vec<String>,
+}
+
+/// Resolve a typed absolute font path (round 20) — the fallback for
+/// environments the native dialog cannot serve (Linux without a DBus
+/// file manager). The dialog stays primary; this never opens anything.
+#[tauri::command]
+fn read_font_path(path: String) -> Result<FontPathResolution, String> {
+    let target = std::path::Path::new(&path);
+    let metadata = std::fs::metadata(target)
+        .map_err(|err| format!("路径不可用 {path}: {err}"))?;
+    if metadata.is_dir() {
+        let entries = std::fs::read_dir(target)
+            .map_err(|err| format!("无法列出 {path}: {err}"))?;
+        let mut fonts = Vec::new();
+        for entry in entries {
+            let entry = entry.map_err(|err| err.to_string())?;
+            let candidate = entry.path();
+            let is_font = candidate.is_file()
+                && candidate
+                    .extension()
+                    .and_then(|ext| ext.to_str())
+                    .map(|ext| FONT_EXTENSIONS.contains(&ext.to_ascii_lowercase().as_str()))
+                    .unwrap_or(false);
+            if is_font {
+                fonts.push(candidate.to_string_lossy().into_owned());
+            }
+        }
+        fonts.sort();
+        Ok(FontPathResolution {
+            is_directory: true,
+            paths: fonts,
+        })
+    } else if metadata.is_file() {
+        Ok(FontPathResolution {
+            is_directory: false,
+            paths: vec![target.to_string_lossy().into_owned()],
+        })
+    } else {
+        Err(format!("路径不是文件也不是目录: {path}"))
+    }
 }
 
 /// Run the native save dialog and park the chosen path. `default_name`
@@ -388,6 +444,7 @@ pub fn run() {
             pick_font_files,
             read_font_file,
             list_font_dir,
+            read_font_path,
             prepare_save,
             save_artifact,
             default_output_dir,

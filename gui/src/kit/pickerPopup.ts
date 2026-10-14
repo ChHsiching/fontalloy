@@ -110,6 +110,13 @@ export interface PickerPopupProps {
   /** Footer action (加载本地字体文件) — outside the scroll area. */
   footer?: { label: string; onClick(): void };
   /**
+   * The typed-path fallback beside the footer action (round 20):
+   * present only where a path resolver exists (the Tauri shell, or an
+   * injected test seam). Enter commits the typed absolute path — a
+   * font file or a directory of them.
+   */
+  pathInput?: { placeholder: string; onCommit(path: string): void };
+  /**
    * The picker-level variant help (round 7 redesign): when present, a
    * single ? anchor rides the search header — one place per picker
    * explaining what the rows' variant chips mean, instead of per-row
@@ -233,6 +240,10 @@ export function mountPickerPopup(
 
   // Footer action — a sibling BELOW the scroll, never scrolling. The
   // button is permanent; render() only retunes its label and handler.
+  // The typed-path fallback (round 20) rides the same footer row,
+  // right of the button, visible only while a resolver exists.
+  const footerRow = document.createElement("div");
+  footerRow.className = "kit-fpfoot";
   const footerBtn = document.createElement("button");
   footerBtn.type = "button";
   footerBtn.className = "kit-fpsys";
@@ -243,7 +254,24 @@ export function mountPickerPopup(
     e.stopPropagation();
     footerClick?.();
   });
-  popup.appendChild(footerBtn);
+  footerRow.appendChild(footerBtn);
+  const pathInput = document.createElement("input");
+  pathInput.type = "text";
+  pathInput.className = "kit-fppath";
+  pathInput.dataset.role = "font-path";
+  pathInput.setAttribute("aria-label", "字体文件路径");
+  pathInput.spellcheck = false;
+  pathInput.autocomplete = "off";
+  pathInput.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    e.stopPropagation();
+    const value = pathInput.value.trim();
+    if (value !== "") pathCommit?.(value);
+  });
+  let pathCommit: ((path: string) => void) | null = null;
+  footerRow.appendChild(pathInput);
+  popup.appendChild(footerRow);
 
   let props: PickerPopupProps = initial;
 
@@ -411,6 +439,14 @@ export function mountPickerPopup(
     } else {
       footerClick = null;
       footerBtn.style.display = "none";
+    }
+    if (props.pathInput) {
+      pathInput.placeholder = props.pathInput.placeholder;
+      pathCommit = props.pathInput.onCommit;
+      pathInput.style.display = "";
+    } else {
+      pathCommit = null;
+      pathInput.style.display = "none";
     }
   };
 

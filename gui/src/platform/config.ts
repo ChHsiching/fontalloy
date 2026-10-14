@@ -41,6 +41,12 @@
  *   inject a stand-in to observe that the DEFAULT flow never touches it
  *   (the no-dialog contract) and to drive the dialog-unavailable
  *   fallback.
+ * - `readFontPath` — the typed-path loader (round 20): resolves a
+ *   pasted absolute path, FILE or directory, into the font files it
+ *   names. Under Tauri the shell's `read_font_path` command resolves
+ *   and the bytes travel the raw pipe; tests inject a stand-in against
+ *   real fixture files on disk. Its presence also unhides the picker's
+ *   path-input fallback (Linux without a DBus file manager).
  */
 
 /** GitHub Releases tag carrying the consolidated catalog (ADR-0005, #14). */
@@ -95,6 +101,29 @@ export type ArtifactSaver = (
   bytes: Uint8Array,
 ) => Promise<ArtifactSaveResult>;
 
+/** One font file a typed path resolved to (round 20). */
+export interface FontPathFile {
+  fileName: string;
+  buffer: ArrayBuffer;
+  /** The absolute path (always set on the Tauri path). */
+  path: string;
+}
+
+/** What a typed path resolved to (round 20). */
+export interface FontPathRead {
+  /** True when the path named a directory (every font file inside). */
+  isDirectory: boolean;
+  files: FontPathFile[];
+}
+
+/**
+ * The typed-path resolver (round 20): a font FILE resolves to itself; a
+ * DIRECTORY resolves to the font files it holds (the same suffix sweep
+ * the sibling scan uses). Throws with a user-readable reason when the
+ * path does not exist or cannot be read.
+ */
+export type FontPathReader = (path: string) => Promise<FontPathRead>;
+
 export interface FontalloyConfig {
   /**
    * Where `catalog-release.json` is fetched from on every launch. `null`
@@ -115,6 +144,11 @@ export interface FontalloyConfig {
    * real save directory; the Tauri `artifact_exists` command otherwise.
    */
   probeArtifact?: ArtifactProber;
+  /**
+   * The typed-path resolver (round 20): injected by tests against real
+   * fixture files; the Tauri `read_font_path` command otherwise.
+   */
+  readFontPath?: FontPathReader;
 }
 
 declare global {
@@ -192,5 +226,6 @@ export function readConfig(): FontalloyConfig {
     saveArtifact: injected?.saveArtifact,
     saveArtifactAs: injected?.saveArtifactAs,
     probeArtifact: injected?.probeArtifact,
+    readFontPath: injected?.readFontPath,
   };
 }

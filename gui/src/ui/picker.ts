@@ -5,11 +5,10 @@ import {
   type LoadedFont,
 } from "../state";
 import {
-  registerFontBytes,
+  registerLocalFontFiles,
   fontDisplayName,
   type LocalFontFile,
 } from "../fonts/registry";
-import { expandLocalFontEntries } from "../fonts/ttc";
 import { sweepLocalFamily } from "../fonts/localFamily";
 import { getDefaultManager } from "../catalog/manager";
 import { starsFor, subscribeStars } from "../catalog/stars";
@@ -22,7 +21,13 @@ import {
   type DisplayFamily,
   type VariantCut,
 } from "../catalog/variantAxes";
-import { canPickWithDialog, pickLocalFonts } from "../platform/localfonts";
+import {
+  canPickWithDialog,
+  pickLocalFonts,
+  readFontPathInput,
+  readPickedFont,
+} from "../platform/localfonts";
+import { readConfig } from "../platform/config";
 import {
   cssFamily,
   mountPickerPopup,
@@ -38,6 +43,17 @@ import curatedMeta from "../data/curated-meta.json";
 
 export type PickerRole = "en" | "cjk";
 
+/**
+ * Whether the typed-path fallback exists (round 20, owner item 3): the
+ * Tauri shell's `read_font_path` command, or an injected seam on the
+ * same config bootstrap the save flows use. The native dialog stays
+ * PRIMARY either way — the path input is the fallback that never
+ * depends on a file manager.
+ */
+function pathInputAvailable(): boolean {
+  return canPickWithDialog() || readConfig().readFontPath !== undefined;
+}
+
 export interface PickerOptions {
   role: PickerRole;
 }
@@ -51,13 +67,36 @@ export interface FontPicker {
 
 /** The shared hidden file input (one local-load flow at a time). */
 let fileInput: HTMLInputElement | null = null;
-/** The registration callback the input's change event runs (set by the
- *  footer action; tests and warm loads reach the input directly). */
-let pendingRegister: ((files: File[]) => Promise<void>) | null = null;
-/** Per-picker registration flows, for direct loads (the file input set
- *  without a footer click): they land in the picker that opened last. */
-const registerFlows = new Map<PickerRole, (files: File[]) => Promise<void>>();
+/** The bytes-level flow the input's change event runs (set by the
+ *  footer action; tests and warm loads reach the input directly and
+ *  land in the picker that opened last). */
+let pendingRegister: ((files: LocalFontFile[]) => Promise<void>) | null = null;
+/** Per-picker local-load flows (round 20: bytes-level — every entry
+ * point funnels here): the hidden input, the native dialog, the typed
+ * path, and drag-and-drop all land in the picker that opened last. */
+const localFlows = new Map<
+  PickerRole,
+  (files: LocalFontFile[]) => Promise<void>
+>();
 let lastOpenedRole: PickerRole | null = null;
+
+/** The local-load flow of the slot a load should land in. */
+function localFlowFor(
+  role: PickerRole | null,
+): ((files: LocalFontFile[]) => Promise<void>) | null {
+  const target = role ?? lastOpenedRole ?? "en";
+  return localFlows.get(target) ?? null;
+}
+
+/** Browser File objects → the bytes-level flow payload. */
+async function filesToLocalFontFiles(files: File[]): Promise<LocalFontFile[]> {
+  return Promise.all(
+    files.map(async (file) => ({
+      buffer: await file.arrayBuffer(),
+      fileName: file.name,
+    })),
+  );
+}
 
 function ensureFileInput(): HTMLInputElement {
   if (fileInput === null) {
@@ -70,19 +109,72 @@ function ensureFileInput(): HTMLInputElement {
     input.addEventListener("change", () => {
       const files = [...(input.files ?? [])];
       input.value = "";
-      const flow =
-        pendingRegister ??
-        (lastOpenedRole !== null
-          ? registerFlows.get(lastOpenedRole) ?? null
-          : null);
-      if (flow !== null && files.length > 0) {
-        void flow(files);
-      }
+      if (files.length === 0) return;
+      const flow = pendingRegister ?? localFlowFor(lastOpenedRole);
+      if (pendingRegister !== null) pendingRegister = null; // one-shot
+      if (flow !== null) void filesToLocalFontFiles(files).then(flow);
     });
     document.body.appendChild(input);
     fileInput = input;
   }
   return fileInput;
+}
+
+/**
+ * Drag-and-drop loading (round 20, owner item 3): dropping font files
+ * on the window loads them into the slot the user last used. In the
+ * plain browser the DOM drop carries the bytes; under Tauri the wry
+ * webview INTERCEPTS drops (they never reach the DOM) and the shell
+ * re-emits them as `tauri://drag-drop` path lists — both funnel into
+ * the same register+select flow the picker footer uses.
+ */
+let dropLoadingWired = false;
+function wireDropLoading(): void {
+  if (dropLoadingWired || typeof document === "undefined") return;
+  dropLoadingWired = true;
+  document.addEventListener("dragover", (event) => {
+    // A FILE drag's dragover must be canceled for the drop to fire at
+    // all; in-page drags (text selection) keep their default behavior.
+    if (
+      event.dataTransfer !== null &&
+      [...event.dataTransfer.types].includes("Files")
+    ) {
+      event.preventDefault();
+    }
+  });
+  document.addEventListener("drop", (event) => {
+    const transfer = event.dataTransfer;
+    if (transfer === null || transfer.files.length === 0) return;
+    event.preventDefault();
+    const flow = localFlowFor(null);
+    if (flow === null) return;
+    void filesToLocalFontFiles([...transfer.files]).then(flow);
+  });
+  if (!canPickWithDialog()) return;
+  void (async () => {
+    try {
+      const { listen } = await import("@tauri-apps/api/event");
+      await listen<{ paths: string[] }>("tauri://drag-drop", (event) => {
+        const paths = event.payload.paths;
+        if (paths.length === 0) return;
+        const flow = localFlowFor(null);
+        if (flow === null) return;
+        void (async () => {
+          const files: LocalFontFile[] = [];
+          for (const path of paths) {
+            try {
+              files.push(await readPickedFont(path));
+            } catch {
+              // One unreadable dropped file never kills the others.
+            }
+          }
+          if (files.length > 0) await flow(files);
+        })();
+      });
+    } catch {
+      // No event bus, no drops — the dialog and path input remain.
+    }
+  })();
 }
 
 /** Inline status tag for a catalog row that cannot be picked (yet). */
@@ -253,77 +345,92 @@ export function mountPicker(
 ): FontPicker {
   root.dataset.role = `picker-${options.role}`;
   // The shared local-file input exists from the start (tests and the
-  // footer action reach for it without an open/click warm-up).
+  // footer action reach for it without an open/click warm-up), and the
+  // window is a drop zone from the first picker on (round 20).
   ensureFileInput();
+  wireDropLoading();
   let error: string | null = null;
 
-  /** Register picked local fonts, selecting the first new family. */
+  /**
+   * The picker's local-load flow — every entry point funnels here (the
+   * hidden input, the native dialog, the typed path, drag-and-drop).
+   * Round 20 (owner items 2+3): the load registers the files' families
+   * (a collection registers EVERY face — one css family per name-table
+   * family, weight-descriptor faces behind a Regular-preferred
+   * representative) and THIS slot takes the loaded family as its pick,
+   * REPLACING whatever it held — 从本地加载了肯定就直接选中了. A
+   * failure keeps the picker open with the error line above the footer;
+   * a partial failure still selects what loaded.
+   */
   const registerPicked = async (files: LocalFontFile[]): Promise<void> => {
     error = null;
-    // Round 19 (owner item 3): a collection expands to one entry per
-    // face BEFORE registering — each face registers as its own font
-    // (its own name table), and a face that did not reassemble (or
-    // still fails to load) degrades to its own error line naming
-    // `file.ttc#N`, never killing the others.
-    const failures: string[] = [];
-    for (const entry of expandLocalFontEntries(files)) {
-      if (entry.buffer === undefined) {
-        failures.push(
-          `无法加载 ${entry.fileName}：${entry.error ?? "不是有效的字体文件"}`,
-        );
-        continue;
-      }
-      try {
-        const { font, isNewFamily } = await registerFontBytes(entry.buffer, {
-          fileName: entry.fileName,
-          origin: "local",
-          path: entry.path,
-        });
-        if (isNewFamily && store.get().selected[options.role] === null) {
-          store.set({
-            selected: { ...store.get().selected, [options.role]: font.cssFamily },
-          });
-        }
-        // Round 13 (owner item 7): the pick is the FAMILY — discover and
-        // register the same-directory sibling faces in the background,
-        // the same face-set discipline a catalog pick follows. Never
-        // blocks the pick; a one-file family registers nothing.
-        void sweepLocalFamily(font);
-      } catch (err) {
-        failures.push(
-          `无法加载 ${entry.fileName}：${
-            err instanceof Error ? err.message : "不是有效的字体文件"
-          }`,
-        );
-      }
+    const outcome = await registerLocalFontFiles(files);
+    if (outcome.representative !== null) {
+      store.set({
+        selected: {
+          ...store.get().selected,
+          [options.role]: outcome.representative.cssFamily,
+        },
+      });
+      // Round 13 (owner item 7): the pick is the FAMILY — discover and
+      // register the same-directory sibling faces in the background,
+      // the same face-set discipline a catalog pick follows. Never
+      // blocks the pick; a one-file family registers nothing.
+      void sweepLocalFamily(outcome.representative);
     }
-    error = failures.length > 0 ? failures.join("；") : null;
+    error = outcome.failures.length > 0 ? outcome.failures.join("；") : null;
     // Prototype parity: a successful load closes the picker (the new
     // pick is what the closed card now shows); a failure keeps it open
     // so the error line above the footer stays reachable.
     if (error === null) popup.close();
     rerender();
   };
+  localFlows.set(options.role, registerPicked);
+
+  /**
+   * The typed-path fallback (round 20, owner item 3): resolve the
+   * pasted absolute path — file or directory — and run the same
+   * register+select flow. Failures render on the picker's error line.
+   */
+  const commitPathInput = async (path: string): Promise<void> => {
+    error = null;
+    rerender();
+    try {
+      const read = await readFontPathInput(path);
+      if (read.files.length === 0) {
+        error = `路径下没有字体文件：${path}`;
+      } else {
+        await registerPicked(read.files);
+        return; // registerPicked owns error/close/rerender.
+      }
+    } catch (err) {
+      error = `无法读取 ${path}：${
+        err instanceof Error ? err.message : String(err)
+      }`;
+    }
+    rerender();
+  };
 
   const openLocalFlow = async (): Promise<void> => {
     // Under Tauri the native dialog: real absolute paths for recipes.
+    // A dialog that errors (no DBus file manager) falls back to the
+    // picker's own error line — the typed path stays the fallback.
     if (canPickWithDialog()) {
-      const picked = await pickLocalFonts();
-      if (picked !== null && picked.length > 0) {
-        await registerPicked(picked);
+      try {
+        const picked = await pickLocalFonts();
+        if (picked !== null && picked.length > 0) {
+          await registerPicked(picked);
+        }
+        return;
+      } catch (err) {
+        error = `无法打开文件对话框：${
+          err instanceof Error ? err.message : String(err)
+        }`;
+        rerender();
+        return;
       }
-      return;
     }
-    pendingRegister = async (files: File[]): Promise<void> => {
-      await registerPicked(
-        await Promise.all(
-          files.map(async (file) => ({
-            buffer: await file.arrayBuffer(),
-            fileName: file.name,
-          })),
-        ),
-      );
-    };
+    pendingRegister = registerPicked;
     ensureFileInput().click();
   };
 
@@ -549,6 +656,16 @@ export function mountPicker(
       note: catalogNote(catalog),
       error,
       footer: { label: "加载本地字体文件", onClick: () => void openLocalFlow() },
+      // The typed-path fallback (round 20): only where a resolver
+      // exists — the Tauri shell, or an injected test seam.
+      ...(pathInputAvailable()
+        ? {
+            pathInput: {
+              placeholder: "或输入字体文件 / 目录的绝对路径",
+              onCommit: (path: string) => void commitPathInput(path),
+            },
+          }
+        : {}),
       // The picker-level variant help (round 8 final form): ONE ? for
       // the whole popup — one sentence plus the token table (the
       // official proper nouns and their meanings).
@@ -646,17 +763,6 @@ export function mountPicker(
     };
   };
 
-  registerFlows.set(options.role, async (files: File[]): Promise<void> => {
-    await registerPicked(
-      await Promise.all(
-        files.map(async (file) => ({
-          buffer: await file.arrayBuffer(),
-          fileName: file.name,
-        })),
-      ),
-    );
-  });
-
   const popup: PickerPopup = mountPickerPopup(root, buildProps());
   // Capture-phase: a real click on the card makes THIS picker the
   // direct-load target before the kit's own header handler runs.
@@ -682,6 +788,9 @@ export function mountPicker(
       popup.open();
     },
     close: () => popup.close(),
-    destroy: unsubscribeStars,
+    destroy: () => {
+      localFlows.delete(options.role);
+      unsubscribeStars();
+    },
   };
 }
