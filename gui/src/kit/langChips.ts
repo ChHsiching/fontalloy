@@ -40,6 +40,20 @@ export function mountLangChips(
 
   let props: LangChipsProps = initial;
 
+  // Node persistence (the pickerPopup rows discipline): the row re-
+  // renders on every store patch (the rail's preset section subscribes
+  // broadly), and a REBUILT chip eats a click that lands mid-patch —
+  // a pick's lazy family-face sweep patches the store hundreds of
+  // milliseconds after the pair tag settled (round 20's full-cut
+  // sweeps), exactly when the next gesture runs. Rebuild only when
+  // what the row SHOWS changed.
+  const signature = (p: LangChipsProps): string =>
+    JSON.stringify([
+      p.chips.map((chip) => [chip.id, chip.label, chip.count]),
+      p.chips.map((chip) => p.isPressed(chip.id)),
+    ]);
+  let current = signature(initial);
+
   const render = (): void => {
     el.innerHTML = "";
     for (const chip of props.chips) {
@@ -65,6 +79,9 @@ export function mountLangChips(
     el,
     render(next) {
       props = next;
+      const nextSignature = signature(next);
+      if (nextSignature === current) return;
+      current = nextSignature;
       render();
     },
   };

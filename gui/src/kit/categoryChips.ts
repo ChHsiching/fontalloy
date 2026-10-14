@@ -58,6 +58,22 @@ export function mountCategoryChips(
 
   let props: CategoryChipsProps = initial;
 
+  // Node persistence (the pickerPopup rows discipline): the bar re-
+  // renders on every store patch (the charmap subscribes broadly), and
+  // a REBUILT chip eats a click that lands mid-patch — a pick's lazy
+  // family-face sweep patches the store hundreds of milliseconds after
+  // the pair tag settled (round 20's full-cut sweeps), exactly when
+  // the next gesture runs. Rebuild only when what the bar SHOWS
+  // changed (ids, labels, counts, danger flags, the active chips).
+  const signature = (p: CategoryChipsProps): string =>
+    JSON.stringify([
+      p.groups.map((g) => [g.id, g.label, g.count, g.danger ?? false, g.icon ?? null]),
+      p.blocks.map((b) => [b.id, b.label, b.count, b.icon ?? null]),
+      p.activeGroupId,
+      p.activeBlockId,
+    ]);
+  let current = signature(initial);
+
   const render = (): void => {
     el.innerHTML = "";
     const l1 = document.createElement("div");
@@ -117,6 +133,9 @@ export function mountCategoryChips(
     el,
     render(next) {
       props = next;
+      const nextSignature = signature(next);
+      if (nextSignature === current) return;
+      current = nextSignature;
       render();
     },
   };

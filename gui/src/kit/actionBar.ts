@@ -255,6 +255,21 @@ export function mountActionBar(
 
   let props: ActionBarProps = initial;
 
+  // Node persistence for the WHOLE row (round 20, the locate-field
+  // discipline above taken to the row): the charmap re-renders the
+  // toolbar on every store patch, and a REBUILT row eats clicks that
+  // land mid-patch — a pick's lazy family-face sweep patches the store
+  // hundreds of milliseconds after the pair tag settled (round 20's
+  // full-cut sweeps), exactly when the next gesture runs. Rebuild only
+  // when what the row SHOWS changed; callbacks normalize away (their
+  // captured state rides the visible props — the pager's clamp bound
+  // is page.count, the segments' targets are the group/block labels).
+  const signature = (p: ActionBarProps): string =>
+    JSON.stringify(p, (_key, value) =>
+      typeof value === "function" ? "fn" : value,
+    );
+  let current = signature(initial);
+
   // Node persistence for the locate field (round 7): the row re-renders
   // on every store patch, and a REBUILT input would silently drop an
   // in-flight typed query between fill and Enter (a late font-load
@@ -483,6 +498,9 @@ export function mountActionBar(
     el,
     render(next) {
       props = next;
+      const nextSignature = signature(next);
+      if (nextSignature === current) return;
+      current = nextSignature;
       render();
     },
   };
