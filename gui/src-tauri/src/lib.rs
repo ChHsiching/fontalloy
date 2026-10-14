@@ -1,6 +1,6 @@
 /// Tauri shell for the shared FontAlloy frontend (ADR-0002, ADR-0004).
 ///
-/// The shell owns three native capabilities the webview cannot:
+/// The shell owns four native capabilities the webview cannot:
 ///
 /// 1. **The core sidecar** (issue #16): the bundled `fontalloy` binary is
 ///    spawned as `fontalloy serve --port 0` with the app's catalog font
@@ -27,6 +27,10 @@
 ///    The native save dialog survives as the EXPLICIT export:
 ///    `prepare_save` runs it and parks the chosen path for
 ///    `save_artifact` (the 另存为 affordance on a completed row).
+/// 4. **Clipboard-read enablement** (round 18): the main window is
+///    built in `run` with `enable_clipboard_access`, so the kit context
+///    menu's 粘贴 can read `navigator.clipboard` (denied on WebView2
+///    without it).
 
 use std::path::PathBuf;
 use std::sync::{Condvar, Mutex};
@@ -393,6 +397,29 @@ pub fn run() {
             open_external
         ])
         .setup(|app| {
+            // The main window is built HERE, not in tauri.conf.json: the
+            // round-18 context menu's 粘贴 reads `navigator.clipboard
+            // .readText()`, and on WebView2 that read is denied unless the
+            // webview's clipboard attribute is set — a builder-time-only
+            // switch (`enable_clipboard_access`; there is no config key
+            // for it, and no IPC capability to grant, because the async
+            // Clipboard API never crosses Tauri's permission system).
+            // Every other property replicates the config window this
+            // replaces: same "main" label (the capabilities' window
+            // selector), title, size, minimums, and frameless mode.
+            tauri::WebviewWindowBuilder::new(
+                app,
+                "main",
+                tauri::WebviewUrl::default(),
+            )
+            .title("FontAlloy")
+            .inner_size(1280.0, 800.0)
+            .min_inner_size(960.0, 600.0)
+            .decorations(false)
+            .enable_clipboard_access()
+            .build()
+            .expect("failed to create the main window");
+
             let handle = app.handle().clone();
             // The sidecar is spawn-critical for merging, not for the app:
             // a failure leaves the shell up with "service unavailable".

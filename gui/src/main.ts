@@ -13,6 +13,7 @@ import { readConfig } from "./platform/config";
 import { connectService } from "./service/synthesize";
 import { refreshStars } from "./catalog/stars";
 import { installUndoShortcuts } from "./history";
+import { mountContextMenu } from "./kit/contextMenu";
 import { store } from "./state";
 
 const app = document.getElementById("app");
@@ -58,6 +59,25 @@ mountStatsbar(app.querySelector<HTMLElement>(".statsbar-slot")!);
 // Ctrl+Z / Cmd+Z triggers rule undo (issue #20); the selection undo
 // stack has its own click entry point in the batch editor.
 installUndoShortcuts();
+
+// Round 18 (owner item 1): the webview's DEFAULT context menu is
+// replaced everywhere by the kit context menu (never merely hidden) —
+// 复制 / 剪切 / 粘贴, enablement contextual to what is under the
+// pointer. Works on any surface; keyboard-invoked menus (Shift+F10 /
+// Menu, clientX/Y 0) anchor at the focused element instead.
+const contextMenu = mountContextMenu();
+document.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  if (e.clientX === 0 && e.clientY === 0) {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement) {
+      const rect = active.getBoundingClientRect();
+      contextMenu.openAt(rect.left, rect.bottom, active);
+      return;
+    }
+  }
+  contextMenu.openAt(e.clientX, e.clientY, e.target);
+});
 
 // The build panel (issue #16): synthesis progress + verification
 // report as a non-modal overlay on <body> — the workspace stays usable.
