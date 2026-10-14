@@ -11,7 +11,7 @@ import {
   pointerClick,
   waitForFontsReady,
 } from "./helpers";
-import { spawnServeOverFonts } from "./serve";
+import { generateBigTtc, spawnServeOverFonts } from "./serve";
 
 /**
  * Round 20, owner item 3 — local loading works for real. The round-19
@@ -493,5 +493,107 @@ test.describe("round 20: local loading", () => {
     await expect(page.locator('[data-role="picker-en"] .kit-hd b')).toHaveText(
       "AlloyDonor",
     );
+  });
+
+  test("a 16-face collection loads asynchronously: inline count indicator, live workspace, one outcome card", async ({
+    page,
+  }) => {
+    // Round 21, owner item 2: registration yields to the event loop
+    // between faces (the config seam slows each step deterministically),
+    // the load action itself carries the inline spinner + count
+    // («正在加载 3/16», anchored in the picker footer — never a blocking
+    // overlay), the workspace answers input DURING the load, and
+    // completion posts ONE stats card (家族 N · 字形 M).
+    const dir = await mkdtemp(resolve(tmpdir(), "fontalloy-r21-async-"));
+    const bigTtc = await generateBigTtc(dir);
+    // The same config bootstrap every seam rides: a per-face delay that
+    // makes the 16-face load observable mid-flight, deterministically.
+    await page.addInitScript(() => {
+      (window as unknown as { __FONTALLOY_CONFIG__: Record<string, unknown> })
+        .__FONTALLOY_CONFIG__ = { testFontLoadDelayMs: 120 };
+    });
+
+    collectJsErrors(page, jsErrors);
+    await page.goto("/");
+    await waitForFontsReady(page);
+    await pointerClick(page, page.locator('[data-role="picker-en"] .kit-hd'));
+    const popup = page.locator('[data-picker-popup="en"]');
+    await expect(popup).toBeVisible();
+    await page.locator("input[data-role='font-file']").setInputFiles(bigTtc);
+
+    // The indicator rides the footer's load action with a live count.
+    const indicator = popup.locator("[data-picker-load]");
+    await expect(indicator).toBeVisible();
+    await expect(indicator).toHaveText(/正在加载\s*\d+\/16/);
+
+    // The workspace answers input WHILE the load runs: a category chip
+    // click lands and takes effect mid-load — the load never owns the
+    // main thread between its yields.
+    const chip = page.locator(".kit-catbar .kit-cat-g[data-group]").nth(1);
+    await pointerClick(page, chip);
+    await expect(chip).toHaveClass(/on/);
+    await expect(indicator).toBeVisible(); // the load is still running
+
+    // Completion: the indicator leaves, the pick took the family, and
+    // ONE outcome card states the stats.
+    await expect(indicator).toBeHidden({ timeout: 30_000 });
+    await expect(popup).toBeHidden();
+    await expect(page.locator('[data-role="picker-en"] .kit-hd b')).toHaveText(
+      "Alloy Wide",
+    );
+    const card = page.locator("[data-role='message']").last();
+    await expect(card).toBeVisible();
+    await expect(card.locator("[data-role='message-stats']")).toContainText(
+      "家族",
+    );
+    await expect(card.locator("[data-role='message-stats']")).toContainText(
+      "字形",
+    );
+  });
+
+  test("the path input's placeholder stays whole and the field expands on focus", async ({
+    page,
+  }) => {
+    // Round 21, owner item 3: the footer's typed-path fallback is
+    // redesigned inside its own row — a SHORT placeholder that never
+    // clips (the field is content-sized at rest), a focus expansion
+    // along the row's axis, the full value as the title tooltip. Enter
+    // still commits (the round-20 path test above pins that).
+    await page.addInitScript(() => {
+      (window as unknown as { __FONTALLOY_CONFIG__: Record<string, unknown> })
+        .__FONTALLOY_CONFIG__ = {
+        readFontPath: async () => ({ isDirectory: false, files: [] }),
+      };
+    });
+
+    collectJsErrors(page, jsErrors);
+    await page.goto("/");
+    await waitForFontsReady(page);
+    await pointerClick(page, page.locator('[data-role="picker-en"] .kit-hd'));
+    const popup = page.locator('[data-picker-popup="en"]');
+    const pathInput = popup.locator("input[data-role='font-path']");
+    await expect(pathInput).toBeVisible();
+    await expect(pathInput).toHaveAttribute("placeholder", "或输入路径");
+
+    // The placeholder is fully visible at rest: nothing scrolls.
+    const geometry = () =>
+      pathInput.evaluate((el) => ({
+        scrollWidth: el.scrollWidth,
+        clientWidth: el.clientWidth,
+        width: el.getBoundingClientRect().width,
+      }));
+    const rest = await geometry();
+    expect(rest.scrollWidth).toBeLessThanOrEqual(rest.clientWidth + 1);
+
+    // Focus expands the field along the footer row's axis.
+    await pathInput.focus();
+    await expect
+      .poll(async () => (await geometry()).width)
+      .toBeGreaterThan(rest.width + 15);
+
+    // The full value rides the title tooltip, verbatim.
+    const longPath = "C:\\Users\\owner\\Downloads\\NotoSansSC[wght].ttf";
+    await pathInput.fill(longPath);
+    await expect(pathInput).toHaveAttribute("title", longPath);
   });
 });

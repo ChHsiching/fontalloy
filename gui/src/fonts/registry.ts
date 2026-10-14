@@ -1,12 +1,16 @@
 import { parseFontMeta, type FontMeta } from "./sfnt";
 import { expandLocalFontEntries } from "./ttc";
 import { store, type FontCatalogIdentity, type LoadedFont } from "../state";
+import { readConfig } from "../platform/config";
 
 /**
  * The user-facing name of a registered font (round 9, owner item 2):
  * the font's OWN name-table strings, verbatim — never a curated or
  * constructed display name. Fonts whose bytes could not be read carry
- * no names and fall back to their metadata family.
+ * no names and fall back to their metadata family. Round 21: the
+ * display the parse composes prefers the TYPOGRAPHIC family (nameID16)
+ * over the legacy nameID1, so a variable release's default-instance
+ * naming never leaks into a row.
  */
 export function fontDisplayName(font: LoadedFont): string {
   return font.names?.display ?? font.family;
@@ -123,7 +127,7 @@ export async function registerFontBytes(
   return { font, isNewFamily: true };
 }
 
-/** What a local load run registered (round 20). */
+/** What a local load run registered (round 20; stats round 21). */
 export interface LocalLoadOutcome {
   /**
    * The pick: the FIRST family's representative face, when at least one
@@ -134,6 +138,24 @@ export interface LocalLoadOutcome {
   failures: string[];
   /** FontFaces this run put on document.fonts. */
   faces: number;
+  /** Distinct name-table families the run's files span (round 21). */
+  families: number;
+  /**
+   * The faces' total glyph count (maxp numGlyphs summed over every
+   * loadable face, round 21) — the outcome card's 字形 figure.
+   */
+  glyphs: number;
+}
+
+/** Options for {@link registerLocalFontFiles} (round 21). */
+export interface LocalLoadOptions {
+  /**
+   * Per-face progress: called with the faces completed so far and the
+   * run's planned face total — the picker footer's inline
+   * 「正在加载 3/16」 indicator. First call is (0, total) once the
+   * files have expanded into faces.
+   */
+  onProgress?: (loaded: number, total: number) => void;
 }
 
 /** One loadable face between the parse and the registry (round 20). */
@@ -145,10 +167,10 @@ interface FacePlan {
 }
 
 /**
- * The local loading path (round 20): expand the picked files (a
- * collection contributes EVERY face), group the faces by their own
- * name-table family, and register each family the way the catalog
- * registers a family pick —
+ * The local loading path (round 20; round 21, owner item 2): expand
+ * the picked files (a collection contributes EVERY face), group the
+ * faces by their own name-table family, and register each family the
+ * way the catalog registers a family pick —
  *
  * - the REPRESENTATIVE face (the 400-upright member when one exists,
  *   else the family's first face) registers non-lazily under the
@@ -164,15 +186,27 @@ interface FacePlan {
  *   three-family fixture) yields one representative per family, so the
  *   picker lists one row per family exactly as before.
  *
+ * Round 21: the run YIELDS to the event loop between faces (and
+ * between the per-face parses), so the workspace stays interactive
+ * throughout — never a synchronous multi-second loop on the main
+ * thread. Progress lands in `onProgress` after every face; the
+ * config's test seam can slow every yield deterministically.
+ *
  * Idempotent per face: a re-load of the same file reuses everything
  * already registered. Never throws — every failure lands in
  * `failures`, named per face (`file.ttc#N`), never killing siblings.
  */
 export async function registerLocalFontFiles(
   files: readonly { buffer: ArrayBuffer; fileName: string; path?: string }[],
+  options: LocalLoadOptions = {},
 ): Promise<LocalLoadOutcome> {
   const reason = (err: unknown): string =>
     err instanceof Error ? err.message : String(err);
+  // One macrotask between faces — the event loop serves input between
+  // every step. The test seam's delay rides the same yield.
+  const delayMs = readConfig().testFontLoadDelayMs ?? 0;
+  const yieldBetweenFaces = (): Promise<void> =>
+    new Promise((resolve) => setTimeout(resolve, delayMs));
   const failures: string[] = [];
   const plans: FacePlan[] = [];
   for (const entry of expandLocalFontEntries(files)) {
@@ -194,7 +228,11 @@ export async function registerLocalFontFiles(
     } catch (err) {
       failures.push(`无法加载 ${entry.fileName}：${reason(err)}`);
     }
+    await yieldBetweenFaces();
   }
+  const total = plans.length;
+  if (total > 0) options.onProgress?.(0, total);
+  const glyphs = plans.reduce((sum, plan) => sum + plan.meta.numGlyphs, 0);
 
   // Families in first-appearance order; within a family the
   // representative first (400-upright preferred — the OS's own
@@ -208,6 +246,7 @@ export async function registerLocalFontFiles(
 
   let representative: LoadedFont | null = null;
   let faces = 0;
+  let loaded = 0;
   for (const [family, group] of families) {
     const rep =
       group.find((p) => p.meta.weight === 400 && !p.meta.italic) ?? group[0]!;
@@ -275,12 +314,15 @@ export async function registerLocalFontFiles(
       } catch (err) {
         failures.push(`无法加载 ${plan.fileName}：${reason(err)}`);
       }
+      loaded++;
+      options.onProgress?.(loaded, total);
+      await yieldBetweenFaces();
     }
     // The first family that has a record — fresh or from an earlier
     // load — is the pick.
     representative ??= repRecord ?? null;
   }
-  return { representative, failures, faces };
+  return { representative, failures, faces, families: families.size, glyphs };
 }
 
 /** The local load path's file/face entry types (see ./ttc). */

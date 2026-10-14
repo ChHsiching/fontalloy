@@ -12,6 +12,7 @@ import {
 import { sweepLocalFamily } from "../fonts/localFamily";
 import { getDefaultManager } from "../catalog/manager";
 import { starsFor, subscribeStars } from "../catalog/stars";
+import { appMessages } from "./charmap";
 import {
   TOKEN_HELP_ROWS,
   cutLabels,
@@ -350,6 +351,11 @@ export function mountPicker(
   ensureFileInput();
   wireDropLoading();
   let error: string | null = null;
+  /**
+   * The in-flight local load's face count (round 21, owner item 2):
+   * the footer's inline spinner + count mirrors it while a load runs.
+   */
+  let loading: { loaded: number; total: number } | null = null;
 
   /**
    * The picker's local-load flow — every entry point funnels here (the
@@ -361,10 +367,24 @@ export function mountPicker(
    * REPLACING whatever it held — 从本地加载了肯定就直接选中了. A
    * failure keeps the picker open with the error line above the footer;
    * a partial failure still selects what loaded.
+   *
+   * Round 21 (owner item 2): the registration runs ASYNC with yields
+   * between faces — the footer's load action carries the inline
+   * 「正在加载 3/16」 indicator while it runs (never a blocking
+   * overlay; the workspace stays interactive), and completion posts
+   * ONE outcome card with the run's stats (家族 N · 字形 M).
    */
   const registerPicked = async (files: LocalFontFile[]): Promise<void> => {
     error = null;
-    const outcome = await registerLocalFontFiles(files);
+    loading = { loaded: 0, total: files.length };
+    rerender();
+    const outcome = await registerLocalFontFiles(files, {
+      onProgress: (loaded, total) => {
+        loading = { loaded, total };
+        rerender();
+      },
+    });
+    loading = null;
     if (outcome.representative !== null) {
       store.set({
         selected: {
@@ -377,6 +397,21 @@ export function mountPicker(
       // the same face-set discipline a catalog pick follows. Never
       // blocks the pick; a one-file family registers nothing.
       void sweepLocalFamily(outcome.representative);
+      // The outcome card (round 21): ONE structured card with the
+      // run's stats — the message system's stat-pair idiom, never a
+      // prose line. A partial failure warns; the failures themselves
+      // stay on the picker's error line below.
+      appMessages().push({
+        icon: outcome.failures.length > 0 ? "warn" : "check",
+        title: "已加载本地字体",
+        stats: [
+          { value: String(outcome.families), label: "家族" },
+          {
+            value: outcome.glyphs.toLocaleString("en-US"),
+            label: "字形",
+          },
+        ],
+      });
     }
     error = outcome.failures.length > 0 ? outcome.failures.join("；") : null;
     // Prototype parity: a successful load closes the picker (the new
@@ -592,6 +627,23 @@ export function mountPicker(
         };
         const labels = cutLabels(cuts, display.id, nameOf);
         const chips = rowChips(cuts, selectedCutId, statusOf, labels);
+        /**
+         * Round 21 (owner item 1): the row's search index covers EVERY
+         * cut's own name — a registered cut's name-table display, else
+         * the cut's release artifact stem (the manifest entry's own
+         * file) — beside the family id and the manifest family ids, so
+         * "source" surfaces the NotoSansSC row through its
+         * "Source Han Sans HW SC" HW cut even though the row itself
+         * reads "Noto Sans SC".
+         */
+        const cutName = (cut: VariantCut): string => {
+          const key = registeredCss(cut.entry.family, cut.entry.variant);
+          const live =
+            key === null
+              ? undefined
+              : fonts.find((f) => f.cssFamily === key)?.names?.display;
+          return live ?? cut.entry.file.replace(/\.[^.]+$/, "");
+        };
         const rowId = cssKey ?? `cat:${display.id}`;
         return [
           display.id,
@@ -603,7 +655,11 @@ export function mountPicker(
             disabled: !anyVerified,
             note: anyVerified ? undefined : (rowNote ? catalogTag(rowNote) : undefined),
             chips: chips.length > 1 ? chips : undefined,
-            keywords: `${display.id} ${display.families.join(" ")}`,
+            keywords: [
+              display.id,
+              ...display.families,
+              ...cuts.map(cutName),
+            ].join(" "),
           } satisfies PickerFont,
         ];
       }),
@@ -655,13 +711,21 @@ export function mountPicker(
       emptyText: "尚未加载字体 —— 请从下方加载本地字体文件。",
       note: catalogNote(catalog),
       error,
-      footer: { label: "加载本地字体文件", onClick: () => void openLocalFlow() },
+      footer: {
+        label: "加载本地字体文件",
+        onClick: () => void openLocalFlow(),
+        // The inline spinner + count while a load runs (round 21).
+        ...(loading !== null ? { loading } : {}),
+      },
       // The typed-path fallback (round 20): only where a resolver
-      // exists — the Tauri shell, or an injected test seam.
+      // exists — the Tauri shell, or an injected test seam. Round 21:
+      // the placeholder is SHORT and fully visible at rest (the field
+      // is content-sized and expands on focus; the full value rides
+      // the field's title tooltip).
       ...(pathInputAvailable()
         ? {
             pathInput: {
-              placeholder: "或输入字体文件 / 目录的绝对路径",
+              placeholder: "或输入路径",
               onCommit: (path: string) => void commitPathInput(path),
             },
           }

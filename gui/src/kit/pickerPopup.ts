@@ -107,13 +107,24 @@ export interface PickerPopupProps {
   note?: string | null;
   /** Inline error line above the footer (a failed local-file load). */
   error?: string | null;
-  /** Footer action (加载本地字体文件) — outside the scroll area. */
-  footer?: { label: string; onClick(): void };
+  /**
+   * Footer action (加载本地字体文件) — outside the scroll area.
+   * `loading` (round 21, owner item 2) shows the inline spinner +
+   * count beside the action while a load runs — anchored exactly where
+   * the action lives, never a blocking overlay.
+   */
+  footer?: {
+    label: string;
+    onClick(): void;
+    loading?: { loaded: number; total: number };
+  };
   /**
    * The typed-path fallback beside the footer action (round 20):
    * present only where a path resolver exists (the Tauri shell, or an
    * injected test seam). Enter commits the typed absolute path — a
-   * font file or a directory of them.
+   * font file or a directory of them. Round 21: the placeholder is
+   * SHORT (the field is content-sized at rest and expands on focus;
+   * the full value rides the field's title tooltip).
    */
   pathInput?: { placeholder: string; onCommit(path: string): void };
   /**
@@ -255,6 +266,21 @@ export function mountPickerPopup(
     footerClick?.();
   });
   footerRow.appendChild(footerBtn);
+  // The inline load indicator (round 21): rides the footer's own row,
+  // right of the action — a spinner + count that enters and leaves
+  // along the row's axis. Built once; renderStatus only retunes it.
+  const loadEl = document.createElement("span");
+  loadEl.className = "kit-fpload";
+  loadEl.dataset.pickerLoad = "";
+  loadEl.setAttribute("role", "status");
+  loadEl.setAttribute("aria-live", "polite");
+  const loadSpin = document.createElement("span");
+  loadSpin.className = "kit-fpload-spin";
+  loadSpin.setAttribute("aria-hidden", "true");
+  const loadText = document.createElement("span");
+  loadText.className = "kit-fpload-text";
+  loadEl.append(loadSpin, loadText);
+  footerRow.appendChild(loadEl);
   const pathInput = document.createElement("input");
   pathInput.type = "text";
   pathInput.className = "kit-fppath";
@@ -262,6 +288,12 @@ export function mountPickerPopup(
   pathInput.setAttribute("aria-label", "字体文件路径");
   pathInput.spellcheck = false;
   pathInput.autocomplete = "off";
+  // The full value rides the field's title tooltip (round 21): the
+  // rest-state field is content-sized, so a long path is ellipsized in
+  // the box and whole in the tooltip.
+  pathInput.addEventListener("input", () => {
+    pathInput.title = pathInput.value;
+  });
   pathInput.addEventListener("keydown", (e) => {
     if (e.key !== "Enter") return;
     e.preventDefault();
@@ -439,6 +471,18 @@ export function mountPickerPopup(
     } else {
       footerClick = null;
       footerBtn.style.display = "none";
+    }
+    // The inline load indicator: on while a load runs, with its live
+    // count; off otherwise (the exit collapses along the row's axis).
+    const loading = props.footer?.loading;
+    if (loading) {
+      loadText.textContent =
+        loading.total > 0
+          ? `正在加载 ${loading.loaded}/${loading.total}`
+          : "正在加载…";
+      loadEl.classList.add("on");
+    } else {
+      loadEl.classList.remove("on");
     }
     if (props.pathInput) {
       pathInput.placeholder = props.pathInput.placeholder;

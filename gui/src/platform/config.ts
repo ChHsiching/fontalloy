@@ -47,6 +47,11 @@
  *   and the bytes travel the raw pipe; tests inject a stand-in against
  *   real fixture files on disk. Its presence also unhides the picker's
  *   path-input fallback (Linux without a DBus file manager).
+ * - `testFontLoadDelayMs` — test-only pacing for the local-load path
+ *   (round 21): every event-loop yield between faces also sleeps this
+ *   many milliseconds, so an e2e spec can observe the inline load
+ *   indicator and drive the workspace DURING a load, deterministically.
+ *   Never set outside tests.
  */
 
 /** GitHub Releases tag carrying the consolidated catalog (ADR-0005, #14). */
@@ -149,6 +154,12 @@ export interface FontalloyConfig {
    * fixture files; the Tauri `read_font_path` command otherwise.
    */
   readFontPath?: FontPathReader;
+  /**
+   * Test-only per-face pacing for the local-load path (round 21):
+   * every yield between faces also sleeps this long. Never set by the
+   * app itself.
+   */
+  testFontLoadDelayMs?: number;
 }
 
 declare global {
@@ -227,5 +238,6 @@ export function readConfig(): FontalloyConfig {
     saveArtifactAs: injected?.saveArtifactAs,
     probeArtifact: injected?.probeArtifact,
     readFontPath: injected?.readFontPath,
+    testFontLoadDelayMs: injected?.testFontLoadDelayMs,
   };
 }

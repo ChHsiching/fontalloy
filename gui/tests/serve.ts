@@ -162,6 +162,81 @@ export async function generateTtc(
   return resolve(outdir, `${stem}.ttc`);
 }
 
+/**
+ * Generate the round-21 variable-face fixture into `outdir` (no
+ * service): ONE face in the Google release naming shape — fvar wght
+ * default 100, nameID1 "<family> Thin" (the default instance), nameID16
+ * the family. The display-name parse must read nameID16.
+ */
+export async function generateVfFace(
+  outdir: string,
+  family: string,
+  stem: string,
+): Promise<string> {
+  const python = process.env.FONTALLOY_PYTHON ?? "python";
+  await run(
+    python,
+    [
+      resolve(repoRoot, "gui/scripts/e2e_fonts.py"),
+      outdir,
+      "--vf",
+      family,
+      stem,
+    ],
+    repoRoot,
+  );
+  return resolve(outdir, `${stem}.ttf`);
+}
+
+/**
+ * Generate the round-21 cut-name fixture into `outdir` (no service):
+ * one plain static face whose OWN name-table family differs from its
+ * manifest family id (the "Source Han Sans HW SC" cut of NotoSansSC).
+ */
+export async function generateNamedFace(
+  outdir: string,
+  family: string,
+  stem: string,
+): Promise<string> {
+  const python = process.env.FONTALLOY_PYTHON ?? "python";
+  await run(
+    python,
+    [
+      resolve(repoRoot, "gui/scripts/e2e_fonts.py"),
+      outdir,
+      "--named",
+      family,
+      stem,
+    ],
+    repoRoot,
+  );
+  return resolve(outdir, `${stem}-Regular.ttf`);
+}
+
+/**
+ * Generate the round-21 async-load fixture into `outdir` (no service):
+ * a real 16-face ONE-family collection (the weight × style matrix,
+ * shared-table dedup) — the shape a synchronous registration loop
+ * freezes the page on. Returns the collection path.
+ */
+export async function generateBigTtc(
+  outdir: string,
+  family = "Alloy Wide",
+): Promise<string> {
+  const python = process.env.FONTALLOY_PYTHON ?? "python";
+  await run(
+    python,
+    [
+      resolve(repoRoot, "gui/scripts/e2e_fonts.py"),
+      outdir,
+      "--big-ttc",
+      family,
+    ],
+    repoRoot,
+  );
+  return resolve(outdir, `${family.replace(/\s+/g, "")}.ttc`);
+}
+
 /** Run a command to completion, failing loudly with its output. */
 function run(
   command: string,

@@ -1,6 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { readFile } from "node:fs/promises";
-import { mkdtemp } from "node:fs/promises";
+import { readFile, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { parseFontMeta } from "../src/fonts/sfnt";
@@ -11,7 +10,11 @@ import {
   pointerClick,
   waitForFontsReady,
 } from "./helpers";
-import { generateFamily } from "./serve";
+import {
+  generateFamily,
+  generateNamedFace,
+  generateVfFace,
+} from "./serve";
 import { SimCatalog, injectCatalogConfig } from "./catalog-fixtures";
 
 /**
@@ -754,6 +757,83 @@ test.describe("first-run catalog download", () => {
     await expect(
       udev.locator(".kit-vchip[data-chip='UDEVGothic::Standard']"),
     ).toHaveText(/^标准$/);
+  });
+
+  test("a variable face lists under its typographic family (nameID16) and search reaches every cut's own name", async ({
+    page,
+  }) => {
+    // Round 21, owner item 1. Google's variable releases name the
+    // DEFAULT INSTANCE in the legacy pair (NotoSansSC[wght].ttf:
+    // nameID1 "Noto Sans SC Thin", wght default 100) while the
+    // typographic pair spans the family (nameID16 "Noto Sans SC") —
+    // the 标准 cut row must read the TYPOGRAPHIC family, never the
+    // composed default instance. And the search must reach EVERY
+    // cut's own name: "source" surfaces the NotoSansSC row through
+    // its "Source Han Sans HW SC" HW cut even though the row's own
+    // display name ("Noto Sans SC") says nothing of the sort. The sim
+    // mirrors the production release shape: ONE family entry (variant
+    // "Variable", the manifest's default) whose zip carries every
+    // cut's faces.
+    const root = await mkdtemp(resolve(tmpdir(), "fontalloy-r21-names-"));
+    const vf = await generateVfFace(root, "Noto Sans SC", "NotoSansSC-VF");
+    const hw = await generateNamedFace(root, "Source Han Sans HW SC", "SourceHanSansHWSC");
+    const sim = await SimCatalog.create([
+      {
+        family: "NotoSansSC",
+        variant: "Variable",
+        file: "NotoSansSC[wght].ttf",
+        fontPath: vf,
+        faces: [
+          { file: "NotoSansSC[wght].ttf", fontPath: vf },
+          { file: "SourceHanSansHWSC-Regular.ttf", fontPath: hw },
+          { file: "NotoSansMonoCJKsc-Regular.ttf", fontPath: FONT_A },
+        ],
+      },
+    ]);
+    await sim.install(page);
+    await injectCatalogConfig(page);
+    await page.goto("/");
+    await expect(catalogDone(page)).toHaveText("1");
+
+    await pointerClick(
+      page,
+      page.locator('[data-role="picker-cjk"] .kit-hd'),
+    );
+    const cjkPopup = page.locator('[data-picker-popup="cjk"]');
+    // The NotoSansSC row (a cjk-slot manifest family), told apart by
+    // its HW chip — every cut of the manifest family sits on it.
+    const notoRow = cjkPopup
+      .locator(".kit-fp")
+      .filter({
+        has: page.locator(".kit-vchip[data-chip='NotoSansSC::HW']"),
+      });
+    await expect(notoRow).toHaveCount(1);
+    // nameID16 wins the display: "Noto Sans SC", never the default
+    // instance the legacy pair composes ("Noto Sans SC Thin").
+    await expect(notoRow.locator(".kit-nm")).toHaveText("Noto Sans SC");
+
+    // Search reaches every CUT's own name — the unfetched HW cut's
+    // release artifact stem ("14_SourceHanSansHWSC") carries "source"
+    // while the row's display name says nothing of the sort.
+    const search = cjkPopup.locator(".kit-q");
+    await search.fill("source");
+    await expect(notoRow).toBeVisible();
+    // The filter still filters: a query nothing carries hides the row.
+    await search.fill("zzz-query-no-font");
+    await expect(notoRow).toHaveCount(0);
+
+    // The LIVE arm: picking the HW cut registers its own face (the
+    // row then reads "Source Han Sans HW SC"), and the Variable cut's
+    // registered name-table display ("Noto Sans SC" — with spaces,
+    // unlike the family id) still surfaces the row.
+    await search.fill("");
+    await pointerClick(
+      page,
+      notoRow.locator(".kit-vchip[data-chip='NotoSansSC::HW']"),
+    );
+    await expect(notoRow.locator(".kit-nm")).toHaveText("Source Han Sans HW SC");
+    await search.fill("Noto Sans");
+    await expect(notoRow).toBeVisible();
   });
 
   test("offline: the catalog is unavailable and local fonts work fully", async ({

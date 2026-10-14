@@ -47,6 +47,18 @@ test.describe("build cancellation", () => {
     await expect(popup).toBeVisible();
     await page.locator("input[data-role='font-file']").setInputFiles(path);
     await expect(popup).toBeHidden();
+    // Round 21: every local load posts its outcome card (家族 N ·
+    // 字形 M) before the picker closes. Dismiss it here — this suite's
+    // end-state assertions count the message stack empty, and a card
+    // parked under the resting pointer pauses its countdown by design
+    // (the hover-pause).
+    for (const card of await page
+      .locator(".kit-msgs [data-role='message']", {
+        hasText: "已加载本地字体",
+      })
+      .all()) {
+      await card.locator("[data-role='message-dismiss']").click();
+    }
   }
 
   /** The page wired to the service with a real-disk save stand-in. */

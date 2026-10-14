@@ -27,7 +27,8 @@ from typing import BinaryIO
 from fontTools.fontBuilder import FontBuilder
 from fontTools.pens.t2CharStringPen import T2CharStringPen
 from fontTools.pens.ttGlyphPen import TTGlyphPen
-from fontTools.ttLib import TTCollection, TTFont
+from fontTools.ttLib import TTCollection, TTFont, newTable
+from fontTools.ttLib.tables._f_v_a_r import Axis
 
 #: Fixed head timestamps (2026-01-01 UTC): deterministic, no wall clock.
 FIXED_TIMESTAMP = 1767225600
@@ -329,6 +330,88 @@ def synth_nf_family(outdir: Path, src: Path) -> list[Path]:
     return paths
 
 
+def synth_vf(outdir: Path, *, family: str, stem: str) -> Path:
+    """Write a single VARIABLE face in the Google release naming shape.
+
+    The name table mirrors Google Fonts' default-instance convention for
+    variable families (``NotoSansSC[wght].ttf``, wght default 100):
+    nameID 1/4 name the DEFAULT INSTANCE — "<family> Thin" — nameID 2
+    reads "Regular" for legacy matchers, and the typographic pair
+    (16/17) spans the family: 16 = the family, 17 = "Thin". The GUI's
+    display name must read nameID16 (the family), never the composed
+    default instance the legacy pair spells.
+    """
+    path = outdir / f"{stem}.ttf"
+    synth_font(path, family=family, codepoints=BASE_CODEPOINTS, weight=100)
+    font = TTFont(path)
+    names = font["name"]
+    names.setName(f"{family} Thin", 1, 3, 1, 0x409)
+    names.setName("Regular", 2, 3, 1, 0x409)
+    names.setName(f"{family} Thin", 4, 3, 1, 0x409)
+    names.setName(f"{family.replace(' ', '')}-Thin", 6, 3, 1, 0x409)
+    names.setName(family, 16, 3, 1, 0x409)
+    names.setName("Thin", 17, 3, 1, 0x409)
+    # The variable axis: wght 100..900, default 100 — the instance the
+    # legacy pair names. The GUI reads only the table's presence (a
+    # variable face IS the whole family); the axis name id is 256.
+    fvar = newTable("fvar")
+    axis = Axis()
+    axis.axisTag = "wght"
+    axis.minValue = 100
+    axis.defaultValue = 100
+    axis.maxValue = 900
+    axis.axisNameID = 256
+    names.setName("Weight", 256, 3, 1, 0x409)
+    fvar.axes = [axis]
+    font.tables["fvar"] = fvar
+    font.save(path)
+    font.close()
+    return path
+
+
+def synth_named(outdir: Path, *, family: str, stem: str) -> Path:
+    """Write one plain static face of ``family`` as ``<stem>-Regular.ttf``.
+
+    Round 21: the catalog-name fixture's cut faces — a face whose OWN
+    name-table family ("Source Han Sans HW SC") differs from its
+    manifest family id (NotoSansSC), the row a cut-name search must
+    surface.
+    """
+    path = outdir / f"{stem}-Regular.ttf"
+    synth_font(path, family=family, codepoints=BASE_CODEPOINTS)
+    return path
+
+
+def synth_big_ttc(outdir: Path, *, family: str, stem: str) -> Path:
+    """Write a real 16-face ONE-family collection (round 21, item 2).
+
+    The round-20 pipeline shape at fixture scale: every face the same
+    name-table family across the weight x style matrix, shared tables
+    deduped exactly like the build's own ttc output — the collection a
+    synchronous registration loop would freeze the page on.
+    """
+    faces = []
+    for style, weight, italic in NF_FAMILY_FACES:
+        member = io.BytesIO()
+        synth_font(
+            member,
+            family=family,
+            codepoints=BASE_CODEPOINTS,
+            weight=weight,
+            style=style,
+            italic=italic,
+        )
+        member.seek(0)
+        faces.append(TTFont(member))
+    collection = TTCollection()
+    collection.fonts = faces
+    path = outdir / f"{stem}.ttc"
+    collection.save(path, shareTables=True)
+    for face in faces:
+        face.close()
+    return path
+
+
 def synth_subset_donor(outdir: Path, src: Path) -> Path:
     """Write a real donor subset: the first 400 ideographs of 一.
 
@@ -430,6 +513,32 @@ def main() -> int:
         help="the collection fixture's file stem (--ttc only)",
     )
     parser.add_argument(
+        "--vf",
+        nargs=2,
+        metavar=("FAMILY", "STEM"),
+        help="write one VARIABLE face in the Google release naming shape "
+        "(default-instance nameID1 '<FAMILY> Thin', typographic nameID16 "
+        "FAMILY, fvar wght default 100) instead of the base/donor pair — "
+        "the round-21 display-name fixture",
+    )
+    parser.add_argument(
+        "--named",
+        nargs=2,
+        metavar=("FAMILY", "STEM"),
+        help="write one plain static face of FAMILY as <STEM>-Regular.ttf "
+        "instead of the base/donor pair — the round-21 cut-name fixture",
+    )
+    parser.add_argument(
+        "--big-ttc",
+        nargs="?",
+        const="Alloy Wide",
+        metavar="FAMILY",
+        default=None,
+        help="write a real 16-face ONE-family collection (weight x style "
+        "matrix, shared-table dedup) instead of the base/donor pair — the "
+        "round-21 async-load fixture",
+    )
+    parser.add_argument(
         "--nf-family",
         type=Path,
         metavar="SRC",
@@ -457,6 +566,23 @@ def main() -> int:
         return 0
     if args.ttc:
         path = synth_ttc(args.outdir, stem=args.ttc_stem)
+        print(f"wrote {path}")
+        return 0
+    if args.vf is not None:
+        path = synth_vf(args.outdir, family=args.vf[0], stem=args.vf[1])
+        print(f"wrote {path}")
+        return 0
+    if args.named is not None:
+        path = synth_named(args.outdir, family=args.named[0], stem=args.named[1])
+        print(f"wrote {path}")
+        return 0
+    if args.big_ttc is not None:
+        family = args.big_ttc
+        path = synth_big_ttc(
+            args.outdir,
+            family=family,
+            stem=family.replace(" ", ""),
+        )
         print(f"wrote {path}")
         return 0
     if args.family:

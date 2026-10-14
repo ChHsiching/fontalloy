@@ -79,6 +79,15 @@ test.describe("round-9 rule × visibility shots", () => {
       .locator("input[data-role='font-file']")
       .setInputFiles([font1, font2]);
     await waitForFontsReady(page);
+    // Round 21: the load posts its outcome card (家族 N · 字形 M) —
+    // dismiss it so the FIRST card below is the rule-assignment card
+    // this test shoots.
+    const loadCard = page.locator(".kit-msgs [data-role='message']", {
+      hasText: "已加载本地字体",
+    });
+    await expect(loadCard).toBeVisible();
+    await loadCard.locator("[data-role='message-dismiss']").click();
+    await expect(loadCard).toHaveCount(0);
     await pointerClick(page, page.locator('[data-role="picker-cjk"] .kit-hd'));
     const cjkPopup = page.locator('[data-picker-popup="cjk"]');
     await cjkPopup.locator(".kit-fp").nth(1).click();

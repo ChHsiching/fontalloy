@@ -39,6 +39,14 @@ export interface FontNames {
   family: string;
   /** Preferred subfamily: nameID 17, falling back to nameID 2 (en). */
   subfamily?: string;
+  /**
+   * The typographic family — the raw nameID16 string, present only
+   * when the font carries one (round 21). Recorded so consumers can
+   * tell a typographic-family reading from a legacy nameID1 fallback
+   * (a variable release names its default instance in nameID1; the
+   * display prefers this record).
+   */
+  typoFamily?: string;
   /** The composed display name (family + distinguishing subfamily). */
   display: string;
   /** The zh-CN (0x804) family string when the author wrote one. */
@@ -73,8 +81,16 @@ export interface FontMeta {
    * weight at its own face instead of colliding on `normal`.
    */
   weight: number;
-  /** The face's italic flag (OS/2 fsSelection bit 0, head macStyle bit 1). */
+  /**
+   * The face's italic flag (OS/2 fsSelection bit 0, head macStyle bit 1).
+   */
   italic: boolean;
+  /**
+   * The maxp table's numGlyphs (round 21; 0 when the face carries no
+   * readable maxp) — the honest per-face glyph count the local load's
+   * outcome card states.
+   */
+  numGlyphs: number;
 }
 
 export interface ParseFontMetaOptions {
@@ -96,6 +112,7 @@ const TAG_HEAD = 0x68656164;
 const TAG_MAXP = 0x6d617870;
 const TAG_CFF = 0x43464620;
 const TAG_OS2 = 0x4f532f32;
+const TAG_FVAR = 0x66766172;
 
 export function parseFontMeta(
   buffer: ArrayBuffer,
@@ -131,8 +148,11 @@ export function parseFontMeta(
 
   const nameOffset = offsets.get(TAG_NAME) ?? -1;
   const cmapOffset = offsets.get(TAG_CMAP) ?? -1;
+  // A variable face (fvar) IS the whole family: its 17/2 subfamily
+  // names the default INSTANCE, not a distinguishing style (round 21).
+  const variable = offsets.has(TAG_FVAR);
   const names =
-    nameOffset >= 0 ? readFamilyName(view, nameOffset) : null;
+    nameOffset >= 0 ? readFamilyName(view, nameOffset, variable) : null;
   const coverage =
     cmapOffset >= 0 && (options.coverage ?? true)
       ? readCoverage(view, cmapOffset, offsets)
@@ -141,6 +161,11 @@ export function parseFontMeta(
     throw new Error("font has no readable family name");
   }
   const style = readFaceStyle(view, offsets);
+  const maxp = offsets.get(TAG_MAXP);
+  const numGlyphs =
+    maxp !== undefined && maxp + 6 <= view.byteLength
+      ? view.getUint16(maxp + 4)
+      : 0;
   return {
     family: names.family,
     names,
@@ -148,6 +173,7 @@ export function parseFontMeta(
     placeholderCodepoints: coverage.placeholders,
     weight: style.weight,
     italic: style.italic,
+    numGlyphs,
   };
 }
 
@@ -199,13 +225,34 @@ export function composeDisplay(
 }
 
 /**
- * Read the name table's own strings (round 9, owner item 2): the en
- * (Windows 0x409) family/subfamily through the same precedence chain
- * the FontFace key always used, plus the zh-CN (0x804) records when
- * the author wrote them — verbatim, never translated or recombined
- * beyond the family+subfamily join every OS performs.
+ * Read the name table's own strings (round 9, owner item 2; round 21
+ * owner item 1): the en (Windows 0x409) family/subfamily through the
+ * same precedence chain the FontFace key always used, plus the zh-CN
+ * (0x804) records when the author wrote them — verbatim, never
+ * translated or recombined beyond the family+subfamily join every OS
+ * performs.
+ *
+ * Round 21 display rule — the pairs stay coherent and a variable face
+ * is the family:
+ *
+ * - the family prefers the TYPOGRAPHIC pair's nameID16, falling back
+ *   to the legacy nameID1;
+ * - the subfamily that joins the display comes from the SAME pair: 17
+ *   rides 16, 2 rides 1. Google's variable releases name the DEFAULT
+ *   INSTANCE in the legacy pair (NotoSansSC[wght].ttf: nameID1
+ *   "Noto Sans SC Thin", wght default 100) while 16 spans the family —
+ *   composing 16 with 2/17-the-instance would rebuild exactly that
+ *   instance string the typographic family exists to escape;
+ * - a VARIABLE face (fvar) contributes no subfamily at all: it IS the
+ *   whole family, and its 17 names the default instance ("Thin"), not
+ *   a distinguishing style. A static styled face (16 "Family" + 17
+ *   "Light") keeps its full composed name.
  */
-function readFamilyName(view: DataView, offset: number): FontNames {
+function readFamilyName(
+  view: DataView,
+  offset: number,
+  variable: boolean,
+): FontNames {
   const count = view.getUint16(offset + 2);
   const stringOffset = view.getUint16(offset + 4);
   const utf16be = new TextDecoder("utf-16be");
@@ -259,13 +306,25 @@ function readFamilyName(view: DataView, offset: number): FontNames {
     pick(nameId, isWinUnicode) ||
     pick(nameId, isMacRoman);
 
-  const family = chain(16) || chain(1);
-  const subfamilyRaw = chain(17) || chain(2);
+  const typoFamily = chain(16);
+  const typoSubfamily = chain(17);
+  const family = typoFamily || chain(1);
+  const subfamilyRaw = typoSubfamily || chain(2);
+  // The subfamily joins the display only from the family's OWN pair
+  // (17 with 16, 2 with 1 — an orphan 17 rides nothing), and never
+  // from a variable face (see the doc comment).
+  const joining =
+    variable
+      ? undefined
+      : typoFamily !== ""
+        ? (typoSubfamily || undefined)
+        : (chain(2) || typoSubfamily || undefined);
   const names: FontNames = {
     family,
     ...(subfamilyRaw ? { subfamily: subfamilyRaw } : {}),
-    display: composeDisplay(family, subfamilyRaw || undefined),
+    display: composeDisplay(family, joining),
   };
+  if (typoFamily !== "") names.typoFamily = typoFamily;
   const zhFamily = pick(16, isWinZh) || pick(1, isWinZh);
   const zhSubfamily = pick(17, isWinZh) || pick(2, isWinZh);
   if (zhFamily) names.zhFamily = zhFamily;
