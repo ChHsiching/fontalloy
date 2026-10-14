@@ -467,6 +467,23 @@ const sleep = (ms: number): Promise<void> =>
   new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
 
 /**
+ * Stop a build on the service (round 19) — the real abort behind the
+ * build panel's confirms. Never throws: an unreachable service or an
+ * id that aged out of the retention window (404) leaves the row to
+ * settle on its own terms, and a build that finished in the race is a
+ * no-op on the service side.
+ */
+export async function cancelBuild(id: string): Promise<void> {
+  const { client } = synthStore.get().service;
+  if (client === null) return;
+  try {
+    await client.cancelBuild(id);
+  } catch {
+    // The poll loop owns the row's outcome either way.
+  }
+}
+
+/**
  * The artifact's file extension for an output format — the same
  * mapping the report readback uses at save time (anything the schema
  * did not name falls back to ttf).
@@ -492,7 +509,7 @@ function failBeforeBuild(message: string): void {
  * Round 18 (owner item 4): the same-name gate runs HERE, at the click
  * — before anything is submitted. The target name is probed; a
  * collision starts NO build and hands the decision to the card
- * (`askRenameOrBuild`). 「直接合成」 re-enters with the exact draft
+ * (`askRenameOrBuild`). 「直接覆盖」 re-enters with the exact draft
  * that was probed and the overwrite pre-approved (its save writes
  * exactly like the old explicit overwrite); 「改个名字」 re-runs the
  * whole action on the committed name, gate first (another collision
@@ -551,7 +568,7 @@ export async function synthesize(): Promise<void> {
 /**
  * Submit one resolved draft, poll it to completion, and save the
  * artifact. `overwriteApproved` marks a build that already answered
- * the same-name gate with 直接合成 (its save writes exactly like the
+ * the same-name gate with 直接覆盖 (its save writes exactly like the
  * old explicit overwrite); every other build re-probes at the save —
  * a name that came free at the click but was taken by the time the
  * artifact landed (another build's save, an external write) settles
@@ -609,6 +626,9 @@ async function runBuild(
       error: doc.error,
     });
     if (doc.status === "failed") return;
+    // Round 19: a cancelled build is settled — the row renders 已取消,
+    // nothing is saved, and this poll loop stands down.
+    if (doc.status === "cancelled") return;
     if (doc.status === "done") break;
     if (Date.now() > deadline) {
       patchBuild(id, { status: "error", error: "构建超时。" });
@@ -621,7 +641,7 @@ async function runBuild(
   // DEFAULT-PATH saver (round 12: the configured output directory, no
   // dialog anywhere in the saving path — a dialog is never a
   // dependency of saving). Round 18: the same-name DECISION was made
-  // at the click — a 直接合成 build writes through (the overwrite
+  // at the click — a 直接覆盖 build writes through (the overwrite
   // happens here, at the save, exactly like the old explicit
   // overwrite); anything else re-probes defensively and, on a name
   // that was taken in the meantime, writes NOTHING (the row settles
@@ -675,14 +695,17 @@ async function settleSaved(
 
 /**
  * Ask about a same-name target AT THE CLICK (round 18, owner item 4;
- * the round-17 card moved before the build). One message card names
- * the exact colliding path and offers BOTH paths — 改个名字 (the
- * font-name input takes the focus and flashes; the build starts itself
- * once the new name is committed, re-probed first) and 直接合成 (the
- * build proceeds on the exact draft that was probed; its save
- * overwrites — the label says 合成, not 覆盖, because nothing is
- * overwritten until the save, danger-toned for the same reason).
- * Neither is the default; the × builds nothing.
+ * the round-17 card moved before the build; round 19 joins the
+ * standard countdown). One message card names the exact colliding
+ * path and offers BOTH paths — 改个名字 (the font-name input takes
+ * the focus and flashes; the build starts itself once the new name is
+ * committed, re-probed first) and 直接覆盖 (the build proceeds on the
+ * exact draft that was probed; its save overwrites the colliding
+ * file — the round-19 label says 覆盖, matching what the save does,
+ * danger-toned for the same reason). The card rides the message
+ * system's standard ~6s countdown with hover-pause (round 19, item
+ * 2): a timeout counts as dismissal — no build starts, exactly like
+ * the ×. Neither action is the default.
  */
 function askRenameOrBuild(
   draft: ReturnType<typeof defaultDraft>,
@@ -698,7 +721,7 @@ function askRenameOrBuild(
         onClick: () => armRenameBuild(),
       },
       {
-        label: "直接合成",
+        label: "直接覆盖",
         tone: "danger",
         onClick: () => {
           void runBuild(draft, true);

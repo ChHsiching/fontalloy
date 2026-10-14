@@ -53,7 +53,12 @@ export interface CatalogDocument {
 /** `GET /builds/{id}` — the job document, the progress endpoint. */
 export interface BuildDocument {
   id: string;
-  status: "queued" | "running" | "done" | "failed";
+  /**
+   * Round 19 adds `cancelled`: the consumer stopped the build through
+   * `POST /builds/{id}/cancel` — a distinct outcome, never a failure
+   * (no error text, no artifact).
+   */
+  status: "queued" | "running" | "done" | "failed" | "cancelled";
   stage: string | null;
   /**
    * Round 13 (owner item 5): the CURRENT stage's live facts — the
@@ -169,6 +174,23 @@ async function parseError(res: Response): Promise<string> {
 export class ServeClient {
   constructor(readonly baseUrl: string) {}
 
+  private async requestJson<T>(
+    path: string,
+    init?: RequestInit,
+  ): Promise<T> {
+    let res: Response;
+    try {
+      res = await fetch(`${this.baseUrl}${path}`, {
+        headers: { "Content-Type": "application/json" },
+        ...init,
+      });
+    } catch {
+      throw new ServeError("无法连接本地合成服务。", 0);
+    }
+    if (!res.ok) throw new ServeError(await parseError(res), res.status);
+    return (await res.json()) as T;
+  }
+
   private async getJson<T>(path: string): Promise<T> {
     let res: Response;
     try {
@@ -195,6 +217,19 @@ export class ServeClient {
 
   build(id: string): Promise<BuildDocument> {
     return this.getJson<BuildDocument>(`/builds/${id}`);
+  }
+
+  /**
+   * Stop a build (round 19): `POST /builds/{id}/cancel`. Idempotent —
+   * a settled build answers 200 as a no-op; an unknown id is a 404
+   * (the id may have aged out of the retention window). The response
+   * is the job document; its `status` says where the cancellation
+   * stands (`cancelled` once it landed).
+   */
+  cancelBuild(id: string): Promise<BuildDocument> {
+    return this.requestJson<BuildDocument>(`/builds/${id}/cancel`, {
+      method: "POST",
+    });
   }
 
   report(id: string): Promise<ReportDocument> {

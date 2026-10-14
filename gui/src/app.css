@@ -633,6 +633,15 @@ body {
   color: var(--dgr);
 }
 
+/* Round 19: the cancelled row's status word — the calm failure
+   register with none of the danger tone. Explicitly pinned to the
+   stage word's own dim ink so a future change to the base (or the
+   done accent) cannot accidentally make a cancelled build read as a
+   failure or a completion. */
+.build-stage.is-cancelled {
+  color: var(--ink2);
+}
+
 .build-dismiss {
   flex: none;
   color: var(--ink3);

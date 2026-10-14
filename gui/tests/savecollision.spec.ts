@@ -19,10 +19,12 @@ import {
  * A collision starts NO build; one message card (「已有同名文件」) names
  * the exact target path and offers 「改个名字」 (focus + flash the
  * font-name input; the committed new name starts the build itself —
- * re-probed first, another collision asks again) and 「直接合成」 (the
- * build proceeds and saves with overwrite; nothing is overwritten
- * until the save). Dismissing the card (×) builds nothing and leaves
- * nothing behind.
+ * re-probed first, another collision asks again) and 「直接覆盖」 (the
+ * round-19 label; the build proceeds and its save overwrites the
+ * colliding file). Dismissing the card (×) builds nothing and leaves
+ * nothing behind — and since round 19 (owner item 2) the card rides
+ * the message system's standard ~6s countdown with hover-pause: a
+ * timeout counts as dismissal, exactly like the ×.
  *
  * The harness mirrors synthesize.spec.ts: a real `fontalloy serve`
  * fixture, real pickers, a real-disk save stand-in through the config
@@ -197,8 +199,15 @@ test.describe("same-name output gate", () => {
       await expect(
         card.locator("[data-role='message-reason']"),
       ).toHaveAttribute("title", /ChHsich\.ttf$/);
-      // The card does not expire on its own — it waits for the choice.
-      await page.waitForTimeout(1_200);
+      // Round 19 (owner item 2): the card JOINS the standard countdown —
+      // the bar is present and shrinking (the hover-pause machinery is
+      // the kit's own, pinned by journey.spec.ts). Within the window
+      // the question stands, waiting for the choice.
+      const bar = card.locator(".kit-msg-bar");
+      await expect(bar).toBeVisible();
+      await expect
+        .poll(() => bar.evaluate((el) => el.style.transform))
+        .toMatch(/^scaleX\(0\.\d+\)$/);
       await expect(card).toBeVisible();
 
       // 改个名字: the input takes the focus and flashes; the choice
@@ -249,7 +258,7 @@ test.describe("same-name output gate", () => {
     }
   });
 
-  test("直接合成 proceeds with the build and its save overwrites the file", async ({
+  test("直接覆盖 proceeds with the build and its save overwrites the file", async ({
     page,
   }) => {
     // Two real builds ride this scenario.
@@ -279,12 +288,13 @@ test.describe("same-name output gate", () => {
       const card = collisionCard(page);
       await expect(card).toBeVisible({ timeout: 30_000 });
 
-      // 直接合成: the build proceeds (POST #2) and its save overwrites
-      // the existing file — the file's content is replaced (mtime
-      // moves; the bytes parse as the merged font again).
+      // 直接覆盖 (the round-19 label): the build proceeds (POST #2) and
+      // its save overwrites the existing file — the file's content is
+      // replaced (mtime moves; the bytes parse as the merged font
+      // again).
       await pointerClick(
         page,
-        card.locator("[data-role='message-action']", { hasText: "直接合成" }),
+        card.locator("[data-role='message-action']", { hasText: "直接覆盖" }),
       );
       await expect(panel.locator("[data-build-row]")).toHaveCount(2);
       const savedPath = panel
@@ -339,6 +349,43 @@ test.describe("same-name output gate", () => {
       );
       await expect(card).toHaveCount(0);
       await page.waitForTimeout(1_500);
+      expect(buildPosts.length).toBe(1);
+      await expect(panel.locator("[data-build-row]")).toHaveCount(1);
+      expect(saved.length).toBe(1);
+      await expect(
+        page.locator(".kit-msgs [data-role='message']"),
+      ).toHaveCount(0);
+    } finally {
+      await service.dispose();
+    }
+  });
+
+  test("round 19: the countdown's timeout counts as dismissal — no build", async ({
+    page,
+  }) => {
+    // One real build rides this scenario, plus the ~6s countdown.
+    test.setTimeout(120_000);
+    const service = await startServeFixture();
+    const saved: string[] = [];
+    const buildPosts = trackBuildPosts(page);
+    try {
+      await openCollisionReady(page, service, saved);
+      await loadIntoPicker(page, "en", service.baseFont);
+      await loadIntoPicker(page, "cjk", service.donorFont);
+
+      const panel = await runBuild(page, 1);
+      await expect(
+        panel.locator("[data-build-stage]").first(),
+      ).toHaveText("完成", { timeout: 30_000 });
+
+      // The colliding click asks; nobody answers. The standard ~6s
+      // countdown dismisses the card on its own — and that counts as
+      // the NEITHER answer: no submission, no row, no message left.
+      await clickSynthesize(page);
+      const card = collisionCard(page);
+      await expect(card).toBeVisible({ timeout: 30_000 });
+      await expect(card).toHaveCount(0, { timeout: 20_000 });
+      await page.waitForTimeout(1_000);
       expect(buildPosts.length).toBe(1);
       await expect(panel.locator("[data-build-row]")).toHaveCount(1);
       expect(saved.length).toBe(1);

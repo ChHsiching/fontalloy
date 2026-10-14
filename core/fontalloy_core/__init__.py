@@ -50,7 +50,9 @@ The only capability layer (ADR-0002). Public surface:
   stdlib-only (``http.server`` with a threading server), keeping the
   GUI's sidecar bundle lean.
 - ``RecipeError`` / ``BuildError`` / ``CatalogError`` / ``AssetsError`` /
-  ``ReleaseError``: the error types callers catch.
+  ``ReleaseError``: the error types callers catch. ``BuildCancelled``
+  (round 19) is the cooperative-cancellation outcome the pipeline raises
+  when the consumer-supplied ``cancelled`` predicate flips mid-build.
 """
 
 from __future__ import annotations
@@ -74,6 +76,7 @@ from fontalloy_core.catalog_release import (
 )
 from fontalloy_core.errors import (
     AssetsError,
+    BuildCancelled,
     BuildError,
     CatalogError,
     FontAlloyError,
@@ -117,6 +120,7 @@ __all__ = [
     "AssetsError",
     "BRAND_DEFAULT_FAMILY",
     "BUILTIN_NAMED_SETS",
+    "BuildCancelled",
     "BuildError",
     "BuildOutput",
     "Catalog",

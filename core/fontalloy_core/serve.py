@@ -31,6 +31,7 @@ path           method  response
 ``/builds``    GET     every retained build, newest last
 ``/builds``    POST    submit a merge (recipe-shaped JSON) -> 202 + id
 ``/builds/id`` GET     one build's status/stage/artifact document
+``/builds/id/cancel`` POST  stop a queued/running build (idempotent)
 ``/builds/id/font``   GET  the output font (ttf/ttc/woff2 bytes)
 ``/builds/id/report`` GET  the verification report JSON
 =============  ======  ==================================================
@@ -80,7 +81,7 @@ from typing import Any
 
 from fontalloy_core.build import build_recipe
 from fontalloy_core.catalog import Catalog, load_manifest
-from fontalloy_core.errors import FontAlloyError
+from fontalloy_core.errors import BuildCancelled, FontAlloyError
 from fontalloy_core.load import (
     FaceInfo,
     aggregate_families,
@@ -180,7 +181,7 @@ class BuildJob:
     id: str
     recipe: Recipe
     submitted_at: str = field(default_factory=_now)
-    status: str = "queued"  # queued | running | done | failed
+    status: str = "queued"  # queued | running | done | failed | cancelled
     stage: str | None = None
     #: Round 13 (owner item 5): the live facts of the CURRENT stage —
     #: the quantitative readout (file count/sizes, slot count, rule
@@ -193,6 +194,11 @@ class BuildJob:
     build_dir: Path | None = None
     font_size: int | None = None
     font_sha256: str | None = None
+    #: Round 19: the cooperative-cancel flag. The cancel endpoint sets
+    #: it; the pipeline consults it at stage boundaries and inside the
+    #: long loops, so a running build stops within a fraction of a wide
+    #: graft and the worker moves on to the next queued build.
+    cancel: threading.Event = field(default_factory=threading.Event)
 
     @property
     def format(self) -> str:
@@ -285,6 +291,32 @@ class ServeState:
                     return position
         return None
 
+    # -- cancellation ------------------------------------------------------
+
+    def cancel_job(self, job: BuildJob) -> bool:
+        """Stop a build (round 19): arm its flag, and when it has not
+        started yet, retire it on the spot.
+
+        Idempotent and settle-safe: a job already done, failed, or
+        cancelled is a no-op (returns False); a queued job lands
+        ``cancelled`` immediately — the worker later dequeues it and
+        skips it before any scratch exists; a running job keeps its
+        status until the pipeline's next cancellation point (stage
+        boundary or loop cadence) raises, at which point the worker
+        lands ``cancelled`` and frees itself for the next queued build.
+        Returns True when this call actually moved the job towards
+        cancellation.
+        """
+        with self.lock:
+            if job.status in ("done", "failed", "cancelled"):
+                return False
+            job.cancel.set()
+            if job.status == "queued":
+                job.status = "cancelled"
+                job.finished_at = _now()
+                return True
+            return True
+
     # -- worker side -------------------------------------------------------
 
     def next_job(self, timeout: float) -> BuildJob | None:
@@ -333,13 +365,23 @@ class ServeState:
             finished = [
                 candidate
                 for candidate in self.jobs.values()
-                if candidate.status in ("done", "failed")
+                if candidate.status in ("done", "failed", "cancelled")
             ]
             surplus = finished[: max(len(finished) - self.options.keep_builds, 0)]
             for candidate in surplus:
                 self.jobs.pop(candidate.id, None)
         for candidate in surplus:
             self._remove_dir(candidate.build_dir)
+
+    def drop_scratch(self, job: BuildJob) -> None:
+        """Remove one job's scratch directory (a cancelled build keeps
+        no half-written artifact) and forget it."""
+        with self.lock:
+            build_dir = job.build_dir
+            job.build_dir = None
+            if build_dir is not None:
+                self._created_dirs.discard(build_dir)
+        self._remove_dir(build_dir)
 
     def cleanup(self) -> None:
         """Remove every scratch directory the service created."""
@@ -502,6 +544,12 @@ class _BuildWorker(threading.Thread):
 
     def _run_job(self, job: BuildJob) -> None:
         state = self._state
+        # Round 19: a job cancelled while queued never starts — no
+        # running transition, no scratch, nothing for the worker to do
+        # but move on to the next queued build.
+        with state.lock:
+            if job.status == "cancelled":
+                return
         state.mark(job, status="running", started_at=_now())
         try:
             job.build_dir = state.scratch_for(job)
@@ -513,6 +561,10 @@ class _BuildWorker(threading.Thread):
                 # against the serve process's configured manifest.
                 manifest=state.options.manifest,
                 progress=state.progress_of(job),
+                # Round 19: the cooperative-cancel seam. The predicate
+                # reads the job's own flag (never the service-wide stop,
+                # which the progress callback owns).
+                cancelled=job.cancel.is_set,
             )
             # Artifact facts are computed once at completion — polling a
             # done build must not re-hash the font on every request.
@@ -529,6 +581,18 @@ class _BuildWorker(threading.Thread):
             # Shutdown interrupted the build: nothing is recorded — the
             # process is exiting and the scratch is removed on the way out.
             return
+        except BuildCancelled:
+            # Round 19: the consumer cancelled the build. It lands as
+            # its own outcome — never failed, no error text — with no
+            # artifact: the scratch (and any half-written bytes in it)
+            # goes away and the worker is free for the next queued job.
+            state.drop_scratch(job)
+            state.mark(
+                job,
+                status="cancelled",
+                finished_at=_now(),
+                facts=None,
+            )
         except FontAlloyError as exc:
             state.mark(
                 job, status="failed", error=str(exc), finished_at=_now()
@@ -668,10 +732,14 @@ class _ServeHandler(BaseHTTPRequestHandler):
                 )
         else:
             detail = re.fullmatch(r"/builds/([^/]+)", path)
+            cancel = re.fullmatch(r"/builds/([^/]+)/cancel", path)
             artifact = re.fullmatch(r"/builds/([^/]+)/(font|report)", path)
             if detail is not None:
                 self._require_methods(method, ("GET",))
                 self._build_detail(detail.group(1))
+            elif cancel is not None:
+                self._require_methods(method, ("POST",))
+                self._cancel_build(cancel.group(1))
             elif artifact is not None:
                 self._require_methods(method, ("GET",))
                 self._build_artifact(artifact.group(1), artifact.group(2))
@@ -723,6 +791,20 @@ class _ServeHandler(BaseHTTPRequestHandler):
         if job is None:
             self._send_error(404, f"no such build: {build_id}")
             return
+        self._send_json(self.state.job_document(job))
+
+    def _cancel_build(self, build_id: str) -> None:
+        """``POST /builds/{id}/cancel`` (round 19): really stop a build.
+
+        Idempotent; a settled build is a 200 no-op, an unknown id is a
+        404. The response is the job document — its ``status`` says
+        where the cancellation stands (``cancelled`` once it landed).
+        """
+        job = self._find_job(build_id)
+        if job is None:
+            self._send_error(404, f"no such build: {build_id}")
+            return
+        self.state.cancel_job(job)
         self._send_json(self.state.job_document(job))
 
     def _build_artifact(self, build_id: str, kind: str) -> None:
