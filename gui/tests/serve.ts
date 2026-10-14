@@ -108,6 +108,31 @@ export async function generateFamily(
   );
 }
 
+/**
+ * Generate the round-19 collection fixture into `outdir` (no service):
+ * a real fontTools three-face .ttc — distinct family names, the first
+ * two faces' identical tables deduped into the shared region exactly
+ * like the pipeline's own ttc output. Returns the collection path.
+ */
+export async function generateTtc(
+  outdir: string,
+  stem = "AlloyTTC",
+): Promise<string> {
+  const python = process.env.FONTALLOY_PYTHON ?? "python";
+  await run(
+    python,
+    [
+      resolve(repoRoot, "gui/scripts/e2e_fonts.py"),
+      outdir,
+      "--ttc",
+      "--ttc-stem",
+      stem,
+    ],
+    repoRoot,
+  );
+  return resolve(outdir, `${stem}.ttc`);
+}
+
 /** Run a command to completion, failing loudly with its output. */
 function run(
   command: string,

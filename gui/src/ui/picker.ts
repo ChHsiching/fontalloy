@@ -4,7 +4,12 @@ import {
   type CatalogState,
   type LoadedFont,
 } from "../state";
-import { registerFontBytes, fontDisplayName } from "../fonts/registry";
+import {
+  registerFontBytes,
+  fontDisplayName,
+  type LocalFontFile,
+} from "../fonts/registry";
+import { expandLocalFontEntries } from "../fonts/ttc";
 import { sweepLocalFamily } from "../fonts/localFamily";
 import { getDefaultManager } from "../catalog/manager";
 import { starsFor, subscribeStars } from "../catalog/stars";
@@ -253,11 +258,21 @@ export function mountPicker(
   let error: string | null = null;
 
   /** Register picked local fonts, selecting the first new family. */
-  const registerPicked = async (
-    entries: Array<{ buffer: ArrayBuffer; fileName: string; path?: string }>,
-  ): Promise<void> => {
+  const registerPicked = async (files: LocalFontFile[]): Promise<void> => {
     error = null;
-    for (const entry of entries) {
+    // Round 19 (owner item 3): a collection expands to one entry per
+    // face BEFORE registering — each face registers as its own font
+    // (its own name table), and a face that did not reassemble (or
+    // still fails to load) degrades to its own error line naming
+    // `file.ttc#N`, never killing the others.
+    const failures: string[] = [];
+    for (const entry of expandLocalFontEntries(files)) {
+      if (entry.buffer === undefined) {
+        failures.push(
+          `无法加载 ${entry.fileName}：${entry.error ?? "不是有效的字体文件"}`,
+        );
+        continue;
+      }
       try {
         const { font, isNewFamily } = await registerFontBytes(entry.buffer, {
           fileName: entry.fileName,
@@ -275,11 +290,14 @@ export function mountPicker(
         // blocks the pick; a one-file family registers nothing.
         void sweepLocalFamily(font);
       } catch (err) {
-        error = `无法加载 ${entry.fileName}：${
-          err instanceof Error ? err.message : "不是有效的字体文件"
-        }`;
+        failures.push(
+          `无法加载 ${entry.fileName}：${
+            err instanceof Error ? err.message : "不是有效的字体文件"
+          }`,
+        );
       }
     }
+    error = failures.length > 0 ? failures.join("；") : null;
     // Prototype parity: a successful load closes the picker (the new
     // pick is what the closed card now shows); a failure keeps it open
     // so the error line above the footer stays reachable.

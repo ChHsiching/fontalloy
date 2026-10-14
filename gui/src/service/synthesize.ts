@@ -137,6 +137,16 @@ function basename(path: string): string {
 }
 
 /**
+ * Strip a collection face suffix (round 19): a face extracted from a
+ * picked .ttc carries the per-face name `file.ttc#N`, but the file on
+ * disk (and in the service's listing) is the one collection — the
+ * `#N` is this app's own bookkeeping, never part of any path.
+ */
+function stripFaceSuffix(fileName: string): string {
+  return fileName.replace(/#\d+$/, "");
+}
+
+/**
  * The subfamily words a release face's last name segment can carry
  * (OS/2 weight names + the italic composites). Order matters: the
  * composites must precede their prefixes in the alternation.
@@ -200,7 +210,9 @@ export function resolveFontPath(font: LoadedFont): string | null {
   if (font.path !== undefined) return font.path;
   const index = synthStore.get().service.fontsIndex;
   if (index === null) return null;
-  const wanted = basename(font.fileName);
+  // A collection face's `#N` suffix is dropped first (see
+  // stripFaceSuffix): the match is against the file the service lists.
+  const wanted = basename(stripFaceSuffix(font.fileName));
   for (const family of index.families) {
     for (const face of family.faces) {
       if (basename(face.path) === wanted) return face.path;

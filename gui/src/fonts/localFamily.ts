@@ -100,7 +100,10 @@ async function platformSiblings(font: LoadedFont): Promise<SiblingFace[]> {
     try {
       const { buffer, fileName } = await readPickedFont(path);
       // Names only — the cmap enumeration is the expensive half of the
-      // parse and no consumer reads a sibling's coverage.
+      // parse and no consumer reads a sibling's coverage. A sibling
+      // COLLECTION contributes its first face's family here (metadata
+      // only): a collection's own faces register through the load
+      // path's per-face expansion, never through this sweep.
       const meta = parseFontMeta(buffer, { coverage: false });
       if (meta.family !== font.cssFamily) continue;
       siblings.push({ fileName, path, names: meta.names });
@@ -117,6 +120,13 @@ async function platformSiblings(font: LoadedFont): Promise<SiblingFace[]> {
  * directory listing. Faces of the representative's own name-table
  * family, in the representative's resolved directory, one record per
  * distinct file (a TTC contributes one sibling, not one per face).
+ *
+ * Round 19 note: a face extracted from a picked COLLECTION carries the
+ * per-face name `file.ttc#N`, which matches no index basename — the
+ * representative stays unresolved and the sweep degrades to nothing,
+ * exactly right: the collection's faces already registered as faces
+ * of their own through the load path, and re-reading them as
+ * data-only siblings would duplicate them.
  */
 function indexSiblings(font: LoadedFont): SiblingFace[] {
   const index = synthStore.get().service.fontsIndex;
