@@ -228,10 +228,13 @@ async function pickFlagshipPair(page: Page): Promise<void> {
 
   // CJK: the Maple row narrowed to its NF-CN cut through the variant
   // chip (round 8: per-cut chips with official labels; the identity
-  // reads the variant's REAL name).
+  // reads the variant's REAL name). Round 20: the row reads the
+  // DEFAULT cut's representative "Maple Mono NF" (the prototype alias
+  // face is gone) — the same drift the gui journeys follow; the picked
+  // NF-CN identity is still the cut's own name-table string.
   const cjk = await openFontPicker(page, "cjk");
   const mapleRow = cjk.locator(".kit-fp").filter({
-    has: page.locator(".kit-nm", { hasText: /^Maple Mono CN$/ }),
+    has: page.locator(".kit-nm", { hasText: /^Maple Mono NF$/ }),
   });
   await mapleRow.scrollIntoViewIfNeeded();
   await rawClick(
@@ -242,7 +245,7 @@ async function pickFlagshipPair(page: Page): Promise<void> {
   // Round 9: the served face's own name-table string.
   await expect(
     page.locator("[data-role='font-pair'] [data-pair='donor']"),
-  ).toHaveText("Maple Mono CN", { timeout: 20_000 });
+  ).toHaveText("Maple Mono NF CN", { timeout: 20_000 });
   await page.keyboard.press("Escape");
 }
 
