@@ -6,7 +6,9 @@
  * - hover is NEUTRAL (border + recessed fill + 1.05 scale); the accent
  *   is reserved for the selected state (border + 1px ring + tint);
  * - adjusted cells carry the corner dot (.ov, paired with the 已调整
- *   legend); missing cells are dashed danger with the codepoint shown;
+ *   legend); missing cells are dashed danger with the codepoint shown
+ *   (round 20: a placeholder mapping keeps the font's own glyph under
+ *   the frame, and an unmapped 图标-range cell carries no glyph at all);
  *   - the codepoint row (编码 mode) is tabular-nums 8.5px under the
  *   glyph; with it the cell switches to a column layout;
  * - consumers with a separate details CURSOR (a keyboard/click focus
@@ -25,8 +27,9 @@
  * The cell's effective-source vocabulary. `base` / `donor` render in
  * the winning font; `none` is a glyph the build lacks (dashed danger,
  * codepoint shown); `plain` is OUTSIDE the effective preview (no pick
- * pair yet) — a neutral cell in the plain preview stack, no miss chrome
- * (the grid cannot judge coverage before the build's fonts are known).
+ * at all yet) — a neutral cell in the plain preview stack, no miss
+ * chrome (the grid cannot judge coverage before the build's fonts are
+ * known).
  */
 export type CellState = "base" | "donor" | "none" | "plain";
 
@@ -48,6 +51,19 @@ export interface GridCellData {
   cursor?: boolean;
   /** CSS font-family stack for the glyph (the effective font). */
   fontFamily?: string;
+  /**
+   * Round 20: for a MISSING cell whose codepoint a picked font maps to
+   * a suspected placeholder glyph — the cell KEEPS rendering the
+   * font's own glyph (the box it really draws there) under the missing
+   * style; the stack names that font.
+   */
+  placeholderFamily?: string;
+  /**
+   * Round 20: for a MISSING cell nothing maps — the 图标 ranges render
+   * NO glyph at all (the codepoint row is the only content). The NF
+   * icon area has no fixed meanings: a fallback face's tofu would lie.
+   */
+  noFallbackGlyph?: boolean;
   /** Codepoint label (e.g. "U+4E2D") exposed as data-cp for walkability. */
   cp?: string;
   /** Extra data attributes (e.g. winner/via/kind provenance). */
@@ -107,11 +123,22 @@ export function gridCell(props: GridCellProps): HTMLElement {
     cell.appendChild(cp);
   }
 
-  // Missing glyphs fall back to a system reference face, clearly marked.
-  cell.style.fontFamily =
-    data.state === "none"
-      ? "'Microsoft YaHei',serif"
-      : (data.fontFamily ?? "");
+  // Missing glyphs, three ways (round 20): a placeholder mapping keeps
+  // the FONT'S OWN glyph under the missing frame; an unmapped 图标-range
+  // codepoint renders NO glyph at all (no fallback tofu — the codepoint
+  // row is the only content); every other missing glyph falls back to a
+  // system reference face, clearly marked.
+  if (data.state === "none") {
+    if (data.placeholderFamily) {
+      cell.style.fontFamily = data.placeholderFamily;
+    } else if (data.noFallbackGlyph) {
+      glyph.textContent = "";
+    } else {
+      cell.style.fontFamily = "'Microsoft YaHei',serif";
+    }
+  } else {
+    cell.style.fontFamily = data.fontFamily ?? "";
+  }
 
   if (props.interactive && props.onClick) {
     cell.addEventListener("click", () => props.onClick!(data, cell));

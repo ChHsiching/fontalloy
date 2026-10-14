@@ -22,7 +22,11 @@ import { store } from "../state";
 import { pickRefs } from "../precedence/picks";
 import { BROWSE_UNIVERSE } from "../unicode/universe";
 
-export { BROWSE_UNIVERSE, browseUniverseSize } from "../unicode/universe";
+export {
+  BROWSE_UNIVERSE,
+  browseUniverseSize,
+  isCjkRegionCodepoint,
+} from "../unicode/universe";
 
 /** The synthetic category id of the missing view (not a unicode block). */
 export const MISSING_CATEGORY_ID = "missing";

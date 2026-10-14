@@ -21,6 +21,11 @@
  * copy existed in the DOM but never rendered), and the disabled dim
  * lives in the label's color so the reason keeps legible contrast.
  *
+ * Round 20 (owner item 4): the code line carries the character's
+ * CLASSIFICATION as one small teal qualifier tag (the report-tag
+ * idiom, lifted into the kit as `.kit-tag`) — 「分类 · 区块」 in the
+ * taxonomy's own words, text never svg, riding inline flush right.
+ *
  * The FACTS — including the three action callbacks, which close over
  * the open codepoint — are the consumer's; the kit renders what it is
  * given, reports the actions, and closes after each.
@@ -40,6 +45,14 @@ export interface CharPopupFacts {
   missing?: boolean;
   /** Code label ("U+4E2D"), rendered in the accent mono. */
   code: string;
+  /**
+   * The character's taxonomy classification (round 20, owner item 4):
+   * 「分类 · 区块」 — the taxonomy's own group and block names joined
+   * by U+00B7, rendered as one small teal qualifier tag riding the
+   * code line (the .report-tag idiom, lifted into the kit). Omitted
+   * for codepoints outside the taxonomy.
+   */
+  classification?: string;
   /** The 来自 X line / the missing-glyph copy. */
   from: string;
   /**
@@ -80,9 +93,19 @@ export function mountCharPopup(): CharPopup {
   glyph.className = "kit-pop-glyph";
   glyph.dataset.role = "char-glyph";
 
+  // The code line is a flex row (round 20): the mono code text first,
+  // the classification qualifier tag flush right, wrapping whole to
+  // its own line only when it must (the .report-tag idiom). The code
+  // text keeps its own span so its exact text never picks the tag up.
   const code = document.createElement("div");
   code.className = "kit-pop-code";
-  code.dataset.role = "char-code";
+  const codeText = document.createElement("span");
+  codeText.className = "kit-pop-code-text";
+  codeText.dataset.role = "char-code";
+  const classification = document.createElement("span");
+  classification.className = "kit-tag";
+  classification.dataset.role = "char-classification";
+  code.append(codeText, classification);
 
   const from = document.createElement("div");
   from.className = "kit-pop-from";
@@ -135,7 +158,12 @@ export function mountCharPopup(): CharPopup {
 
   const render = (next: CharPopupFacts): void => {
     glyph.textContent = next.glyph;
-    code.textContent = next.code;
+    codeText.textContent = next.code;
+    // The classification tag paints only when there is one (the same
+    // explicit-display discipline as the note line — an empty chip
+    // would render as a bare border).
+    classification.textContent = next.classification ?? "";
+    classification.style.display = next.classification ? "" : "none";
     from.textContent = next.from;
     note.textContent = next.note ?? "";
     // Show = an EXPLICIT inline "block". Clearing the inline style

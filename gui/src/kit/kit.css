@@ -416,10 +416,43 @@
 }
 
 .kit-pop .kit-pop-code {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.kit-pop .kit-pop-code-text {
   font-family: Consolas, monospace;
   font-size: 13px;
   color: var(--ac);
-  margin-bottom: 8px;
+}
+
+/* Round 20 (owner item 4): the qualifier TAG, the report panel's
+ * .report-tag idiom lifted into the kit — a small teal badge (border
+ * and text in the accent, the fill the kit's faint accent tint) that
+ * qualifies adjacent text without joining it. Tiny, no shadows, never
+ * wrapping mid-word (white-space: nowrap), a real span carrying text
+ * (never svg, never inside an ellipsizing span). In the char popup it
+ * rides the code line flush right (margin-left: auto absorbs the free
+ * space on whichever line it lands — the round-19 unified tag rule). */
+.kit-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 5px;
+  border: 1px solid var(--ac);
+  border-radius: 4px;
+  background: var(--acsoft);
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--ac);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.kit-pop .kit-tag {
+  margin-left: auto;
 }
 
 /* The char popup's parts — the prototype's .pop .code/.from/.btns/.rest

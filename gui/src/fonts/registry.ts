@@ -90,6 +90,7 @@ export async function registerFontBytes(
     path: options.path,
     catalog: options.catalog,
     codepoints: meta.codepoints,
+    placeholderCodepoints: meta.placeholderCodepoints,
   };
   if (!options.silent) {
     store.set({ fonts: [...store.get().fonts, font] });

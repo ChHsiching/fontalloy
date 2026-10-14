@@ -9,7 +9,7 @@ import {
   pointerClick,
   waitForFontsReady,
 } from "./helpers";
-import { browseUniverseSize } from "../src/unicode/universe";
+import { browseUniverseSize, ICON_UNIVERSE } from "../src/unicode/universe";
 
 /**
  * Round 5 — the missing-glyph scope made AUTOMATIC (owner item 4): the
@@ -294,5 +294,51 @@ test.describe("missing glyph scope", () => {
     await expect(
       page.locator(".charmap-grid .kit-cell[data-cp='U+6C38']"),
     ).toHaveClass(/cur/);
+  });
+
+  test("unmapped icon cells count as missing: no fallback tofu in the 图标 ranges", async ({
+    page,
+  }) => {
+    const fonts = await makeLocalFixtures(64);
+    await openWithOneFont(page, "en", fonts.base);
+
+    // Round 20 (owner item 1): the 图标 ranges have no fixed meanings —
+    // the grid's fallback rendering of an UNMAPPED icon codepoint is
+    // tofu that misleads. With a single icon-less pick, every icon cell
+    // carries the MISSING style (red dashed frame) instead: the NF icon
+    // area's gaps read as gaps.
+    await pointerClick(
+      page,
+      page.locator(".kit-cat-g[data-group='icons']"),
+    );
+    const cells = page.locator(".charmap-grid .kit-cell");
+    const count = await cells.count();
+    expect(count).toBeGreaterThan(0);
+    await expect(
+      page.locator(".charmap-grid .kit-cell.miss"),
+    ).toHaveCount(count);
+    // Every missing icon cell shows its codepoint row...
+    await expect(
+      page.locator(".charmap-grid .kit-cell.hascp"),
+    ).toHaveCount(count);
+    // ...and renders NO glyph at all — the codepoint is the only
+    // content, never a fallback font's tofu box.
+    const glyphs = await page
+      .locator(".charmap-grid .kit-cell .ch")
+      .allTextContents();
+    expect(glyphs.every((text) => text === "")).toBe(true);
+
+    // The missing count covers the icon universe: the chip carries the
+    // whole gap of the browsed universe (icons included) against the
+    // lone pick, and the icon planes are a strict part of that universe.
+    const iconSize = ICON_UNIVERSE.reduce(
+      (sum, [start, end]) => sum + (end - start + 1),
+      0,
+    );
+    expect(iconSize).toBeGreaterThan(0);
+    const chip = page.locator(".kit-catbar .kit-cat-g[data-group='missing']");
+    await expect(chip.locator(".n")).toHaveText(
+      (UNIVERSE - 26).toLocaleString("en-US"),
+    );
   });
 });
