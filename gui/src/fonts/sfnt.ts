@@ -6,35 +6,24 @@
  * for the FontFace rendering path only — the real merge pipeline lives
  * in core/ and never runs here.
  *
- * Round 18 (owner item 2b): coverage is the HONEST kind. A codepoint
- * mapped at glyph 0 is absent by convention, and a glyph absorbing an
- * implausible number of codepoints (a placeholder — 方框 / boxed X /
- * question face the font draws at codepoints it does not really cover)
- * reads as missing here exactly as it does in the core pipeline, so
- * the live grid and status bar agree with the report. The constants
- * mirror `core/fontalloy_core/placeholder.py` (same heuristic, same
- * thresholds — calibrated against every face of the shipped catalog:
- * observed maximum 5 codepoints on one glyph, an order of magnitude
- * under the count arm's line, and the worst share 0.00025, 200x under
- * the share arm's).
+ * Rounds 18–19: coverage is the HONEST kind, following the OpenType
+ * conventions alone. A codepoint mapped at glyph 0 is absent by
+ * convention, and a mapped glyph whose OUTLINE is the font's own
+ * .notdef outline is a suspected placeholder (方框 / boxed X / question
+ * face the font draws at codepoints it does not really cover) — those
+ * codepoints read as missing here exactly as they do in the core
+ * pipeline, so the live grid and status bar agree with the report.
+ * Concentration counts for nothing (round 19 — a shared glyph with a
+ * real outline is plain coverage). The outline compare is cheap: a
+ * contour-count + bounding-box + point-count pre-filter rejects the
+ * face's glyphs from the raw glyf record header (or, on CFF faces, the
+ * charstring byte length) before the survivors get the full point
+ * compare.
  *
  * Supports TrueType/OpenType (and reads the first face of a TTC for
  * metadata); woff2 is left to the FontFace decoder and yields no coverage
  * list (the browser still renders it).
  */
-
-/**
- * The count arm of the placeholder heuristic: a glyph must absorb at
- * least this many codepoints to read as a suspected placeholder.
- */
-export const PLACEHOLDER_MIN_CODEPOINTS = 64;
-
-/**
- * The share arm: those codepoints must be at least this fraction of the
- * font's effective cmap (glyph-0 mappings dropped before the share is
- * taken).
- */
-export const PLACEHOLDER_MIN_SHARE = 0.05;
 
 /**
  * The name-table strings a font ships, verbatim. `display` is the
@@ -62,14 +51,15 @@ export interface FontMeta {
   names: FontNames;
   /**
    * Sorted covered codepoints (empty when the cmap cannot be read):
-   * glyph-0 and suspected-placeholder mappings are excluded (round 18),
-   * so every live count reads like the report's.
+   * glyph-0 and suspected-placeholder mappings are excluded (rounds
+   * 18–19), so every live count reads like the report's.
    */
   codepoints: number[];
   /**
-   * Sorted codepoints the placeholder heuristic suspects (round 18):
-   * the mappings dropped from `codepoints` because one glyph absorbed
-   * them all. A coverage-honest count; no live view needs the list.
+   * Sorted codepoints the placeholder rules suspect (rounds 18–19):
+   * the mappings dropped from `codepoints` because their glyph draws
+   * the font's own .notdef outline. A coverage-honest count; no live
+   * view needs the list.
    */
   placeholderCodepoints: number[];
 }
@@ -83,6 +73,15 @@ export interface ParseFontMetaOptions {
    */
   coverage?: boolean;
 }
+
+/** The four-byte table tags this reader cares about, as uint32 keys. */
+const TAG_NAME = 0x6e616d65;
+const TAG_CMAP = 0x636d6170;
+const TAG_GLYF = 0x676c7966;
+const TAG_LOCA = 0x6c6f6361;
+const TAG_HEAD = 0x68656164;
+const TAG_MAXP = 0x6d617870;
+const TAG_CFF = 0x43464620;
 
 export function parseFontMeta(
   buffer: ArrayBuffer,
@@ -104,26 +103,25 @@ export function parseFontMeta(
   }
 
   const numTables = view.getUint16(base + 4);
-  let nameOffset = -1;
-  let cmapOffset = -1;
+  const offsets = new Map<number, number>();
   for (let i = 0; i < numTables; i++) {
     const rec = base + 12 + i * 16;
     if (rec + 16 > view.byteLength) break;
     const tableTag = view.getUint32(rec);
     const off = view.getUint32(rec + 8);
     const len = view.getUint32(rec + 12);
-    if (tableTag === 0x6e616d65 && off + len <= view.byteLength) {
-      nameOffset = off;
-    } else if (tableTag === 0x636d6170 && off + len <= view.byteLength) {
-      cmapOffset = off;
+    if (off + len <= view.byteLength && !offsets.has(tableTag)) {
+      offsets.set(tableTag, off);
     }
   }
 
+  const nameOffset = offsets.get(TAG_NAME) ?? -1;
+  const cmapOffset = offsets.get(TAG_CMAP) ?? -1;
   const names =
     nameOffset >= 0 ? readFamilyName(view, nameOffset) : null;
   const coverage =
     cmapOffset >= 0 && (options.coverage ?? true)
-      ? readCoverage(view, cmapOffset)
+      ? readCoverage(view, cmapOffset, offsets)
       : { codepoints: [], placeholders: [] };
   if (names === null || !names.family) {
     throw new Error("font has no readable family name");
@@ -239,7 +237,11 @@ interface Coverage {
   placeholders: number[];
 }
 
-function readCoverage(view: DataView, offset: number): Coverage {
+function readCoverage(
+  view: DataView,
+  offset: number,
+  offsets: ReadonlyMap<number, number>,
+): Coverage {
   const numSubtables = view.getUint16(offset + 2);
   let best: { score: number; offset: number } | null = null;
   for (let i = 0; i < numSubtables; i++) {
@@ -261,8 +263,8 @@ function readCoverage(view: DataView, offset: number): Coverage {
   const sub = best.offset;
   const format = view.getUint16(sub);
   // codepoint → glyph id, glyph-0 mappings dropped on the way in
-  // (absent by convention). One glyph id absorbing an implausible
-  // number of codepoints marks them all as placeholders (below).
+  // (absent by convention). A glyph whose OUTLINE is the font's own
+  // .notdef outline marks its codepoints as placeholders (below).
   const mapped = new Map<number, number>();
   if (format === 4) {
     readFormat4(view, sub, mapped);
@@ -279,35 +281,488 @@ function readCoverage(view: DataView, offset: number): Coverage {
       }
     }
   }
-  return splitPlaceholders(mapped);
+  return splitPlaceholders(view, mapped, offsets);
 }
 
 /**
- * The concentration check (round 18): one glyph absorbing at least
- * PLACEHOLDER_MIN_CODEPOINTS codepoints AND at least PLACEHOLDER_MIN_SHARE
- * of the effective cmap is a suspected placeholder, and every codepoint
- * it absorbs reads as missing.
+ * Round 19's two conventions, applied to the effective cmap: glyph-0
+ * mappings are already absent; among the rest, every glyph whose
+ * outline is the font's own .notdef outline (glyph 0) is a suspected
+ * placeholder and every codepoint it maps reads as missing.
  */
-function splitPlaceholders(mapped: Map<number, number>): Coverage {
-  const total = mapped.size;
-  const counts = new Map<number, number>();
-  for (const glyph of mapped.values()) {
-    counts.set(glyph, (counts.get(glyph) ?? 0) + 1);
-  }
-  const suspects = new Set<number>();
-  for (const [glyph, count] of counts) {
-    if (count >= PLACEHOLDER_MIN_CODEPOINTS && count / total >= PLACEHOLDER_MIN_SHARE) {
-      suspects.add(glyph);
+function splitPlaceholders(
+  view: DataView,
+  mapped: Map<number, number>,
+  offsets: ReadonlyMap<number, number>,
+): Coverage {
+  const isSuspect = makeNotdefOutlineSuspect(view, offsets);
+  // One verdict per distinct glyph id — the compare must not repeat
+  // for every codepoint a shared glyph serves.
+  const verdicts = new Map<number, boolean>();
+  const suspect = (glyph: number): boolean => {
+    let verdict = verdicts.get(glyph);
+    if (verdict === undefined) {
+      verdict = isSuspect(glyph);
+      verdicts.set(glyph, verdict);
     }
-  }
+    return verdict;
+  };
   const codepoints: number[] = [];
   const placeholders: number[] = [];
   for (const [cp, glyph] of mapped) {
-    (suspects.has(glyph) ? placeholders : codepoints).push(cp);
+    (suspect(glyph) ? placeholders : codepoints).push(cp);
   }
   codepoints.sort((a, b) => a - b);
   placeholders.sort((a, b) => a - b);
   return { codepoints, placeholders };
+}
+
+/**
+ * The rule-2 predicate over glyph ids: true when the glyph draws the
+ * same outline as the font's .notdef (glyph 0). null-prefilterable
+ * backends only — a face with neither glyf nor CFF never suspects.
+ */
+function makeNotdefOutlineSuspect(
+  view: DataView,
+  offsets: ReadonlyMap<number, number>,
+): (glyph: number) => boolean {
+  const glyf = new GlyfOutlines(view, offsets);
+  if (glyf.usable) return (glyph) => glyf.matchesNotdef(glyph);
+  const cff = new CffCharstrings(view, offsets);
+  if (cff.usable) return (glyph) => cff.matchesNotdef(glyph);
+  return () => false;
+}
+
+/** One decomposed outline point (on-curve flag is geometry in TrueType). */
+interface OutlinePoint {
+  x: number;
+  y: number;
+  on: boolean;
+}
+
+/**
+ * The glyf-backed outline comparator: a contour-count + bounding-box +
+ * point-count pre-filter over the RAW glyph record header, then a full
+ * point compare (composites decomposed) for the survivors only. An
+ * empty .notdef carries no box evidence — nothing is ever suspected
+ * (a blank glyph is not tofu; blank-.notdef fonts must not flag space).
+ */
+class GlyfOutlines {
+  readonly usable: boolean;
+  private readonly view: DataView;
+  private readonly glyfOffset: number;
+  private readonly locaOffset: number;
+  private readonly locaLong: boolean;
+  private readonly numGlyphs: number;
+  private notdefKey: [number, number, number, number, number, number] | null =
+    null;
+  private notdefOutline: OutlinePoint[] | null = null;
+  private notdefReady = false;
+
+  constructor(view: DataView, offsets: ReadonlyMap<number, number>) {
+    this.view = view;
+    const glyf = offsets.get(TAG_GLYF);
+    const loca = offsets.get(TAG_LOCA);
+    const head = offsets.get(TAG_HEAD);
+    const maxp = offsets.get(TAG_MAXP);
+    this.usable =
+      glyf !== undefined && loca !== undefined && head !== undefined && maxp !== undefined;
+    this.glyfOffset = glyf ?? -1;
+    this.locaOffset = loca ?? -1;
+    this.locaLong = head !== undefined ? view.getInt16(head + 50) === 1 : false;
+    this.numGlyphs = maxp !== undefined ? view.getUint16(maxp + 4) : 0;
+  }
+
+  /** The raw record bounds of one glyph ([start, end); empty when none). */
+  private recordBounds(glyph: number): [number, number] {
+    if (glyph < 0 || glyph >= this.numGlyphs) return [0, 0];
+    const start = this.locaEntry(glyph);
+    const end = this.locaEntry(glyph + 1);
+    return end > start ? [this.glyfOffset + start, this.glyfOffset + end] : [0, 0];
+  }
+
+  private locaEntry(index: number): number {
+    const at = this.locaOffset + index * (this.locaLong ? 4 : 2);
+    if (at < 0 || at + (this.locaLong ? 4 : 2) > this.view.byteLength) return 0;
+    return this.locaLong
+      ? this.view.getUint32(at)
+      : this.view.getUint16(at) * 2;
+  }
+
+  /**
+   * The pre-filter key: contour count, bounding box, point count —
+   * identical outlines necessarily share it. -1 marks the unknown
+   * point count of composites (which must decompose); an empty record
+   * (including out-of-range ids) reads as the empty key.
+   */
+  private shapeKey(glyph: number): [number, number, number, number, number, number] {
+    const [start, end] = this.recordBounds(glyph);
+    if (end <= start) return [0, 0, 0, 0, 0, 0];
+    const contours = this.view.getInt16(start);
+    const xMin = this.view.getInt16(start + 2);
+    const yMin = this.view.getInt16(start + 4);
+    const xMax = this.view.getInt16(start + 6);
+    const yMax = this.view.getInt16(start + 8);
+    if (contours <= 0) return [contours, xMin, yMin, xMax, yMax, 0];
+    const lastEnd = this.view.getUint16(start + 10 + (contours - 1) * 2);
+    return [contours, xMin, yMin, xMax, yMax, lastEnd + 1];
+  }
+
+  /** The notdef pre-filter key, or null when rule 2 is off for the face. */
+  private notdefShapeKey(): [number, number, number, number, number, number] | null {
+    if (!this.notdefReady) {
+      this.notdefReady = true;
+      const [start, end] = this.recordBounds(0);
+      if (end > start) {
+        const key = this.shapeKey(0);
+        // An empty .notdef (0 contours) carries no box evidence; a
+        // composite one has no usable header pre-filter (its suspects
+        // go through the decomposed compare instead).
+        this.notdefKey = key[0] !== 0 ? key : null;
+      }
+    }
+    return this.notdefKey;
+  }
+
+  matchesNotdef(glyph: number): boolean {
+    const notdefKey = this.notdefShapeKey();
+    if (notdefKey === null) return false;
+    if (notdefKey[0] > 0 && !this.keysEqual(this.shapeKey(glyph), notdefKey)) {
+      return false;
+    }
+    if (this.notdefOutline === null) {
+      this.notdefOutline = this.decompose(0);
+      if (this.notdefOutline === null || this.notdefOutline.length === 0) {
+        this.notdefKey = null;
+        return false;
+      }
+    }
+    const outline = this.decompose(glyph);
+    return outline !== null && this.outlinesEqual(outline, this.notdefOutline);
+  }
+
+  private keysEqual(
+    a: [number, number, number, number, number, number],
+    b: [number, number, number, number, number, number],
+  ): boolean {
+    return a.every((value, i) => value === b[i]);
+  }
+
+  private outlinesEqual(a: OutlinePoint[], b: OutlinePoint[]): boolean {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (a[i]!.x !== b[i]!.x || a[i]!.y !== b[i]!.y || a[i]!.on !== b[i]!.on) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * One glyph's outline as a flat absolute point list (contours keep
+   * their order; point counts carry the grouping). null = not
+   * comparable (a composite using point-number matching — the modern
+   * spec deprecates it — or a malformed record).
+   */
+  private decompose(glyph: number): OutlinePoint[] | null {
+    return this.decomposeInto(glyph, 1, 0, 0, 1, 0, 0, 0);
+  }
+
+  private decomposeInto(
+    glyph: number,
+    a: number,
+    b: number,
+    c: number,
+    d: number,
+    e: number,
+    f: number,
+    depth: number,
+  ): OutlinePoint[] | null {
+    if (depth > 8) return null;
+    const [start, end] = this.recordBounds(glyph);
+    if (end <= start) return [];
+    const contours = this.view.getInt16(start);
+    if (contours > 0) return this.readSimplePoints(start, contours, a, b, c, d, e, f);
+    if (contours !== -1) return contours === 0 ? [] : null;
+    // Composite: decompose every component under the combined transform.
+    const points: OutlinePoint[] = [];
+    let at = start + 10;
+    for (;;) {
+      if (at + 4 > end) return null;
+      const flags = this.view.getUint16(at);
+      const component = this.view.getUint16(at + 2);
+      at += 4;
+      let dx: number;
+      let dy: number;
+      if (flags & 0x0001) {
+        dx = (flags & 0x0002 ? this.view.getInt16(at) : this.view.getUint16(at));
+        dy = (flags & 0x0002 ? this.view.getInt16(at + 2) : this.view.getUint16(at + 2));
+        at += 4;
+      } else {
+        dx = this.view.getInt8(at);
+        dy = this.view.getInt8(at + 1);
+        at += 2;
+      }
+      if (!(flags & 0x0002)) return null; // point-number matching: deprecated
+      let ma = 1;
+      let mb = 0;
+      let mc = 0;
+      let md = 1;
+      if (flags & 0x0008) {
+        ma = this.readF2Dot14(at);
+        at += 2;
+      } else if (flags & 0x0040) {
+        ma = this.readF2Dot14(at);
+        md = this.readF2Dot14(at + 2);
+        at += 4;
+      } else if (flags & 0x0080) {
+        ma = this.readF2Dot14(at);
+        mb = this.readF2Dot14(at + 2);
+        mc = this.readF2Dot14(at + 4);
+        md = this.readF2Dot14(at + 6);
+        at += 8;
+      }
+      // The combined transform is parent ∘ child: the component's own
+      // points transform first, the enclosing composite's transform
+      // applies to the result.
+      const inner = this.decomposeInto(
+        component,
+        a * ma + c * mb,
+        b * ma + d * mb,
+        a * mc + c * md,
+        b * mc + d * md,
+        a * dx + c * dy + e,
+        b * dx + d * dy + f,
+        depth + 1,
+      );
+      if (inner === null) return null;
+      points.push(...inner);
+      if (!(flags & 0x0020)) break;
+    }
+    return points;
+  }
+
+  private readF2Dot14(at: number): number {
+    return this.view.getInt16(at) / 16384;
+  }
+
+  /** A simple glyph's points, transformed into place. */
+  private readSimplePoints(
+    start: number,
+    contours: number,
+    a: number,
+    b: number,
+    c: number,
+    d: number,
+    e: number,
+    f: number,
+  ): OutlinePoint[] {
+    const view = this.view;
+    const total = view.getUint16(start + 10 + (contours - 1) * 2) + 1;
+    const instructionLength = view.getUint16(start + 10 + contours * 2);
+    let at = start + 12 + contours * 2 + instructionLength;
+    const flags: number[] = [];
+    for (let i = 0; i < total; i++) {
+      if (at >= view.byteLength) return [];
+      const flag = view.getUint8(at++);
+      flags.push(flag);
+      if (flag & 0x0008) {
+        const repeats = at < view.byteLength ? view.getUint8(at++) : 0;
+        for (let r = 0; r < repeats && i < total; r++) {
+          flags.push(flag);
+          i++;
+        }
+      }
+    }
+    let x = 0;
+    const xs: number[] = [];
+    for (let i = 0; i < total; i++) {
+      const flag = flags[i]!;
+      // 0x02 X_SHORT_VECTOR, 0x10 X_SAME_OR_POSITIVE (else int16).
+      if (flag & 0x0002) {
+        x += flag & 0x0010 ? view.getUint8(at) : -view.getUint8(at);
+        at += 1;
+      } else if (!(flag & 0x0010)) {
+        x += view.getInt16(at);
+        at += 2;
+      }
+      xs.push(x);
+    }
+    let y = 0;
+    const ys: number[] = [];
+    for (let i = 0; i < total; i++) {
+      const flag = flags[i]!;
+      // 0x04 Y_SHORT_VECTOR, 0x20 Y_SAME_OR_POSITIVE (else int16).
+      if (flag & 0x0004) {
+        y += flag & 0x0020 ? view.getUint8(at) : -view.getUint8(at);
+        at += 1;
+      } else if (!(flag & 0x0020)) {
+        y += view.getInt16(at);
+        at += 2;
+      }
+      ys.push(y);
+    }
+    const points: OutlinePoint[] = [];
+    for (let i = 0; i < total; i++) {
+      const px = xs[i]!;
+      const py = ys[i]!;
+      points.push({
+        x: Math.round((a * px + c * py + e) * 64) / 64,
+        y: Math.round((b * px + d * py + f) * 64) / 64,
+        on: (flags[i]! & 0x0001) !== 0,
+      });
+    }
+    return points;
+  }
+}
+
+/**
+ * The CFF-backed comparator (round 19, pragmatic mirror of the core's
+ * decomposed-ops compare): the charstring INDEX is ordered by glyph id
+ * and .notdef is entry 0, so equal INDEX bytes mean the same program —
+ * the same drawn outline. Byte inequality can still hide an equal
+ * outline behind different subroutinization, which only ever MISSES a
+ * suspect (never invents one); the full Type 2 interpretation stays a
+ * core-only job.
+ */
+class CffCharstrings {
+  readonly usable: boolean;
+  private readonly view: DataView;
+  private readonly entries: Array<[number, number]> = [];
+  private notdefBytes: Uint8Array | null = null;
+  private checkedNotdef = false;
+
+  constructor(view: DataView, offsets: ReadonlyMap<number, number>) {
+    this.view = view;
+    const cff = offsets.get(TAG_CFF);
+    let charstringsOffset = -1;
+    if (cff !== undefined) {
+      charstringsOffset = this.findCharstringsIndex(cff);
+    }
+    this.usable = charstringsOffset >= 0;
+    if (this.usable) this.readIndexEntries(charstringsOffset);
+  }
+
+  /** Locate the CharStrings INDEX inside the CFF table. */
+  private findCharstringsIndex(cff: number): number {
+    const view = this.view;
+    // Header (major, minor, hdrSize, offSize), then the Name INDEX,
+    // then the Top DICT INDEX whose operators carry the offsets.
+    const hdrSize = view.getUint8(cff + 2);
+    let at = cff + hdrSize;
+    at = this.skipIndex(at);
+    if (at < 0) return -1;
+    const topDictStart = at;
+    at = this.skipIndex(at);
+    if (at < 0) return -1;
+    const topDictEnd = at;
+    // Walk the top DICT operands for operator 17 (CharStrings).
+    const operands: number[] = [];
+    let i = topDictStart;
+    while (i < topDictEnd) {
+      const b0 = view.getUint8(i);
+      if (b0 <= 21) {
+        const op = b0 === 12 ? 1200 + view.getUint8(i + 1) : b0;
+        if (b0 === 12) i++;
+        if (op === 17 && operands.length > 0) {
+          return cff + operands[operands.length - 1]!;
+        }
+        operands.length = 0;
+        i++;
+        continue;
+      }
+      if (b0 === 28) {
+        operands.push(view.getInt16(i + 1));
+        i += 3;
+      } else if (b0 === 29) {
+        operands.push(view.getInt32(i + 1));
+        i += 5;
+      } else if (b0 === 30) {
+        // Real operands never feed offsets — skip to the terminator.
+        i++;
+        while (i < topDictEnd && (view.getUint8(i) & 0xf0) !== 0xf0) i++;
+        i++;
+      } else if (b0 >= 32 && b0 <= 246) {
+        operands.push(b0 - 139);
+        i++;
+      } else if (b0 >= 247 && b0 <= 250) {
+        operands.push((b0 - 247) * 256 + view.getUint8(i + 1) + 108);
+        i += 2;
+      } else if (b0 >= 251 && b0 <= 254) {
+        operands.push(-(b0 - 251) * 256 - view.getUint8(i + 1) - 108);
+        i += 2;
+      } else {
+        return -1;
+      }
+    }
+    return -1;
+  }
+
+  /** Skip one INDEX, returning the position after it (-1 on error). */
+  private skipIndex(at: number): number {
+    if (at + 3 > this.view.byteLength) return -1;
+    // CFF1 INDEX: count (uint16), offSize, 1-based offsets, data. The
+    // last offset is 1-based from the byte BEFORE the data, so the INDEX
+    // ends at dataBase + lastOffset - 1.
+    const count = this.view.getUint16(at);
+    if (count === 0) return at + 2;
+    const offSize = this.view.getUint8(at + 2);
+    const dataBase = at + 3 + (count + 1) * offSize;
+    const last = this.readOffset(at + 3 + count * offSize, offSize);
+    if (last < 1) return -1;
+    return dataBase + last - 1;
+  }
+
+  /** Record every charstring's [start, end) bounds, by glyph id. */
+  private readIndexEntries(indexAt: number): void {
+    const view = this.view;
+    const count = view.getUint16(indexAt);
+    if (count === 0) return;
+    const offSize = view.getUint8(indexAt + 2);
+    const offsetsBase = indexAt + 3;
+    const dataBase = offsetsBase + (count + 1) * offSize;
+    for (let i = 0; i <= count; i++) {
+      const value = this.readOffset(offsetsBase + i * offSize, offSize);
+      if (value < 1) return;
+      // The offsets are 1-based from the byte before the data.
+      this.entries.push([dataBase + value - 1, 0]);
+      if (i > 0) this.entries[i - 1]![1] = dataBase + value - 1;
+    }
+  }
+
+  private readOffset(at: number, offSize: number): number {
+    const view = this.view;
+    if (at + offSize > view.byteLength) return -1;
+    let value = 0;
+    for (let i = 0; i < offSize; i++) {
+      value = value * 256 + view.getUint8(at + i);
+    }
+    return value;
+  }
+
+  matchesNotdef(glyph: number): boolean {
+    if (!this.checkedNotdef) {
+      this.checkedNotdef = true;
+      const entry = this.entries[0];
+      if (entry !== undefined && entry[1] > entry[0]) {
+        this.notdefBytes = new Uint8Array(
+          this.view.buffer,
+          this.view.byteOffset + entry[0],
+          entry[1] - entry[0],
+        );
+      }
+    }
+    if (this.notdefBytes === null || this.notdefBytes.length === 0) return false;
+    const entry = this.entries[glyph];
+    if (entry === undefined || entry[1] - entry[0] !== this.notdefBytes.length) {
+      return false;
+    }
+    const view = this.view;
+    for (let i = entry[0]; i < entry[1]; i++) {
+      if (view.getUint8(i) !== this.notdefBytes[i - entry[0]]) return false;
+    }
+    return true;
+  }
 }
 
 function readFormat4(view: DataView, sub: number, out: Map<number, number>): void {

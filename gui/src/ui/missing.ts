@@ -1,16 +1,21 @@
 /**
- * The missing-glyph scope (round 5, owner item 4): the 缺失 category.
+ * The missing-glyph scope (round 5, owner item 4; single pick added
+ * round 19): the 缺失 category.
  *
  * The prototype's 缺失 group counts (and views) the characters of its
  * browsed scope that the current merge cannot render. The GUI's honest
  * equivalent, made AUTOMATIC: every VISIBLE codepoint of the browsable
  * universe (the chip taxonomy's blocks — the same scope the grid and
- * the coverage percentage count) that NEITHER picked font covers.
+ * the coverage percentage count) that the picks do not cover.
  *
- * No preset is required and nothing accretes point by point: the set
- * exists exactly when both picks exist and the coverages leave gaps,
- * computed from the two cmaps alone. With fewer than both picks there
- * is no merge to judge, so the set is empty and the chip stays away.
+ * Covered is the UNION of the picked fonts' effective cmaps — one or
+ * two (round 19: browsing a single font still judges it against the
+ * universe; waiting for the second pick hid the category exactly when
+ * the user was studying one font's gaps). No preset is required and
+ * nothing accretes point by point: the set exists exactly when at
+ * least one pick exists and the coverage leaves gaps, computed from
+ * the cmaps alone. With no pick at all there is nothing to judge, so
+ * the set is empty and the chip stays away.
  */
 
 import { store } from "../state";
@@ -26,8 +31,8 @@ export const MISSING_CATEGORY_ID = "missing";
 let memo: { signature: string; missing: number[] } | null = null;
 
 /**
- * Every visible codepoint of the browsable universe that NEITHER picked
- * font covers (ascending; empty until both picks exist).
+ * Every visible codepoint of the browsable universe that NO picked
+ * font covers (ascending; empty until at least one pick exists).
  */
 export function missingCodepoints(): number[] {
   const state = store.get();
@@ -38,9 +43,11 @@ export function missingCodepoints(): number[] {
   if (memo && memo.signature === signature) return memo.missing;
 
   const missing: number[] = [];
-  if (picks.base !== null && picks.donor !== null) {
-    const base = picks.base.codepoints;
-    const donor = picks.donor.codepoints;
+  // The covered side: whatever is picked (one or both), merged by the
+  // two-cursor walk over the sorted cmaps.
+  const base = picks.base !== null ? picks.base.codepoints : [];
+  const donor = picks.donor !== null ? picks.donor.codepoints : [];
+  if (picks.base !== null || picks.donor !== null) {
     let bi = 0;
     let di = 0;
     for (const [start, end] of BROWSE_UNIVERSE) {

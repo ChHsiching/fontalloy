@@ -13,15 +13,18 @@ import {
 } from "./helpers";
 
 /**
- * Round 18 (owner item 2b): placeholder glyphs count as missing. A font
- * that draws a placeholder (方框 / boxed X / question face) at codepoints
+ * Rounds 18–19 (owner item 2b): placeholder glyphs count as missing. A
+ * font that draws a placeholder (方框 / 叉号 / question face) at codepoints
  * it does not really cover must not poison coverage counts nor graft
- * tofu into builds. The same 64-cps / 5%-share heuristic runs at BOTH
- * seams — the GUI's parseFontMeta (live grid and status bar) and the
- * core pipeline (report and graft) — so this suite proves the two
- * agree on a fixture that fakes a 300-codepoint block with one box
- * glyph: the parse drops the run, the report states it, the built
- * font's cmap never contains it.
+ * tofu into builds. Round 19 fixed the detector to the OpenType
+ * conventions alone — glyph-0 mappings are absent, and a mapped glyph
+ * whose OUTLINE is the font's own .notdef outline is a suspected
+ * placeholder (the box drawn under another name); concentration counts
+ * for nothing. The same rules run at BOTH seams — the GUI's
+ * parseFontMeta (live grid and status bar) and the core pipeline
+ * (report and graft) — so this suite proves the two agree on fixtures
+ * that fake coverage with a .notdef-outline glyph: the parse drops the
+ * run, the report states it, the built font's cmap never contains it.
  */
 
 /** The faked block: 300 private-use codepoints on ONE box glyph. */
@@ -64,6 +67,63 @@ test.describe("placeholder coverage", () => {
     );
     expect(baseMeta.placeholderCodepoints).toEqual([]);
     expect(baseMeta.codepoints).toHaveLength(26);
+  });
+
+  test("a THREE-codepoint notdef-outline run reads as a placeholder (no thresholds)", async () => {
+    const dir = await mkdtemp(resolve(tmpdir(), "fontalloy-ph3-"));
+    const { donor } = await generateFonts(dir, {
+      donorGlyphs: 64,
+      placeholderDonor: 3,
+    });
+
+    // Round 19: the outline rule has no count arm — three codepoints on
+    // a glyph that draws .notdef's box (not glyph 0, not named .notdef)
+    // still read as missing, never as coverage.
+    const meta = parseFontMeta(
+      new Uint8Array(readFileSync(donor)).buffer as ArrayBuffer,
+    );
+    expect(meta.placeholderCodepoints).toEqual([0xe000, 0xe001, 0xe002]);
+    expect(meta.codepoints).toHaveLength(64);
+  });
+
+  test("a shared glyph with its OWN outline is plain coverage", async () => {
+    const dir = await mkdtemp(resolve(tmpdir(), "fontalloy-shared-"));
+    const { donor } = await generateFonts(dir, {
+      donorGlyphs: 64,
+      sharedGlyphDonor: PLACEHOLDER_COUNT,
+    });
+
+    // Round 19, the other half: one glyph absorbing 300 codepoints
+    // keeps counting as coverage when its outline is its own — the
+    // concentration heuristic is gone.
+    const meta = parseFontMeta(
+      new Uint8Array(readFileSync(donor)).buffer as ArrayBuffer,
+    );
+    expect(meta.placeholderCodepoints).toEqual([]);
+    expect(meta.codepoints).toHaveLength(64 + PLACEHOLDER_COUNT);
+    expect(meta.codepoints.filter((cp) => cp >= 0xe000 && cp < 0xf900)).toEqual(
+      PLACEHOLDER_RUN,
+    );
+  });
+
+  test("a CFF face flags its .notdef-outline glyph the same way", async () => {
+    const dir = await mkdtemp(resolve(tmpdir(), "fontalloy-cff-"));
+    const { donor } = await generateFonts(dir, {
+      donorGlyphs: 8,
+      placeholderDonor: 5,
+      cffDonor: true,
+    });
+
+    // The CFF parse path (charstring INDEX compare): the .notdef-
+    // outline glyph's codepoints read as missing on OTF faces too,
+    // and the real coverage is untouched.
+    const meta = parseFontMeta(
+      new Uint8Array(readFileSync(donor)).buffer as ArrayBuffer,
+    );
+    expect(meta.placeholderCodepoints).toEqual([
+      0xe000, 0xe001, 0xe002, 0xe003, 0xe004,
+    ]);
+    expect(meta.codepoints).toHaveLength(8);
   });
 
   test("the report states the faked block and the build drops it", async ({

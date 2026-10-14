@@ -49,9 +49,23 @@ export interface FixtureFontOptions {
   /**
    * The donor ALSO maps N private-use codepoints onto ONE shared box
    * glyph (round 18: the fake-coverage fixture — those codepoints must
-   * read as missing everywhere, never as donor coverage).
+   * read as missing everywhere, never as donor coverage). Round 19: the
+   * shared glyph carries .notdef's exact outline, the shape the outline
+   * rule catches.
    */
   placeholderDonor?: number;
+  /**
+   * The donor ALSO maps N private-use codepoints onto ONE shared glyph
+   * with its OWN outline (round 19: the concentration negative — a
+   * shared glyph of real shape is plain coverage, never a placeholder).
+   */
+  sharedGlyphDonor?: number;
+  /**
+   * Write the donor as a CFF (OTF) face instead of a TTF one (round
+   * 19: the GUI's CFF parse path — charstring compare — gets the same
+   * fixtures the glyf path has).
+   */
+  cffDonor?: boolean;
 }
 
 /** Generate the synthetic fixture pair into `fontsDir` (no service). */
@@ -71,6 +85,12 @@ export async function generateFonts(
   }
   if (options.placeholderDonor) {
     args.push("--placeholder-donor", String(options.placeholderDonor));
+  }
+  if (options.sharedGlyphDonor) {
+    args.push("--shared-glyph-donor", String(options.sharedGlyphDonor));
+  }
+  if (options.cffDonor) {
+    args.push("--cff-donor");
   }
   await run(python, args, repoRoot);
   return {

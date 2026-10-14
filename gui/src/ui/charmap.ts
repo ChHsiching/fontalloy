@@ -1055,9 +1055,10 @@ export function mountCharmap(root: HTMLElement): void {
           icon: GROUP_ICONS[g.id],
         })),
         // The 缺失 aggregate closes the row (danger styling) whenever
-        // both picks exist and the browsed universe has codepoints
-        // neither font covers — computed from the coverages alone, no
-        // preset involved (round 5, owner item 4).
+        // at least one pick exists and the browsed universe holds
+        // codepoints no pick covers — computed from the coverages
+        // alone, no preset involved (round 5, owner item 4; single pick
+        // added round 19).
         ...(missing.length > 0
           ? [
               {
