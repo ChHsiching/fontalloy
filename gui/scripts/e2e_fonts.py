@@ -33,6 +33,9 @@ BASE_CODEPOINTS = tuple(range(0x41, 0x5B))
 #: Donor coverage: a contiguous run of CJK ideographs starting at 一.
 DONOR_FIRST = 0x4E00
 
+#: The round-18 placeholder run's first codepoint (private use area).
+PLACEHOLDER_FIRST = 0xE000
+
 
 def _box_glyph(x_min: int, y_min: int, x_max: int, y_max: int):
     pen = TTGlyphPen(None)
@@ -53,6 +56,7 @@ def synth_font(
     weight: int = 400,
     style: str = "Regular",
     italic: bool = False,
+    placeholder_codepoints: tuple[int, ...] = (),
 ) -> None:
     """Write a small synthetic TTF covering exactly ``codepoints``.
 
@@ -61,10 +65,20 @@ def synth_font(
     ``family`` can ship several faces — the round-12 family-pick
     fixtures: a Regular/Bold/Italic trio that parses to ONE css family
     with a real weight matrix.
+
+    ``placeholder_codepoints`` (round 18) all map to ONE shared
+    ``placeholderBox`` glyph — the fake-coverage shape the placeholder
+    heuristic must catch (a font drawing a box at codepoints it does
+    not really cover).
     """
-    glyph_names = [".notdef"] + [f"uni{cp:04X}" for cp in codepoints]
-    glyphs = {".notdef": _box_glyph(0, 0, 500, 700)}
-    metrics = {".notdef": (advance, 40)}
+    glyph_names = [".notdef", "placeholderBox"] + [
+        f"uni{cp:04X}" for cp in codepoints
+    ]
+    glyphs = {
+        ".notdef": _box_glyph(0, 0, 500, 700),
+        "placeholderBox": _box_glyph(60, 60, 540, 640),
+    }
+    metrics = {".notdef": (advance, 40), "placeholderBox": (advance, 40)}
     for index, cp in enumerate(codepoints):
         # Distinct ink height per codepoint so a glyph is traceable to
         # its font of origin (same trick as the core fixtures).
@@ -75,7 +89,10 @@ def synth_font(
 
     builder = FontBuilder(unitsPerEm=1000, isTTF=True)
     builder.setupGlyphOrder(glyph_names)
-    builder.setupCharacterMap({cp: f"uni{cp:04X}" for cp in codepoints})
+    builder.setupCharacterMap(
+        {cp: f"uni{cp:04X}" for cp in codepoints}
+        | {cp: "placeholderBox" for cp in placeholder_codepoints}
+    )
     builder.setupGlyf(glyphs)
     builder.setupHorizontalMetrics(metrics)
     builder.setupHorizontalHeader(ascent=800, descent=-200)
@@ -143,6 +160,14 @@ def main() -> int:
         "(overlap knob: makes override cases observable)",
     )
     parser.add_argument(
+        "--placeholder-donor",
+        type=int,
+        default=0,
+        help="the donor ALSO maps N private-use codepoints onto ONE "
+        "shared box glyph (round 18: the fake-coverage fixture the "
+        "placeholder heuristic must catch)",
+    )
+    parser.add_argument(
         "--family",
         action="store_true",
         help="write a three-face family (Regular/Bold/Italic, one "
@@ -182,6 +207,9 @@ def main() -> int:
         args.outdir / "donor.ttf",
         family="AlloyDonor",
         codepoints=donor_codepoints,
+        placeholder_codepoints=tuple(
+            range(PLACEHOLDER_FIRST, PLACEHOLDER_FIRST + args.placeholder_donor)
+        ),
     )
     print(f"wrote {args.outdir / 'base.ttf'} and {args.outdir / 'donor.ttf'}")
     return 0

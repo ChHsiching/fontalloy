@@ -46,6 +46,12 @@ export interface FixtureFontOptions {
    * two coverages overlap and override cases exist (precedence tests).
    */
   donorAscii?: number;
+  /**
+   * The donor ALSO maps N private-use codepoints onto ONE shared box
+   * glyph (round 18: the fake-coverage fixture — those codepoints must
+   * read as missing everywhere, never as donor coverage).
+   */
+  placeholderDonor?: number;
 }
 
 /** Generate the synthetic fixture pair into `fontsDir` (no service). */
@@ -62,6 +68,9 @@ export async function generateFonts(
   ];
   if (options.donorAscii) {
     args.push("--donor-ascii", String(options.donorAscii));
+  }
+  if (options.placeholderDonor) {
+    args.push("--placeholder-donor", String(options.placeholderDonor));
   }
   await run(python, args, repoRoot);
   return {

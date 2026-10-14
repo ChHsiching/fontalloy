@@ -6,10 +6,35 @@
  * for the FontFace rendering path only — the real merge pipeline lives
  * in core/ and never runs here.
  *
+ * Round 18 (owner item 2b): coverage is the HONEST kind. A codepoint
+ * mapped at glyph 0 is absent by convention, and a glyph absorbing an
+ * implausible number of codepoints (a placeholder — 方框 / boxed X /
+ * question face the font draws at codepoints it does not really cover)
+ * reads as missing here exactly as it does in the core pipeline, so
+ * the live grid and status bar agree with the report. The constants
+ * mirror `core/fontalloy_core/placeholder.py` (same heuristic, same
+ * thresholds — calibrated against every face of the shipped catalog:
+ * observed maximum 5 codepoints on one glyph, an order of magnitude
+ * under the count arm's line, and the worst share 0.00025, 200x under
+ * the share arm's).
+ *
  * Supports TrueType/OpenType (and reads the first face of a TTC for
  * metadata); woff2 is left to the FontFace decoder and yields no coverage
  * list (the browser still renders it).
  */
+
+/**
+ * The count arm of the placeholder heuristic: a glyph must absorb at
+ * least this many codepoints to read as a suspected placeholder.
+ */
+export const PLACEHOLDER_MIN_CODEPOINTS = 64;
+
+/**
+ * The share arm: those codepoints must be at least this fraction of the
+ * font's effective cmap (glyph-0 mappings dropped before the share is
+ * taken).
+ */
+export const PLACEHOLDER_MIN_SHARE = 0.05;
 
 /**
  * The name-table strings a font ships, verbatim. `display` is the
@@ -35,8 +60,18 @@ export interface FontMeta {
   family: string;
   /** The name table's own strings (round 9, owner item 2). */
   names: FontNames;
-  /** Sorted covered codepoints (empty when the cmap cannot be read). */
+  /**
+   * Sorted covered codepoints (empty when the cmap cannot be read):
+   * glyph-0 and suspected-placeholder mappings are excluded (round 18),
+   * so every live count reads like the report's.
+   */
   codepoints: number[];
+  /**
+   * Sorted codepoints the placeholder heuristic suspects (round 18):
+   * the mappings dropped from `codepoints` because one glyph absorbed
+   * them all. A coverage-honest count; no live view needs the list.
+   */
+  placeholderCodepoints: number[];
 }
 
 export interface ParseFontMetaOptions {
@@ -86,14 +121,19 @@ export function parseFontMeta(
 
   const names =
     nameOffset >= 0 ? readFamilyName(view, nameOffset) : null;
-  const codepoints =
+  const coverage =
     cmapOffset >= 0 && (options.coverage ?? true)
       ? readCoverage(view, cmapOffset)
-      : [];
+      : { codepoints: [], placeholders: [] };
   if (names === null || !names.family) {
     throw new Error("font has no readable family name");
   }
-  return { family: names.family, names, codepoints };
+  return {
+    family: names.family,
+    names,
+    codepoints: coverage.codepoints,
+    placeholderCodepoints: coverage.placeholders,
+  };
 }
 
 interface NameRecord {
@@ -193,7 +233,13 @@ function readFamilyName(view: DataView, offset: number): FontNames {
   return names;
 }
 
-function readCoverage(view: DataView, offset: number): number[] {
+/** One cmap read: the effective coverage plus its suspected placeholders. */
+interface Coverage {
+  codepoints: number[];
+  placeholders: number[];
+}
+
+function readCoverage(view: DataView, offset: number): Coverage {
   const numSubtables = view.getUint16(offset + 2);
   let best: { score: number; offset: number } | null = null;
   for (let i = 0; i < numSubtables; i++) {
@@ -211,25 +257,60 @@ function readCoverage(view: DataView, offset: number): number[] {
     else if (platform === 3 && encoding === 0 && format === 4) score = 1;
     if (score > (best?.score ?? -1)) best = { score, offset: offset + subOffset };
   }
-  if (!best) return [];
+  if (!best) return { codepoints: [], placeholders: [] };
   const sub = best.offset;
   const format = view.getUint16(sub);
-  const out: number[] = [];
+  // codepoint → glyph id, glyph-0 mappings dropped on the way in
+  // (absent by convention). One glyph id absorbing an implausible
+  // number of codepoints marks them all as placeholders (below).
+  const mapped = new Map<number, number>();
   if (format === 4) {
-    readFormat4(view, sub, out);
+    readFormat4(view, sub, mapped);
   } else if (format === 12) {
     const nGroups = view.getUint32(sub + 12);
     for (let g = 0; g < nGroups; g++) {
       const rec = sub + 16 + g * 12;
       const start = view.getUint32(rec);
       const end = view.getUint32(rec + 4);
-      for (let cp = start; cp <= end && cp <= 0x10ffff; cp++) out.push(cp);
+      const startGlyph = view.getUint32(rec + 8);
+      for (let cp = start; cp <= end && cp <= 0x10ffff; cp++) {
+        const glyph = startGlyph + (cp - start);
+        if (glyph !== 0) mapped.set(cp, glyph);
+      }
     }
   }
-  return out.sort((a, b) => a - b);
+  return splitPlaceholders(mapped);
 }
 
-function readFormat4(view: DataView, sub: number, out: number[]): void {
+/**
+ * The concentration check (round 18): one glyph absorbing at least
+ * PLACEHOLDER_MIN_CODEPOINTS codepoints AND at least PLACEHOLDER_MIN_SHARE
+ * of the effective cmap is a suspected placeholder, and every codepoint
+ * it absorbs reads as missing.
+ */
+function splitPlaceholders(mapped: Map<number, number>): Coverage {
+  const total = mapped.size;
+  const counts = new Map<number, number>();
+  for (const glyph of mapped.values()) {
+    counts.set(glyph, (counts.get(glyph) ?? 0) + 1);
+  }
+  const suspects = new Set<number>();
+  for (const [glyph, count] of counts) {
+    if (count >= PLACEHOLDER_MIN_CODEPOINTS && count / total >= PLACEHOLDER_MIN_SHARE) {
+      suspects.add(glyph);
+    }
+  }
+  const codepoints: number[] = [];
+  const placeholders: number[] = [];
+  for (const [cp, glyph] of mapped) {
+    (suspects.has(glyph) ? placeholders : codepoints).push(cp);
+  }
+  codepoints.sort((a, b) => a - b);
+  placeholders.sort((a, b) => a - b);
+  return { codepoints, placeholders };
+}
+
+function readFormat4(view: DataView, sub: number, out: Map<number, number>): void {
   const segCountX2 = view.getUint16(sub + 6);
   const segCount = segCountX2 / 2;
   const endBase = sub + 14;
@@ -247,7 +328,7 @@ function readFormat4(view: DataView, sub: number, out: number[]): void {
     if (rangeOffset === 0) {
       for (let cp = start; cp <= end; cp++) {
         const glyph = (cp + delta) & 0xffff;
-        if (glyph !== 0) out.push(cp);
+        if (glyph !== 0) out.set(cp, glyph);
       }
     } else {
       for (let cp = start; cp <= end; cp++) {
@@ -257,7 +338,7 @@ function readFormat4(view: DataView, sub: number, out: number[]): void {
         const glyph = view.getUint16(glyphIndexAddress);
         if (glyph !== 0) {
           const resolved = (glyph + delta) & 0xffff;
-          if (resolved !== 0) out.push(cp);
+          if (resolved !== 0) out.set(cp, resolved);
         }
       }
     }
