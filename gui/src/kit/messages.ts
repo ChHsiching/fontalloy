@@ -4,8 +4,17 @@
  *
  * Round 17 (owner item 3) — action buttons: a card may carry a
  * QUESTION, not just an outcome (`actions`: real buttons, one
- * optionally danger-toned). An actioned card never counts down and the
- * cap never evicts it; a click runs the action and closes the card.
+ * optionally danger-toned). A click runs the action and closes the
+ * card.
+ *
+ * Round 19 (owner item 2): an actioned card JOINS the standard ~6s
+ * countdown with hover-pause instead of persisting forever — a
+ * question the user walked away from must not squat a corner card
+ * indefinitely. A timeout counts as dismissal: no action runs,
+ * exactly like the ×. The cap-eviction exemption (`persist`) is now
+ * per-message opt-in (a card that must survive both the countdown and
+ * the cap says so) rather than a blanket property of carrying
+ * actions.
  *
  * The kit-level message system the build panel's row mechanism
  * generalizes into: a fixed, non-modal stack of dismissable outcome
@@ -64,13 +73,14 @@ export interface KitMessageStat {
 /**
  * One action button of a card that asks a question (round 17, owner
  * item 3; the round-18 same-name gate is the live consumer): the
- * click-time collision offers 改个名字 / 直接合成 — the USER decides,
+ * click-time collision offers 改个名字 / 直接覆盖 — the USER decides,
  * so the choice must be a real button, never copy the user has to
  * infer. Clicking runs `onClick` and closes the card; the × stays the
- * explicit "neither" answer.
+ * explicit "neither" answer, and since round 19 so does the
+ * countdown's timeout.
  */
 export interface KitMessageAction {
-  /** The button's word (e.g. 直接合成). */
+  /** The button's word (e.g. 直接覆盖). */
   label: string;
   /** `danger` tones the button (a destructive path, e.g. overwrite). */
   tone?: "normal" | "danger";
@@ -108,17 +118,23 @@ export interface KitMessage {
   lines?: readonly string[];
   /**
    * Auto-dismiss delay in ms (round 9). `false` opts the card out
-   * (it stays until dismissed); default 6000 — the ~6s countdown.
-   * A card WITH actions never counts down whatever this says: a
-   * question may not expire out from under the user (round 17).
+   * (it stays until dismissed); default 6000 — the ~6s countdown,
+   * which actioned cards ride too (round 19: a timeout counts as
+   * dismissal, no action runs).
    */
   autoDismiss?: number | false;
   /**
    * Action buttons (round 17): renders a real button row in the card.
-   * An actioned card stays until a choice is made or the × is pressed
-   * — it never auto-dismisses and the visible cap never evicts it.
+   * Clicking runs the action and closes the card.
    */
   actions?: readonly KitMessageAction[];
+  /**
+   * Exempt the card from the visible-cap eviction (round 19): opt-in
+   * per message, for a pending question a newer outcome may not
+   * silently evict. Carrying `actions` alone no longer exempts a
+   * card — the countdown already bounds an unanswered question.
+   */
+  persist?: boolean;
 }
 
 export interface MessageStack {
@@ -225,10 +241,10 @@ export function mountMessageStack(
   };
 
   const push = (message: KitMessage): void => {
-    const hasActions = message.actions !== undefined && message.actions.length > 0;
-    // The cap: the oldest card drops past it — EXCEPT an actioned card
-    // (round 17): it is a pending question the user has not answered,
-    // and a newer outcome may not silently evict it.
+    // The cap: the oldest card drops past it — EXCEPT a card that
+    // opted into `persist` (round 19): per-message, no longer a
+    // blanket property of carrying actions (the countdown already
+    // bounds an unanswered question).
     const evictable = (): Element[] =>
       [...stack.children].filter(
         (el) => !(el instanceof HTMLElement && el.dataset.persist === "true"),
@@ -326,6 +342,7 @@ export function mountMessageStack(
     // a choice the user makes, never copy to infer. Clicking runs the
     // action and closes the card (the choice ends the question); the
     // × remains the explicit neither-answer.
+    const hasActions = message.actions !== undefined && message.actions.length > 0;
     if (hasActions) {
       const row = document.createElement("div");
       row.className = "kit-msg-actions";
@@ -338,6 +355,7 @@ export function mountMessageStack(
         if (action.tone === "danger") btn.dataset.tone = "danger";
         btn.textContent = action.label;
         btn.addEventListener("click", () => {
+          countdown?.stop();
           dismiss(card);
           action.onClick();
         });
@@ -348,11 +366,12 @@ export function mountMessageStack(
 
     // The countdown bar (round 9): a thin edge progress strip along
     // the card's bottom. Hover pauses, leave resumes, × stops outright.
-    // An actioned card never counts down (round 17): the question
-    // stands until the user answers it, whatever autoDismiss said.
-    const autoDismiss = hasActions
-      ? (false as const)
-      : message.autoDismiss === undefined
+    // Round 19 (owner item 2): an actioned card counts down TOO — a
+    // timeout counts as dismissal (no action runs), exactly like the
+    // ×; a producer that needs a standing question opts out with
+    // autoDismiss: false.
+    const autoDismiss =
+      message.autoDismiss === undefined
         ? DEFAULT_DISMISS_MS
         : message.autoDismiss;
     let countdown: Countdown | null = null;
@@ -368,7 +387,7 @@ export function mountMessageStack(
     } else {
       card.dataset.autoDismiss = "none";
     }
-    if (hasActions) {
+    if (message.persist === true) {
       // Marks the card exempt from the cap (see push's head).
       card.dataset.persist = "true";
     }

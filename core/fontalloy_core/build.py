@@ -52,7 +52,7 @@ from typing import Any, NamedTuple
 from fontTools.ttLib import TTFont
 
 from fontalloy_core.assets import resolve_recipe_fonts
-from fontalloy_core.errors import BuildError
+from fontalloy_core.errors import BuildCancelled, BuildError
 from fontalloy_core.graft import graft_effective_glyphs
 from fontalloy_core.load import LoadedFace, aggregate_families, load_faces
 from fontalloy_core.matrix import DonorPool, MatrixSlot, plan_matrix
@@ -127,6 +127,7 @@ def build(
     manifest: Path | str | None = None,
     fonts_dir: Path | str | None = None,
     progress: Callable[[str, "dict[str, Any] | None"], None] | None = None,
+    cancelled: Callable[[], bool] | None = None,
 ) -> BuildOutput:
     """Build a merged font (or weight/style matrix) from a recipe file.
 
@@ -148,7 +149,12 @@ def build(
     ``rewriting``, format and an estimated size at ``saving``, and
     the check count at ``reporting``; serve carries both onto the
     build's status document. A stage without facts calls with
-    ``None`` (clearing the previous stage's).
+    ``None`` (clearing the previous stage's). ``cancelled`` (round
+    19), when given, is the cooperative-cancel predicate: the pipeline
+    consults it at every stage boundary, and the long per-codepoint
+    loops (grafting, resolution) consult it every ~2000 codepoints,
+    raising :class:`~fontalloy_core.errors.BuildCancelled` the moment
+    it flips — a cancelled build writes no artifact and no report.
 
     The requested matrix comes from the base font file's faces (a
     recipe ``weights`` section selects a subset); every donor family
@@ -171,6 +177,7 @@ def build(
         manifest=manifest,
         fonts_dir=fonts_dir,
         progress=progress,
+        cancelled=cancelled,
     )
 
 
@@ -188,6 +195,7 @@ def build_recipe(
     manifest: Path | str | None = None,
     fonts_dir: Path | str | None = None,
     progress: Callable[[str, "dict[str, Any] | None"], None] | None = None,
+    cancelled: Callable[[], bool] | None = None,
 ) -> BuildOutput:
     """Build a merged font from an already-parsed recipe.
 
@@ -207,13 +215,26 @@ def build_recipe(
     # time. ``_stage`` marks a stage ENTRY (a None ``facts`` clears the
     # previous stage's); ``_facts`` refreshes the CURRENT stage's
     # numbers in place (the stage block stays, the values move).
+    #
+    # Round 19: every stage boundary is also a cancellation point —
+    # checked BEFORE the stage runs and again after the progress
+    # callback returned (a consumer that arms the flag from inside
+    # ``progress`` — serve's cancel endpoint, the tests — stops the
+    # build at exactly that boundary). The long per-codepoint loops
+    # (grafting, resolution) carry their own ~2000-codepoint cadence.
     stage_now: str | None = None
+
+    def _check_cancelled() -> None:
+        if cancelled is not None and cancelled():
+            raise BuildCancelled()
 
     def _stage(name: str, facts: dict[str, Any] | None = None) -> None:
         nonlocal stage_now
+        _check_cancelled()
         stage_now = name
         if progress is not None:
             progress(name, facts)
+        _check_cancelled()
 
     def _facts(facts: dict[str, Any]) -> None:
         if progress is not None and stage_now is not None:
@@ -313,6 +334,7 @@ def build_recipe(
                         recipe.rules,
                         coverages=coverages,
                         named_sets=named_sets,
+                        cancelled=cancelled,
                     ),
                     coverages,
                     recipe.normalization,
@@ -361,7 +383,11 @@ def build_recipe(
             )
             slot_normalization.append(_normalization_records(plan, donor_fonts))
             graft_effective_glyphs(
-                slot.base.font, donor_fonts, resolution.effective_table, plan
+                slot.base.font,
+                donor_fonts,
+                resolution.effective_table,
+                plan,
+                cancelled=cancelled,
             )
             # Stage: rewrite the output identity — the full name record
             # set (both platform encodings, nameID 16/17 consistent with

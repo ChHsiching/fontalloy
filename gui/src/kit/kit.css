@@ -2198,7 +2198,7 @@
  * is the live consumer): a card that asks a question renders its
  * choices as REAL buttons — the user decides, never by inferring copy.
  * Compact kit-btn chrome scaled to the card; the danger tone (an
- * explicitly destructive path, e.g. 直接合成) follows the panel
+ * explicitly destructive path, e.g. 直接覆盖) follows the panel
  * error-box idiom: dgr border + dgrsoft fill. */
 .kit-msg-actions {
   display: flex;

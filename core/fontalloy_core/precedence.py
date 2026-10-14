@@ -38,10 +38,16 @@ preset data lands.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Mapping, Sequence, Set as AbstractSet
+from collections.abc import Callable, Iterable, Mapping, Sequence, Set as AbstractSet
 from dataclasses import dataclass
 
+from fontalloy_core.errors import BuildCancelled
 from fontalloy_core.presets import builtin_named_sets
+
+#: Round 19: codepoints resolved between cooperative-cancellation checks
+#: inside the resolution loop — a wide union resolves tens of thousands
+#: of codepoints, and a cancel must land mid-loop, not at the stage edge.
+_CANCEL_CADENCE = 2000
 
 #: Highest valid Unicode scalar value.
 MAX_CODEPOINT = 0x10FFFF
@@ -201,6 +207,7 @@ def resolve_precedence(
     *,
     coverages: Mapping[str, AbstractSet[int]],
     named_sets: Mapping[str, Sequence[Interval]],
+    cancelled: Callable[[], bool] | None = None,
 ) -> Resolution:
     """Expand a rule set to codepoint level: the effective table.
 
@@ -209,6 +216,11 @@ def resolve_precedence(
     covers. ``named_sets`` maps set names to their intervals — the
     plug-in point for language presets. The effective table spans the
     union of all coverages: a codepoint no font holds is in no merge.
+
+    ``cancelled`` (round 19) is the cooperative-cancel predicate,
+    consulted every ``_CANCEL_CADENCE`` resolved codepoints — the
+    resolution loop is one of the pipeline's long walks, and a cancel
+    must stop it mid-stage.
     """
     default_list = default_font_order(coverages)
     _validate_contract(rules, coverages, named_sets, default_list)
@@ -220,11 +232,23 @@ def resolve_precedence(
         enumerate(rules), key=lambda item: (-item[1].rank, -item[0])
     )
     base_coverage = coverages["base"]
-    table = tuple(
-        _resolve_codepoint(codepoint, ordered, default_list, coverages, named_sets, base_coverage)
-        for codepoint in sorted(set().union(*coverages.values()))
+    table: list[EffectiveEntry] = []
+    resolved = 0
+    for codepoint in sorted(set().union(*coverages.values())):
+        resolved += 1
+        if resolved % _CANCEL_CADENCE == 0 and cancelled is not None:
+            if cancelled():
+                raise BuildCancelled()
+        table.append(
+            _resolve_codepoint(
+                codepoint, ordered, default_list, coverages, named_sets,
+                base_coverage,
+            )
+        )
+    return Resolution(
+        effective_table=tuple(table),
+        conflicts=_same_layer_conflicts(rules, named_sets),
     )
-    return Resolution(effective_table=table, conflicts=_same_layer_conflicts(rules, named_sets))
 
 
 def _same_layer_conflicts(

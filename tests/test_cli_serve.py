@@ -55,6 +55,10 @@ READY_LINE_RE = re.compile(r"^http://127\.0\.0\.1:(\d+)\s*$")
 #: around 300 glyphs), so the wide variant uses fixed-height boxes.
 SLOW_DONOR_CODEPOINTS = 4000
 
+#: A donor wide enough that cancellation lands mid-graft deterministically
+#: (the poll sees the grafting stage with a comfortable window).
+CANCEL_DONOR_CODEPOINTS = 30_000
+
 
 def synth_wide_font(path: Path, *, family: str, count: int) -> Path:
     """Write a synthetic TTF covering ``count`` CJK codepoints, fixed ink."""
@@ -757,6 +761,116 @@ class TestFailures:
         response = serve_service.request("PUT", "/builds")
         assert response.status == 405
         assert "GET" in response.headers.get("Allow", "")
+
+
+class TestCancellation:
+    """Round 19: ``POST /builds/{id}/cancel`` — the real abort contract.
+
+    A cancelled build STOPS on the service (the worker thread moves on),
+    lands status ``cancelled`` with no artifact, and a queued build
+    cancelled before it starts never runs. Cancelling is idempotent and
+    a settled build is a 200 no-op.
+    """
+
+    def test_unknown_build_cancel_is_not_found(self, serve_service):
+        response = serve_service.post("/builds/nope/cancel", {})
+        assert response.status == 404
+        assert "error" in response.json()
+
+    def test_cancelling_a_running_build_lands_cancelled_and_frees_the_worker(
+        self, serve_service, serve_fonts, tmp_path, build_recipe_json
+    ):
+        slow_donor = synth_wide_font(
+            tmp_path / "slow.ttf",
+            family="SlowDonor",
+            count=CANCEL_DONOR_CODEPOINTS,
+        )
+        recipe = {
+            "base": str(serve_fonts / "Alpha.ttf"),
+            "donors": [str(slow_donor)],
+        }
+        build_id = serve_service.submit(recipe).json()["id"]
+        doc = TestBuildLifecycle._wait_for_stage(
+            serve_service, build_id, "grafting"
+        )
+        assert doc["status"] == "running"
+
+        response = serve_service.post(f"/builds/{build_id}/cancel", {})
+        assert response.status == 200
+
+        cancelled = serve_service.wait_for_status(build_id, "cancelled")
+        # A cancelled build is not a failure: no error text, no artifact.
+        assert cancelled["error"] is None
+        assert cancelled["font"] is None
+        assert serve_service.get(f"/builds/{build_id}/font").status == 409
+
+        # The worker moved on: a build submitted right after the
+        # cancellation completes normally.
+        follow_up = serve_service.submit(build_recipe_json).json()["id"]
+        serve_service.wait_for_status(follow_up, "done")
+
+    def test_cancelling_a_queued_build_removes_it_before_it_starts(
+        self, serve_service, serve_fonts, tmp_path, build_recipe_json
+    ):
+        slow_donor = synth_wide_font(
+            tmp_path / "slow.ttf",
+            family="SlowDonor",
+            count=CANCEL_DONOR_CODEPOINTS,
+        )
+        recipe = {
+            "base": str(serve_fonts / "Alpha.ttf"),
+            "donors": [str(slow_donor)],
+        }
+        first = serve_service.submit(recipe).json()["id"]
+        second = serve_service.submit(recipe).json()["id"]
+        TestBuildLifecycle._wait_for_stage(serve_service, first, "grafting")
+        assert serve_service.get(f"/builds/{second}").json()["status"] == (
+            "queued"
+        )
+
+        response = serve_service.post(f"/builds/{second}/cancel", {})
+        assert response.status == 200
+        cancelled = serve_service.wait_for_status(second, "cancelled")
+        # It never started: no running transition, no scratch, no start.
+        assert cancelled["started_at"] is None
+        assert cancelled["font"] is None
+
+        # The queue semantics stand: the running build ahead of it (and
+        # one submitted behind it) both complete.
+        serve_service.wait_for_status(first, "done")
+        third = serve_service.submit(build_recipe_json).json()["id"]
+        serve_service.wait_for_status(third, "done")
+
+    def test_cancelling_a_settled_build_is_a_noop(self, serve_service, build_recipe_json):
+        build_id = serve_service.submit(build_recipe_json).json()["id"]
+        serve_service.wait_for_status(build_id, "done")
+
+        response = serve_service.post(f"/builds/{build_id}/cancel", {})
+        assert response.status == 200
+        doc = serve_service.get(f"/builds/{build_id}").json()
+        assert doc["status"] == "done"
+        # The artifact is untouched.
+        assert serve_service.get(f"/builds/{build_id}/font").status == 200
+
+    def test_cancel_is_idempotent(self, serve_service, serve_fonts, tmp_path):
+        slow_donor = synth_wide_font(
+            tmp_path / "slow.ttf",
+            family="SlowDonor",
+            count=CANCEL_DONOR_CODEPOINTS,
+        )
+        build_id = serve_service.submit(
+            {
+                "base": str(serve_fonts / "Alpha.ttf"),
+                "donors": [str(slow_donor)],
+            }
+        ).json()["id"]
+        TestBuildLifecycle._wait_for_stage(
+            serve_service, build_id, "grafting"
+        )
+        for _ in range(2):
+            response = serve_service.post(f"/builds/{build_id}/cancel", {})
+            assert response.status == 200
+        serve_service.wait_for_status(build_id, "cancelled")
 
 
 class TestRetention:

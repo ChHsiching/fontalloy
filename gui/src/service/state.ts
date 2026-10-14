@@ -4,7 +4,8 @@
  * regions subscribe and patch themselves.
  *
  * The UI-only statuses extend the service's own (`queued | running |
- * done | failed`) with `saving` (artifact handoff in flight), `saved`
+ * done | failed | cancelled` — round 19 adds the service's cancelled
+ * outcome) with `saving` (artifact handoff in flight), `saved`
  * (artifact on disk, report rendered) and `error` (submission or
  * resolution failure before a build id existed).
  */
@@ -50,6 +51,7 @@ export type BuildRowStatus =
   | "running"
   | "done"
   | "failed"
+  | "cancelled"
   | "saving"
   | "saved"
   | "error";

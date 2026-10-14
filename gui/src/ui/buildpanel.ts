@@ -49,10 +49,15 @@
  *   state transitions (a row settling, the disclosure toggling), never
  *   frame to frame.
  * - **Panel close ×.** The title row carries the kit close glyph with
- *   the toast ×'s own treatment; it clears every row any time —
- *   running builds included (the serve has no abort endpoint; the UI
- *   simply stops tracking them) — and the next synthesize re-opens
- *   the panel fresh.
+ *   the toast ×'s own treatment; with every row settled it clears
+ *   them and hides the panel any time, and the next synthesize
+ *   re-opens the panel fresh. Round 19 (the real cancellation):
+ *   while any row is queued or running, the × asks first — a confirm
+ *   card (「仍在合成」) whose danger action REALLY cancels those builds
+ *   on the service (`POST /builds/{id}/cancel`), then clears every
+ *   row and hides the panel; a running row's own 关闭这条记录 asks
+ *   the same for that row alone and lands it as a neutral 已取消
+ *   (no error red, no error box).
  * - **英文字体 / 中文字体, real words only** (the round-11 ruling):
  *   user-facing copy never says 基底 or 供体 — those stay in the
  *   machine layer (JSON keys `base`/`donor-*`, the glossary doc, code
@@ -156,7 +161,8 @@
  */
 
 import { synthStore, removeBuild, type BuildRow } from "../service/state";
-import { saveBuildAs } from "../service/synthesize";
+import { cancelBuild, saveBuildAs } from "../service/synthesize";
+import { appMessages } from "./charmap";
 import {
   mountHelpPopover,
   helpNote,
@@ -208,6 +214,11 @@ function statusText(row: BuildRow): string {
     case "saved":
     case "done":
       return "完成";
+    case "cancelled":
+      // Round 19: the neutral stopped word — the calm failure styling
+      // with no error red, and no error box (a cancelled build is not
+      // a failure).
+      return "已取消";
     case "failed":
     case "error":
       return "失败";
@@ -1105,11 +1116,18 @@ function renderRow(
     "is-failed",
     row.status === "failed" || row.status === "error",
   );
+  // Round 19: the cancelled row carries its own neutral class — the
+  // calm register of a failure with none of the danger tone (see the
+  // `.build-stage.is-cancelled` note in app.css).
+  stageEl.classList.toggle("is-cancelled", row.status === "cancelled");
 
   // The stepper (round 6): upcoming faint / current active / done
   // lit-solid. A settled build lights every step — never all-gray at
   // save; a failed one keeps the completed steps lit and turns the
-  // failing step danger.
+  // failing step danger. A cancelled build (round 19) rides the same
+  // formulas with neither failed nor active set: the steps it finished
+  // stay lit, the one it stopped at stays faint — the calm failure
+  // shape with none of the danger tone.
   //
   // Round 12 (owner item 2): the artifact handoff (status "saving")
   // rides the 保存输出 stage — segments already done STAY lit through
@@ -1309,15 +1327,55 @@ export function mountBuildPanel(): void {
     panel.classList.toggle("is-report-open", reportOpen);
   };
 
-  // Round 11 (owner item 6): the panel's own close × — the kit close
-  // glyph with the toast ×'s treatment. It clears every row any time
-  // (running builds included: the serve exposes no abort endpoint, so
-  // closing means the UI stops tracking them) and hides the panel; the
-  // next synthesize re-opens it fresh.
+  // Round 11 (owner item 6) + round 19 (the real cancellation): the
+  // panel's own close × — the kit close glyph with the toast ×'s
+  // treatment. With every row settled it clears them and hides the
+  // panel as before; while any row is still queued or running, the ×
+  // asks first (a confirm card in the message system), because
+  // confirming REALLY cancels those builds on the service now — no
+  // silently chewing resources behind a dismissed panel.
   panel
     .querySelector<HTMLButtonElement>(".build-close")!
     .addEventListener("click", () => {
-      for (const row of [...synthStore.get().builds]) removeBuild(row.id);
+      const builds = synthStore.get().builds;
+      const live = builds.filter(
+        (row) => row.status === "queued" || row.status === "running",
+      );
+      if (live.length === 0) {
+        for (const row of [...builds]) removeBuild(row.id);
+        return;
+      }
+      appMessages().push({
+        icon: "warn",
+        title: "仍在合成",
+        lines: ["确认取消并关闭？取消后本次不会保存产物。"],
+        // A pending cancel question must not expire or be evicted —
+        // unlike the collision card, a timeout here has no safe
+        // default (cancel-or-continue must stay the user's call while
+        // the question is on screen).
+        autoDismiss: false,
+        persist: true,
+        actions: [
+          {
+            label: "继续合成",
+            onClick: () => {
+              // Dismiss only: the builds keep running untouched.
+            },
+          },
+          {
+            label: "取消并关闭",
+            tone: "danger",
+            onClick: () => {
+              void (async () => {
+                await Promise.all(live.map((row) => cancelBuild(row.id)));
+                for (const row of [...synthStore.get().builds]) {
+                  removeBuild(row.id);
+                }
+              })();
+            },
+          },
+        ],
+      });
     });
 
   const buildRowEl = (): HTMLElement => {
@@ -1363,10 +1421,45 @@ export function mountBuildPanel(): void {
       () => row.classList.remove("enter"),
       { once: true },
     );
+    // Round 19: a row's own close (关闭这条记录). A settled row closes
+    // instantly as before; a queued or running one asks first, because
+    // confirming really cancels THAT build on the service — and the
+    // row then STAYS, landing as 已取消 when the poll confirms it (the
+    // record of the stopped build stays readable and closable).
     row
       .querySelector<HTMLButtonElement>(".build-dismiss")!
       .addEventListener("click", () => {
-        removeBuild(row.dataset.buildId ?? "");
+        const id = row.dataset.buildId ?? "";
+        const current = synthStore
+          .get()
+          .builds.find((candidate) => candidate.id === id);
+        if (current === undefined) return;
+        if (current.status !== "queued" && current.status !== "running") {
+          removeBuild(id);
+          return;
+        }
+        appMessages().push({
+          icon: "warn",
+          title: "取消这条合成？",
+          lines: ["取消后本次不会保存产物。"],
+          autoDismiss: false,
+          persist: true,
+          actions: [
+            {
+              label: "继续合成",
+              onClick: () => {
+                // Dismiss only: the build keeps running untouched.
+              },
+            },
+            {
+              label: "取消并关闭",
+              tone: "danger",
+              onClick: () => {
+                void cancelBuild(id);
+              },
+            },
+          ],
+        });
       });
     // 另存为 (round 12, owner item 3): the explicit export on the
     // completed row — the native dialog when it can open, the default

@@ -46,7 +46,7 @@ from __future__ import annotations
 
 import copy
 import struct
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 
 from fontTools.fontBuilder import buildCmapSubTable
 from fontTools.misc.fixedTools import otRound
@@ -56,12 +56,18 @@ from fontTools.pens.transformPen import TransformPen
 from fontTools.misc.transform import Transform
 from fontTools.ttLib import TTFont, newTable
 
-from fontalloy_core.errors import BuildError
+from fontalloy_core.errors import BuildCancelled, BuildError
 from fontalloy_core.normalize import NormalizationPlan
 from fontalloy_core.precedence import EffectiveEntry
 
 #: Prefix separating the donor index from the donor's own glyph name.
 _DONOR_SEPARATOR = "."
+
+#: Round 19: how many table entries / glyph copies the graft loop
+#: processes between cancellation checks — fine-grained enough that a
+#: cancel lands within a fraction of a wide graft, cheap enough that the
+#: predicate call never measures against the per-glyph work.
+_CANCEL_CADENCE = 2000
 
 
 def graft_effective_glyphs(
@@ -69,6 +75,8 @@ def graft_effective_glyphs(
     donors: Mapping[str, TTFont],
     effective_table: Sequence[EffectiveEntry],
     plan: NormalizationPlan,
+    *,
+    cancelled: Callable[[], bool] | None = None,
 ) -> None:
     """Graft donor glyphs into ``base`` per the effective table, in place.
 
@@ -76,7 +84,18 @@ def graft_effective_glyphs(
     join order. Base-won codepoints keep the base font's own glyphs and
     cmap mappings; donor-won codepoints map to freshly grafted glyphs,
     each normalized onto the base's metrics per ``plan`` (ADR-0003).
+
+    ``cancelled`` (round 19) is the cooperative-cancel predicate: both
+    long loops (the closure walk over the effective table, the glyph
+    copies) consult it every ``_CANCEL_CADENCE`` items and raise
+    :class:`~fontalloy_core.errors.BuildCancelled` the moment it flips —
+    the graft is where a wide CJK build spends its seconds.
     """
+
+    def _check_cancelled() -> None:
+        if cancelled is not None and cancelled():
+            raise BuildCancelled()
+
     base_cmap = dict(base.getBestCmap())
     # Per donor, the glyph names to graft (winning glyphs plus composite
     # closure), in first-encounter order — the effective table is sorted
@@ -87,7 +106,11 @@ def graft_effective_glyphs(
     # glyph can be mapped at several codepoints of different UAX #11
     # classes; the lowest codepoint's class wins, deterministically).
     mapped_at: dict[str, dict[str, int]] = {}
+    walked = 0
     for entry in effective_table:
+        walked += 1
+        if walked % _CANCEL_CADENCE == 0:
+            _check_cancelled()
         if entry.winner == "base":
             continue
         donor = donors[entry.winner]
@@ -102,9 +125,13 @@ def graft_effective_glyphs(
         return  # nothing to graft: the base passes through untouched
 
     order = list(base.getGlyphOrder())
+    copied = 0
     for donor_id, donor in donors.items():  # join order
         scale = plan.scale_for(donor_id)
         for name in closure.get(donor_id, ()):
+            copied += 1
+            if copied % _CANCEL_CADENCE == 0:
+                _check_cancelled()
             out_name = _prefixed(donor_id, name)
             order.append(out_name)
             codepoint = mapped_at.get(donor_id, {}).get(name)
