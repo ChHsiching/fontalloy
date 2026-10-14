@@ -27,7 +27,7 @@
     "targets": "all",
     "windows": {
       "nsis": {
-        "deleteAppDataOnUninstall": true
+        "installerHooks": "nsis-hooks.nsh"
       }
     },
     "externalBin": [
