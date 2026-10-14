@@ -680,7 +680,7 @@ test.describe("action bar rule wiring", () => {
       page.locator(".charmap-grid .kit-cell[data-cp='U+E0A0']"),
     );
     await expect(popup.locator("[data-role='char-from']")).toHaveText(
-      "这是一个 Nerd Font 图标字符，位于专用区编码。只有英文字体包含这类图标，合成时保留英文字体的图标。",
+      "这是一个 Nerd Font 图标字符，位于专用区编码。合成时保留包含它的字体的图标。",
     );
     await expect(popup.locator("[data-role='char-base']")).toBeHidden();
     await expect(popup.locator("[data-role='char-donor']")).toBeHidden();

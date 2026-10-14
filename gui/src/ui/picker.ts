@@ -549,6 +549,23 @@ export function mountPicker(
         },
       },
       onPick: (id) => {
+        // Round 18 (owner item 3): clicking the row this role already
+        // picked UNLOADS the pick — selection returns to the never-picked
+        // null, the same toggle the row's active chip gets below. The
+        // pick is always a css key and an unregistered row id starts
+        // with `cat:`, so a plain identity check decides it. The row's
+        // explicit-cut memory goes with the pick (a fresh pick starts
+        // from the family default again).
+        if (id === store.get().selected[options.role]) {
+          const pickedDisplay = displayByRowId.get(id);
+          if (pickedDisplay !== undefined) {
+            variantSelections.delete(pickedDisplay);
+          }
+          store.set({
+            selected: { ...store.get().selected, [options.role]: null },
+          });
+          return;
+        }
         if (id.startsWith("cat:")) {
           const display = displays.find((d) => `cat:${d.id}` === id);
           if (!display) return;
@@ -573,8 +590,27 @@ export function mountPicker(
         const displayId = displayByRowId.get(rowId);
         const display = displays.find((d) => d.id === displayId);
         if (!display) return;
-        const cut = variantCuts(display).find((c) => c.id === chipId);
+        const cuts = variantCuts(display);
+        const cut = cuts.find((c) => c.id === chipId);
         if (!cut) return;
+        // Round 18 (owner item 3): clicking the ACTIVE chip of the row
+        // this role already picked clears the whole family pick — the
+        // chip IS the cut, and clearing means no family. The active cut
+        // is the explicit selection, else the family default, so the
+        // plain 标准 chip unloads exactly like an accented one. A
+        // DIFFERENT chip still switches cuts below.
+        const activeCutId =
+          variantSelections.get(display.id) ?? cuts[0]?.id ?? null;
+        if (
+          rowId === store.get().selected[options.role] &&
+          chipId === activeCutId
+        ) {
+          variantSelections.delete(display.id);
+          store.set({
+            selected: { ...store.get().selected, [options.role]: null },
+          });
+          return;
+        }
         // Clicking the selected cut reverts the family to its default.
         if (variantSelections.get(display.id) === chipId) {
           variantSelections.delete(display.id);

@@ -612,7 +612,7 @@ function charFacts(cp: number): CharPopupFacts {
   if (entry === null) {
     const missingCopy =
       cp >= 0xe000 && cp <= 0xf8ff
-        ? "这是一个 Nerd Font 图标字符，位于专用区编码。只有英文字体包含这类图标，合成时保留英文字体的图标。"
+        ? "这是一个 Nerd Font 图标字符，位于专用区编码。合成时保留包含它的字体的图标。"
         : "两个字体均不含该字形";
     return {
       glyph: ch,

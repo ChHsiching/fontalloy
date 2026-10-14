@@ -790,7 +790,14 @@ test.describe("first-run catalog download", () => {
       page.locator('[data-role="picker-en"] .kit-hd'),
     );
     await expect(enPopup(page).locator(".kit-fp")).toHaveCount(1);
-    await pointerClick(page, enPopup(page).locator(".kit-fp").first());
+    // Round 18 (owner item 3): the load itself made the pick (the slot
+    // was empty), so the lone local row arrives CHECKED — and clicking
+    // it again would now UNLOAD the pick (the repeat-click toggle; see
+    // unload.spec). The checked row proves the pick; the counter proves
+    // the preview without a row click.
+    await expect(
+      enPopup(page).locator(".kit-fp").first().locator(".kit-chk"),
+    ).toHaveCount(1);
     await expect(page.locator("[data-stat='en']")).not.toHaveText("0");
   });
 });
