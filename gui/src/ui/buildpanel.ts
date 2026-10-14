@@ -637,11 +637,13 @@ function reportTag(text: string): HTMLElement {
 }
 
 /**
- * The tags' own line (round 18, owner item 6): every qualifier tag of
- * one value rides a single flex row that sits BELOW the text — a tag
- * never wraps to the middle of a following line (white-space tricks
- * cannot promise that; layout can). Right-aligned via margin-left:
- * auto, so the tags hug the value's right edge.
+ * The tags' one GROUP (round 19, owner items 4a+4b — the unified rule
+ * replacing round 18's always-own-next-line): every qualifier tag of
+ * one value rides a single flex row that (a) SHARES the value text's
+ * line when it fits — margin-left: auto pushes it flush against the
+ * container's right edge — and (b) wraps to its own NEXT line, still
+ * flush right, as a whole group when the line cannot fit (the row is
+ * one flex item, so it never wraps tag by tag).
  */
 function reportTagRow(tags: readonly string[]): HTMLElement {
   const row = document.createElement("span");
@@ -651,10 +653,11 @@ function reportTagRow(tags: readonly string[]): HTMLElement {
 }
 
 /**
- * A fact value as plain text plus qualifier tags (round 18, owner
- * item 6): a flex BLOCK — the text rides its own span and wraps
- * freely (font names are never ellipsized; only paths ellipsize),
- * and the tags ride their own right-aligned row under it.
+ * A fact value as plain text plus qualifier tags (round 19, owner
+ * items 4a+4b): ONE flex row that may wrap — the text span first (it
+ * wraps freely; font names are never ellipsized, only paths
+ * ellipsize), then the tag group inline after it, flush to the right
+ * edge — on this line, or its own next one when it must wrap.
  */
 function taggedValue(text: string, tags: readonly string[]): HTMLElement {
   const value = document.createElement("span");
@@ -755,9 +758,10 @@ function metricTable(
  * One weight-grid cell (round 17): plain cells stay plain strings — ✓ /
  * 「无」 / 「没用中文字体」 — while a differing slot's source line is its
  * family text plus the via qualifier as a TAG (the old 「family · via」
- * dot-join is gone, like the bracket forms above). Round 18 (owner
- * item 6): inside a cell the tag row rides its own line UNDER the
- * family text, right-aligned like the column.
+ * dot-join is gone, like the bracket forms above). Round 19 (owner
+ * items 4a+4b): inside a cell the tag rides the SAME inline rule at
+ * cell scale — after the family text, flush to the cell's right edge,
+ * on its own next line only when it cannot fit.
  */
 type WeightCell = string | { text: string; tags: readonly string[] };
 
@@ -801,10 +805,12 @@ function weightTable(
         td.textContent = value;
         if (value === NO_VALUE) td.classList.add("is-none");
       } else {
-        const text = document.createElement("span");
-        text.className = "report-cell-text";
-        text.textContent = value.text;
-        td.append(text, reportTagRow(value.tags));
+        // Round 19 (owner items 4a+4b): the cell rides the SAME
+        // tagged-value construct as the fact lines — text plus tag
+        // group in one wrapping row, the tag inline after the text
+        // and flush to the cell's right edge when it fits, on its
+        // own next line (still flush right) when it does not.
+        td.append(taggedValue(value.text, value.tags));
       }
       tr.append(td);
     }

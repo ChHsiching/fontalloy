@@ -208,3 +208,52 @@ export function realCatalogFontPaths(): { base: string; donor: string } {
       ") — set FONTALLOY_DEV_FONT_DIR to the dev-catalog font directory",
   );
 }
+
+/** The geometry facts of one qualifier TAG, read off its fact row. */
+export interface TagGeometry {
+  /** The tag row's computed display (flex — it lays its tags in a row). */
+  rowDisplay: string;
+  /**
+   * The tag's box shares the value text's line: it overlaps the text
+   * span's vertical range by more than half its own height (round 19,
+   * owner items 4a+4b — the tag rides INLINE after the value; a tag
+   * parked exactly under the text's bottom edge overlaps nothing and
+   * reads as its own line).
+   */
+  sameLine: boolean;
+  /**
+   * The tag's right edge is flush (≤1px) with the value container's —
+   * whether it shares the line or wrapped to its own next line, the
+   * tag hugs the right edge.
+   */
+  rightFlush: boolean;
+}
+
+/**
+ * Round 19 (owner items 4a+4b): read one tagged fact's tag geometry —
+ * a SHORT value (输出格式's ttc, 行高保持不变's 是) must pin both
+ * sameLine and rightFlush true; a long wrapping sentence (the weight
+ * grid's source line) pins only rightFlush, the vertical position
+ * being wherever the wrap left it.
+ */
+export async function tagGeometry(fact: Locator): Promise<TagGeometry | null> {
+  return fact.evaluate((el) => {
+    const value = el.querySelector(".report-fact-value");
+    const row = el.querySelector(".report-tag-row");
+    const text = el.querySelector(".report-fact-value-text");
+    const tag = row?.querySelector('[data-role="report-tag"]');
+    if (value === null || row === null || !tag) return null;
+    const t = text?.getBoundingClientRect();
+    const g = tag.getBoundingClientRect();
+    const overlap =
+      t === undefined
+        ? 0
+        : Math.min(g.bottom, t.bottom) - Math.max(g.top, t.top);
+    return {
+      rowDisplay: getComputedStyle(row).display,
+      sameLine: overlap > (g.bottom - g.top) / 2,
+      rightFlush:
+        Math.abs(g.right - value.getBoundingClientRect().right) <= 1,
+    };
+  });
+}

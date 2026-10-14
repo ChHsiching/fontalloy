@@ -11,6 +11,7 @@ import {
   hitTestCenter,
   openFontPicker,
   pointerClick,
+  tagGeometry,
   waitForCatalogReady,
   waitForFontsReady,
   UNUSED_SERVE,
@@ -400,6 +401,21 @@ test("J11 Web 目标 — detection, picks, preset, live merge, report, download,
           .locator('[data-role="report-tag"]')
           .filter({ hasText: "完全沿用英文字体" }),
       ).toHaveCount(1);
+      // Round 19 (owner items 4a+4b): the qualifier rides INLINE on
+      // the value's line, flush to the value container's right edge.
+      const lineHeightGeometry = await tagGeometry(lineHeightFact);
+      expect(lineHeightGeometry).not.toBeNull();
+      expect(lineHeightGeometry?.rowDisplay).toBe("flex");
+      expect(lineHeightGeometry?.sameLine).toBe(true);
+      expect(lineHeightGeometry?.rightFlush).toBe(true);
+      // The output is the family collection — 「ttc 多字体合集」 is
+      // ONE line, the tag hugging the value container's right edge.
+      const formatGeometry = await tagGeometry(
+        panel.locator(".report-fact").filter({ hasText: "输出格式" }),
+      );
+      expect(formatGeometry).not.toBeNull();
+      expect(formatGeometry?.sameLine).toBe(true);
+      expect(formatGeometry?.rightFlush).toBe(true);
       // Round 13 (owner item 6): the metrics section is a real table —
       // the 合并前 / 合并后 data columns stated ONCE in a header row.
       const metricsTable = panel.locator(".report-mtable").first();
