@@ -10,16 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [
-      {
-        "title": "FontAlloy",
-        "width": 1280,
-        "height": 800,
-        "minWidth": 960,
-        "minHeight": 600,
-        "decorations": false
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": {
         "default-src": "'self'",

@@ -542,6 +542,66 @@
   flex: 1;
 }
 
+/* ============ context menu (ctx) ============ */
+
+/*
+ * PRODUCT-EXTENSION (round 18, owner item 1): the kit context menu
+ * that REPLACES the webview's default browser context menu everywhere.
+ * The card chrome follows the .kit-pop language (fixed, hairline-strong
+ * border, deep shadow, pop-in scale, the visibility transition playing
+ * BOTH ways — no display:none, so no @starting-style is needed); the
+ * items follow the .kit-cso option language (full-width start-aligned
+ * text rows, 6px radius, quiet hover fill). It sits above EVERY layer —
+ * including the synthesize notice (900) and the first-run catalog
+ * screen (950) — because the user summons it on any surface.
+ */
+.kit-ctx {
+  position: fixed;
+  z-index: 960;
+  min-width: 132px;
+  padding: 4px;
+  background: var(--sf);
+  border: 1px solid var(--ln2);
+  border-radius: 10px;
+  box-shadow: var(--sh3);
+  visibility: hidden;
+  opacity: 0;
+  transform: scale(0.96) translateY(2px);
+  pointer-events: none;
+  transition: opacity 150ms var(--spring-out),
+    transform 150ms var(--spring-out), visibility 150ms;
+}
+
+.kit-ctx.open {
+  visibility: visible;
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+.kit-ctx-item {
+  display: block;
+  width: 100%;
+  text-align: start;
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: var(--ink2);
+  white-space: nowrap;
+  transition: background-color 60ms ease-out, color 60ms ease-out;
+}
+
+.kit-ctx-item:hover:not(:disabled),
+.kit-ctx-item:focus-visible {
+  background: var(--sf2);
+  color: var(--ink);
+}
+
+.kit-ctx-item:disabled {
+  color: var(--ink3);
+  cursor: default;
+}
+
 /* The settings row — the prototype's .set chrome (L428–443): the
  * label with the circular ? beside it, the select under it. Carried
  * by kit/settingsTopics.ts (mountSettingRow). */

@@ -27,6 +27,7 @@ import { mountLangChips } from "../langChips";
 import { ruleEmptyState, ruleRow, ruleSoloRow } from "../ruleRows";
 import { mountCharPopup, type CharPopupFacts } from "../charPopup";
 import { mountRangePopup } from "../rangePopup";
+import { mountContextMenu } from "../contextMenu";
 import type { IconName } from "../icons";
 import type { SceneKind } from "../sceneCard";
 import { applyStoredThemePreference } from "../theme";
@@ -872,6 +873,25 @@ function setMode(mode: "grid" | "scene"): void {
 }
 
 /* ---------- boot ---------- */
+
+// Round 18 (owner item 1), demo presence: the kit context menu replaces
+// the browser default on this page too — right-click anywhere (the
+// field below gives 剪切/粘贴 an editable to act on).
+const contextMenu = mountContextMenu();
+document.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  contextMenu.openAt(e.clientX, e.clientY, e.target);
+});
+{
+  const host = section("右键菜单");
+  const field = document.createElement("input");
+  field.type = "text";
+  field.value = "ChHsich";
+  field.setAttribute("aria-label", "右键试一试");
+  field.style.cssText =
+    "width:100%;padding:6px 9px;border:1px solid var(--ln2);border-radius:8px;background:var(--sf)";
+  host.appendChild(field);
+}
 
 // Round 5: boot from the persisted 3-state preference (自动 follows the
 // system live) — the same policy the app's top bar uses.
