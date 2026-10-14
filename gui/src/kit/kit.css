@@ -2194,11 +2194,12 @@
   color: var(--ink3);
 }
 
-/* The action row (round 17, owner item 3): a card that asks a
- * question renders its choices as REAL buttons — the user decides,
- * never by inferring copy. Compact kit-btn chrome scaled to the card;
- * the danger tone (an explicitly destructive path, e.g. 覆盖保存)
- * follows the panel error-box idiom: dgr border + dgrsoft fill. */
+/* The action row (round 17, owner item 3; the round-18 same-name gate
+ * is the live consumer): a card that asks a question renders its
+ * choices as REAL buttons — the user decides, never by inferring copy.
+ * Compact kit-btn chrome scaled to the card; the danger tone (an
+ * explicitly destructive path, e.g. 直接合成) follows the panel
+ * error-box idiom: dgr border + dgrsoft fill. */
 .kit-msg-actions {
   display: flex;
   gap: 8px;

@@ -12,22 +12,24 @@ import {
 } from "./helpers";
 
 /**
- * Round 17, owner item 3 — the same-name save collision. When a build
- * finishes and the default-path save would land on a file that already
- * exists (the user forgot to rename; the default name is ChHsich), the
- * app may NEITHER silently overwrite NOR silently suffix: the USER
- * decides. A message card names the colliding target and offers both
- * paths — 「改个名字」 (focus + flash the font-name input; the save
- * completes under the committed new name) and 「覆盖保存」 (the explicit
- * write). Dismissing the card without choosing writes nothing; the
- * artifact stays in the service's scratch, retrievable from the row.
+ * Round 18, owner item 4 — the same-name gate at the CLICK. Round 17
+ * asked after the build, which wastes it: renaming then discards the
+ * artifact and forces a rebuild anyway. The check moved: the
+ * synthesize action probes the target name BEFORE submitting anything.
+ * A collision starts NO build; one message card (「已有同名文件」) names
+ * the exact target path and offers 「改个名字」 (focus + flash the
+ * font-name input; the committed new name starts the build itself —
+ * re-probed first, another collision asks again) and 「直接合成」 (the
+ * build proceeds and saves with overwrite; nothing is overwritten
+ * until the save). Dismissing the card (×) builds nothing and leaves
+ * nothing behind.
  *
  * The harness mirrors synthesize.spec.ts: a real `fontalloy serve`
  * fixture, real pickers, a real-disk save stand-in through the config
- * seam, plus a PROBE stand-in for the pre-flight existence check (the
- * same seam the Tauri shell backs with `artifact_exists`).
+ * seam, plus a PROBE stand-in for the existence check (the same seam
+ * the Tauri shell backs with `artifact_exists`).
  */
-test.describe("same-name save collision", () => {
+test.describe("same-name output gate", () => {
   test.describe.configure({ mode: "serial" });
   const jsErrors: string[] = [];
 
@@ -54,7 +56,24 @@ test.describe("same-name save collision", () => {
   }
 
   /**
-   * The collision-ready page: the service config plus a save stand-in
+   * Every POST /builds submission, in order — the "no build until
+   * decided" proof counts them.
+   */
+  function trackBuildPosts(page: Page): Array<Record<string, unknown>> {
+    const posts: Array<Record<string, unknown>> = [];
+    page.on("request", (request) => {
+      if (
+        request.method() === "POST" &&
+        new URL(request.url()).pathname.endsWith("/builds")
+      ) {
+        posts.push(request.postDataJSON() as Record<string, unknown>);
+      }
+    });
+    return posts;
+  }
+
+  /**
+   * The gate-ready page: the service config plus a save stand-in
    * writing to real disk AND a probe stand-in reporting what already
    * sits there (the pre-flight the Tauri shell answers with
    * `artifact_exists` over the configured output directory).
@@ -117,31 +136,36 @@ test.describe("same-name save collision", () => {
     return saveDir;
   }
 
-  /** The collision card (the message whose title names the verdict). */
+  /** The gate card (the message whose title names the verdict). */
   function collisionCard(page: Page): Locator {
     return page
       .locator(".kit-msgs [data-role='message']")
       .filter({ hasText: "已有同名文件" });
   }
 
-  /** One build click; resolves once the row count reaches `count`. */
-  async function runBuild(page: Page, count: number): Promise<Locator> {
+  /** One synthesize click; the caller asserts what it did or did not start. */
+  async function clickSynthesize(page: Page): Promise<Locator> {
     const synthesize = page.locator(".topbar [data-role='synthesize']");
     await expect(synthesize).toHaveAttribute("aria-disabled", "false");
     await pointerClick(page, synthesize);
-    const panel = page.locator('[data-testid="build-panel"]');
+    return page.locator('[data-testid="build-panel"]');
+  }
+
+  /** One build click that must start a build; resolves at `count` rows. */
+  async function runBuild(page: Page, count: number): Promise<Locator> {
+    const panel = await clickSynthesize(page);
     await expect(panel.locator("[data-build-row]")).toHaveCount(count);
     return panel;
   }
 
-  test("a same-name artifact asks before writing; 改个名字 saves under the new name", async ({
+  test("a collision at the click starts no build; 改个名字 starts it under the committed new name", async ({
     page,
   }) => {
-    // Two real builds plus the card's still-stands window: the suite's
-    // 30s default is tight on a serial service.
-    test.setTimeout(120_000);
+    // Two real builds ride this scenario.
+    test.setTimeout(150_000);
     const service = await startServeFixture();
     const saved: string[] = [];
+    const buildPosts = trackBuildPosts(page);
     try {
       const saveDir = await openCollisionReady(page, service, saved);
       await loadIntoPicker(page, "en", service.baseFont);
@@ -155,24 +179,21 @@ test.describe("same-name save collision", () => {
       expect(saved.length).toBe(1);
       expect(saved[0]!.endsWith("ChHsich.ttf")).toBe(true);
 
-      // Build 2, SAME default name: the pre-flight sees the file and
-      // ASKS — no second write has happened, the card names the exact
-      // colliding target, and the second row settles as built but
-      // UNSAVED (the saved line honestly says 未保存, no path).
-      panel = await runBuild(page, 2);
+      // The SAME default name again: the gate fires AT THE CLICK. No
+      // build starts — the service sees no second POST /builds, the
+      // panel gains no row — while the card names the exact colliding
+      // target and waits for the choice.
+      panel = await clickSynthesize(page);
+      // No build is coming: a moment past the click, the service has
+      // seen no second POST /builds and the panel gained no row. (This
+      // is the assertion the post-build ask fails — the old flow
+      // submitted the build the moment the button went down.)
+      await page.waitForTimeout(1_200);
+      expect(buildPosts.length).toBe(1);
+      await expect(panel.locator("[data-build-row]")).toHaveCount(1);
+      expect(saved.length).toBe(1);
       const card = collisionCard(page);
       await expect(card).toBeVisible({ timeout: 30_000 });
-      await expect(
-        panel.locator("[data-build-stage]").last(),
-      ).toHaveText("完成");
-      const secondRow = panel.locator("[data-build-row]").last();
-      await expect(
-        secondRow.locator("[data-build-saved-label]"),
-      ).toHaveText("未保存");
-      await expect(
-        secondRow.locator("[data-build-saved-path]"),
-      ).toBeHidden();
-      expect(saved.length).toBe(1);
       await expect(
         card.locator("[data-role='message-reason']"),
       ).toHaveAttribute("title", /ChHsich\.ttf$/);
@@ -180,7 +201,8 @@ test.describe("same-name save collision", () => {
       await page.waitForTimeout(1_200);
       await expect(card).toBeVisible();
 
-      // 改个名字: the input takes the focus and flashes.
+      // 改个名字: the input takes the focus and flashes; the choice
+      // closes the card; still no build anywhere.
       await pointerClick(
         page,
         card.locator("[data-role='message-action']", { hasText: "改个名字" }),
@@ -188,20 +210,34 @@ test.describe("same-name save collision", () => {
       const nameInput = page.locator(".topbar [data-role='font-name']");
       await expect(nameInput).toBeFocused();
       await expect(nameInput).toHaveClass(/kit-flash/);
-      // Choosing closes the card; still nothing written.
       await expect(card).toHaveCount(0);
-      expect(saved.length).toBe(1);
+      expect(buildPosts.length).toBe(1);
 
-      // Commit a new name: the pending artifact saves under it.
+      // Commit a new name: the build starts ITSELF — exactly one more
+      // POST /builds whose recipe carries the NEW family — and the
+      // artifact saves under the new name.
+      const postPromise = page.waitForRequest(
+        (request) =>
+          request.method() === "POST" &&
+          new URL(request.url()).pathname.endsWith("/builds"),
+        { timeout: 30_000 },
+      );
       await nameInput.fill("RenamedFont");
       await nameInput.press("Enter");
+      const body = (await postPromise).postDataJSON() as {
+        output: { format: string; family: string };
+      };
+      expect(body.output).toEqual({ format: "ttf", family: "RenamedFont" });
+      await expect(panel.locator("[data-build-row]")).toHaveCount(2);
+      await expect(
+        panel.locator("[data-build-stage]").last(),
+      ).toHaveText("完成", { timeout: 30_000 });
       const savedPath = panel
         .locator("[data-build-row]")
         .last()
         .locator("[data-build-saved-path]");
-      await expect(savedPath).toHaveAttribute("title", /RenamedFont\.ttf$/, {
-        timeout: 30_000,
-      });
+      await expect(savedPath).toHaveAttribute("title", /RenamedFont\.ttf$/);
+      expect(buildPosts.length).toBe(2);
       expect(saved.length).toBe(2);
       expect(saved[1]!.endsWith("RenamedFont.ttf")).toBe(true);
       // The first file is untouched: the save directory now holds
@@ -213,13 +249,14 @@ test.describe("same-name save collision", () => {
     }
   });
 
-  test("覆盖保存 writes the file and closes the card; dismissing writes nothing", async ({
+  test("直接合成 proceeds with the build and its save overwrites the file", async ({
     page,
   }) => {
-    // Three real builds ride this scenario.
-    test.setTimeout(120_000);
+    // Two real builds ride this scenario.
+    test.setTimeout(150_000);
     const service = await startServeFixture();
     const saved: string[] = [];
+    const buildPosts = trackBuildPosts(page);
     try {
       const saveDir = await openCollisionReady(page, service, saved);
       await loadIntoPicker(page, "en", service.baseFont);
@@ -232,19 +269,24 @@ test.describe("same-name save collision", () => {
       const target = resolve(saveDir, "ChHsich.ttf");
       const before = statSync(target);
 
-      // The same-name build asks first (proving the ask is not a
-      // one-shot: this second scenario rebuilds the same collision).
-      panel = await runBuild(page, 2);
+      // The same-name click asks FIRST (the ask is not a one-shot: this
+      // scenario rebuilds the same collision): no submission until the
+      // choice is made.
+      panel = await clickSynthesize(page);
+      await page.waitForTimeout(1_000);
+      expect(buildPosts.length).toBe(1);
+      expect(saved.length).toBe(1);
       const card = collisionCard(page);
       await expect(card).toBeVisible({ timeout: 30_000 });
-      expect(saved.length).toBe(1);
 
-      // 覆盖保存: the explicit write. The file's content is replaced
-      // (mtime moves; the bytes parse as the merged font again).
+      // 直接合成: the build proceeds (POST #2) and its save overwrites
+      // the existing file — the file's content is replaced (mtime
+      // moves; the bytes parse as the merged font again).
       await pointerClick(
         page,
-        card.locator("[data-role='message-action']", { hasText: "覆盖保存" }),
+        card.locator("[data-role='message-action']", { hasText: "直接合成" }),
       );
+      await expect(panel.locator("[data-build-row]")).toHaveCount(2);
       const savedPath = panel
         .locator("[data-build-row]")
         .last()
@@ -253,32 +295,56 @@ test.describe("same-name save collision", () => {
         timeout: 30_000,
       });
       await expect(card).toHaveCount(0);
+      expect(buildPosts.length).toBe(2);
       expect(saved.length).toBe(2);
       const after = statSync(target);
       expect(after.mtimeMs).toBeGreaterThan(before.mtimeMs);
       const bytes = readFileSync(target);
       expect(bytes[0]).toBe(0x00);
       expect(bytes[1]).toBe(0x01);
+    } finally {
+      await service.dispose();
+    }
+  });
 
-      // Dismissal without a choice writes nothing: build 3 collides,
-      // the × closes the card, and the artifact stays retrievable
-      // from the row (未保存 label, no path, 另存为 reachable).
-      panel = await runBuild(page, 3);
-      const thirdCard = collisionCard(page);
-      await expect(thirdCard).toBeVisible({ timeout: 30_000 });
-      expect(saved.length).toBe(2);
+  test("dismissing the card builds nothing and leaves no message behind", async ({
+    page,
+  }) => {
+    // One real build rides this scenario.
+    test.setTimeout(120_000);
+    const service = await startServeFixture();
+    const saved: string[] = [];
+    const buildPosts = trackBuildPosts(page);
+    try {
+      await openCollisionReady(page, service, saved);
+      await loadIntoPicker(page, "en", service.baseFont);
+      await loadIntoPicker(page, "cjk", service.donorFont);
+
+      const panel = await runBuild(page, 1);
+      await expect(
+        panel.locator("[data-build-stage]").first(),
+      ).toHaveText("完成", { timeout: 30_000 });
+
+      // The colliding click asks; the × answers NEITHER — no build
+      // ever fires, no row joins the panel, and no message outlives
+      // the card.
+      await clickSynthesize(page);
+      await page.waitForTimeout(1_200);
+      expect(buildPosts.length).toBe(1);
+      const card = collisionCard(page);
+      await expect(card).toBeVisible({ timeout: 30_000 });
       await pointerClick(
         page,
-        thirdCard.locator("[data-role='message-dismiss']"),
+        card.locator("[data-role='message-dismiss']"),
       );
-      await expect(thirdCard).toHaveCount(0);
-      const thirdRow = panel.locator("[data-build-row]").last();
+      await expect(card).toHaveCount(0);
+      await page.waitForTimeout(1_500);
+      expect(buildPosts.length).toBe(1);
+      await expect(panel.locator("[data-build-row]")).toHaveCount(1);
+      expect(saved.length).toBe(1);
       await expect(
-        thirdRow.locator("[data-build-saved-label]"),
-      ).toHaveText("未保存");
-      await expect(thirdRow.locator("[data-build-saved-path]")).toBeHidden();
-      await expect(thirdRow.locator("[data-build-saveas]")).toBeVisible();
-      expect(saved.length).toBe(2);
+        page.locator(".kit-msgs [data-role='message']"),
+      ).toHaveCount(0);
     } finally {
       await service.dispose();
     }

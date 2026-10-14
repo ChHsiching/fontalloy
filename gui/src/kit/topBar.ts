@@ -210,12 +210,13 @@ export function fontNameInput(
 
 /**
  * Focus the font-name input and flash it (round 17, owner item 3):
- * the same-name save collision's 改个名字 path lands the user on the
- * field they need to edit — focused (no scroll-jumping: the top bar is
- * always on screen, so the focus carries preventScroll) and pulsing
- * its accent halo for ~1s via the kit-flash class. The class drops on
- * animationend (with a timeout net for environments without
- * animation events), so a later prompt can flash it again.
+ * the same-name gate's 改个名字 path (round 18: the ask moved to the
+ * click) lands the user on the field they need to edit — focused (no
+ * scroll-jumping: the top bar is always on screen, so the focus
+ * carries preventScroll) and pulsing its accent halo for ~1s via the
+ * kit-flash class. The class drops on animationend (with a timeout
+ * net for environments without animation events), so a later prompt
+ * can flash it again.
  */
 export function flashFontNameInput(): HTMLInputElement | null {
   const input = document.querySelector<HTMLInputElement>(
