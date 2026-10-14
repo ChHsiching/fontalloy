@@ -158,6 +158,7 @@ def synth_cff_donor(
     *,
     codepoints: tuple[int, ...],
     placeholder_codepoints: tuple[int, ...] = (),
+    family: str = "AlloyDonor",
 ) -> None:
     """Write the donor as a CFF (OTF) face instead of a TTF one.
 
@@ -184,7 +185,7 @@ def synth_cff_donor(
         {cp: f"uni{cp:04X}" for cp in codepoints}
         | {cp: "placeholderBox" for cp in placeholder_codepoints}
     )
-    builder.setupCFF("AlloyDonor", {"FullName": "AlloyDonor"}, glyphs, {})
+    builder.setupCFF(family, {"FullName": family}, glyphs, {})
     builder.setupHorizontalMetrics({name: (600, 40) for name in glyph_names})
     builder.setupHorizontalHeader(ascent=800, descent=-200)
     builder.setupOS2(
@@ -194,7 +195,7 @@ def synth_cff_donor(
         usWinDescent=300,
         usWeightClass=400,
     )
-    builder.setupNameTable({"familyName": "AlloyDonor", "styleName": "Regular"})
+    builder.setupNameTable({"familyName": family, "styleName": "Regular"})
     builder.setupPost()
     builder.setupHead(
         unitsPerEm=1000, created=FIXED_TIMESTAMP, modified=FIXED_TIMESTAMP
@@ -298,6 +299,13 @@ def main() -> int:
         "(the CFF parse path's fixture; combines with --placeholder-donor)",
     )
     parser.add_argument(
+        "--donor-name",
+        default="AlloyDonor",
+        help="the donor's family name (round 20: a LONG name forces the "
+        "report's source sentence to wrap, the geometry the tag-under-"
+        "wrap rule pins)",
+    )
+    parser.add_argument(
         "--family",
         action="store_true",
         help="write a three-face family (Regular/Bold/Italic, one "
@@ -359,11 +367,12 @@ def main() -> int:
                     PLACEHOLDER_FIRST + args.placeholder_donor,
                 )
             ),
+            family=args.donor_name,
         )
     else:
         synth_font(
             args.outdir / "donor.ttf",
-            family="AlloyDonor",
+            family=args.donor_name,
             codepoints=donor_codepoints,
             placeholder_codepoints=tuple(
                 range(PLACEHOLDER_FIRST, PLACEHOLDER_FIRST + args.placeholder_donor)

@@ -916,6 +916,11 @@ body {
   margin: 3px 0 2px;
 }
 
+/* A fact row is a TWO-AREA row (round 20, owner item 6): the label
+ * fixed at its natural width, the value area STRETCHING over the
+ * row's whole remainder (a tagged value's .report-fact-value grows —
+ * see its round-20 rule; a plain string value stays content-sized,
+ * and space-between still right-aligns it). */
 .report-fact {
   display: flex;
   justify-content: space-between;
@@ -982,6 +987,31 @@ body {
   min-width: 0;
 }
 
+/* Round 20 (owner item 6): in a FACT row the value area STRETCHES —
+ * flex-grow fills the row's whole remainder after the fixed label, so
+ * the value box's right edge is the panel's content edge BY
+ * CONSTRUCTION (before, the box was content-sized — width = its
+ * longest line — and reached the panel only through the shrink +
+ * space-between accident; a wrapped tag's margin-left: auto stopped
+ * at the box's own edge, a large blank short of the panel). The
+ * stretched box packs its lines from the RIGHT (flex-end), and the
+ * tag row's auto margin is zeroed here — an auto margin would swallow
+ * the free space first and pin the text left, detaching a short
+ * value's tag from its text. So a SHORT value keeps the round-19
+ * cluster (text then tag, adjacent, flush right — the geometry
+ * unchanged), and a WRAPPED value's every line (the text's own line,
+ * the tag's own next line) lands on the panel's edge. Scoped to fact
+ * rows: a value filling a weight-grid CELL keeps the cell-scale rules
+ * (round 19 — text left, tag flush to the cell's right edge). */
+.report-fact > .report-fact-value {
+  flex: 1 1 auto;
+  justify-content: flex-end;
+}
+
+.report-fact > .report-fact-value > .report-tag-row {
+  margin-left: 0;
+}
+
 .report-fact-value-text {
   white-space: normal;
 }
@@ -991,7 +1021,9 @@ body {
  * pushed flush against the right edge by margin-left: auto in BOTH
  * homes: sharing the fact value's line, on its own wrapped line, or
  * filling a weight-grid cell (a .report-fact-value there spans the
- * cell's width). */
+ * cell's width). Inside a stretched FACT-row value (round 20) the
+ * auto margin stands down — the box's own flex-end packs every line
+ * flush right, keeping the text and its tag adjacent. */
 .report-tag-row {
   display: flex;
   gap: 4px;
