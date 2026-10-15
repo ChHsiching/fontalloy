@@ -58,14 +58,15 @@ export interface PickerFont {
   /** Inline status tag for a disabled row (e.g. 下载中…). */
   note?: string;
   /**
-   * Variant chips (round 8 final form): one chip per CUT — the
-   * distinct releases the manifest pins, labeled with official proper
-   * nouns (NF / NF-CN / Mono / 屏幕版 …; the default reads 标准). A
-   * chip is a span-button (the row itself is the <button>; nested
-   * buttons are invalid HTML); clicking it fires onChip instead of
-   * onPick. `on` marks the cut the USER explicitly picked (accent);
-   * the default cut renders plain. `disabled` marks an unfetched
-   * member family — the chip then carries the 未下载 `tag`.
+   * Variant chips (round 8 final form; round 23 labels): one chip per
+   * CUT — the distinct releases the manifest pins, labeled with each
+   * cut's OWN name (the registered cut's name-table name; an
+   * unfetched cut's release-artifact stem). A chip is a span-button
+   * (the row itself is the <button>; nested buttons are invalid HTML);
+   * clicking it fires onChip instead of onPick. `on` marks the cut the
+   * USER explicitly picked (accent); the default cut renders plain.
+   * `disabled` marks an unfetched member family — the chip then
+   * carries the 未下载 `tag`.
    */
   chips?: PickerChip[];
 }
@@ -111,12 +112,20 @@ export interface PickerPopupProps {
    * Footer action (加载本地字体文件) — outside the scroll area.
    * `loading` (round 21, owner item 2) shows the inline spinner +
    * count beside the action while a load runs — anchored exactly where
-   * the action lives, never a blocking overlay.
+   * the action lives, never a blocking overlay. `phase` (round 23,
+   * owner item 6a) splits the run's two passes — a big collection is
+   * first READ face by face (「正在读取 n/N」), then the faces register
+   * (「正在加载 n/N」) — so the count never restarts ambiguously and the
+   * extraction pass paints progress too.
    */
   footer?: {
     label: string;
     onClick(): void;
-    loading?: { loaded: number; total: number };
+    loading?: {
+      loaded: number;
+      total: number;
+      phase?: "reading" | "registering";
+    };
   };
   /**
    * The typed-path fallback beside the footer action (round 20):
@@ -406,6 +415,9 @@ export function mountPickerPopup(
           el.dataset.chip = chip.id;
           el.setAttribute("role", "button");
           el.textContent = chip.label;
+          // The full name rides the tooltip — a chip that had to
+          // truncate inside a narrow row still reads in full on hover.
+          el.title = chip.label;
           // Round 8: an unfetched cut carries the 未下载 tag inline —
           // the axis stays visible, the reason with it.
           if (chip.disabled && chip.tag) {
@@ -413,7 +425,6 @@ export function mountPickerPopup(
             tag.className = "kit-vchip-tag";
             tag.textContent = chip.tag;
             el.appendChild(tag);
-            el.title = chip.tag;
           }
           if (!chip.disabled) {
             el.tabIndex = -1; // pointer-driven (the row is the key target)
@@ -476,9 +487,10 @@ export function mountPickerPopup(
     // count; off otherwise (the exit collapses along the row's axis).
     const loading = props.footer?.loading;
     if (loading) {
+      const verb = loading.phase === "reading" ? "正在读取" : "正在加载";
       loadText.textContent =
         loading.total > 0
-          ? `正在加载 ${loading.loaded}/${loading.total}`
+          ? `${verb} ${loading.loaded}/${loading.total}`
           : "正在加载…";
       loadEl.classList.add("on");
     } else {

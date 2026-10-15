@@ -6,12 +6,11 @@
  * browser keeps the HTML file input (bytes only, no path — the
  * synthesize flow then resolves the path against the service listing).
  *
- * Round 20 adds two more entry points into the same register+select
- * flow, for environments the native dialog cannot serve (Linux without
- * a DBus file manager): a TYPED absolute path (file or directory —
- * `readFontPathInput`), and drag-and-drop onto the window (the DOM
- * drop in the browser; wry intercepts drops under Tauri, so the shell
- * re-emits them as `tauri://drag-drop` paths).
+ * Round 20 added the TYPED absolute path entry point (file or
+ * directory — `readFontPathInput`) for environments the native dialog
+ * cannot serve (Linux without a DBus file manager). Window drag-and-
+ * drop (round 20) was removed in round 23: the pickers are the app's
+ * only load entry points.
  */
 
 import { readConfig, type FontPathRead } from "./config";

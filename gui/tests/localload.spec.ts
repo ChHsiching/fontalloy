@@ -24,12 +24,13 @@ import { generateBigTtc, spawnServeOverFonts } from "./serve";
  * JetBrainsMono-family faces × an LXGW donor, format ttc) and drives
  * the browser local-file flow with those exact bytes.
  *
- * The same file pins round 20's other two behaviors: loading a local
+ * The same file pins round 20's other behaviors: loading a local
  * file SELECTS it immediately in the hosting slot (replacing the
- * current pick), and the two file-manager-free entry points — the
- * typed absolute path (Tauri; driven here through the config seam) and
- * drag-and-drop onto the window — funnel into the same register+select
- * flow.
+ * current pick), and the file-manager-free entry point — the
+ * typed absolute path (Tauri; driven here through the config
+ * seam) — funnels into the same register+select flow. (Window
+ * drag-and-drop was removed in round 23: the pickers are the only
+ * load entry points.)
  */
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -408,91 +409,6 @@ test.describe("round 20: local loading", () => {
     const error = popup.locator("[data-picker-error]");
     await expect(error).toBeVisible();
     expect((await error.textContent()) ?? "").toContain("nowhere.ttf");
-  });
-
-  test("dropping font files on the window loads them and selects them in the last-used slot", async ({
-    page,
-  }) => {
-    // Drag-and-drop (round 20, owner item 3b): a real DataTransfer drop
-    // on the document loads the files — the same register+select flow,
-    // landing in the slot the user last used. (Under Tauri the wry
-    // webview intercepts drops before the DOM; the shell re-emits them
-    // as tauri://drag-drop paths, wired to this same handler in
-    // picker.ts — the browser-side seam here exercises the shared
-    // flow.)
-    const dir = await mkdtemp(resolve(tmpdir(), "fontalloy-r20-drop-"));
-    await runE2eFonts([dir, "--donor-glyphs", "50"]);
-    const donorB64 = (await readFile(resolve(dir, "donor.ttf"))).toString("base64");
-    const baseB64 = (await readFile(resolve(dir, "base.ttf"))).toString("base64");
-
-    collectJsErrors(page, jsErrors);
-    await page.goto("/");
-    await waitForFontsReady(page);
-
-    // The EN picker was the last used slot: the drop lands there.
-    await pointerClick(page, page.locator('[data-role="picker-en"] .kit-hd'));
-    const popup = page.locator('[data-picker-popup="en"]');
-    await expect(popup).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(popup).toBeHidden();
-
-    await page.evaluate((payload) => {
-      const binary = atob(payload.b64);
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) {
-        bytes[i] = binary.charCodeAt(i);
-      }
-      const transfer = new DataTransfer();
-      transfer.items.add(new File([bytes], payload.name));
-      document.dispatchEvent(
-        new DragEvent("dragover", { bubbles: true, cancelable: true }),
-      );
-      document.dispatchEvent(
-        new DragEvent("drop", {
-          dataTransfer: transfer,
-          bubbles: true,
-          cancelable: true,
-        }),
-      );
-    }, { name: "donor.ttf", b64: donorB64 });
-
-    await expect(page.locator('[data-role="picker-en"] .kit-hd b')).toHaveText(
-      "AlloyDonor",
-    );
-    const enOracle = await page.evaluate(() => ({
-      faces: [...document.fonts].filter((f) => f.family === "AlloyDonor").length,
-      check: document.fonts.check('16px "AlloyDonor"'),
-    }));
-    expect(enOracle.faces).toBe(1);
-    expect(enOracle.check).toBe(true);
-
-    // The CJK slot takes over as the last-used slot: the next drop
-    // selects THERE, leaving the EN pick untouched.
-    await pointerClick(page, page.locator('[data-role="picker-cjk"] .kit-hd'));
-    await expect(page.locator('[data-picker-popup="cjk"]')).toBeVisible();
-    await page.keyboard.press("Escape");
-    await page.evaluate((payload) => {
-      const binary = atob(payload.b64);
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) {
-        bytes[i] = binary.charCodeAt(i);
-      }
-      const transfer = new DataTransfer();
-      transfer.items.add(new File([bytes], payload.name));
-      document.dispatchEvent(
-        new DragEvent("drop", {
-          dataTransfer: transfer,
-          bubbles: true,
-          cancelable: true,
-        }),
-      );
-    }, { name: "base.ttf", b64: baseB64 });
-    await expect(page.locator('[data-role="picker-cjk"] .kit-hd b')).toHaveText(
-      "AlloyBase",
-    );
-    await expect(page.locator('[data-role="picker-en"] .kit-hd b')).toHaveText(
-      "AlloyDonor",
-    );
   });
 
   test("a 16-face collection loads asynchronously: inline count indicator, live workspace, one outcome card", async ({

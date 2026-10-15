@@ -17,6 +17,7 @@ import {
   TOKEN_HELP_ROWS,
   cutLabels,
   displayFamilies,
+  familyEntries,
   variantCuts,
   type CatalogEntryLike,
   type DisplayFamily,
@@ -26,7 +27,6 @@ import {
   canPickWithDialog,
   pickLocalFonts,
   readFontPathInput,
-  readPickedFont,
 } from "../platform/localfonts";
 import { readConfig } from "../platform/config";
 import {
@@ -73,8 +73,8 @@ let fileInput: HTMLInputElement | null = null;
  *  land in the picker that opened last). */
 let pendingRegister: ((files: LocalFontFile[]) => Promise<void>) | null = null;
 /** Per-picker local-load flows (round 20: bytes-level — every entry
- * point funnels here): the hidden input, the native dialog, the typed
- * path, and drag-and-drop all land in the picker that opened last. */
+ * point funnels here): the hidden input, the native dialog, and the
+ * typed path all land in the picker that opened last. */
 const localFlows = new Map<
   PickerRole,
   (files: LocalFontFile[]) => Promise<void>
@@ -122,61 +122,12 @@ function ensureFileInput(): HTMLInputElement {
 }
 
 /**
- * Drag-and-drop loading (round 20, owner item 3): dropping font files
- * on the window loads them into the slot the user last used. In the
- * plain browser the DOM drop carries the bytes; under Tauri the wry
- * webview INTERCEPTS drops (they never reach the DOM) and the shell
- * re-emits them as `tauri://drag-drop` path lists — both funnel into
- * the same register+select flow the picker footer uses.
+ * Drag-and-drop loading (round 20) was REMOVED in round 23 (owner item
+ * 3): the two font pickers are the app's only load entry points — the
+ * footer button, the native dialog, and the typed path — so dropping
+ * files on the window is a silent no-op now (the webview still
+ * intercepts drops; nobody listens).
  */
-let dropLoadingWired = false;
-function wireDropLoading(): void {
-  if (dropLoadingWired || typeof document === "undefined") return;
-  dropLoadingWired = true;
-  document.addEventListener("dragover", (event) => {
-    // A FILE drag's dragover must be canceled for the drop to fire at
-    // all; in-page drags (text selection) keep their default behavior.
-    if (
-      event.dataTransfer !== null &&
-      [...event.dataTransfer.types].includes("Files")
-    ) {
-      event.preventDefault();
-    }
-  });
-  document.addEventListener("drop", (event) => {
-    const transfer = event.dataTransfer;
-    if (transfer === null || transfer.files.length === 0) return;
-    event.preventDefault();
-    const flow = localFlowFor(null);
-    if (flow === null) return;
-    void filesToLocalFontFiles([...transfer.files]).then(flow);
-  });
-  if (!canPickWithDialog()) return;
-  void (async () => {
-    try {
-      const { listen } = await import("@tauri-apps/api/event");
-      await listen<{ paths: string[] }>("tauri://drag-drop", (event) => {
-        const paths = event.payload.paths;
-        if (paths.length === 0) return;
-        const flow = localFlowFor(null);
-        if (flow === null) return;
-        void (async () => {
-          const files: LocalFontFile[] = [];
-          for (const path of paths) {
-            try {
-              files.push(await readPickedFont(path));
-            } catch {
-              // One unreadable dropped file never kills the others.
-            }
-          }
-          if (files.length > 0) await flow(files);
-        })();
-      });
-    } catch {
-      // No event bus, no drops — the dialog and path input remain.
-    }
-  })();
-}
 
 /** Inline status tag for a catalog row that cannot be picked (yet). */
 function catalogTag(family: CatalogFamilyEntry): string | undefined {
@@ -300,11 +251,10 @@ function releaseArtifactName(family: string): string {
 
 /**
  * The variant chips of one display row: one chip per CUT — the distinct
- * releases the manifest pins, labeled in the DATA'S OWN WORDS (round 9,
- * owner item 2: the registered cut's name-table name after the family's
- * shared base — 「Maple Mono NF CN」 after 「Maple Mono NF」 reads CN;
- * unfetched cuts fall back to the manifest's variant word or the
- * release artifact's own suffix). The default cut renders PLAIN; the
+ * releases the manifest pins, labeled with each cut's OWN name (round
+ * 23, owner item 1: the registered cut's full name-table name, verbatim
+ * — the default cut included; an unregistered cut falls back to the
+ * release artifact's own stem). The default cut renders PLAIN; the
  * accent marks only the user's EXPLICIT pick. A cut whose member family
  * is not fetched renders disabled with the 未下载 tag. Every chip is a
  * real manifest entry, so impossible combinations never appear at all.
@@ -346,20 +296,22 @@ export function mountPicker(
 ): FontPicker {
   root.dataset.role = `picker-${options.role}`;
   // The shared local-file input exists from the start (tests and the
-  // footer action reach for it without an open/click warm-up), and the
-  // window is a drop zone from the first picker on (round 20).
+  // footer action reach for it without an open/click warm-up).
   ensureFileInput();
-  wireDropLoading();
   let error: string | null = null;
   /**
-   * The in-flight local load's face count (round 21, owner item 2):
-   * the footer's inline spinner + count mirrors it while a load runs.
+   * The in-flight local load's progress (round 21, owner item 2; round
+   * 23 phases): the footer's inline spinner + count mirrors it while a
+   * load runs — 「正在读取 n/N」 while a collection's faces extract,
+   * 「正在加载 n/N」 while they register.
    */
-  let loading: { loaded: number; total: number } | null = null;
+  let loading:
+    | { loaded: number; total: number; phase?: "reading" | "registering" }
+    | null = null;
 
   /**
    * The picker's local-load flow — every entry point funnels here (the
-   * hidden input, the native dialog, the typed path, drag-and-drop).
+   * hidden input, the native dialog, the typed path).
    * Round 20 (owner items 2+3): the load registers the files' families
    * (a collection registers EVERY face — one css family per name-table
    * family, weight-descriptor faces behind a Regular-preferred
@@ -379,8 +331,8 @@ export function mountPicker(
     loading = { loaded: 0, total: files.length };
     rerender();
     const outcome = await registerLocalFontFiles(files, {
-      onProgress: (loaded, total) => {
-        loading = { loaded, total };
+      onProgress: (loaded, total, phase) => {
+        loading = { loaded, total, phase };
         rerender();
       },
     });
@@ -618,14 +570,30 @@ export function mountPicker(
         const rowName = activeFont
           ? fontDisplayName(activeFont)
           : releaseArtifactName(activeCut?.entry.family ?? primaryFamily);
-        // The chip labels: the registered cuts' own name-table words,
-        // falling back to the data label (variant / asset words).
-        const nameOf = (cut: VariantCut): string | undefined => {
-          const key = registeredCss(cut.entry.family, cut.entry.variant);
-          if (key === null) return undefined;
+        // The chip labels: each cut's own name-table name, falling
+        // back to the release artifact's own stem (round 23). The
+        // lookup is EXACT first (`family::variant`); the bare family
+        // key may stand in only for a member family whose manifest
+        // entries collapse to this ONE cut (a WenKai group member) —
+        // a multi-cut family's bare key belongs to whichever cut
+        // registered first, never this chip, so such a chip keeps its
+        // own stem instead of another cut's name.
+        const cutNameOf = (cut: VariantCut): string | undefined => {
+          const exact =
+            catalog.registered[`${cut.entry.family}::${cut.entry.variant}`];
+          const key =
+            exact ??
+            (variantCuts({
+              id: cut.entry.family,
+              families: [cut.entry.family],
+              entries: familyEntries(cut.entry.family),
+            }).length === 1
+              ? registeredCss(cut.entry.family)
+              : null);
+          if (key === null || key === undefined) return undefined;
           return fonts.find((f) => f.cssFamily === key)?.names?.display;
         };
-        const labels = cutLabels(cuts, display.id, nameOf);
+        const labels = cutLabels(cuts, display.id, cutNameOf);
         const chips = rowChips(cuts, selectedCutId, statusOf, labels);
         /**
          * Round 21 (owner item 1): the row's search index covers EVERY
@@ -644,12 +612,12 @@ export function mountPicker(
          * live name-table words join once a cut is registered.
          */
         const cutName = (cut: VariantCut): string => {
-          const key = registeredCss(cut.entry.family, cut.entry.variant);
-          const live =
-            key === null
-              ? undefined
-              : fonts.find((f) => f.cssFamily === key)?.names?.display;
-          return live ?? cut.entry.file.replace(/\.[^.]+$/, "");
+          // The same strict resolution the chip labels use (round 23):
+          // a search keyword must not claim another cut's registered
+          // name.
+          return (
+            cutNameOf(cut) ?? cut.entry.file.replace(/\.[^.]+$/, "")
+          );
         };
         const cutTokens = (cut: VariantCut): string[] => {
           const stem = cut.entry.file.replace(/\.[^.]+$/, "");
@@ -748,8 +716,8 @@ export function mountPicker(
           }
         : {}),
       // The picker-level variant help (round 8 final form): ONE ? for
-      // the whole popup — one sentence plus the token table (the
-      // official proper nouns and their meanings).
+      // the whole popup — one sentence plus the token table (the words
+      // that appear inside the cuts' own release names).
       help: {
         title: "变体是什么",
         buttonLabel: "变体是什么",
@@ -757,10 +725,10 @@ export function mountPicker(
           const body = document.createElement("div");
           body.append(
             helpNote(
-              "同一款字体常有多个发行版本，称为变体；点击字体行下方的标签即可切换。未选择时使用家族默认（标准）。",
+              "同一款字体常有多个发行版本，称为变体；标签就是各发行版自己的名字。点击字体行下方的标签即可切换，未选择时使用家族默认版本。",
             ),
           );
-          body.append(workedTable(["标签", "含义"], TOKEN_HELP_ROWS));
+          body.append(workedTable(["名字里的词", "含义"], TOKEN_HELP_ROWS));
           return body;
         },
       },
@@ -813,7 +781,7 @@ export function mountPicker(
         // this role already picked clears the whole family pick — the
         // chip IS the cut, and clearing means no family. The active cut
         // is the explicit selection, else the family default, so the
-        // plain 标准 chip unloads exactly like an accented one. A
+        // default chip unloads exactly like an accented one. A
         // DIFFERENT chip still switches cuts below.
         const activeCutId =
           variantSelections.get(display.id) ?? cuts[0]?.id ?? null;
