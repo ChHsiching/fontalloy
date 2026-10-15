@@ -275,21 +275,10 @@ export function mountPickerPopup(
     footerClick?.();
   });
   footerRow.appendChild(footerBtn);
-  // The inline load indicator (round 21): rides the footer's own row,
-  // right of the action — a spinner + count that enters and leaves
-  // along the row's axis. Built once; renderStatus only retunes it.
-  const loadEl = document.createElement("span");
-  loadEl.className = "kit-fpload";
-  loadEl.dataset.pickerLoad = "";
-  loadEl.setAttribute("role", "status");
-  loadEl.setAttribute("aria-live", "polite");
-  const loadSpin = document.createElement("span");
-  loadSpin.className = "kit-fpload-spin";
-  loadSpin.setAttribute("aria-hidden", "true");
-  const loadText = document.createElement("span");
-  loadText.className = "kit-fpload-text";
-  loadEl.append(loadSpin, loadText);
-  footerRow.appendChild(loadEl);
+  // The typed-path fallback (round 20) rides the same footer row,
+  // right of the button, visible only while a resolver exists. The
+  // load progress (round 24) lives INSIDE the button — see
+  // renderStatus; there is no separate indicator element anymore.
   const pathInput = document.createElement("input");
   pathInput.type = "text";
   pathInput.className = "kit-fppath";
@@ -483,18 +472,25 @@ export function mountPickerPopup(
       footerClick = null;
       footerBtn.style.display = "none";
     }
-    // The inline load indicator: on while a load runs, with its live
-    // count; off otherwise (the exit collapses along the row's axis).
+    // The inline load progress (round 21; round 24 moved it INSIDE the
+    // button): the 260px rail's footer cannot hold button + a separate
+    // indicator + the path field — the indicator's 130px squeezed the
+    // field out and clipped its own right edge (owner item 1). While a
+    // load runs the button's icon becomes the spinner and its label
+    // the live count (「正在读取 n/N」then「正在加载 n/N」); the row
+    // never overflows and the field keeps its place.
     const loading = props.footer?.loading;
     if (loading) {
+      footerBtn.classList.add("loading");
+      footerBtn.dataset.pickerLoad = "";
       const verb = loading.phase === "reading" ? "正在读取" : "正在加载";
-      loadText.textContent =
+      footerLabel.textContent =
         loading.total > 0
           ? `${verb} ${loading.loaded}/${loading.total}`
           : "正在加载…";
-      loadEl.classList.add("on");
     } else {
-      loadEl.classList.remove("on");
+      footerBtn.classList.remove("loading");
+      delete footerBtn.dataset.pickerLoad;
     }
     if (props.pathInput) {
       pathInput.placeholder = props.pathInput.placeholder;

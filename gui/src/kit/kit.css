@@ -1067,35 +1067,29 @@
   border-color: var(--ac);
 }
 
-/* The inline load indicator (round 21, owner item 2): rides the
- * footer's own row, right of the action — a spinner + live count
- * («正在加载 3/16») that enters and leaves along the row's axis
- * (max-width + opacity; never a reflow of the popup, never an
- * overlay). Under prefers-reduced-motion the spinner stops (a static
- * mark) and the entry is instant. */
-.kit-fpload {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  flex: none;
-  max-width: 0;
-  opacity: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  color: var(--ink3);
-  font-size: 11px;
-  transition: max-width 0.16s var(--spring-out), opacity 0.16s ease-out;
+/* The footer action's LOADING state (round 21 inline indicator; round
+ * 24, owner item 1: moved INSIDE the button): the 260px rail's footer
+ * row cannot hold the button, a separate 130px indicator, and the
+ * path field — the indicator squeezed the field to nothing and its
+ * own right edge was clipped by the popup's edge. While a load runs
+ * the button's plus icon hides, a spinner takes its place, and the
+ * label becomes the live count (「正在读取 n/N」→「正在加载 n/N」);
+ * the row never overflows. Tabular numerals keep the count from
+ * jittering as it ticks. */
+.kit-fpsys.loading {
+  color: var(--ink2);
+  font-variant-numeric: tabular-nums;
 }
 
-.kit-fpload.on {
-  max-width: 130px;
-  opacity: 1;
+.kit-fpsys.loading .kit-ci {
+  display: none;
 }
 
-.kit-fpload-spin {
+.kit-fpsys.loading::before {
+  content: "";
   flex: none;
-  width: 11px;
-  height: 11px;
+  width: 13px;
+  height: 13px;
   border-radius: 50%;
   border: 2px solid var(--ln2);
   border-top-color: var(--ac);
@@ -1108,14 +1102,10 @@
   }
 }
 
-/* Round 21: reduced motion — the load indicator degrades to a static
- * mark + the count (no rotation, instant entry/exit). */
+/* Round 21: reduced motion — the load state degrades to a static mark
+ * + the count (no rotation). */
 @media (prefers-reduced-motion: reduce) {
-  .kit-fpload {
-    transition: none;
-  }
-
-  .kit-fpload-spin {
+  .kit-fpsys.loading::before {
     animation: none;
     border-top-color: var(--ln2);
     background: var(--ac);

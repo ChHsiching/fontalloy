@@ -7,6 +7,9 @@ import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { pointerClick, waitForFontsReady } from "./helpers";
+import { generateBigTtc } from "./serve";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
 
 const OUT = join(
   dirname(dirname(fileURLToPath(import.meta.url))),
@@ -102,6 +105,8 @@ test("capture r23 path input (Tauri-shell footer seam)", async ({ page }) => {
       isDirectory: false,
       files: [],
     });
+    // Stretch the load so the mid-load footer state is capturable.
+    w.__FONTALLOY_CONFIG__.testFontLoadDelayMs = 120;
   });
   await page.goto("/");
   await waitForFontsReady(page);
@@ -113,5 +118,18 @@ test("capture r23 path input (Tauri-shell footer seam)", async ({ page }) => {
   await expect(field).toBeVisible();
   await expect(field).toHaveAttribute("placeholder", "或输入路径");
   await footer.screenshot({ path: join(OUT, "r23-path-input.png") });
+
+  // Round 24 (owner item 1): the SAME row mid-load — the progress now
+  // lives inside the button (spinner + count in place of its icon and
+  // label) and the path field keeps its place, right edge visible.
+  const dir = await mkdtemp(join(tmpdir(), "fontalloy-r24-shot-"));
+  const bigTtc = await generateBigTtc(dir);
+  await page.locator("input[data-role='font-file']").setInputFiles(bigTtc);
+  const button = footer.locator(".kit-fpsys");
+  await expect(button).toHaveClass(/loading/);
+  await expect(button).toHaveText(/正在(读取|加载)\s*\d+\/16/);
+  await expect(field).toBeVisible();
+  await footer.screenshot({ path: join(OUT, "r24-footer-loading.png") });
+  await expect(button).not.toHaveClass(/loading/, { timeout: 60_000 });
   await page.keyboard.press("Escape");
 });
