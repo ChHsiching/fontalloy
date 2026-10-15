@@ -28,6 +28,7 @@ import { applyRulesToDraft } from "../precedence/serialize";
 import { localFaceSet } from "../precedence/picks";
 import { probeArtifact, saveArtifact, saveArtifactAs } from "../platform/artifacts";
 import { isTauri, readConfig, serveProbeAddress } from "../platform/config";
+import { ensureSystemFonts, systemFamilies } from "./systemfonts";
 import { flashFontNameInput } from "../kit/topBar";
 import { appMessages } from "../ui/charmap";
 import { ServeClient, type CatalogDocument, type FaceDocument, type ReportDocument } from "./client";
@@ -35,6 +36,7 @@ import {
   addBuild,
   patchBuild,
   patchService,
+  removeBuild,
   synthStore,
   type BuildRow,
 } from "./state";
@@ -127,7 +129,22 @@ export async function connectService(): Promise<void> {
     // Same tolerance: without the catalog index, catalog picks resolve
     // through the path flow (the basename match against /fonts).
   }
-  patchService({ status: "connected", client, fontsIndex, catalogIndex, error: undefined });
+  patchService({
+    status: "connected",
+    client,
+    fontsIndex,
+    fontsIndexAt: fontsIndex === null ? null : Date.now(),
+    catalogIndex,
+    error: undefined,
+  });
+  // Round 24 (owner item 3): the installed system fonts enumerate in
+  // the background — the scan walks the platform's font directories
+  // and may take seconds on a full install; the rows land when it
+  // does and nothing waits on it. Desktop only (the Tauri shell): the
+  // system directories are the machine the sidecar runs on, and the
+  // plain web target must not grow rows from whatever serve it points
+  // at. The e2e seam fakes the Tauri marker.
+  if (isTauri()) void ensureSystemFonts(client);
 }
 
 /** Basename of a path, Windows or POSIX separators. */
@@ -226,7 +243,10 @@ async function refreshFontsIndex(): Promise<void> {
   const { client } = synthStore.get().service;
   if (client === null) return;
   try {
-    patchService({ fontsIndex: await client.fonts() });
+    patchService({
+      fontsIndex: await client.fonts(),
+      fontsIndexAt: Date.now(),
+    });
   } catch {
     // Stale index stands; a missed lookup reports its own error.
   }
@@ -251,8 +271,21 @@ async function resolveFontPathWithRefresh(
 ): Promise<string | null> {
   let path = resolveFontPath(font);
   if (path === null) {
-    await refreshFontsIndex();
-    path = resolveFontPath(font);
+    // Round 24 (owner item 2): a miss against a FRESH index is a real
+    // miss — the file is not in the serve's font dir. Re-fetching the
+    // /fonts listing (a full directory scan, over a second on a big
+    // font dir) only to miss again stalled the click before the
+    // catalog-form fallback; the refresh now runs only when the index
+    // is stale or absent.
+    const { fontsIndex, fontsIndexAt } = synthStore.get().service;
+    const stale =
+      fontsIndex === null ||
+      fontsIndexAt === null ||
+      Date.now() - fontsIndexAt > 15_000;
+    if (stale) {
+      await refreshFontsIndex();
+      path = resolveFontPath(font);
+    }
   }
   return path;
 }
@@ -370,7 +403,44 @@ function pickPathPattern(font: LoadedFont): string | undefined {
     const pattern = familyCutPattern(font.fileName);
     return pattern.includes("*") ? pattern : undefined;
   }
+  if (font.origin === "system") {
+    // Round 24: the family cut glob, but only when it provably selects
+    // THIS family's faces — system directories mix families behind
+    // shared prefixes (Arial vs Arial Rounded), and a pattern that
+    // pooled another family's faces would build the wrong matrix (the
+    // core's multi-family guard would catch it loudly; not pooling is
+    // kinder). Every face the glob matches in the scanned index must
+    // belong to this family.
+    const pattern = familyCutPattern(font.fileName);
+    if (!pattern.includes("*")) return undefined;
+    const re = globRegExp(pattern);
+    const mine = new Set(
+      systemFamilies()
+        .find((family) => family.family === font.cssFamily)
+        ?.faces.map((face) => face.file) ?? [],
+    );
+    if (mine.size === 0) return undefined;
+    const dirOf = (p: string): string => p.slice(0, Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\")));
+    const dir = font.path !== undefined ? dirOf(font.path) : null;
+    const foreign = systemFamilies().some((family) =>
+      family.faces.some(
+        (face) =>
+          family.family !== font.cssFamily &&
+          re.test(face.file) &&
+          (dir === null || dirOf(face.path) === dir),
+      ),
+    );
+    return foreign ? undefined : pattern;
+  }
   return undefined;
+}
+
+/** A bare-filename glob as a case-sensitive RegExp (`*`/`?` only). */
+function globRegExp(pattern: string): RegExp {
+  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(
+    `^${escaped.replace(/\*/g, ".*").replace(/\?/g, ".")}$`,
+  );
 }
 
 /**
@@ -527,6 +597,15 @@ export async function synthesize(): Promise<void> {
     return;
   }
 
+  // Round 24 (owner item 2): the row — and with it the build panel —
+  // appears AT THE CLICK. Path resolution, the same-name probe, and
+  // the submit all settle it afterwards; the click used to await them
+  // first, so the panel (its animation included) only showed after
+  // whatever they cost. A failure settles this row like any build
+  // error; the same-name gate drops it and hands off to the card.
+  const pendingRow = newBuildRow(store.get().outputFamily || "ChHsich");
+  addBuild(pendingRow);
+
   // Resolve both picks to recipe slots BEFORE anything builds — catalog
   // picks become catalog-family references the service resolves against
   // its own manifest; everything else names an on-disk path, and a font
@@ -534,14 +613,17 @@ export async function synthesize(): Promise<void> {
   // as a build that dies for a cryptic reason. The gate also needs the
   // slots: the draft's resolved format decides the target's extension
   // (a family pick packages the weight matrix as ttc).
+  const settlePending = (message: string): void => {
+    patchBuild(pendingRow.id, { status: "error", error: message });
+  };
   const enSlot = await resolvePickSlot(en, "base");
-  const cjkSlot = await resolvePickSlot(cjk, "donor");
   if (enSlot === null) {
-    failBeforeBuild(`无法定位字体文件路径：${en.fileName}（服务目录中不存在）。`);
+    settlePending(`无法定位字体文件路径：${en.fileName}（服务目录中不存在）。`);
     return;
   }
+  const cjkSlot = await resolvePickSlot(cjk, "donor");
   if (cjkSlot === null) {
-    failBeforeBuild(`无法定位字体文件路径：${cjk.fileName}（服务目录中不存在）。`);
+    settlePending(`无法定位字体文件路径：${cjk.fileName}（服务目录中不存在）。`);
     return;
   }
 
@@ -552,19 +634,21 @@ export async function synthesize(): Promise<void> {
     (family) => family.faces,
   ) ?? [];
   const draft = buildWorkspaceDraft({ en: enSlot, cjk: cjkSlot }, faces);
+  patchBuild(pendingRow.id, { family: draft.output.family });
 
   // The GATE: does a file already sit at the target this name resolves
   // to? No collision → build as today. A collision → NO build starts;
-  // the card asks, and only a choice builds (round 17's rule — never a
-  // silent overwrite, never a silent suffix — now answered before the
-  // minutes-long build, not after it).
+  // the pending row goes away and the card asks, and only a choice
+  // builds (round 17's rule — never a silent overwrite, never a silent
+  // suffix — now answered before the minutes-long build, not after it).
   const suggested = `${draft.output.family}.${artifactExt(draft.output.format)}`;
   const probe = await probeArtifact(suggested);
   if (probe.exists) {
+    removeBuild(pendingRow.id);
     askRenameOrBuild(draft, probe.path);
     return;
   }
-  await runBuild(draft, false);
+  await runBuild(draft, false, pendingRow);
 }
 
 /**
@@ -580,11 +664,14 @@ export async function synthesize(): Promise<void> {
 async function runBuild(
   draft: ReturnType<typeof defaultDraft>,
   overwriteApproved: boolean,
+  existingRow?: BuildRow,
 ): Promise<void> {
   const client = synthStore.get().service.client;
   if (client === null) return;
-  const row = newBuildRow(draft.output.family);
-  addBuild(row);
+  // The click-time pending row (round 24) carries over when present;
+  // the rename/overwrite re-entries still create their own.
+  const row = existingRow ?? newBuildRow(draft.output.family);
+  if (existingRow === undefined) addBuild(row);
 
   const fail = (message: string): void => {
     patchBuild(row.id, { status: "error", error: message });

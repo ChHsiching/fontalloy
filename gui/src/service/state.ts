@@ -11,6 +11,7 @@
  */
 
 import { createStore } from "../state";
+import type { SystemFontFamily } from "./systemfonts";
 import type {
   CatalogDocument,
   FontsDocument,
@@ -38,12 +39,26 @@ export interface ServiceState {
   /** The /fonts listing captured at connect time (path resolution). */
   fontsIndex: FontsDocument | null;
   /**
+   * When `fontsIndex` was fetched (epoch ms). Round 24 (owner item 2):
+   * a miss against a FRESH index must not re-fetch — the serve's /fonts
+   * scan runs over a second on a full font dir, and the click used to
+   * pay it before falling back to the catalog form.
+   */
+  fontsIndexAt: number | null;
+  /**
    * The /catalog document (round 6): the manifest families the service
    * can resolve catalog-family recipe references against. Null when no
    * fetch has completed (a serve without a manifest answers an empty
    * family list — catalog picks then resolve through the path flow).
    */
   catalogIndex: CatalogDocument | null;
+  /**
+   * The installed system font families (round 24, owner item 3), once
+   * the enumeration has landed; null until then (and for services
+   * without the endpoint). The pickers list these beside the catalog
+   * rows, classified by each family's own coverage.
+   */
+  systemFonts: SystemFontFamily[] | null;
 }
 
 export type BuildRowStatus =
@@ -100,7 +115,9 @@ export const synthStore = createStore<SynthesisState>({
     url: null,
     client: null,
     fontsIndex: null,
+    fontsIndexAt: null,
     catalogIndex: null,
+    systemFonts: null,
   },
   builds: [],
 });
@@ -112,10 +129,19 @@ export function patchService(patch: Partial<ServiceState>): void {
 }
 
 export function patchBuild(id: string, patch: Partial<BuildRow>): void {
+  const rows = synthStore.get().builds;
+  const current = rows.find((row) => row.id === id);
+  // Round 24 (owner item 2): an unchanged poll tick rerenders nothing.
+  // The build poll fires every 250ms for the whole run; identical
+  // patches used to ripple through every subscriber each tick.
+  if (current === undefined) return;
+  const changed = Object.entries(patch).some(
+    ([key, value]) =>
+      (current as unknown as Record<string, unknown>)[key] !== value,
+  );
+  if (!changed) return;
   synthStore.set({
-    builds: synthStore
-      .get()
-      .builds.map((row) => (row.id === id ? { ...row, ...patch } : row)),
+    builds: rows.map((row) => (row.id === id ? { ...row, ...patch } : row)),
   });
 }
 
