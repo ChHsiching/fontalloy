@@ -801,38 +801,43 @@ test.describe("user journey", () => {
         }
       });
 
-      await step("J2.5 variant chips are official proper nouns (NF / NF-CN, plain default, picker-level help)", async () => {
+      await step("J2.5 variant chips read the fonts' own names (plain default, picker-level help)", async () => {
         const maple = pickerRow(page, "cjk", "Maple Mono NF");
-        // Round 8 final form: one chip per CUT; round 9: the labels are
-        // the data's own words — 标准 (the family default) and NF-CN. The
-        // default cut renders PLAIN: no 默认 marker, no dashed ring,
-        // never a pressed look; the weight axis never chips.
+        // Round 8 final form: one chip per CUT; round 23 (owner item 1):
+        // the labels are the fonts' OWN names — the registered cut's
+        // name-table display string, the default cut included, verbatim
+        // (no 标准/别名 token). The default cut renders PLAIN: no 默认
+        // marker, no dashed ring, never a pressed look; the weight axis
+        // never chips.
         const nf = maple.locator(".kit-vchip[data-chip='MapleMono::NF']");
         const nfCn = maple.locator(".kit-vchip[data-chip='MapleMono::NF-CN']");
         await expect(nf).toBeVisible();
-        // Round 9 (owner item 2): the DEFAULT cut reads 标准; the other
-        // cut's label is the data's own word (the NF-CN variant).
-        await expect(nf).toHaveText(/^标准$/);
+        // Both cuts' faces are served, so both chips read their real
+        // name-table names — no click needed first (the boot sweep
+        // registers every cut of a multi-entry family).
+        await expect(nf).toHaveText("Maple Mono NF");
         await expect(nf).not.toContainText("默认");
         await expect(nf).not.toHaveClass(/def|on/);
         await expect(nfCn).toBeVisible();
-        await expect(nfCn).toHaveText(/^NF-CN$/);
+        await expect(nfCn).toHaveText("Maple Mono NF CN");
         await expect(nfCn).not.toHaveClass(/on/);
         await expect(maple.locator(".kit-vchip")).toHaveCount(2);
-        // The WenKai group row: its cuts carry the official compound
-        // labels (Mono / 屏幕版 / GB …), never a weight chip.
+        // The WenKai group row: a served member's chip reads its own
+        // name-table name (「LXGW WenKai Mono」); an unserved member
+        // keeps its release artifact's own stem — never a weight chip.
         const wenkai = pickerRow(page, "cjk", "LXGW WenKai");
         await expect(
           wenkai.locator(".kit-vchip[data-chip='LXGWWenKaiMono::Regular']"),
-        ).toHaveText(/^Mono/);
-        // Round 9: the author's own word (Screen), never 屏幕版.
+        ).toHaveText("LXGW WenKai Mono");
+        // Round 23: a served member reads its own name-table name —
+        // every chip of the row, straight from the fonts themselves.
         await expect(
           wenkai.locator(".kit-vchip[data-chip='LXGWWenKaiScreen::Regular']"),
-        ).toHaveText(/^Screen/);
+        ).toHaveText("LXGW WenKai Screen");
         for (const chip of await wenkai.locator(".kit-vchip").all()) {
           const text = await chip.textContent();
           expect(text, `no weight chips: ${text}`).not.toMatch(
-            /^(Light|Medium|Regular)$/,
+            /^(Light|Medium|Regular)(?![A-Za-z])/,
           );
         }
         // ONE ? for the whole picker (never per row): the variant help.
@@ -847,9 +852,9 @@ test.describe("user journey", () => {
         await expect(pop).toBeVisible();
         await expect(pop.locator("h5")).toHaveText("变体是什么");
         await expect(pop).toContainText("同一款字体常有多个发行版本");
-        // The token vocabulary the chips carry, as official terms —
+        // The token vocabulary the names carry, as official terms —
         // and no weight row (the axis is deleted).
-        for (const term of ["NF / NL", "Mono / HW", "Screen", "标准"]) {
+        for (const term of ["NF / NL", "Mono / HW", "Screen"]) {
           await expect(pop).toContainText(term);
         }
         await expect(pop).not.toContainText("字重");
@@ -2518,7 +2523,13 @@ test.describe("user journey", () => {
           await expect(savedLine).toContainText(/\.ttc$/);
           const savedPath = (await savedLine.getAttribute("title"))!;
           const parsed = await parseBuiltFont(savedPath.trim());
-          expect(parsed.family).toBe("ChHsich");
+          // Round 23 (owner item 6): the rewrite reads the base's
+          // TYPographic subfamily (nameID 17) — the intercepted
+          // "…-M*.ttf" pattern narrows the base to the Medium face,
+          // and a non-RIBBI weight splits nameID 1 into family +
+          // subfamily ("ChHsich Medium"), exactly the naming that keeps
+          // a 16-face output's weights distinguishable.
+          expect(parsed.family).toBe("ChHsich Medium");
           expect(parsed.cmap).toBeGreaterThan(0);
           expect(
             parsed.cjkCodepoints,
