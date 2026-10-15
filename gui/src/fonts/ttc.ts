@@ -165,14 +165,25 @@ export function extractFaceAtOffset(
   }
 
   // checkSumAdjustment (the sfnt spec's recipe, and what the browser's
-  // font sanitizer verifies): zero the field, checksum the whole font,
-  // store 0xB1B0AFBA - checksum big-endian. The output is 4-aligned by
-  // construction, so the checksum's zero-padding tail never triggers.
+  // font sanitizer verifies): zero the field, checksum the whole font
+  // (a sum of BIG-ENDIAN 32-bit words), store 0xB1B0AFBA - checksum
+  // big-endian. The output is 4-aligned by construction, so the
+  // checksum's zero-padding tail never triggers. Round 23: the words
+  // read from a Uint32Array in bulk with an explicit byte swap — a
+  // per-4-byte DataView call over a whole CJK face measures in
+  // millions of calls, and the native-order bulk sum would not be the
+  // spec's big-endian sum at all.
   const adjustment = headOffset + 8;
   outView.setUint32(adjustment, 0);
+  const words = new Uint32Array(out);
   let sum = 0;
-  for (let i = 0; i < size; i += 4) {
-    sum = (sum + outView.getUint32(i)) >>> 0;
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i]!;
+    const be =
+      ((w >>> 24) | ((w >>> 8) & 0xff00) | ((w << 8) & 0xff0000) |
+        (w << 24)) >>>
+      0;
+    sum = (sum + be) >>> 0;
   }
   outView.setUint32(adjustment, (CHECKSUM_MAGIC - sum) >>> 0);
 

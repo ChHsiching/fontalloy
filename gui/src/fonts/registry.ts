@@ -1,5 +1,9 @@
 import { parseFontMeta, type FontMeta } from "./sfnt";
-import { expandLocalFontEntries } from "./ttc";
+import {
+  collectionFaceOffsets,
+  extractFaceAtOffset,
+  isFontCollection,
+} from "./ttc";
 import { store, type FontCatalogIdentity, type LoadedFont } from "../state";
 import { readConfig } from "../platform/config";
 
@@ -151,11 +155,18 @@ export interface LocalLoadOutcome {
 export interface LocalLoadOptions {
   /**
    * Per-face progress: called with the faces completed so far and the
-   * run's planned face total — the picker footer's inline
-   * 「正在加载 3/16」 indicator. First call is (0, total) once the
-   * files have expanded into faces.
+   * run's planned face total — the picker footer's inline count
+   * indicator. Round 23 (owner item 6a) splits the run into two
+   * phases, each ticking 0→total on the same scale: `reading` (a
+   * collection's faces are extracted and parsed one by one) then
+   * `registering` (the faces register onto document.fonts). The first
+   * call of each phase is (0, total).
    */
-  onProgress?: (loaded: number, total: number) => void;
+  onProgress?: (
+    loaded: number,
+    total: number,
+    phase?: "reading" | "registering",
+  ) => void;
 }
 
 /** One loadable face between the parse and the registry (round 20). */
@@ -209,29 +220,79 @@ export async function registerLocalFontFiles(
     new Promise((resolve) => setTimeout(resolve, delayMs));
   const failures: string[] = [];
   const plans: FacePlan[] = [];
-  for (const entry of expandLocalFontEntries(files)) {
-    if (entry.buffer === undefined) {
-      failures.push(
-        `无法加载 ${entry.fileName}：${entry.error ?? "不是有效的字体文件"}`,
-      );
+
+  // Round 23 (owner item 6a): the expansion is INCREMENTAL, one face
+  // per step with a yield and a progress tick after each — a big
+  // collection (the pipeline's own 428MB 16-face ChHsich.ttc) spent
+  // its first seconds in one synchronous extract-everything loop
+  // before, freezing the window before the spinner could ever paint.
+  // The face TOTAL comes cheap from the ttcf headers up front, so the
+  // reading phase counts real faces, not bytes.
+  const plannedFaces = (file: {
+    buffer: ArrayBuffer;
+    fileName: string;
+  }): number => {
+    if (!isFontCollection(file.buffer)) return 1;
+    try {
+      return collectionFaceOffsets(file.buffer).length;
+    } catch {
+      return 1; // the unreadable header counts as its one failure below
+    }
+  };
+  const total = files.reduce((sum, file) => sum + plannedFaces(file), 0);
+  if (total > 0) options.onProgress?.(0, total, "reading");
+  let read = 0;
+  const noteRead = (): void => {
+    read++;
+    options.onProgress?.(read, total, "reading");
+  };
+  for (const file of files) {
+    if (!isFontCollection(file.buffer)) {
+      try {
+        plans.push({
+          buffer: file.buffer,
+          fileName: file.fileName,
+          path: file.path,
+          // Names + style only here — the coverage enumeration is the
+          // expensive half and only the representatives need it (below).
+          meta: parseFontMeta(file.buffer, { coverage: false }),
+        });
+      } catch (err) {
+        failures.push(`无法加载 ${file.fileName}：${reason(err)}`);
+      }
+      noteRead();
+      await yieldBetweenFaces();
       continue;
     }
+    let offsets: number[];
     try {
-      plans.push({
-        buffer: entry.buffer,
-        fileName: entry.fileName,
-        path: entry.path,
-        // Names + style only here — the coverage enumeration is the
-        // expensive half and only the representatives need it (below).
-        meta: parseFontMeta(entry.buffer, { coverage: false }),
-      });
+      offsets = collectionFaceOffsets(file.buffer);
     } catch (err) {
-      failures.push(`无法加载 ${entry.fileName}：${reason(err)}`);
+      failures.push(
+        `无法加载 ${file.fileName}：${reason(err) ?? "不是有效的字体文件"}`,
+      );
+      noteRead();
+      await yieldBetweenFaces();
+      continue;
     }
-    await yieldBetweenFaces();
+    for (let i = 0; i < offsets.length; i++) {
+      const fileName = `${file.fileName}#${i + 1}`;
+      try {
+        const face = extractFaceAtOffset(file.buffer, offsets[i]!);
+        plans.push({
+          buffer: face.buffer,
+          fileName,
+          path: file.path,
+          meta: parseFontMeta(face.buffer, { coverage: false }),
+        });
+      } catch (err) {
+        failures.push(`无法加载 ${fileName}：${reason(err)}`);
+      }
+      noteRead();
+      await yieldBetweenFaces();
+    }
   }
-  const total = plans.length;
-  if (total > 0) options.onProgress?.(0, total);
+
   const glyphs = plans.reduce((sum, plan) => sum + plan.meta.numGlyphs, 0);
 
   // Families in first-appearance order; within a family the
@@ -247,6 +308,7 @@ export async function registerLocalFontFiles(
   let representative: LoadedFont | null = null;
   let faces = 0;
   let loaded = 0;
+  if (total > 0) options.onProgress?.(0, total, "registering");
   for (const [family, group] of families) {
     const rep =
       group.find((p) => p.meta.weight === 400 && !p.meta.italic) ?? group[0]!;
@@ -257,6 +319,10 @@ export async function registerLocalFontFiles(
     // the family's PICK even when every face was already registered
     // (an idempotent re-load still selects the family).
     let repRecord = store.get().fonts.find((f) => f.cssFamily === family);
+    // The family's sibling data-only records land in ONE store patch
+    // (round 23): a 16-face collection otherwise rebuilds every store
+    // subscriber fifteen times in a row.
+    const siblings: LoadedFont[] = [];
     for (const plan of ordered) {
       if (
         store
@@ -296,27 +362,25 @@ export async function registerLocalFontFiles(
             ),
           );
           faces++;
-          store.set({
-            fonts: [
-              ...store.get().fonts,
-              {
-                cssFamily: family,
-                family,
-                names: plan.meta.names,
-                fileName: plan.fileName,
-                origin: "local",
-                path: plan.path,
-                codepoints: [],
-              } satisfies LoadedFont,
-            ],
-          });
+          siblings.push({
+            cssFamily: family,
+            family,
+            names: plan.meta.names,
+            fileName: plan.fileName,
+            origin: "local",
+            path: plan.path,
+            codepoints: [],
+          } satisfies LoadedFont);
         }
       } catch (err) {
         failures.push(`无法加载 ${plan.fileName}：${reason(err)}`);
       }
       loaded++;
-      options.onProgress?.(loaded, total);
+      options.onProgress?.(loaded, total, "registering");
       await yieldBetweenFaces();
+    }
+    if (siblings.length > 0) {
+      store.set({ fonts: [...store.get().fonts, ...siblings] });
     }
     // The first family that has a record — fresh or from an earlier
     // load — is the pick.
