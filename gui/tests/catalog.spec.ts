@@ -628,21 +628,20 @@ test.describe("first-run catalog download", () => {
     ).toContainText("32.0k");
   });
 
-  test("variant chips: one WenKai row, per-cut chips with the data's own labels", async ({
+  test("variant chips: one WenKai row, per-cut chips with the fonts' own names", async ({
     page,
   }) => {
-    // Round 8 (owner items 6+7); round 9 (owner item 2) labels.
+    // Round 8 (owner items 6+7); round 23 (owner item 1) labels.
     // WenKai's six manifest families (kai × mono × screen × GB,
     // separate upstream repos) collapse onto ONE row whose chips are
     // its CUTS. The WEIGHT axis is deleted everywhere (Light/Medium/
-    // Regular collapse into one cut); the labels are the data's OWN
-    // words — a REGISTERED cut reads its name-table name after the
-    // family's shared base, an unfetched cut the manifest variant or
-    // the release artifact's own suffix (never a hand-built or
-    // translated token). The default cut reads 标准 with NO 默认
-    // marker and NO dashed ring; an unfetched member family's chip
-    // greys out with the 未下载 tag. The sim serves the plain and
-    // Screen cuts only.
+    // Regular collapse into one cut); the labels are the fonts' OWN
+    // names — a REGISTERED cut reads its name-table display name
+    // verbatim (the default cut included, no 标准/别名 token), an
+    // unfetched cut the release artifact's own stem. The default cut
+    // renders PLAIN with NO 默认 marker and NO dashed ring; an
+    // unfetched member family's chip greys out with the 未下载 tag.
+    // The sim serves the plain and Screen cuts only.
     const nameA = await parsedDisplayName(FONT_A);
     const nameB = await parsedDisplayName(FONT_B);
     const sim = await SimCatalog.create([
@@ -693,24 +692,26 @@ test.describe("first-run catalog download", () => {
     for (const id of ["LXGWWenKai::Regular", "LXGWWenKaiMono::Regular"]) {
       await expect(chip(id)).toBeVisible();
     }
-    // The default cut: 标准, PLAIN (no 默认 marker, no dashed ring,
-    // never a pressed look).
+    // The default cut: the registered face's OWN name, PLAIN (no 默认
+    // marker, no dashed ring, never a pressed look). The member family
+    // is single-cut, so its bare registration carries the chip's name.
     const base = chip("LXGWWenKai::Regular");
-    await expect(base).toHaveText(/^标准/);
+    await expect(base).toHaveText(nameA);
     await expect(base).not.toContainText("默认");
     await expect(base).not.toHaveClass(/def|on/);
-    // The unfetched mono cut reads the release artifact's own suffix.
-    await expect(chip("LXGWWenKaiMono::Regular")).toHaveText(/^Mono/);
+    // The unfetched mono cut keeps its release artifact's own stem.
+    await expect(chip("LXGWWenKaiMono::Regular")).toHaveText(
+      /^LXGWWenKaiMono-Regular/,
+    );
     // Un-fetched members render the 未下载 tag inline, never hidden.
     const mono = chip("LXGWWenKaiMono::Regular");
     await expect(mono).toHaveClass(/off/);
     await expect(mono).toHaveAttribute("aria-disabled", "true");
     await expect(mono).toContainText("未下载");
     // The fetched Screen cut is enabled and neutral; its label is its
-    // registered face's OWN name-table words after the family's shared
-    // base — with the sim's host font standing in for the real Screen
-    // face, that is FONT_B's own display name (标准 is the default;
-    // nothing is picked yet).
+    // registered face's OWN name-table display name — with the sim's
+    // host font standing in for the real Screen face, that is FONT_B's
+    // own display name (nothing is picked yet).
     const screen = chip("LXGWWenKaiScreen::Regular");
     await expect(screen).toHaveText(nameB);
     await expect(screen).not.toHaveClass(/off/);
@@ -740,23 +741,27 @@ test.describe("first-run catalog download", () => {
     ).not.toHaveClass(/on/);
     await expect(cjkPopup).toBeVisible();
 
-    // A multi-cut single family (yuru7's UDEVGothic: Standard + NF)
-    // renders 标准 / NF. The 未下载 state is FAMILY-level (the release
-    // carries a family's whole variant set), so a verified family's
-    // cuts are all pickable — the WenKai row above pins the un-fetched
-    // member families' 未下载 tags. UDEVGothic's registered face is
-    // also FONT_A, so its row is the OTHER nameA row.
+    // A multi-cut single family (yuru7's UDEVGothic: Standard + NF):
+    // the verified Standard cut reads the registered face's own name;
+    // the NF cut has no matching stored file in the sim, so it keeps
+    // its release artifact's own stem — a multi-cut family's bare
+    // registration must never paint the Standard face's name onto the
+    // NF chip. The 未下载 state is FAMILY-level (the release carries a
+    // family's whole variant set), so a verified family's cuts are all
+    // pickable — the WenKai row above pins the un-fetched member
+    // families' 未下载 tags. UDEVGothic's registered face is also
+    // FONT_A, so its row is the OTHER nameA row.
     const udev = cjkPopup
       .locator(".kit-fp", { hasText: nameA })
       .filter({ has: page.locator(".kit-vchip[data-chip='UDEVGothic::NF']") });
     await expect(udev).toHaveCount(1);
     await expect(udev.locator(".kit-vchip")).toHaveCount(2);
     const udevNf = udev.locator(".kit-vchip[data-chip='UDEVGothic::NF']");
-    await expect(udevNf).toHaveText(/^NF$/);
+    await expect(udevNf).toHaveText("UDEVGothic_NF");
     await expect(udevNf).not.toHaveClass(/off|on/);
     await expect(
       udev.locator(".kit-vchip[data-chip='UDEVGothic::Standard']"),
-    ).toHaveText(/^标准$/);
+    ).toHaveText(nameA);
   });
 
   test("a variable face lists under its typographic family (nameID16) and search reaches every cut's own name", async ({

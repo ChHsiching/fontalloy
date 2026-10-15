@@ -57,12 +57,17 @@ function cutWords(file: string, family: string): string {
  * file when no file matches — a one-cut family serves all its faces
  * whatever its variant word happens to contain.
  */
-export function variantFaceFiles(
-  files: ReadonlyArray<{ file: string }>,
-  variant: string | null,
+/**
+ * Whether ONE face file belongs to the variant's cut (round 23: the
+ * per-file predicate, exported so callers can ask "does this variant
+ * have ANY face here?" — `variantFaceFiles` falls back to every file
+ * when nothing matches, which must never read as a genuine match).
+ */
+export function faceMatchesVariant(
+  file: { file: string },
+  variant: string,
   family = "",
-): ReadonlyArray<{ file: string }> {
-  if (variant === null || files.length <= 1) return files;
+): boolean {
   const v = variant.toLowerCase();
   const wantsNf = /nf|nerd ?font/.test(v);
   const wantsCn = v.includes("cn");
@@ -73,22 +78,29 @@ export function variantFaceFiles(
   const wantsTc = v.includes("tc");
   const wantsScreen = v.includes("screen");
   const wantsPlus = v.includes("plus");
-  const matches = files.filter((f) => {
-    const n = cutWords(f.file, family);
-    return (
-      wantsNf === /nerd ?font|nf/.test(n) &&
-      wantsCn === n.includes("cn") &&
-      wantsHw === n.includes("hw") &&
-      wantsMono === n.includes("mono") &&
-      wantsVariable === /\[|vf|wght/.test(n) &&
-      wantsGb === n.includes("gb") &&
-      wantsTc === n.includes("tc") &&
-      wantsScreen === n.includes("screen") &&
-      wantsPlus === n.includes("plus") &&
-      (!v.includes("light") || n.includes("light")) &&
-      (!v.includes("medium") || n.includes("medium"))
-    );
-  });
+  const n = cutWords(file.file, family);
+  return (
+    wantsNf === /nerd ?font|nf/.test(n) &&
+    wantsCn === n.includes("cn") &&
+    wantsHw === n.includes("hw") &&
+    wantsMono === n.includes("mono") &&
+    wantsVariable === /\[|vf|wght/.test(n) &&
+    wantsGb === n.includes("gb") &&
+    wantsTc === n.includes("tc") &&
+    wantsScreen === n.includes("screen") &&
+    wantsPlus === n.includes("plus") &&
+    (!v.includes("light") || n.includes("light")) &&
+    (!v.includes("medium") || n.includes("medium"))
+  );
+}
+
+export function variantFaceFiles(
+  files: ReadonlyArray<{ file: string }>,
+  variant: string | null,
+  family = "",
+): ReadonlyArray<{ file: string }> {
+  if (variant === null || files.length <= 1) return files;
+  const matches = files.filter((f) => faceMatchesVariant(f, variant, family));
   return matches.length > 0 ? matches : files;
 }
 

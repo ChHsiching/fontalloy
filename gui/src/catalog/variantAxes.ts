@@ -4,13 +4,12 @@
  * manifest actually pins (Maple NF / NF-CN, Noto Sans SC HW / Mono /
  * Variable, the WenKai group's kai × mono × screen × GB members).
  *
- * Round 9 (owner item 2): chip LABELS are the data's own words — the
- * registered cut's name-table name after the family's shared base
- * (「Maple Mono NF CN」 vs 「Maple Mono NF」 → CN), else the manifest's
- * variant word (NF / NF-CN / GB / Plus …), else the release asset's own
- * suffix (LXGWWenKaiScreen → Screen). No translated or hand-built
- * tokens — 屏幕版-style labels are gone; the author's spelling (Screen)
- * ships instead.
+ * Round 23 (owner item 1): chip LABELS are the font's OWN names — the
+ * registered cut's full name-table display string, verbatim, the
+ * default cut included. No alias token (标准/HW/Mono-style words are
+ * gone), no shared-base subtraction: the chip reads what the font
+ * itself is called. A cut whose face is not registered yet falls back
+ * to the release artifact's own stem.
  *
  * Round-8 rulings baked in (owner items 6+7):
  *
@@ -122,9 +121,9 @@ export interface VariantCut {
   /** Stable id: `${family}::${variant}` of the canonical entry. */
   id: string;
   /**
-   * The data's own label (round 9): the manifest's variant word when it
-   * names the cut, else the release asset's own suffix, else 标准. Live
-   * name-table refinement happens in `cutLabels` at render time.
+   * The data's own label (round 23): the release artifact's stem,
+   * shown until the cut's face is registered — `cutLabels` then
+   * refines every chip to the font's own name-table display name.
    */
   label: string;
   /** The exact manifest entry picking this cut resolves to. */
@@ -172,62 +171,35 @@ function effectiveAxis(entry: CatalogEntryLike, axis: AxisId): AxisValue | undef
 }
 
 /**
- * Variant strings that NAME the cut officially (used verbatim as the
- * chip label). Weight names and the unmodified-cut names (Regular,
- * Standard, Nerd Font) do not — the cut then derives its label from
- * the contrasting axes.
- */
-function isOfficialCutName(variant: string): boolean {
-  return (
-    variant !== "" &&
-    !WEIGHT_NAMES.has(variant) &&
-    variant !== "Standard" &&
-    variant !== "Nerd Font"
-  );
-}
-
-/** The words the release ASSET itself uses after the family prefix. */
-function assetSuffixWords(file: string, groupId: string): string {
-  const stem = file.replace(/\.[^.]+$/, "");
-  const rest =
-    groupId.length > 0 && stem.toLowerCase().startsWith(groupId.toLowerCase())
-      ? stem.slice(groupId.length)
-      : stem;
-  return rest.replace(/^[-_.]+/, "").replace(/[-_](?=[^-_]*$)/, " ").trim();
-}
-
-/**
- * The cut's DATA label (round 9, owner item 2): the manifest variant's
- * own word when it names the cut, else the release asset's own suffix
- * (LXGWWenKaiScreen after LXGWWenKai → Screen). 标准 when the data
- * names nothing distinguishing (the row default always reads 标准).
+ * The cut's DATA label (round 23, owner item 1): the release artifact's
+ * OWN stem — the manifest entry's file name without its extension and
+ * the catalog's leading index numbering (`14_SourceHanSansHWSC.zip` →
+ * `SourceHanSansHWSC`). Never a translated token and never an invented
+ * word: it is the data's own name for the release, shown only until
+ * the cut's face is registered and its name-table name takes over
+ * (see `cutLabels`).
  */
 export function dataCutLabel(
   entry: CatalogEntryLike,
   def: boolean,
   groupId: string,
 ): string {
-  if (def) return "标准";
-  if (isOfficialCutName(entry.variant)) return entry.variant;
-  const suffix = assetSuffixWords(entry.file, groupId);
-  return suffix || "标准";
-}
-
-/** Words of `name` after the word prefix it shares with `base`. */
-function suffixWords(name: string, base: string): string {
-  const a = name.split(/\s+/);
-  const b = base.split(/\s+/);
-  let i = 0;
-  while (i < a.length && i < b.length && a[i] === b[i]) i++;
-  return a.slice(i).join(" ");
+  void def;
+  void groupId;
+  const stem = entry.file
+    .replace(/\.[^.]+$/, "")
+    .replace(/^\d+_/, "")
+    .replace(/[-_]v?\d+(\.\d+)+([-_].*)?$/, "");
+  return stem || entry.variant;
 }
 
 /**
- * The chip labels of one display family (round 9, owner item 2): each
- * cut in the AUTHOR'S OWN words — the registered cut's name-table
- * display after the words it shares with the default cut's registered
- * name — falling back to the data label when either side is not
- * registered yet. The default cut always reads 标准.
+ * The chip labels of one display family (round 23, owner item 1): each
+ * cut in its OWN registered name — the cut's full name-table display
+ * string, verbatim, the default cut included. No shared-base
+ * subtraction, no alias token: the chip reads what the font itself is
+ * called. A cut whose face is not registered yet falls back to the
+ * release artifact's own stem (`dataCutLabel`).
  *
  * `nameOf` returns the registered font's name-table display string for
  * a cut whose face is registered, undefined otherwise.
@@ -237,20 +209,9 @@ export function cutLabels(
   groupId: string,
   nameOf: (cut: VariantCut) => string | undefined,
 ): Map<string, string> {
-  const def = cuts.find((cut) => cut.def) ?? cuts[0];
-  const defName = def !== undefined ? nameOf(def) : undefined;
   const out = new Map<string, string>();
   for (const cut of cuts) {
-    if (cut.def) {
-      out.set(cut.id, "标准");
-      continue;
-    }
-    const live = nameOf(cut);
-    const suffix =
-      live !== undefined && defName !== undefined
-        ? suffixWords(live, defName)
-        : "";
-    out.set(cut.id, suffix || dataCutLabel(cut.entry, cut.def, groupId));
+    out.set(cut.id, nameOf(cut) ?? dataCutLabel(cut.entry, cut.def, groupId));
   }
   return out;
 }
@@ -339,11 +300,11 @@ function computeVariantCuts(family: DisplayFamily): VariantCut[] {
 }
 
 /**
- * The picker-level variant help (round 8 final form; round 9 words):
- * what a variant IS, one sentence, plus one row per word the chips can
- * carry — the data's own vocabulary (the author's words and the
- * manifest's variant strings), with plain-word meanings. No weight row
- * (the axis is not a chip).
+ * The picker-level variant help (round 8 final form; round 23 words):
+ * what a variant IS, one sentence, plus one row per word that appears
+ * INSIDE the cuts' own names (NF, Mono, HW … are the releases' own
+ * vocabulary — the table decodes them, the chips no longer use them as
+ * labels). No weight row (the axis is not a chip).
  */
 export const TOKEN_HELP_ROWS: ReadonlyArray<readonly [string, string]> = [
   ["NF / NL", "内置 Nerd Font 图标 / 无连字的版本"],
@@ -351,5 +312,4 @@ export const TOKEN_HELP_ROWS: ReadonlyArray<readonly [string, string]> = [
   ["SC / TC / JP", "收录简体、繁体或日文地区字形"],
   ["Screen", "为屏幕显示优化的版本"],
   ["GB / Lite", "收录字库的范围"],
-  ["标准", "家族默认版本（无标注）"],
 ];

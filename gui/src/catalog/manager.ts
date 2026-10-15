@@ -8,8 +8,22 @@ import { parseFontMeta } from "../fonts/sfnt";
 import type { LoadedFont } from "../state";
 import type { BlobStorage } from "../platform/storage";
 import { parseCatalogRelease, type CatalogRelease, type ReleaseFamily, type ReleaseOrigin } from "./release";
-import { pickVariantRepresentative, variantFaceFiles } from "./faceSet";
+import {
+  faceMatchesVariant,
+  pickVariantRepresentative,
+  variantFaceFiles,
+} from "./faceSet";
+import { familyEntries, variantCuts } from "./variantAxes";
 import { unzip } from "./zip";
+import curatedMeta from "../data/curated-meta.json";
+
+/** How many families the boot sweep registers between store flushes. */
+const SWEEP_FLUSH_WAVE = 8;
+
+/** The curated front per picker role: these families register FIRST. */
+const CURATED_FRONT = (curatedMeta as {
+  front: { en: string[]; cjk: string[] };
+}).front;
 
 export interface CatalogManagerDeps {
   storage: BlobStorage;
@@ -229,16 +243,82 @@ export class CatalogManager {
    * rebuild every picker row over and over for identical-looking
    * intermediate states).
    */
+  /**
+   * Register every verified family's faces as lazy FontFaces.
+   *
+   * Round 23 (owner items 1+6): the sweep runs in WAVES — the
+   * curated-front families FIRST (they are the rows the open picker
+   * shows), the rest in release order, flushing the accumulated
+   * registrations every {@link SWEEP_FLUSH_WAVE} families so rows
+   * refine from artifact stems to the fonts' own names progressively
+   * instead of one late cliff at the very end (a full cold catalog
+   * kept EVERY row on its stem for the whole sweep before). The
+   * progress is observable: `data-catalog-sweep` on <html> reads
+   * "running"/"done" (the e2e suite waits on it; a fresh boot paints
+   * real names within the first wave).
+   */
   private async registerVerified(release: CatalogRelease): Promise<void> {
-    for (const family of release.families) {
+    const front = new Set([
+      ...CURATED_FRONT.en,
+      ...CURATED_FRONT.cjk,
+    ]);
+    const ordered = [...release.families].sort(
+      (a, b) =>
+        (front.has(b.family) ? 1 : 0) - (front.has(a.family) ? 1 : 0),
+    );
+    const sweep =
+      typeof document !== "undefined" ? document.documentElement : null;
+    sweep?.setAttribute("data-catalog-sweep", "running");
+    let sinceFlush = 0;
+    for (const family of ordered) {
       const entry = store
         .get()
         .catalog.families.find((f) => f.family === family.family);
       if (!entry || entry.status !== "verified") continue;
       await this.ensureRegistered(family, { silent: true });
+      // Round 23 (owner item 1): a multi-entry manifest family registers
+      // every CUT's representative too — the picker's chips then read
+      // the cuts' own name-table names straight away, without a click
+      // to register them first. Weight-collapsed families count as
+      // well: a group row (the WenKai collapse) shows the member's one
+      // canonical cut as a chip, so its exact `family::variant` key
+      // must exist. The cost mirrors the sweep's own (one storage read
+      // + names-only parse per cut); single-entry families need
+      // nothing here (the bare registration above already carries
+      // them), and a cut whose variant word matches none of the
+      // family's stored files is skipped — never silently registered
+      // onto another cut's face.
+      const manifestEntries = familyEntries(family.family);
+      if (manifestEntries.length > 1) {
+        const cuts = variantCuts({
+          id: family.family,
+          families: [family.family],
+          entries: manifestEntries,
+        });
+        for (const cut of cuts) {
+          if (
+            !family.files.some((file) =>
+              faceMatchesVariant(file, cut.entry.variant, family.family),
+            )
+          ) {
+            continue;
+          }
+          await this.ensureRegistered(family, {
+            silent: true,
+            variant: cut.entry.variant,
+          });
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
+      }
+      sinceFlush++;
+      if (sinceFlush >= SWEEP_FLUSH_WAVE) {
+        this.flushPendingRegistrations();
+        sinceFlush = 0;
+      }
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
     this.flushPendingRegistrations();
+    sweep?.setAttribute("data-catalog-sweep", "done");
   }
 
   /** The sweep's deferred state (see registerVerified), applied at once. */
