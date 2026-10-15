@@ -270,13 +270,18 @@ async fn prepare_save(
 /// file name saves over whatever the previous build of that name left.
 #[tauri::command]
 async fn default_output_dir(app: AppHandle) -> Result<String, String> {
+    // Round 22 (owner item 1): synthesized fonts are the USER's work —
+    // they must never live inside the app-data directory, because the
+    // NSIS uninstall hook deletes that whole directory with the app
+    // (the downloaded catalog is ours and goes; the user's fonts do
+    // not). Downloads first, Documents as the fallback.
     let dir = match app.path().download_dir() {
         Ok(downloads) => downloads.join("fontalloy"),
         Err(_) => app
             .path()
-            .app_data_dir()
+            .document_dir()
             .map_err(|err| format!("无法定位输出目录: {err}"))?
-            .join("fonts"),
+            .join("fontalloy"),
     };
     std::fs::create_dir_all(&dir)
         .map_err(|err| format!("无法创建输出目录 {}: {err}", dir.display()))?;
