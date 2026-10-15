@@ -1029,13 +1029,14 @@
   height: 13px;
 }
 
-/* The typed-path fallback (round 20; round 21 redesign): content-sized
- * at rest so the SHORT placeholder never clips, expanding along the
- * row's axis on focus (width transition); the full value rides the
- * field's title tooltip. Shrinkable, so the row never overflows. */
+/* The typed-path fallback (round 20; round 21 redesign; round 22 fix):
+ * a FIXED width that shows the short placeholder 「或输入路径」 in full
+ * and NEVER grows on focus — the focus expansion pushed the field's
+ * right edge past the popup's visible row. The full value rides the
+ * field's title tooltip. */
 .kit-fppath {
-  flex: 0 1 auto;
-  width: 78px;
+  flex: 0 0 auto;
+  width: 96px;
   height: 24px;
   padding: 0 8px;
   border: 1px solid var(--ln);
@@ -1043,13 +1044,11 @@
   background: var(--sf2);
   color: var(--ink2);
   font-size: 11px;
-  transition: width 0.16s ease-out;
 }
 
 .kit-fppath:focus {
   outline: none;
   border-color: var(--ac);
-  width: 150px;
 }
 
 /* The inline load indicator (round 21, owner item 2): rides the

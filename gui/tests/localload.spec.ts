@@ -551,13 +551,14 @@ test.describe("round 20: local loading", () => {
     );
   });
 
-  test("the path input's placeholder stays whole and the field expands on focus", async ({
+  test("the path input's placeholder stays whole and the field never grows on focus", async ({
     page,
   }) => {
-    // Round 21, owner item 3: the footer's typed-path fallback is
-    // redesigned inside its own row — a SHORT placeholder that never
-    // clips (the field is content-sized at rest), a focus expansion
-    // along the row's axis, the full value as the title tooltip. Enter
+    // Round 21, owner item 3; round 22 fix: the footer's typed-path
+    // fallback is a FIXED-width field — the short placeholder never
+    // clips at rest, and focusing must NOT change its width (the
+    // round-21 focus expansion pushed the field's right edge past the
+    // visible row). The full value rides the title tooltip; Enter
     // still commits (the round-20 path test above pins that).
     await page.addInitScript(() => {
       (window as unknown as { __FONTALLOY_CONFIG__: Record<string, unknown> })
@@ -585,11 +586,13 @@ test.describe("round 20: local loading", () => {
     const rest = await geometry();
     expect(rest.scrollWidth).toBeLessThanOrEqual(rest.clientWidth + 1);
 
-    // Focus expands the field along the footer row's axis.
+    // Focus keeps the field's geometry EXACTLY (round 22: the field
+    // lives inside the popup's footer row — any growth overflows the
+    // visible row to the right).
     await pathInput.focus();
     await expect
       .poll(async () => (await geometry()).width)
-      .toBeGreaterThan(rest.width + 15);
+      .toBe(rest.width);
 
     // The full value rides the title tooltip, verbatim.
     const longPath = "C:\\Users\\owner\\Downloads\\NotoSansSC[wght].ttf";
