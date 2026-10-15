@@ -11,6 +11,8 @@
  * them — state only, per the seam-3 zero-JS-errors policy).
  */
 
+import type { SystemFaceDoc } from "./systemfonts";
+
 /** `GET /health` — the connection probe. */
 export interface HealthDocument {
   service: string;
@@ -213,6 +215,25 @@ export class ServeClient {
   /** The manifest's families (`/catalog`); an empty list without one. */
   catalog(): Promise<CatalogDocument> {
     return this.getJson<CatalogDocument>("/catalog");
+  }
+
+  /** The installed system fonts (`/system-fonts`, round 24). */
+  systemFonts(): Promise<{ dirs: string[]; faces: SystemFaceDoc[] }> {
+    return this.getJson("/system-fonts");
+  }
+
+  /** One scanned system font file's bytes (round 24). */
+  async systemFontBytes(path: string): Promise<ArrayBuffer> {
+    let res: Response;
+    try {
+      res = await fetch(
+        `${this.baseUrl}/system-fonts/file?path=${encodeURIComponent(path)}`,
+      );
+    } catch {
+      throw new ServeError("无法读取系统字体文件。", 0);
+    }
+    if (!res.ok) throw new ServeError(await parseError(res), res.status);
+    return res.arrayBuffer();
   }
 
   build(id: string): Promise<BuildDocument> {

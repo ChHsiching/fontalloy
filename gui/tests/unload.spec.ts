@@ -108,6 +108,16 @@ async function installFakeService(page: Page): Promise<void> {
         body: JSON.stringify({ families: [] }),
       });
     }
+    // Round 24: the system-font enumeration answers empty (this fake
+    // serves no installed fonts) — a 404 here would log a console
+    // error and trip the zero-JS-errors gate.
+    if (path === "/system-fonts") {
+      return route.fulfill({
+        status: 200,
+        headers: { ...cors, "content-type": "application/json" },
+        body: JSON.stringify({ dirs: [], faces: [] }),
+      });
+    }
     return route.fulfill({ status: 404, headers: cors, body: "not found" });
   });
   // After injectCatalogConfig (which ASSIGNS the config object): add

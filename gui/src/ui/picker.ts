@@ -30,6 +30,11 @@ import {
 } from "../platform/localfonts";
 import { readConfig } from "../platform/config";
 import {
+  registerSystemFamily,
+  systemFamilies,
+} from "../service/systemfonts";
+import { synthStore } from "../service/state";
+import {
   cssFamily,
   mountPickerPopup,
   type PickerChip,
@@ -451,6 +456,29 @@ export function mountPicker(
   };
 
   /**
+   * Round 24 (owner item 3): pick an installed system family. The
+   * service serves the scanned file's bytes; registration follows the
+   * local-load path (a collection contributes every extracted face,
+   * representative first). A failure keeps the picker open with the
+   * error line.
+   */
+  const selectSystemFamily = async (familyName: string): Promise<void> => {
+    const client = synthStore.get().service.client;
+    const family = systemFamilies().find((f) => f.family === familyName);
+    if (!client || !family) return;
+    const cssKey = await registerSystemFamily(client, family);
+    if (!cssKey) {
+      error = `无法载入系统字体 ${familyName}：文件无法读取。`;
+      rerender();
+      return;
+    }
+    await document.fonts.load(`16px ${cssFamily(cssKey)}`);
+    store.set({
+      selected: { ...store.get().selected, [options.role]: cssKey },
+    });
+  };
+
+  /**
    * Plain pick of a release family the manifest mirror does not carry
    * (the e2e fixtures' invented families, the dev extras): the release
    * document's own variant rides the catalog identity.
@@ -676,7 +704,13 @@ export function mountPicker(
     // prototype's local picks.
     const seen = new Set<string>();
     for (const font of fonts) {
-      if (seen.has(font.cssFamily) || font.origin === "catalog") continue;
+      if (
+        seen.has(font.cssFamily) ||
+        font.origin === "catalog" ||
+        font.origin === "system"
+      ) {
+        continue;
+      }
       seen.add(font.cssFamily);
       rows.push({
         id: font.cssFamily,
@@ -685,6 +719,36 @@ export function mountPicker(
         // Every row renders its family name in its own font (ADR-0004).
         family: font.cssFamily,
         meta: { trait: "本地字体文件" },
+      });
+    }
+
+    // Round 24 (owner item 3): the installed system fonts, listed
+    // under their OWN coverage — a Latin-covering family in the EN
+    // slot, a CJK-covering family in the CJK slot, BOTH when a family
+    // covers both (微软雅黑's Chinese is a legitimate standalone
+    // pick). A family another source already registered under the
+    // same name-table family keeps that row — never a duplicate.
+    const takenByOtherSources = new Set(
+      fonts
+        .filter((f) => f.origin !== "system")
+        .map((f) => f.cssFamily),
+    );
+    for (const family of systemFamilies()) {
+      if (options.role === "cjk" ? !family.cjk : !family.latin) continue;
+      const registered = fonts.find((f) => f.cssFamily === family.family);
+      if (registered !== undefined && takenByOtherSources.has(family.family)) {
+        continue;
+      }
+      rows.push({
+        id: family.family,
+        name: registered ? fontDisplayName(registered) : family.family,
+        // Self-render once a pick has loaded the face (ADR-0004).
+        family: registered ? registered.cssFamily : undefined,
+        meta: { trait: "系统字体" },
+        keywords: [
+          family.family,
+          ...family.faces.map((face) => face.subfamily),
+        ].join(" "),
       });
     }
 
@@ -766,6 +830,16 @@ export function mountPicker(
           if (cut) void selectCatalogEntry(cut.entry);
           return;
         }
+        // Round 24: an installed system family that nobody picked
+        // yet has no registry record — load it (the service serves the
+        // scanned file's bytes) and select what registers.
+        if (
+          !fonts.some((f) => f.cssFamily === id) &&
+          systemFamilies().some((f) => f.family === id)
+        ) {
+          void selectSystemFamily(id);
+          return;
+        }
         store.set({
           selected: { ...store.get().selected, [options.role]: id },
         });
@@ -827,8 +901,12 @@ export function mountPicker(
     popup.render(buildProps());
   }
   store.subscribe(rerender);
+  // Round 24: the system-font enumeration lands on the SERVICE state —
+  // the rows join when it does.
+  synthStore.subscribe(rerender);
   // Live star counts landing after startup re-render the rows in place.
   const unsubscribeStars = subscribeStars(rerender);
+  const unsubscribeSynth = synthStore.subscribe(rerender);
   rerender();
 
   return {
@@ -840,6 +918,7 @@ export function mountPicker(
     destroy: () => {
       localFlows.delete(options.role);
       unsubscribeStars();
+      unsubscribeSynth();
     },
   };
 }

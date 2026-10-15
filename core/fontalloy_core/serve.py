@@ -88,6 +88,7 @@ from fontalloy_core.load import (
     scan_families,
 )
 from fontalloy_core.recipe import Recipe, parse_recipe
+from fontalloy_core.systemfonts import SystemFace, scan_system_fonts, system_font_dirs
 from fontalloy_core.report import file_sha256
 
 #: The interface the service binds — and the only one it ever binds.
@@ -136,6 +137,11 @@ class ServeOptions:
     font_dirs: tuple[Path, ...] = ()
     work_dir: Path | None = None
     keep_builds: int = 10
+    # Round 24 (owner item 3): the system font directories to enumerate
+    # (None = the platform's standard set). The serve CLI flag of the
+    # same name is also the e2e seam — a fixture directory stands in
+    # for C:\Windows\Fonts.
+    system_font_dirs: tuple[Path, ...] | None = None
 
 
 class _BuildAborted(Exception):
@@ -248,6 +254,12 @@ class ServeState:
         self.build_root = created_root
         self._owns_root = options.work_dir is None
         self._created_dirs: set[Path] = set()
+        self._system_faces: list[SystemFace] | None = None
+        self._system_dirs = tuple(
+            options.system_font_dirs
+            if options.system_font_dirs is not None
+            else system_font_dirs()
+        )
 
     # -- startup -----------------------------------------------------------
 
@@ -466,6 +478,51 @@ class ServeState:
             else None,
             "families": families,
         }
+
+    def system_faces(self) -> list[SystemFace]:
+        """The installed system faces, scanned once per process.
+
+        The first call walks the platform's font directories (seconds
+        on a full install); every later call answers from the cache.
+        The GUI asks once at connect and never blocks on it.
+        """
+        if self._system_faces is None:
+            self._system_faces = scan_system_fonts(self._system_dirs)
+        return self._system_faces
+
+    def system_fonts_document(self) -> dict[str, Any]:
+        dirs = [str(directory) for directory in self._system_dirs]
+        faces = [
+            {
+                "path": str(face.path),
+                "file": face.file,
+                "face": face.face,
+                "family": face.family,
+                "subfamily": face.subfamily,
+                "weight": face.weight,
+                "italic": face.italic,
+                "latin": face.latin,
+                "cjk": face.cjk,
+            }
+            for face in self.system_faces()
+        ]
+        return {"dirs": dirs, "faces": faces}
+
+    def system_font_bytes(self, path: str) -> bytes | None:
+        """One scanned system font FILE's bytes (collections whole).
+
+        Only paths the scan itself produced are served — the endpoint
+        is a byte source for faces the GUI picked, never a general
+        file reader.
+        """
+        wanted = Path(path)
+        for face in self.system_faces():
+            if face.path == wanted:
+                try:
+                    return wanted.read_bytes()
+                except OSError:
+                    return None
+        return None
 
     def fonts_document(self) -> dict[str, Any]:
         """The configured local directories, scanned into families.
@@ -718,6 +775,33 @@ class _ServeHandler(BaseHTTPRequestHandler):
         elif path == "/fonts":
             self._require_methods(method, ("GET",))
             self._send_json(state.fonts_document())
+        elif path == "/system-fonts":
+            self._require_methods(method, ("GET",))
+            self._send_json(state.system_fonts_document())
+        elif path == "/system-fonts/file":
+            self._require_methods(method, ("GET",))
+            target = (
+                urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+                .get("path", [None])[0]
+            )
+            if target is None:
+                self._send_error(400, "the file endpoint needs ?path=")
+                return
+            with self.state.lock:
+                payload = self.state.system_font_bytes(target)
+            if payload is None:
+                self._send_error(404, f"not a scanned system font: {target}")
+                return
+            self._send(
+                200,
+                payload,
+                "application/octet-stream",
+                extra_headers={
+                    "Content-Disposition": 'attachment; filename="'
+                    + Path(target).name.replace('"', "")
+                    + '"'
+                },
+            )
         elif path == "/builds":
             self._require_methods(method, ("GET", "POST"))
             if method == "POST":

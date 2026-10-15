@@ -138,6 +138,56 @@ export async function generateFamily(
 }
 
 /**
+ * Generate the round-24 system-font fixtures into `outdir` (no
+ * service): three single-face families with controlled coverage —
+ * Latin only, CJK only, and BOTH (the owner's 微软雅黑 rule: a face
+ * covering both sides lists in both pickers).
+ */
+export async function generateSystemFonts(outdir: string): Promise<void> {
+  const script = `import sys
+from pathlib import Path
+from fontTools.fontBuilder import FontBuilder
+from fontTools.pens.ttGlyphPen import TTGlyphPen
+
+def box(x0, y0, x1, y1):
+    pen = TTGlyphPen(None)
+    pen.moveTo((x0, y0)); pen.lineTo((x1, y0)); pen.lineTo((x1, y1)); pen.lineTo((x0, y1)); pen.closePath()
+    return pen.glyph()
+
+def build(path, family, codepoints):
+    glyphs = {".notdef": box(0, 0, 500, 700)}
+    metrics = {".notdef": (600, 40)}
+    for cp in codepoints:
+        name = "uni%04X" % cp
+        glyphs[name] = box(40, 0, 560, 700)
+        metrics[name] = (600, 40)
+    b = FontBuilder(unitsPerEm=1000, isTTF=True)
+    b.setupGlyphOrder(list(glyphs))
+    b.setupCharacterMap({cp: "uni%04X" % cp for cp in codepoints})
+    b.setupGlyf(glyphs)
+    b.setupHorizontalMetrics(metrics)
+    b.setupHorizontalHeader(ascent=800, descent=-200)
+    b.setupOS2(sTypoAscender=800, sTypoDescender=-200, usWinAscent=900, usWinDescent=300, usWeightClass=400)
+    b.setupNameTable({"familyName": family, "styleName": "Regular"})
+    b.setupPost()
+    b.setupHead()
+    b.save(path)
+
+out = Path(sys.argv[1])
+build(out / "AlloyEN-Regular.ttf", "AlloyEN", [0x41, 0x61])
+build(out / "AlloyCJK-Regular.ttf", "AlloyCJK", [0x4E2D])
+build(out / "AlloyBoth-Regular.ttf", "AlloyBoth", [0x41, 0x4E2D])
+print("generated", len(list(out.glob("*.ttf"))))
+`;
+  const { writeFile, mkdir } = await import("node:fs/promises");
+  await mkdir(outdir, { recursive: true });
+  const scriptPath = resolve(outdir, "_gen.py");
+  await writeFile(scriptPath, script, "utf8");
+  const python = process.env.FONTALLOY_PYTHON ?? "python";
+  await run(python, [scriptPath, outdir], repoRoot);
+}
+
+/**
  * Generate the round-19 collection fixture into `outdir` (no service):
  * a real fontTools three-face .ttc — distinct family names, the first
  * two faces' identical tables deduped into the shared region exactly

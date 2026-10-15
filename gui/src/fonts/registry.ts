@@ -47,7 +47,7 @@ export interface RegisterOptions {
    */
   cssFamily?: string;
   fileName: string;
-  origin: "local" | "catalog";
+  origin: "local" | "catalog" | "system";
   /**
    * The on-disk path, when the platform knows one (the catalog storage
    * layout; the Tauri file dialog). Recipes reference it verbatim.
@@ -167,6 +167,13 @@ export interface LocalLoadOptions {
     total: number,
     phase?: "reading" | "registering",
   ) => void;
+  /**
+   * Round 24 (owner item 3): mark the run's records `system` instead
+   * of `local` — the system-font picker loads installed families
+   * through this same path (byte source and grouping are identical;
+   * only the origin trait differs).
+   */
+  systemOrigin?: boolean;
 }
 
 /** One loadable face between the parse and the registry (round 20). */
@@ -338,7 +345,7 @@ export async function registerLocalFontFiles(
           const result = await registerFontBytes(plan.buffer, {
             cssFamily: family,
             fileName: plan.fileName,
-            origin: "local",
+            origin: options.systemOrigin ? "system" : "local",
             path: plan.path,
             descriptors: {
               weight: plan.meta.weight,
@@ -367,7 +374,7 @@ export async function registerLocalFontFiles(
             family,
             names: plan.meta.names,
             fileName: plan.fileName,
-            origin: "local",
+            origin: options.systemOrigin ? "system" : "local",
             path: plan.path,
             codepoints: [],
           } satisfies LoadedFont);

@@ -195,6 +195,16 @@ def serve(
             "downloadable artifacts (default: 10).",
         ),
     ] = 10,
+    system_font_dir: Annotated[
+        Optional[list[Path]],
+        typer.Option(
+            "--system-font-dir",
+            help="System font directory to enumerate at /system-fonts "
+            "(repeatable; default: the platform's standard font "
+            "directories). Also the e2e seam — a fixture directory "
+            "stands in for the real one.",
+        ),
+    ] = None,
 ) -> None:
     """Run the core as a localhost HTTP service (127.0.0.1 only).
 
@@ -219,6 +229,9 @@ def serve(
         font_dirs=tuple(font_dir or ()),
         work_dir=work_dir,
         keep_builds=keep_builds,
+        system_font_dirs=(
+            tuple(system_font_dir) if system_font_dir is not None else None
+        ),
     )
     try:
         fontalloy_core.run_serve(options)

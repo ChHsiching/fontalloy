@@ -61,7 +61,11 @@ export const DEFAULT_SETTINGS: SynthesisSettings = {
 };
 
 /** How a font face entered the registry (local file vs catalog download). */
-export type FontOrigin = "local" | "catalog";
+/**
+ * Round 24 (owner item 3): fonts installed in the OPERATING SYSTEM,
+ * enumerated by the service from the platform's font directories.
+ */
+export type FontOrigin = "local" | "catalog" | "system";
 
 /**
  * The catalog identity of a downloaded font (round 6): the manifest
