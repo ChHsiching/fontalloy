@@ -635,6 +635,13 @@ export function mountPicker(
          * "source" surfaces the NotoSansSC row through its
          * "Source Han Sans HW SC" HW cut even though the row itself
          * reads "Noto Sans SC".
+         *
+         * Round 22 (owner item 4): the index is UNIVERSAL — every cut
+         * of EVERY family contributes its manifest VARIANT WORD plus
+         * the artifact stem split into words (version noise stripped,
+         * camel humps split), so variants are findable BEFORE their
+         * faces are ever fetched. No per-family special cases; the
+         * live name-table words join once a cut is registered.
          */
         const cutName = (cut: VariantCut): string => {
           const key = registeredCss(cut.entry.family, cut.entry.variant);
@@ -643,6 +650,15 @@ export function mountPicker(
               ? undefined
               : fonts.find((f) => f.cssFamily === key)?.names?.display;
           return live ?? cut.entry.file.replace(/\.[^.]+$/, "");
+        };
+        const cutTokens = (cut: VariantCut): string[] => {
+          const stem = cut.entry.file.replace(/\.[^.]+$/, "");
+          const words = stem
+            .split(/[_\-\s]+/)
+            .flatMap((word) => word.split(/(?<=[a-z])(?=[A-Z])/))
+            .flatMap((word) => word.split(/(?<=[A-Z])(?=[A-Z][a-z])/))
+            .filter((word) => !/^(v?\d+(\.\d+)*)$/i.test(word));
+          return [cut.entry.variant ?? "", ...words].filter(Boolean);
         };
         const rowId = cssKey ?? `cat:${display.id}`;
         return [
@@ -658,6 +674,7 @@ export function mountPicker(
             keywords: [
               display.id,
               ...display.families,
+              ...cuts.flatMap(cutTokens),
               ...cuts.map(cutName),
             ].join(" "),
           } satisfies PickerFont,

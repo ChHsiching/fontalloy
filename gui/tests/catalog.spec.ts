@@ -836,6 +836,61 @@ test.describe("first-run catalog download", () => {
     await expect(notoRow).toBeVisible();
   });
 
+  test("search reaches every family's variant words, version noise never matches", async ({
+    page,
+  }) => {
+    // Round 22 (owner item 4): the keyword index is UNIVERSAL — every
+    // cut of EVERY family contributes its manifest variant word plus
+    // its artifact stem split into words (camel humps split, version
+    // tokens stripped), so UNFETCHED families with versioned artifact
+    // names ("HackGen_NF_v2.10.0.zip") are findable by "nf"/"hackgen"
+    // but never by their version noise. No per-family special cases.
+    const root = await mkdtemp(resolve(tmpdir(), "fontalloy-r22-search-"));
+    const nf = await generateNamedFace(root, "HackGen Console NF", "HackGenNF");
+    const std = await generateNamedFace(root, "HackGen", "HackGen");
+    const sim = await SimCatalog.create([
+      {
+        family: "HackGen",
+        variant: "NF",
+        file: "HackGen_NF_v2.10.0.zip",
+        fontPath: nf,
+        faces: [{ file: "HackGenNF-Regular.ttf", fontPath: nf }],
+      },
+      {
+        family: "HackGenStd",
+        variant: "Standard",
+        file: "HackGen_v2.10.0.zip",
+        fontPath: std,
+        faces: [{ file: "HackGen-Regular.ttf", fontPath: std }],
+      },
+    ]);
+    await sim.install(page);
+    await injectCatalogConfig(page);
+    await page.goto("/");
+    await expect(catalogDone(page)).toHaveText("2");
+
+    await pointerClick(
+      page,
+      page.locator('[data-role="picker-en"] .kit-hd'),
+    );
+    const enSearch = enPopup(page).locator(".kit-q");
+    const nfRow = enPopup(page).locator(".kit-fp").filter({
+      has: page.locator(".kit-nm", { hasText: /HackGen/ }),
+    });
+    // The variant word reaches the UNFETCHED cut's family.
+    await enSearch.fill("nf");
+    await expect(nfRow.first()).toBeVisible();
+    // The stem's words reach it too.
+    await enSearch.fill("hackgen");
+    await expect(nfRow.first()).toBeVisible();
+    // The version noise NEVER matches (tokens stripped, and the raw
+    // stem is not indexed whole).
+    await enSearch.fill("2.10.0");
+    await expect(nfRow).toHaveCount(0);
+    await enSearch.fill("v2");
+    await expect(nfRow).toHaveCount(0);
+  });
+
   test("offline: the catalog is unavailable and local fonts work fully", async ({
     page,
   }) => {
