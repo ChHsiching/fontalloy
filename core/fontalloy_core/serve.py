@@ -276,15 +276,16 @@ class ServeState:
             else None
         )
         # Round 25 (owner items 1+2, the wedge): the scan runs on a
-        # daemon thread started HERE — never inside a request handler.
-        # The thread yields the GIL between files, so /health and every
-        # other endpoint stay live while a real machine's font
-        # directory is being parsed; the disk cache makes steady-state
-        # launches a stat walk only.
-        self._system_thread = threading.Thread(
-            target=self._scan_system_fonts, name="system-fonts", daemon=True
-        )
-        self._system_thread.start()
+        # daemon thread, NEVER inside a request handler — the thread
+        # yields the GIL between files, so /health and every other
+        # endpoint stay live while a real machine's font directory is
+        # being parsed, and the disk cache makes steady-state launches
+        # a stat walk only. Round 26 correction: the thread starts
+        # LAZILY, at the first /system-fonts touch — a serve nobody
+        # asks about system fonts (tests, /fonts-only consumers) never
+        # scans the machine at all; spawning it at boot made every
+        # fixture serve parse the real font directory.
+        self._system_thread: threading.Thread | None = None
 
     # -- startup -----------------------------------------------------------
 
@@ -504,6 +505,14 @@ class ServeState:
             "families": families,
         }
 
+    def _ensure_system_scan_started(self) -> None:
+        """Start the scan thread at most once, at the first touch."""
+        if self._system_thread is None and self._system_dirs:
+            self._system_thread = threading.Thread(
+                target=self._scan_system_fonts, name="system-fonts", daemon=True
+            )
+            self._system_thread.start()
+
     def _scan_system_fonts(self) -> None:
         """The background scan (daemon thread; see __init__)."""
         previous = (
@@ -527,6 +536,7 @@ class ServeState:
         in-flight scan means ``{"ready": false, faces: []}`` and the
         GUI retries.
         """
+        self._ensure_system_scan_started()
         with self.lock:
             ready = self._system_ready
             faces = self._system_result.faces if self._system_result else ()

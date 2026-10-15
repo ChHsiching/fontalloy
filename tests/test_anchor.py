@@ -152,9 +152,12 @@ class TestMeasuredAnchor:
         recipe = tmp_path / "recipe.yaml"
         # Absolute paths (the recipe resolves paths against itself, and
         # the anchor fonts live in the shared cache, not in tmp_path).
+        # Round 26: the anchor measurement pins the auto school (plain
+        # is the recipe default now; the anchor is the school's oracle).
         recipe.write_text(
             f"base: {base_path.resolve().as_posix()}\n"
-            f"donors:\n  - {donor_path.resolve().as_posix()}\n",
+            f"donors:\n  - {donor_path.resolve().as_posix()}\n"
+            "normalization:\n  mode: auto\n",
             encoding="utf-8",
         )
 
@@ -236,7 +239,8 @@ class TestMeasuredAnchor:
         recipe = tmp_path / "recipe.yaml"
         recipe.write_text(
             f"base: {base_path.resolve().as_posix()}\n"
-            f"donors:\n  - {donor_path.resolve().as_posix()}\n",
+            f"donors:\n  - {donor_path.resolve().as_posix()}\n"
+            "normalization:\n  mode: auto\n",
             encoding="utf-8",
         )
 

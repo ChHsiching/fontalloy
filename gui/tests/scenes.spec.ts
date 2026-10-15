@@ -428,7 +428,7 @@ test.describe("scene previews and synthesis settings", () => {
     await expect(weight.locator(".kit-csel")).toHaveText(
       "双方字重全部保留 推荐",
     );
-    await expect(baseline.locator(".kit-csel")).toHaveText("自动 推荐");
+    await expect(baseline.locator(".kit-csel")).toHaveText("直接组合（不调整） 默认");
     await expect(width.locator(".kit-csel")).toHaveText("2 倍英文宽 推荐");
     await expect(
       weight.locator(".kit-csel .kit-badge"),
@@ -442,7 +442,8 @@ test.describe("scene previews and synthesis settings", () => {
     await page.keyboard.press("Escape");
     await pointerClick(page, baseline.locator(".kit-csel"));
     expect(await baseline.locator(".kit-cso").allTextContents()).toEqual([
-      "自动 推荐",
+      "直接组合（不调整） 默认",
+      "自动对齐",
       "中文字和英文底边一样高",
       "中文字缩小一点更匀称",
     ]);
@@ -500,16 +501,17 @@ test.describe("scene previews and synthesis settings", () => {
     await page.keyboard.press("Escape");
     await expect(weightPop).toBeHidden();
 
-    // Baseline popover: verbatim prototype copy (inv. 29).
+    // Baseline popover: round 26 copy — 直接组合 leads (the default),
+    // the harmonization schools follow.
     await pointerClick(page, page.locator("[data-role='help-baseline']"));
     const baselinePop = page.locator("[data-help-popup='baseline']");
     await expect(baselinePop).toBeVisible();
-    await expect(baselinePop.locator("table")).toContainText("底边一样高");
     await expect(baselinePop.locator("table")).toContainText(
-      "中文的底边精确落在英文的底线上，不缩放",
+      "直接组合 · 默认",
     );
+    await expect(baselinePop.locator("table")).toContainText("底边一样高");
     await expect(baselinePop).toContainText(
-      "这个设置管的是竖直方向；中文字横向占多宽由“中文字符宽度”决定，两者不冲突。",
+      "选“直接组合”时，“中文字符宽度”设置不生效——宽度完全跟随中文字体本身。",
     );
     await page.keyboard.press("Escape");
 

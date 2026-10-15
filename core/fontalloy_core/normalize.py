@@ -73,17 +73,22 @@ from fontalloy_core.precedence import (
     default_font_order,
 )
 
-#: Normalization schools. ``auto`` (the default) takes the smaller of
-#: the grid and the optical terms — the grid school's advance
-#: discipline with the Han ink never leaving the Noto-school optical
-#: zone; ``grid`` asks for the bare terminal-grid scale (CJK ink fills
-#: the em the advance bought, the Maple Mono CN / Sarasa convention);
-#: ``optical`` anchors the Han ink at ``optical_ratio`` × the base's
-#: cap height whatever the advance says.
+#: Normalization schools. ``plain`` (the DEFAULT, the owner's round-26
+#: ruling) is NO normalization at all: donor glyphs keep their own
+#: size (the upem unit conversion aside) and their own advances —
+#: WYSIWYG with the preview, which renders the source fonts as they
+#: are. The harmonization schools are opt-in: ``auto`` takes the
+#: smaller of the grid and the optical terms — the grid school's
+#: advance discipline with the Han ink never leaving the Noto-school
+#: optical zone; ``grid`` asks for the bare terminal-grid scale (CJK
+#: ink fills the em the advance bought, the Maple Mono CN / Sarasa
+#: convention); ``optical`` anchors the Han ink at ``optical_ratio`` ×
+#: the base's cap height whatever the advance says.
+PLAIN = "plain"
 AUTO = "auto"
 GRID = "grid"
 OPTICAL = "optical"
-MODES = (AUTO, GRID, OPTICAL)
+MODES = (PLAIN, AUTO, GRID, OPTICAL)
 
 #: Fullwidth quote/dash width policies.
 HALFWIDTH = "halfwidth"
@@ -128,9 +133,11 @@ _WIDE_CLASSES = frozenset(("F", "W"))
 class NormalizationOptions:
     """The recipe's normalization switches (issue #8).
 
-    ``mode`` picks the school: ``auto`` (the default — the grid term
-    capped by the optical ratio, so the Han ink stays inside the
-    Noto-school zone while the advances keep the grid discipline),
+    ``mode`` picks the school: ``plain`` (the default — donor glyphs
+    verbatim: unit conversion only, the donor's own advances; the
+    preview shows exactly what lands in the output), ``auto`` (the
+    grid term capped by the optical ratio, so the Han ink stays inside
+    the Noto-school zone while the advances keep the grid discipline),
     ``grid`` (the bare terminal grid at ``width_factor`` Latin cells per
     wide glyph, ink filling the em), or ``optical`` (Han ink pinned at
     ``optical_ratio`` times the base's cap height). ``width_factor``
@@ -142,7 +149,7 @@ class NormalizationOptions:
     (``halfwidth``, the UAX #11 default).
     """
 
-    mode: str = AUTO
+    mode: str = PLAIN
     optical_ratio: float = DEFAULT_OPTICAL_RATIO
     quote_dash_width: str = HALFWIDTH
     width_factor: float = DEFAULT_WIDTH_FACTOR
@@ -173,13 +180,22 @@ class NormalizationPlan:
         """The outline scale applied to every glyph from ``donor_id``."""
         return self.donor_scales[donor_id].scale
 
+    def uses_donor_advances(self) -> bool:
+        """Plain mode: every donor glyph keeps the donor's own advance.
+
+        The graft asks this before ``advance_for``; in plain mode the
+        base's Latin advance never rewrites a donor-supplied width.
+        """
+        return self.options.mode == PLAIN
+
     def advance_for(self, codepoint: int) -> int:
         """The output advance for a donor-supplied ``codepoint``.
 
         Fullwidth/Wide take ``width_factor`` cells (rounded to whole
         base units); everything else takes one. The fullwidth policy
         additionally widens the quotes, dashes, and ellipsis UAX #11
-        leaves ambiguous — to the same wide advance.
+        leaves ambiguous — to the same wide advance. (Not consulted in
+        plain mode — the donor's own advance lands scaled by s0.)
         """
         wide = (
             self.options.quote_dash_width == FULLWIDTH
@@ -302,6 +318,14 @@ def _donor_scale(
     """Scale one donor by s0 = U/u and (when measurable) by k."""
     donor_upem = donor["head"].unitsPerEm
     s0 = upem / donor_upem
+    if options.mode == PLAIN:
+        # Round 26 (owner ruling): direct combination — the donor's
+        # glyphs land verbatim, unit conversion only. No k, no guard,
+        # no school; a donor without Han glyphs is as fine as any.
+        return DonorScale(
+            donor_id=donor_id, upem_scale=s0, han_ink_height=None,
+            k=1.0, scale=s0,
+        )
     han_ink = _han_ink_height(donor)
 
     if han_ink is None:

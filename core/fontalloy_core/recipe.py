@@ -106,6 +106,7 @@ from fontalloy_core.normalize import (
     HALFWIDTH,
     MODES,
     NormalizationOptions,
+    PLAIN,
     QUOTE_DASH_POLICIES,
     WIDTH_FACTOR_MAX,
 )
@@ -512,7 +513,7 @@ def _parse_normalization(raw: object) -> NormalizationOptions:
             f"{', '.join(_NORMALIZATION_FIELDS)})"
         )
 
-    mode = AUTO
+    mode = PLAIN
     if "mode" in raw:
         mode = raw["mode"]
         if mode not in MODES:

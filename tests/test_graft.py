@@ -99,6 +99,7 @@ class TestOverrideGraft:
         recipe.write_text(
             f"base: {base.name}\n"
             f"donors:\n  - {donor.name}\n"
+            "normalization:\n  mode: auto\n"
             "rules:\n"
             "  - codepoint: 0x41\n"
             "    fonts: [donor-0]\n",
@@ -145,7 +146,9 @@ class TestCompositeGraft:
         )
         recipe = tmp_path / "recipe.yaml"
         recipe.write_text(
-            f"base: {base.name}\ndonors:\n  - {donor.name}\n", encoding="utf-8"
+            f"base: {base.name}\ndonors:\n  - {donor.name}\n"
+            "normalization:\n  mode: auto\n",
+            encoding="utf-8"
         )
 
         result = build(recipe, tmp_path / "out.ttf")
@@ -195,7 +198,9 @@ class TestCFFDonorGraft:
         )
         recipe = tmp_path / "recipe.yaml"
         recipe.write_text(
-            f"base: {base.name}\ndonors:\n  - {donor.name}\n", encoding="utf-8"
+            f"base: {base.name}\ndonors:\n  - {donor.name}\n"
+            "normalization:\n  mode: auto\n",
+            encoding="utf-8"
         )
 
         result = build(recipe, tmp_path / "out.ttf")
@@ -258,6 +263,7 @@ class TestProvenanceReadback:
         recipe.write_text(
             f"base: {base.name}\n"
             f"donors:\n  - {donor0.name}\n  - {donor1.name}\n"
+            "normalization:\n  mode: auto\n"
             "rules:\n"
             "  - codepoint: 0x41\n"      # donor-0 holds it: override
             "    fonts: [donor-0]\n"
@@ -357,7 +363,9 @@ class TestBaseContainerPassThrough:
         )
         recipe = tmp_path / "recipe.yaml"
         recipe.write_text(
-            f"base: {base.name}\ndonors:\n  - {donor.name}\n", encoding="utf-8"
+            f"base: {base.name}\ndonors:\n  - {donor.name}\n"
+            "normalization:\n  mode: auto\n",
+            encoding="utf-8"
         )
 
         result = build(recipe, tmp_path / "out.ttf")

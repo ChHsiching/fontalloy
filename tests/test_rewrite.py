@@ -593,6 +593,7 @@ class TestOS2Corrections:
             tmp_path,
             "base: base.ttf\n"
             "donors:\n  - donor.ttf\n"
+            "normalization:\n  mode: auto\n"
             "rules:\n"
             "  - codepoint: 0x62\n"
             "    fonts: [donor-0, base]\n",

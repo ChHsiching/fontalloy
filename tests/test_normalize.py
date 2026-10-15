@@ -47,7 +47,14 @@ def _advance(font: TTFont, codepoint: int) -> int:
     return font["hmtx"][font.getBestCmap()[codepoint]][0]
 
 
-def _write_recipe(tmp_path: Path, base: Path, donor: Path, extra: str = "") -> Path:
+def _write_recipe(
+    tmp_path: Path,
+    base: Path,
+    donor: Path,
+    # Round 26: the recipe DEFAULT is plain (direct combination); the
+    # school mechanics below pin the school they exercise.
+    extra: str = "normalization:\n  mode: auto",
+) -> Path:
     recipe = tmp_path / "recipe.yaml"
     recipe.write_text(
         f"base: {base.name}\ndonors:\n  - {donor.name}\n{extra}",
@@ -55,6 +62,60 @@ def _write_recipe(tmp_path: Path, base: Path, donor: Path, extra: str = "") -> P
     )
     return recipe
 
+
+# --- plain mode (round 26, the default) -------------------------------------
+
+
+class TestPlainMode:
+    """Direct combination (the owner's round-26 ruling): donor glyphs
+    land VERBATIM — the upem unit conversion aside, no k, and the
+    donor's own advances (never the base's Latin-cell grid)."""
+
+    def test_the_default_build_keeps_the_donor_glyph_and_advance(
+        self, tmp_path: Path, synth_font_factory
+    ):
+        base = synth_font_factory(
+            tmp_path / "base.ttf", family="SynthBase", codepoints=BASE_CODEPOINTS
+        )
+        donor = synth_font_factory(
+            tmp_path / "donor.ttf", family="SynthDonor", codepoints=(0x4E2D,)
+        )
+        recipe = _write_recipe(tmp_path, base, donor, extra="")
+
+        result = build(recipe, tmp_path / "out.ttf")
+
+        out = TTFont(result.font_path)
+        src = TTFont(donor)
+        out_name = out.getBestCmap()[0x4E2D]
+        src_name = src.getBestCmap()[0x4E2D]
+        assert _advance(out, 0x4E2D) == src["hmtx"][src_name][0]
+        assert _bounds(out, out_name) == _bounds(src, src_name)
+        # The base's Latin is untouched.
+        assert _advance(out, 0x41) == 600
+
+    def test_a_2048_upem_donor_still_converts_units(
+        self, tmp_path: Path, synth_font_factory
+    ):
+        base = synth_font_factory(
+            tmp_path / "base.ttf", family="SynthBase", codepoints=BASE_CODEPOINTS
+        )
+        donor = synth_font_factory(
+            tmp_path / "donor.ttf",
+            family="SynthDonor",
+            codepoints=(0x4E2D,),
+            upem=2048,
+        )
+        recipe = _write_recipe(tmp_path, base, donor, extra="")
+
+        result = build(recipe, tmp_path / "out.ttf")
+
+        out = TTFont(result.font_path)
+        src = TTFont(donor)
+        src_name = src.getBestCmap()[0x4E2D]
+        # s0 = 1000/2048: the donor's own advance, converted.
+        assert _advance(out, 0x4E2D) == round(
+            src["hmtx"][src_name][0] * 1000 / 2048
+        )
 
 # --- recipe switches -------------------------------------------------------
 
@@ -72,11 +133,12 @@ class TestNormalizationSwitches:
         donor = synth_font_factory(
             tmp_path / "donor.ttf", family="SynthDonor", codepoints=(0x4E2D,)
         )
-        recipe = _write_recipe(tmp_path, base, donor)
+        recipe = _write_recipe(tmp_path, base, donor, extra="")
 
         parsed = load_recipe(recipe).normalization
 
-        assert parsed.mode == "auto"
+        # Round 26: the documented default is direct combination.
+        assert parsed.mode == "plain"
         assert parsed.optical_ratio == pytest.approx(1.23)
         assert parsed.quote_dash_width == "halfwidth"
         assert parsed.width_factor == pytest.approx(2.0)
@@ -418,7 +480,7 @@ class TestGridAdvances:
             tmp_path,
             base,
             donor,
-            extra=f"normalization:\n  width_factor: {factor}\n",
+            extra=f"normalization:\n  mode: auto\n  width_factor: {factor}\n",
         )
 
         result = build(recipe, tmp_path / "out.ttf")
@@ -491,7 +553,7 @@ class TestQuoteDashWidthPolicy:
             tmp_path,
             base,
             donor,
-            extra="normalization:\n  quote_dash_width: fullwidth\n",
+            extra="normalization:\n  mode: auto\n  quote_dash_width: fullwidth\n",
         )
 
         result = build(recipe, tmp_path / "out.ttf")
@@ -559,7 +621,7 @@ class TestQuoteDashWidthPolicy:
             tmp_path,
             base,
             donor,
-            extra="normalization:\n  quote_dash_width: fullwidth\n",
+            extra="normalization:\n  mode: auto\n  quote_dash_width: fullwidth\n",
         )
 
         result = build(recipe, tmp_path / "out.ttf")
@@ -585,7 +647,7 @@ class TestQuoteDashWidthPolicy:
             tmp_path,
             base,
             donor,
-            extra="normalization:\n  quote_dash_width: fullwidth\n",
+            extra="normalization:\n  mode: auto\n  quote_dash_width: fullwidth\n",
         )
 
         result = build(recipe, tmp_path / "out.ttf")
@@ -620,7 +682,7 @@ class TestQuoteDashWidthPolicy:
             tmp_path,
             base,
             donor,
-            extra="normalization:\n  quote_dash_width: fullwidth\n",
+            extra="normalization:\n  mode: auto\n  quote_dash_width: fullwidth\n",
         )
 
         result = build(recipe, tmp_path / "out.ttf")
@@ -704,7 +766,7 @@ class TestQuoteDashWidthPolicy:
             tmp_path,
             base,
             donor,
-            extra="normalization:\n  quote_dash_width: fullwidth\n",
+            extra="normalization:\n  mode: auto\n  quote_dash_width: fullwidth\n",
         )
 
         result = build(recipe, tmp_path / "out.ttf")
@@ -1074,7 +1136,7 @@ class TestNormalizationIsDeterministic:
             tmp_path,
             base,
             donor,
-            extra="normalization:\n  quote_dash_width: fullwidth\n",
+            extra="normalization:\n  mode: auto\n  quote_dash_width: fullwidth\n",
         )
         output = tmp_path / "out.ttf"
 

@@ -577,6 +577,7 @@ class TestItalicFallback:
         recipe = _recipe(
             tmp_path,
             f"base: {base.name}\ndonors:\n  - {upright_donor.name}\n"
+            "normalization:\n  mode: auto\n"
             "output:\n  format: ttc\n",
         )
 

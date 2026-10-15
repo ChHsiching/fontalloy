@@ -196,9 +196,13 @@ def build_default(base_path: Path, donor_path: Path, out_dir: Path) -> Path:
 
     out_dir.mkdir(parents=True, exist_ok=True)
     recipe = out_dir / "default-recipe.yaml"
+    # Round 26: "default" here means the AUTO school — plain is the new
+    # recipe default, and this measurement is the auto school's
+    # evidence, so the school is pinned.
     recipe.write_text(
         f"base: {base_path.resolve().as_posix()}\n"
-        f"donors:\n  - {donor_path.resolve().as_posix()}\n",
+        f"donors:\n  - {donor_path.resolve().as_posix()}\n"
+        "normalization:\n  mode: auto\n",
         encoding="utf-8",
     )
     result = build(recipe, out_dir / "merged-default.ttf")

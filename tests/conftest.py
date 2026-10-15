@@ -445,8 +445,12 @@ def donor_font(tmp_path: Path, synth_font_factory: Callable[..., Path]) -> Path:
 def recipe_file(tmp_path: Path, base_font: Path, donor_font: Path) -> Path:
     """A minimal v0 recipe: base font file plus one donor font file."""
     recipe = tmp_path / "recipe.yaml"
+    # Round 26: the recipe default is plain (direct combination) now;
+    # this shared minimal recipe backs the harmonization-era
+    # assertions, so it pins the auto school explicitly.
     recipe.write_text(
-        f"base: {base_font.name}\ndonors:\n  - {donor_font.name}\n",
+        f"base: {base_font.name}\ndonors:\n  - {donor_font.name}\n"
+        "normalization:\n  mode: auto\n",
         encoding="utf-8",
     )
     return recipe

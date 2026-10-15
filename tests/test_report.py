@@ -261,7 +261,9 @@ class TestMetricComparison:
         )
         recipe = tmp_path / "recipe.yaml"
         recipe.write_text(
-            f"base: {base_font.name}\ndonors:\n  - {donor.name}\n", encoding="utf-8"
+            f"base: {base_font.name}\ndonors:\n  - {donor.name}\n"
+            "normalization:\n  mode: auto\n",
+            encoding="utf-8"
         )
 
         result = build(recipe, tmp_path / "out.ttf")
@@ -295,6 +297,7 @@ class TestMetricComparison:
         recipe = tmp_path / "recipe.yaml"
         recipe.write_text(
             f"base: family.ttc\ndonors:\n  - {donor.name}\n"
+            "normalization:\n  mode: auto\n"
             "output:\n  format: ttc\n",
             encoding="utf-8",
         )

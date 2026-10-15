@@ -227,7 +227,9 @@ def _copy_glyph(
             "(neither glyf nor CFF)"
         )
     advance = (
-        plan.advance_for(codepoint)
+        otRound(donor_advance * scale)
+        if plan.uses_donor_advances()
+        else plan.advance_for(codepoint)
         if codepoint is not None
         else otRound(donor_advance * scale)
     )

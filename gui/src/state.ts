@@ -26,11 +26,14 @@ export type WeightMergeMode = "nearest" | "base" | "donor";
 /**
  * CJK–Latin baseline alignment — the vertical/scale school. The shared
  * baseline and the em box are ADR-0003 invariants; this chooses the
- * scale school (`normalization.mode`: `auto` the grid-scale-capped-by-
- * the-optical-ratio default — round 20's harmonization fix — `grid`
- * the bare terminal-grid school, `optical` the Han-ink-at-ratio one).
+ * scale school (`normalization.mode`): `plain` the DEFAULT (round 26,
+ * owner ruling — direct combination: donor glyphs verbatim, their own
+ * advances; the preview shows exactly what lands in the output), with
+ * the harmonization schools opt-in — `auto` the grid-scale-capped-by-
+ * the-optical-ratio (round 20's fix), `grid` the bare terminal-grid
+ * school, `optical` the Han-ink-at-ratio one.
  */
-export type BaselineMode = "auto" | "grid" | "optical";
+export type BaselineMode = "plain" | "auto" | "grid" | "optical";
 
 /**
  * CJK character width — the wide-advance factor over the Latin cell
@@ -55,7 +58,7 @@ export interface SynthesisSettings {
 
 export const DEFAULT_SETTINGS: SynthesisSettings = {
   weightMode: "nearest",
-  baseline: "auto",
+  baseline: "plain",
   cjkWidth: 2,
   outputFormat: "auto",
 };

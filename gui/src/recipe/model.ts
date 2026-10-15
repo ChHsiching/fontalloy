@@ -82,7 +82,11 @@ export interface NormalizationDraft {
    * the Han ink stays inside the Noto-school zone), `grid` (the bare
    * terminal-grid scale), or `optical` (Han ink pinned at the ratio).
    */
-  mode: "auto" | "grid" | "optical";
+  /**
+   * Round 26 (owner ruling): `plain` is the default — direct
+   * combination, donor glyphs verbatim with their own advances.
+   */
+  mode: "plain" | "auto" | "grid" | "optical";
   /**
    * Han ink to cap-height ratio; the optical school's anchor and the
    * auto school's cap (meaningless in bare grid mode).
@@ -163,7 +167,7 @@ export function defaultDraft(): RecipeDraft {
     rules: [],
     sets: {},
     normalization: {
-      mode: "auto",
+      mode: "plain",
       opticalRatio: DEFAULT_OPTICAL_RATIO,
       quoteDashWidth: "halfwidth",
       widthFactor: DEFAULT_WIDTH_FACTOR,

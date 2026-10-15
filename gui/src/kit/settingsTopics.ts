@@ -88,7 +88,12 @@ export const SETTINGS_TOPICS: readonly SettingsTopic[] = [
     key: "baseline",
     name: "中英文的基线对齐",
     options: [
-      { value: "auto", label: "自动", badge: "推荐" },
+      // Round 26 (owner ruling): 直接组合 is the default — the donor's
+      // glyphs land verbatim (their own size AND their own width), so
+      // the preview shows exactly what the output carries. The three
+      // harmonization schools stay as opt-ins.
+      { value: "plain", label: "直接组合（不调整）", badge: "默认" },
+      { value: "auto", label: "自动对齐" },
       { value: "grid", label: "中文字和英文底边一样高" },
       { value: "optical", label: "中文字缩小一点更匀称" },
     ],
@@ -101,16 +106,19 @@ export const SETTINGS_TOPICS: readonly SettingsTopic[] = [
         const wrap = document.createElement("div");
         wrap.append(
           helpNote(
-            "一行文字里，中文字和英文字的底边不一定在同一个高度，大小比例也不一样。这个设置决定中文放在什么高度、缩放到多大：",
+            "一行文字里，中文字和英文字的底边不一定在同一个高度，大小比例也不一样。这个设置决定要不要调整中文：",
           ),
-          // Verbatim prototype table (inventory item 29).
           workedTable(["选项", "效果"], [
-            ["自动 · 推荐", "按两款字体自带的尺寸数据自动选择"],
-            ["底边一样高", "中文的底边精确落在英文的底线上，不缩放"],
+            [
+              "直接组合 · 默认",
+              "中文一个笔画都不动，宽度也用中文字体自己的；合成前的预览就是合成后的样子",
+            ],
+            ["自动对齐", "按两款字体自带的尺寸数据自动缩放对齐"],
+            ["底边一样高", "中文的底边精确落在英文的底线上"],
             ["缩小一点更匀称", "中文稍微缩小，中英混排不会显得中文偏大"],
           ]),
           helpNote(
-            "这个设置管的是竖直方向；中文字横向占多宽由“中文字符宽度”决定，两者不冲突。",
+            "选“直接组合”时，“中文字符宽度”设置不生效——宽度完全跟随中文字体本身。",
           ),
         );
         return wrap;
