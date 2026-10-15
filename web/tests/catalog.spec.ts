@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   allowProbeRefusal,
   assertNoJsErrors,
@@ -55,26 +57,24 @@ test("the real catalog lists real families with real meta", async ({ page }) => 
   // whole-catalog first-run download time the suite out), so the count
   // DERIVES from the release document the origin actually serves:
   // distinct families − the CJK-side ids − SymbolsOnly (never lists).
+  // Round 23: the CJK-side ids come from curated-meta's `slots.cjk`
+  // (the app's own source of truth — 36 families incl. every WenKai
+  // member and the JP/KR merges), never a hardcoded sample: a cold
+  // upstream cache once masked 27 of them (absent from the doc), and
+  // the warm doc exposed the stale list.
   const release = await page.evaluate(async () => {
     const res = await fetch("/dev-catalog/catalog-release.json");
     return (await res.json()) as { families: Array<{ family: string }> };
   });
-  const cjkSideIds = new Set([
-    "MapleMono",
-    "LXGWWenKai",
-    "LXGWWenKaiMono",
-    "NotoSansSC",
-    // The dev catalog's five prototype-only CJK extras (code-side
-    // EXTRA_DEV_FAMILIES in scripts/dev-catalog.mjs) ride the same
-    // release document; they list on the CJK side only.
-    "SmileySans",
-    "SarasaGothic",
-    "ZhuqueFangsong",
-    "ArkPixel",
-    "FusionPixel",
-  ]);
+  const curated = JSON.parse(
+    await readFile(
+      resolve(dirname(fileURLToPath(import.meta.url)), "../../gui/src/data/curated-meta.json"),
+      "utf8",
+    ),
+  ) as { slots?: { cjk?: string[] } };
+  const cjkSideIds = new Set(curated.slots?.cjk ?? []);
   const expectedEnRows = new Set(
-    release.families.map((f) => f.family).filter((id) => !cjkSideIds.has(id) && id !== "SymbolsOnly"),
+    release.families.map((f) => f.family).filter((id) => !cjkSideIds.has(id) && id !== "NerdFontsSymbolsOnly"),
   ).size;
   await expect(rows).toHaveCount(expectedEnRows);
   // And the CJK slot lists exactly those CJK families. (Escape first:

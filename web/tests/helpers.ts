@@ -110,6 +110,12 @@ export async function optOutOfCatalog(page: Page): Promise<void> {
  * real-pointer helpers stop racing the download churn. On
  * already-verified storage the screen never shows; the bounded wait
  * covers that too.
+ *
+ * Round 23: the post-settle registration sweep flushes in waves — rows
+ * read artifact stems until it finishes (a full cold catalog keeps the
+ * sweep busy for seconds after the screen hides). The app marks the
+ * sweep on <html data-catalog-sweep>; wait for its done state before
+ * any test asserts on row names or chips.
  */
 export async function waitForCatalogReady(
   page: Page,
@@ -118,6 +124,15 @@ export async function waitForCatalogReady(
   const screen = page.locator(".catalog-screen");
   await screen.waitFor({ state: "visible", timeout: 20_000 }).catch(() => {});
   await expect(screen).toBeHidden({ timeout });
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          () => document.documentElement.dataset.catalogSweep ?? "running",
+        ),
+      { timeout },
+    )
+    .toBe("done");
 }
 
 /**
