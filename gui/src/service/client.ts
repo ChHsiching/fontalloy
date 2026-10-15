@@ -217,8 +217,12 @@ export class ServeClient {
     return this.getJson<CatalogDocument>("/catalog");
   }
 
-  /** The installed system fonts (`/system-fonts`, round 24). */
-  systemFonts(): Promise<{ dirs: string[]; faces: SystemFaceDoc[] }> {
+  /** The installed system fonts (`/system-fonts`, round 24+25). */
+  systemFonts(): Promise<{
+    dirs: string[];
+    ready: boolean;
+    faces: SystemFaceDoc[];
+  }> {
     return this.getJson("/system-fonts");
   }
 

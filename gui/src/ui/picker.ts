@@ -468,8 +468,14 @@ export function mountPicker(
     if (!client || !family) return;
     const cssKey = await registerSystemFamily(client, family);
     if (!cssKey) {
-      error = `无法载入系统字体 ${familyName}：文件无法读取。`;
-      rerender();
+      // Round 25 (owner item 2): a failed LOAD is an outcome, not a
+      // form validation error — it rides the message system like the
+      // local-load outcome card, never the picker's inline line.
+      appMessages().push({
+        icon: "warn",
+        title: "无法载入系统字体",
+        lines: [`${familyName}：文件无法读取。`],
+      });
       return;
     }
     await document.fonts.load(`16px ${cssFamily(cssKey)}`);

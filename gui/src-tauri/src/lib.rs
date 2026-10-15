@@ -136,11 +136,20 @@ async fn pick_font_files(app: AppHandle) -> Result<Option<Vec<String>>, String> 
 }
 
 /// Read one font file as raw bytes (the zero-JSON binary pipe).
+///
+/// Round 25 (owner item 1, the 未响应 freeze): this was a SYNC
+/// command, and Tauri runs sync commands on the MAIN thread — reading
+/// a 428MB collection blocked the window's message pump for the whole
+/// read (the white not-responding overlay). The read now runs on the
+/// blocking pool; the main thread never waits on file IO.
 #[tauri::command]
-fn read_font_file(path: String) -> Result<tauri::ipc::Response, String> {
-    let bytes = std::fs::read(&path)
-        .map_err(|err| format!("无法读取 {path}: {err}"))?;
-    Ok(tauri::ipc::Response::new(bytes))
+async fn read_font_file(path: String) -> Result<tauri::ipc::Response, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let bytes = std::fs::read(&path).map_err(|err| format!("无法读取 {path}: {err}"))?;
+        Ok(tauri::ipc::Response::new(bytes))
+    })
+    .await
+    .map_err(|err| err.to_string())?
 }
 
 /// The font file extensions the sibling scan considers — the same set
@@ -371,15 +380,17 @@ async fn open_external(app: AppHandle, url: String) -> Result<(), String> {
 
 /// Spawn the `fontalloy serve` sidecar and watch its stdout.
 fn spawn_sidecar(handle: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-    let font_dir = handle
-        .path()
-        .app_data_dir()?
-        .join("catalog")
-        .join("families");
+    let app_data = handle.path().app_data_dir()?;
+    let font_dir = app_data.join("catalog").join("families");
     // The catalog may not have downloaded yet — serve treats a missing
     // --font-dir as an empty listing, but create it so downloads land
     // where the sidecar looks.
     std::fs::create_dir_all(&font_dir)?;
+    // Round 25: the system-font scan caches its result here — a
+    // steady-state launch stat-walks the system directories instead
+    // of re-parsing every installed font.
+    let system_cache = app_data.join("system-fonts");
+    std::fs::create_dir_all(&system_cache)?;
 
     let mut command = handle.shell().sidecar("fontalloy")?;
     command = command.args([
@@ -388,6 +399,8 @@ fn spawn_sidecar(handle: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         "0",
         "--font-dir",
         &font_dir.to_string_lossy(),
+        "--system-cache-dir",
+        &system_cache.to_string_lossy(),
     ]);
     for origin in ALLOWED_ORIGINS {
         command = command.args(["--allow-origin", origin]);

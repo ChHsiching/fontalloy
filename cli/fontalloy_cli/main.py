@@ -205,6 +205,15 @@ def serve(
             "stands in for the real one.",
         ),
     ] = None,
+    system_cache_dir: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--system-cache-dir",
+            help="Directory the system-font scan caches its result in "
+            "(round 25: a steady-state launch stat-walks and parses "
+            "nothing). No disk cache when omitted.",
+        ),
+    ] = None,
 ) -> None:
     """Run the core as a localhost HTTP service (127.0.0.1 only).
 
@@ -232,6 +241,7 @@ def serve(
         system_font_dirs=(
             tuple(system_font_dir) if system_font_dir is not None else None
         ),
+        system_cache_dir=system_cache_dir,
     )
     try:
         fontalloy_core.run_serve(options)

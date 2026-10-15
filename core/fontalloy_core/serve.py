@@ -88,7 +88,12 @@ from fontalloy_core.load import (
     scan_families,
 )
 from fontalloy_core.recipe import Recipe, parse_recipe
-from fontalloy_core.systemfonts import SystemFace, scan_system_fonts, system_font_dirs
+from fontalloy_core.systemfonts import (
+    ScanResult,
+    load_cache,
+    scan_system_fonts,
+    system_font_dirs,
+)
 from fontalloy_core.report import file_sha256
 
 #: The interface the service binds — and the only one it ever binds.
@@ -142,6 +147,10 @@ class ServeOptions:
     # same name is also the e2e seam — a fixture directory stands in
     # for C:\Windows\Fonts.
     system_font_dirs: tuple[Path, ...] | None = None
+    # Round 25: where the scan persists its result (None = no disk
+    # cache; the scan re-runs per process). The GUI passes its app-data
+    # directory so a steady-state launch stat-walks instead of parsing.
+    system_cache_dir: Path | None = None
 
 
 class _BuildAborted(Exception):
@@ -254,12 +263,28 @@ class ServeState:
         self.build_root = created_root
         self._owns_root = options.work_dir is None
         self._created_dirs: set[Path] = set()
-        self._system_faces: list[SystemFace] | None = None
+        self._system_result: ScanResult | None = None
+        self._system_ready = False
         self._system_dirs = tuple(
             options.system_font_dirs
             if options.system_font_dirs is not None
             else system_font_dirs()
         )
+        self._system_cache_file = (
+            options.system_cache_dir / "system-fonts-cache.json"
+            if options.system_cache_dir is not None
+            else None
+        )
+        # Round 25 (owner items 1+2, the wedge): the scan runs on a
+        # daemon thread started HERE — never inside a request handler.
+        # The thread yields the GIL between files, so /health and every
+        # other endpoint stay live while a real machine's font
+        # directory is being parsed; the disk cache makes steady-state
+        # launches a stat walk only.
+        self._system_thread = threading.Thread(
+            target=self._scan_system_fonts, name="system-fonts", daemon=True
+        )
+        self._system_thread.start()
 
     # -- startup -----------------------------------------------------------
 
@@ -479,50 +504,70 @@ class ServeState:
             "families": families,
         }
 
-    def system_faces(self) -> list[SystemFace]:
-        """The installed system faces, scanned once per process.
-
-        The first call walks the platform's font directories (seconds
-        on a full install); every later call answers from the cache.
-        The GUI asks once at connect and never blocks on it.
-        """
-        if self._system_faces is None:
-            self._system_faces = scan_system_fonts(self._system_dirs)
-        return self._system_faces
+    def _scan_system_fonts(self) -> None:
+        """The background scan (daemon thread; see __init__)."""
+        previous = (
+            load_cache(self._system_cache_file)
+            if self._system_cache_file is not None
+            else None
+        )
+        result = scan_system_fonts(
+            self._system_dirs,
+            previous=previous,
+            cache_file=self._system_cache_file,
+        )
+        with self.lock:
+            self._system_result = result
+            self._system_ready = True
 
     def system_fonts_document(self) -> dict[str, Any]:
-        dirs = [str(directory) for directory in self._system_dirs]
-        faces = [
-            {
-                "path": str(face.path),
-                "file": face.file,
-                "face": face.face,
-                "family": face.family,
-                "subfamily": face.subfamily,
-                "weight": face.weight,
-                "italic": face.italic,
-                "latin": face.latin,
-                "cjk": face.cjk,
-            }
-            for face in self.system_faces()
-        ]
-        return {"dirs": dirs, "faces": faces}
+        """The enumeration snapshot: ``ready`` false until it lands.
+
+        Never scans, never blocks on the scanning thread — an
+        in-flight scan means ``{"ready": false, faces: []}`` and the
+        GUI retries.
+        """
+        with self.lock:
+            ready = self._system_ready
+            faces = self._system_result.faces if self._system_result else ()
+        return {
+            "dirs": [str(directory) for directory in self._system_dirs],
+            "ready": ready,
+            "faces": [
+                {
+                    "path": str(face.path),
+                    "file": face.file,
+                    "face": face.face,
+                    "family": face.family,
+                    "subfamily": face.subfamily,
+                    "weight": face.weight,
+                    "italic": face.italic,
+                    "latin": face.latin,
+                    "cjk": face.cjk,
+                }
+                for face in faces
+            ],
+        }
 
     def system_font_bytes(self, path: str) -> bytes | None:
         """One scanned system font FILE's bytes (collections whole).
 
-        Only paths the scan itself produced are served — the endpoint
+        Only paths the scan itself recorded are served — the endpoint
         is a byte source for faces the GUI picked, never a general
-        file reader.
+        file reader. The lookup reads the snapshot under the lock and
+        does its file IO outside it.
         """
         wanted = Path(path)
-        for face in self.system_faces():
-            if face.path == wanted:
-                try:
-                    return wanted.read_bytes()
-                except OSError:
-                    return None
-        return None
+        with self.lock:
+            known = self._system_result is not None and any(
+                face.path == wanted for face in self._system_result.faces
+            )
+        if not known:
+            return None
+        try:
+            return wanted.read_bytes()
+        except OSError:
+            return None
 
     def fonts_document(self) -> dict[str, Any]:
         """The configured local directories, scanned into families.
@@ -787,8 +832,7 @@ class _ServeHandler(BaseHTTPRequestHandler):
             if target is None:
                 self._send_error(400, "the file endpoint needs ?path=")
                 return
-            with self.state.lock:
-                payload = self.state.system_font_bytes(target)
+            payload = self.state.system_font_bytes(target)
             if payload is None:
                 self._send_error(404, f"not a scanned system font: {target}")
                 return

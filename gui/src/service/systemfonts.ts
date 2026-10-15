@@ -78,16 +78,30 @@ export function groupSystemFamilies(
 /** The fetch runs once per service connection; failures stay silent. */
 let requested = false;
 
-/** Ask the service for the installed fonts (background, idempotent). */
+/**
+ * Ask the service for the installed fonts (background, idempotent).
+ *
+ * Round 25: the serve scans on a background thread and answers
+ * ``ready: false`` until it lands — the first-ever scan of a real
+ * machine's font directory takes a while, so this POLLS quietly
+ * (2s apart, bounded) instead of holding one request open.
+ */
 export async function ensureSystemFonts(client: ServeClient): Promise<void> {
   if (requested) return;
   requested = true;
-  try {
-    const doc = await client.systemFonts();
-    patchService({ systemFonts: groupSystemFamilies(doc.faces) });
-  } catch {
-    // No enumeration (older service, scan failure) — the feature is
-    // simply absent; nothing else changes.
+  for (let attempt = 0; attempt < 90; attempt++) {
+    try {
+      const doc = await client.systemFonts();
+      if (doc.ready) {
+        patchService({ systemFonts: groupSystemFamilies(doc.faces) });
+        return;
+      }
+    } catch {
+      // No enumeration endpoint (older service) — the feature is
+      // simply absent; nothing else changes.
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
   }
 }
 

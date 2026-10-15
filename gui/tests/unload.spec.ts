@@ -115,7 +115,7 @@ async function installFakeService(page: Page): Promise<void> {
       return route.fulfill({
         status: 200,
         headers: { ...cors, "content-type": "application/json" },
-        body: JSON.stringify({ dirs: [], faces: [] }),
+        body: JSON.stringify({ dirs: [], ready: true, faces: [] }),
       });
     }
     return route.fulfill({ status: 404, headers: cors, body: "not found" });
