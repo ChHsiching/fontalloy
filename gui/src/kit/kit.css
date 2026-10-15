@@ -121,7 +121,19 @@
  * The font-pair joiner (icon-purge round): the dimmed text `+`
  * became the kit's own plus glyph at 11px — the same ink3 tone the
  * text character carried.
+ *
+ * The pair row itself is a CENTERED flex row (round 23, owner item 4):
+ * the joiner is a textless svg box, so an inline formatting context
+ * aligns it by its synthesized bottom-edge baseline and the tags ride
+ * visibly low beside it. Flex centering shares one axis instead; the
+ * 4px gap replaces the previous flush 0px joins.
  */
+.kit-font-pair {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .kit-pair-plus {
   display: inline-flex;
   align-items: center;
@@ -1029,13 +1041,17 @@
   height: 13px;
 }
 
-/* The typed-path fallback (round 20; round 21 redesign; round 22 fix):
- * a FIXED width that shows the short placeholder 「或输入路径」 in full
- * and NEVER grows on focus — the focus expansion pushed the field's
- * right edge past the popup's visible row. The full value rides the
+/* The typed-path fallback (round 20; round 21 redesign; round 22 fix;
+ * round 23, owner item 5): a FIXED preferred width that shows the short
+ * placeholder 「或输入路径」 in full and NEVER grows on focus — but the
+ * field YIELDS when the footer row runs out of space (the fixed
+ * 96px-by-no-shrink of round 22 clipped the field's right edge inside
+ * the 260px rail). min-width:0 defeats the input's intrinsic-size
+ * floor so shrinking actually happens; the full value rides the
  * field's title tooltip. */
 .kit-fppath {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
   width: 96px;
   height: 24px;
   padding: 0 8px;
@@ -1093,8 +1109,7 @@
 }
 
 /* Round 21: reduced motion — the load indicator degrades to a static
- * mark + the count (no rotation, instant entry/exit) and the path
- * field's focus expansion snaps instead of animating. */
+ * mark + the count (no rotation, instant entry/exit). */
 @media (prefers-reduced-motion: reduce) {
   .kit-fpload {
     transition: none;
@@ -1104,10 +1119,6 @@
     animation: none;
     border-top-color: var(--ln2);
     background: var(--ac);
-  }
-
-  .kit-fppath {
-    transition: none;
   }
 }
 
@@ -1201,14 +1212,16 @@
   height: 14px;
 }
 
-/* Variant chips (round 8 final form — owner items 6+7): one chip per
- * CUT, labeled with the official proper nouns from the data (NF /
- * NF-CN / Mono / 屏幕版 …; the default cut reads 标准). Span-buttons
- * (the row itself is the <button>); the accent tint marks ONLY the
- * user's explicit pick — the default cut renders plain (round 8: no
- * dashed ring, no 默认 marker), grey an unfetched member family (the
- * 未下载 tag rides inside). Small like the meta line (10px), one
- * flex-wrap row. */
+/* Variant chips (round 8 final form — owner items 6+7; round 23
+ * labels): one chip per CUT, labeled with the cut's OWN name — the
+ * registered cut's name-table name (「Noto Sans Mono CJK SC」, 「Maple
+ * Mono NF CN」), the release artifact's stem until registered. Full
+ * names run long, so a chip may ellipsize inside the row (the full
+ * name rides the title tooltip). Span-buttons (the row itself is the
+ * <button>); the accent tint marks ONLY the user's explicit pick —
+ * the default cut renders plain (round 8: no dashed ring, no 默认
+ * marker), grey an unfetched member family (the 未下载 tag rides
+ * inside). Small like the meta line (10px), one flex-wrap row. */
 .kit-fp .kit-fp-chips {
   display: flex;
   flex-wrap: wrap;
@@ -1227,6 +1240,9 @@
   line-height: 1.5;
   color: var(--ink3);
   white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   cursor: pointer;
   user-select: none;
   transition: background-color 80ms ease-out, color 80ms ease-out;

@@ -90,6 +90,7 @@ export function fontPairTags(
   donor: string,
 ): { el: HTMLElement; set(base: string, donor: string): void } {
   const el = document.createElement("span");
+  el.className = "kit-font-pair";
   el.dataset.role = "font-pair";
   const baseTag = document.createElement("span");
   baseTag.className = "kit-tag";
