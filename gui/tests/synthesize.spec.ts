@@ -1353,8 +1353,13 @@ test.describe("sidecar synthesize", () => {
     const baseFace = "JetBrainsMonoNerdFont-Regular.ttf";
     const boldFace = "JetBrainsMonoNerdFont-Bold.ttf";
     const donorFace = "MapleMono-NF-CN-Regular.ttf";
+    // Round 23: the bold face must carry the SAME name-table family
+    // as the real Regular (the base multi-family guard is loud) — the
+    // generator names the family and stem to match the real release.
     const [, boldPath] = await generateFamily(
       await mkdtemp(resolve(tmpdir(), "fontalloy-bold-")),
+      "JetBrainsMono Nerd Font",
+      "JetBrainsMonoNerdFont",
     );
     await copyFile(real.base, resolve(fontsDir, "JetBrainsMono", baseFace));
     await copyFile(boldPath, resolve(fontsDir, "JetBrainsMono", boldFace));
@@ -1614,8 +1619,13 @@ test.describe("sidecar synthesize", () => {
     const baseFace = "JetBrainsMonoNerdFont-Regular.ttf";
     const boldFace = "JetBrainsMonoNerdFont-Bold.ttf";
     const donorFace = "MapleMono-NF-CN-Regular.ttf";
+    // Round 23: the bold face must carry the SAME name-table family
+    // as the real Regular (the base multi-family guard is loud) — the
+    // generator names the family and stem to match the real release.
     const [, boldPath] = await generateFamily(
       await mkdtemp(resolve(tmpdir(), "fontalloy-bold-")),
+      "JetBrainsMono Nerd Font",
+      "JetBrainsMonoNerdFont",
     );
     await copyFile(real.base, resolve(fontsDir, "JetBrainsMono", baseFace));
     await copyFile(boldPath, resolve(fontsDir, "JetBrainsMono", boldFace));

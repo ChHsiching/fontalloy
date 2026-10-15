@@ -345,22 +345,22 @@ export function buildWorkspaceDraft(
  * The pattern a pick's PATH-form slot carries (round 14): a LOCAL pick
  * keeps the round-13 same-dir cut glob (extension-less, only when the
  * load path actually discovered sibling faces — single-file semantics
- * otherwise); a CATALOG pick carries the FAMILY CUT pattern of its
- * representative face whatever the resolution form — the pick is the
- * family, and a reference that drops the pattern narrows the build to
- * the representative alone (round 14's owner report: one weight slot
- * where the family ships sixteen). The donor's pattern pools the
- * variant's faces into nearest-weight matching — the same pooling the
- * catalog form's whole-variant reference does. Undefined when the
- * representative's name cannot be narrowed (no `*` in the pattern).
+ * otherwise) in BOTH roles (round 23, owner item 6: a local DONOR whose
+ * family has sibling faces pools them into nearest-weight matching
+ * exactly like a base — a bare single-file donor pins ONE donor face
+ * onto every slot, which is how a 16-slot build shipped the family's
+ * Medium everywhere while the pick was the family default); a CATALOG
+ * pick carries the FAMILY CUT pattern of its representative face
+ * whatever the resolution form — the pick is the family, and a
+ * reference that drops the pattern narrows the build to the
+ * representative alone (round 14's owner report: one weight slot where
+ * the family ships sixteen). Undefined when the representative's name
+ * cannot be narrowed (no `*` in the pattern).
  */
-function pickPathPattern(
-  font: LoadedFont,
-  role: "base" | "donor",
-): string | undefined {
+function pickPathPattern(font: LoadedFont): string | undefined {
   if (font.origin === "local") {
-    // Round 13: only a base whose load discovered same-dir siblings.
-    if (role !== "base" || localFaceSet(store.get().fonts, font).length <= 1) {
+    // Only a pick whose load discovered same-dir siblings.
+    if (localFaceSet(store.get().fonts, font).length <= 1) {
       return undefined;
     }
     const pattern = localFamilyPattern(font.fileName);
@@ -385,16 +385,18 @@ function pickPathPattern(
  *    fetched; preferring the catalog form there would submit a
  *    reference that dies with "not fetched" while a working path
  *    exists.) The slot carries the pick's family pattern
- *    (`pickPathPattern`): a LOCAL base whose load discovered
- *    same-directory sibling faces (round 13, owner item 7) carries the
- *    extension-less SAME-DIR glob over the representative's basename;
- *    a CATALOG pick (round 14) carries the FAMILY CUT pattern of its
- *    representative face in BOTH roles — the pick is the family, and
- *    without the pattern the path form would narrow the build to the
+ *    (`pickPathPattern`): a LOCAL pick — base OR donor (round 23,
+ *    owner item 6) — whose load discovered same-directory sibling
+ *    faces (round 13, owner item 7) carries the extension-less
+ *    SAME-DIR glob over the representative's basename; a CATALOG pick
+ *    (round 14) carries the FAMILY CUT pattern of its representative
+ *    face in BOTH roles — the pick is the family, and without the
+ *    pattern the path form would narrow the build to the
  *    representative alone (the round-14 owner report: a 16-face
- *    JetBrainsMono pick building ONE weight slot). A one-file family
- *    (no siblings, or a name the rule cannot narrow) keeps the bare
- *    path: single-face semantics.
+ *    JetBrainsMono pick building ONE weight slot; the round-23 report:
+ *    a donor narrowed to one face pins that face onto EVERY slot). A
+ *    one-file family (no siblings, or a name the rule cannot narrow)
+ *    keeps the bare path: single-face semantics.
  * 2. The CATALOG-FAMILY reference — `{family, variant}` naming what
  *    the manifest pins — for catalog picks the listing CANNOT see (a
  *    serve whose /fonts scan does not reach the catalog layout's
@@ -418,7 +420,7 @@ async function resolvePickSlot(
   const path = await resolveFontPathWithRefresh(font);
   if (path !== null) {
     const slot: FontSlot = { catalog: null, path, face: null };
-    const pattern = pickPathPattern(font, role);
+    const pattern = pickPathPattern(font);
     if (pattern !== undefined) slot.pattern = pattern;
     return slot;
   }
