@@ -265,6 +265,13 @@ def build_recipe(
     _stage("loading", _source_facts(recipe))
     _verify_pinned_sources(recipe)
     bases = load_faces(recipe.base, role="base font")
+    # A base pattern that over-matches (two name-table families in one
+    # directory — a cut prefix that also prefixes another family's
+    # files) would silently mix families into one output: every face is
+    # rewritten to the output family, so nothing downstream could catch
+    # it. Loud, exactly like the donor-side check (round 23, owner
+    # item 6).
+    _base_family_check(bases, recipe.base)
     pools: dict[str, DonorPool] = {}
     loaded_donors: list[LoadedFace] = []
     for index, ref in enumerate(recipe.donors):
@@ -691,6 +698,23 @@ def _source_record(
         codepoints=codepoints,
         placeholder_codepoints=placeholders,
     )
+
+
+def _base_family_check(bases: list[LoadedFace], ref: FontRef) -> None:
+    """A base reference must span exactly ONE name-table family.
+
+    The donors' pool aggregation raises the same way (see
+    :func:`_donor_pool`); the base's identity rewrite would otherwise
+    hide a mixed load completely — every face becomes the output family.
+    """
+    families = aggregate_families([face.info for face in bases])
+    if len(families) > 1:
+        source = ref.family if ref.family is not None else str(ref.path)
+        raise BuildError(
+            "base font carries multiple families "
+            f"({', '.join(family.name for family in families)}); narrow its "
+            f"pattern or pin a face: {source}"
+        )
 
 
 def _donor_pool(

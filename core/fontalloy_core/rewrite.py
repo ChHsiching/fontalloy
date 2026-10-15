@@ -21,7 +21,14 @@ gives that container a coherent identity of its own:
   family + subfamily, nameID 2 carries the RIBBI style derived from the
   base's bold/italic bits, and 16/17 carry the typographic pair.
   Emitting both pairs inconsistently makes Windows synthesize bogus
-  weights — the trap the old storefront hit.
+  weights — the trap the old storefront hit. The subfamily itself is
+  the base's TYPographic one (nameID 17) first, the legacy nameID 2
+  second: a family with more than four styles keeps "Regular" in
+  nameID 2 for every non-RIBBI weight (the JetBrainsMono/Noto
+  convention — Thin..ExtraBold all say "Regular" there), so reading
+  nameID 2 first would collapse a 16-face output onto eight
+  "ChHsich Regular" faces and every RIBBI-matching application would
+  resolve the wrong one (round 23, owner item 6: the flagship report).
 - OS/2 is corrected, not redesigned: ``xAvgCharWidth`` is the mean of
   the lowercase a–z advance widths per the OpenType specification
   (fontTools' ``recalcAvgCharWidth`` averages *all* advances, which
@@ -120,7 +127,12 @@ def apply_output_identity(font: TTFont, naming: OutputNaming) -> None:
     both platform encodings.
     """
     family = naming.family
-    subfamily = " ".join((_base_name(font, 2) or "Regular").split()) or "Regular"
+    # The base's own subfamily, typographic record first: nameID 17
+    # carries the real style for >4-style families whose nameID 2 is
+    # "Regular" for every non-RIBBI weight (round 23, owner item 6).
+    subfamily = " ".join(
+        (_base_name(font, 17) or _base_name(font, 2) or "Regular").split()
+    ) or "Regular"
 
     if subfamily.casefold() in {style.casefold() for style in _RIBBI}:
         canonical = next(

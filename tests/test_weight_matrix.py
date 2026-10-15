@@ -432,6 +432,28 @@ class TestNearestMatch:
         with pytest.raises(BuildError, match="FamilyA.*FamilyB"):
             build(recipe, tmp_path / "out.ttf")
 
+    def test_a_base_file_of_several_families_is_a_clear_error(
+        self, tmp_path, donor_font
+    ):
+        # Round 23 (owner item 6): a base pattern that over-matches
+        # mixes two name-table families into one output — and the
+        # identity rewrite would rename every face to the output
+        # family, so nothing downstream could catch it. Loud, exactly
+        # like the donor side.
+        mixed = synth_ttc(
+            tmp_path / "mixed.ttc",
+            faces=[
+                dict(family="FamilyA", weight=400, codepoints=(0x41,)),
+                dict(family="FamilyB", weight=700, codepoints=(0x41,)),
+            ],
+        )
+        recipe = _recipe(
+            tmp_path, f"base: {mixed.name}\ndonors:\n  - {donor_font.name}\n"
+        )
+
+        with pytest.raises(BuildError, match="base font carries multiple"):
+            build(recipe, tmp_path / "out.ttc")
+
 
 class TestWeightOverrides:
     """A recipe may rewrite the weight mapping per weight."""

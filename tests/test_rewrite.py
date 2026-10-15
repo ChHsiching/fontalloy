@@ -335,6 +335,39 @@ class TestTypographicNames:
         assert one_record_per_platform(out, 16) == "ChHsich"
         assert one_record_per_platform(out, 17) == "Medium"
 
+    def test_a_regular_legacy_subfamily_with_a_typographic_style_keeps_the_style(
+        self, tmp_path: Path, synth_font_factory
+    ):
+        # Round 23 (owner item 6): the >4-style family convention keeps
+        # nameID 2 at "Regular" for every non-RIBBI weight and carries
+        # the real style in nameID 17 (JetBrainsMono, Noto, Maple Mono
+        # all ship this way). The subfamily must read the typographic
+        # record FIRST — reading nameID 2 collapsed a 16-face output
+        # onto eight "ChHsich Regular" faces and every RIBBI-matching
+        # application resolved the wrong one.
+        base = synth_font_factory(
+            tmp_path / "base.ttf",
+            family="SynthBase ExtraBold",
+            codepoints=BASE_CODEPOINTS,
+            subfamily="Regular",
+            typographic_family="SynthBase",
+            extra_names={17: "ExtraBold"},
+        )
+        donor = synth_font_factory(
+            tmp_path / "donor.ttf", family="SynthDonor", codepoints=DONOR_CODEPOINTS
+        )
+        recipe = write_recipe(tmp_path, minimal_recipe(base, donor))
+
+        result = build(recipe, tmp_path / "out.ttf")
+        out = TTFont(result.font_path)
+
+        assert one_record_per_platform(out, 1) == "ChHsich ExtraBold"
+        assert one_record_per_platform(out, 2) == "Regular"
+        assert one_record_per_platform(out, 4) == "ChHsich ExtraBold"
+        assert one_record_per_platform(out, 6) == "ChHsich-ExtraBold"
+        assert one_record_per_platform(out, 16) == "ChHsich"
+        assert one_record_per_platform(out, 17) == "ExtraBold"
+
     def test_bold_and_italic_bits_derive_the_ribbi_subfamily(
         self, tmp_path: Path, synth_font_factory
     ):
