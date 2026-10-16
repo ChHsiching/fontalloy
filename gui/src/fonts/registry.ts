@@ -185,6 +185,32 @@ interface FacePlan {
 }
 
 /**
+ * Round 29: one face per (weight, style) slot within a family. A
+ * collection or same-directory pool that carries a publisher's style
+ * side-cuts (Oblique faces with sheared glyphs but upright flags, all
+ * under one umbrella typographic family) delivers several faces for
+ * one slot; two FontFaces with identical descriptors make the browser's
+ * slot match arbitrary, and normal text can land on the slanted ink —
+ * the round-29 report (merged REGULAR text rendering italic). The face
+ * whose flags describe its ink (`styleConsistent`) keeps the slot;
+ * file order decides among equals. Mirrors the core pipeline's
+ * resolve_base_faces so the loaded family previews exactly what the
+ * pipeline would output.
+ */
+function resolveStyleSlots(plans: readonly FacePlan[]): FacePlan[] {
+  const winners = new Map<string, FacePlan>();
+  for (const plan of plans) {
+    const key = `${plan.meta.weight}/${plan.meta.italic ? "italic" : "normal"}`;
+    const held = winners.get(key);
+    if (held === undefined || (!held.meta.styleConsistent && plan.meta.styleConsistent)) {
+      winners.set(key, plan);
+    }
+  }
+  const kept = new Set(winners.values());
+  return plans.filter((plan) => kept.has(plan));
+}
+
+/**
  * The local loading path (round 20; round 21, owner item 2): expand
  * the picked files (a collection contributes EVERY face), group the
  * faces by their own name-table family, and register each family the
@@ -300,8 +326,6 @@ export async function registerLocalFontFiles(
     }
   }
 
-  const glyphs = plans.reduce((sum, plan) => sum + plan.meta.numGlyphs, 0);
-
   // Families in first-appearance order; within a family the
   // representative first (400-upright preferred — the OS's own
   // default-match face, the catalog's pick discipline), then the rest.
@@ -314,12 +338,20 @@ export async function registerLocalFontFiles(
 
   let representative: LoadedFont | null = null;
   let faces = 0;
+  let glyphs = 0;
   let loaded = 0;
   if (total > 0) options.onProgress?.(0, total, "registering");
   for (const [family, group] of families) {
+    // Round 29: style side-cut collisions resolve BEFORE the
+    // representative is chosen, so the pick is a face whose flags
+    // describe its ink (a 400-upright Regular, never an Oblique file
+    // flagged upright). Dropped side-cuts count neither as faces nor
+    // glyphs — the outcome states what actually registered.
+    const kept = resolveStyleSlots(group);
+    glyphs += kept.reduce((sum, plan) => sum + plan.meta.numGlyphs, 0);
     const rep =
-      group.find((p) => p.meta.weight === 400 && !p.meta.italic) ?? group[0]!;
-    const ordered = [rep, ...group.filter((p) => p !== rep)];
+      kept.find((p) => p.meta.weight === 400 && !p.meta.italic) ?? kept[0]!;
+    const ordered = [rep, ...kept.filter((p) => p !== rep)];
     // The family's representative record, when an earlier load already
     // made one — the faces that follow then land as descriptor faces +
     // data-only records, never as a second representative. It stays

@@ -464,9 +464,26 @@ export class CatalogManager {
               f.catalog?.variant === identity.variant &&
               f.fileName === file,
           );
-      const faces: LoadedFont[] = [];
+      // Round 29: parse the whole cut first (the representative's own
+      // file included), resolve the (weight, style) slots, and register
+      // only the winners. A cut that pools a publisher's style
+      // side-cuts (Oblique faces flagged upright, Upright-Italic faces
+      // flagged italic — one umbrella typographic family) otherwise
+      // puts two FontFaces on one descriptor and the browser's slot
+      // match becomes arbitrary: normal text can land on slanted ink
+      // (the round-29 report). The face whose flags describe its ink
+      // keeps the slot, exactly like the core build's resolver.
+      interface FacePlan {
+        file: string;
+        buffer: ArrayBuffer;
+        weight: number;
+        italic: boolean;
+        consistent: boolean;
+        names: ReturnType<typeof parseFontMeta>["names"];
+      }
+      const plans: FacePlan[] = [];
       for (const face of variantFaceFiles(family.files, variant, family.family)) {
-        if (face.file === repFile || recorded(face.file)) continue;
+        if (recorded(face.file)) continue;
         const buffer = await this.deps.storage.read(`${dir}/${face.file}`);
         if (buffer === null) continue;
         try {
@@ -476,36 +493,56 @@ export class CatalogManager {
           // service). One read per face, one yield between faces.
           const meta = parseFontMeta(buffer, { coverage: false });
           if (meta.family !== repCssFamily) continue;
-          // Round 28 (owner item: bold parity): the sibling registers
-          // as a REAL FontFace with its own weight/style descriptor —
-          // the same discipline local loads follow since round 20.
-          // Before, a bold-weight sibling was a data-only record, the
-          // family resolved to its single 400 face, and the scene
-          // preview drew the browser's SYNTHETIC bold where the real
-          // face existed — the preview lied about the font.
-          document.fonts.add(
-            new FontFace(
-              meta.family,
-              buffer,
-              meta.italic
-                ? { weight: String(meta.weight), style: "italic" }
-                : { weight: String(meta.weight) },
-            ),
-          );
-          faces.push({
-            cssFamily: meta.family,
-            family: family.family,
+          plans.push({
+            file: face.file,
+            buffer,
+            weight: meta.weight,
+            italic: meta.italic,
+            consistent: meta.styleConsistent,
             names: meta.names,
-            fileName: face.file,
-            origin: "catalog",
-            path: this.deps.storage.absPath?.(`${dir}/${face.file}`) ?? undefined,
-            catalog: { family: identity.family, variant: identity.variant },
-            codepoints: [],
           });
         } catch {
           // A face that no longer parses is simply absent from the set.
         }
         await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      const winners = new Map<string, FacePlan>();
+      for (const plan of plans) {
+        const key = `${plan.weight}/${plan.italic ? "italic" : "normal"}`;
+        const held = winners.get(key);
+        if (held === undefined || (!held.consistent && plan.consistent)) {
+          winners.set(key, plan);
+        }
+      }
+      const faces: LoadedFont[] = [];
+      for (const plan of winners.values()) {
+        if (plan.file === repFile) continue; // the representative is the pick
+        // Round 28 (owner item: bold parity): the sibling registers
+        // as a REAL FontFace with its own weight/style descriptor —
+        // the same discipline local loads follow since round 20.
+        // Before, a bold-weight sibling was a data-only record, the
+        // family resolved to its single 400 face, and the scene
+        // preview drew the browser's SYNTHETIC bold where the real
+        // face existed — the preview lied about the font.
+        document.fonts.add(
+          new FontFace(
+            repCssFamily,
+            plan.buffer,
+            plan.italic
+              ? { weight: String(plan.weight), style: "italic" }
+              : { weight: String(plan.weight) },
+          ),
+        );
+        faces.push({
+          cssFamily: repCssFamily,
+          family: family.family,
+          names: plan.names,
+          fileName: plan.file,
+          origin: "catalog",
+          path: this.deps.storage.absPath?.(`${dir}/${plan.file}`) ?? undefined,
+          catalog: { family: identity.family, variant: identity.variant },
+          codepoints: [],
+        });
       }
       if (faces.length > 0) {
         store.set({ fonts: [...store.get().fonts, ...faces] });

@@ -82,9 +82,22 @@ export interface FontMeta {
    */
   weight: number;
   /**
-   * The face's italic flag (OS/2 fsSelection bit 0, head macStyle bit 1).
+   * The face's italic flag: ANY italic signal — the OS/2 fsSelection
+   * bit, the head macStyle bit, or a nonzero post.italicAngle (round
+   * 29). Nerd Fonts releases ship Oblique faces with sheared glyphs
+   * but upright flags; reading only the flags puts slanted ink under
+   * an upright slot, and the browser hands normal text a slanted face
+   * (the round-29 report: merged REGULAR text rendered italic).
    */
   italic: boolean;
+  /**
+   * Whether the three italic signals agree (round 29). A face whose
+   * flags contradict its own post angle is a publisher style
+   * side-cut; when another face already holds the same (weight, style)
+   * slot with honest flags, the inconsistent one is skipped at
+   * registration (see registry/manager).
+   */
+  styleConsistent: boolean;
   /**
    * The maxp table's numGlyphs (round 21; 0 when the face carries no
    * readable maxp) — the honest per-face glyph count the local load's
@@ -113,6 +126,7 @@ const TAG_MAXP = 0x6d617870;
 const TAG_CFF = 0x43464620;
 const TAG_OS2 = 0x4f532f32;
 const TAG_FVAR = 0x66766172;
+const TAG_POST = 0x706f7374;
 
 export function parseFontMeta(
   buffer: ArrayBuffer,
@@ -173,33 +187,50 @@ export function parseFontMeta(
     placeholderCodepoints: coverage.placeholders,
     weight: style.weight,
     italic: style.italic,
+    styleConsistent: style.styleConsistent,
     numGlyphs,
   };
 }
 
 /**
  * The face's weight/italic identity (round 20): OS/2 usWeightClass and
- * fsSelection bit 0, with head macStyle bit 1 as the italic fallback —
- * the descriptors that keep a family's sibling faces distinct under one
- * css family. A face without OS/2 reads weight 400 (the CSS default).
+ * the three italic signals of round 29 — the OS/2 fsSelection bit, the
+ * head macStyle bit, and a nonzero post.italicAngle. ANY signal makes
+ * the face italic (an Oblique face flagged upright still slants); the
+ * signals must also AGREE (`styleConsistent`) for the registration
+ * paths to trust the face with a (weight, style) slot it shares with a
+ * consistent sibling. A face without OS/2 reads weight 400 (the CSS
+ * default).
  */
 function readFaceStyle(
   view: DataView,
   offsets: ReadonlyMap<number, number>,
-): { weight: number; italic: boolean } {
+): { weight: number; italic: boolean; styleConsistent: boolean } {
   let weight = 400;
-  let italic = false;
+  let fsBit = false;
   const os2 = offsets.get(TAG_OS2);
   if (os2 !== undefined && os2 + 64 <= view.byteLength) {
     weight = view.getUint16(os2 + 4);
-    italic = (view.getUint16(os2 + 62) & 0x0001) !== 0;
+    fsBit = (view.getUint16(os2 + 62) & 0x0001) !== 0;
   }
   const head = offsets.get(TAG_HEAD);
-  if (!italic && head !== undefined && head + 46 <= view.byteLength) {
+  let macBit = false;
+  if (head !== undefined && head + 46 <= view.byteLength) {
     // head.macStyle sits at +44 (bit 1 = italic), past the bbox shorts.
-    italic = (view.getUint16(head + 44) & 0x0002) !== 0;
+    macBit = (view.getUint16(head + 44) & 0x0002) !== 0;
   }
-  return { weight: weight || 400, italic };
+  // post.italicAngle: a 16.16 fixed at table offset +4 — the integer
+  // degrees live in the high half.
+  const post = offsets.get(TAG_POST);
+  let angleBit = false;
+  if (post !== undefined && post + 8 <= view.byteLength) {
+    angleBit = view.getInt16(post + 4) !== 0;
+  }
+  return {
+    weight: weight || 400,
+    italic: fsBit || macBit || angleBit,
+    styleConsistent: fsBit === macBit && fsBit === angleBit,
+  };
 }
 
 interface NameRecord {
