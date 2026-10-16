@@ -66,7 +66,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { readFile, readdir, mkdir, writeFile } from "node:fs/promises";
+import { readFile, readdir, mkdir, writeFile, rm } from "node:fs/promises";
 import { existsSync, statSync, readFileSync } from "node:fs";
 import { inflateRawSync } from "node:zlib";
 import { resolve, dirname, basename } from "node:path";
@@ -95,6 +95,40 @@ const UPSTREAM_CACHE = process.env.FONTALLOY_DEV_CATALOG_CACHE
 /** Per-artifact fetch timeout — release assets run to tens of MB. */
 const FETCH_TIMEOUT_MS = 180_000;
 
+/**
+ * Round 27 (owner ruling): the mirror prefixes tried after GitHub
+ * direct — release-asset accelerators that proxy the FULL upstream
+ * URL (the ghproxy convention). Override with
+ * FONTALLOY_DEV_CATALOG_MIRRORS (comma-separated prefixes). Safety is
+ * unaffected by the list's contents: every fetched artifact must match
+ * the manifest's pinned sha256 before it enters the cache.
+ */
+const DEFAULT_MIRRORS = [
+  "https://ghfast.top/",
+  "https://gh-proxy.com/",
+  "https://ghproxy.net/",
+];
+
+/** The origin list for one pinned artifact: direct, then mirrors. */
+function upstreamOrigins(upstreamUrl) {
+  const overrides = (process.env.FONTALLOY_DEV_CATALOG_MIRRORS ?? "")
+    .split(",")
+    .map((prefix) => prefix.trim())
+    .filter((prefix) => prefix.length > 0);
+  const mirrors = overrides.length > 0 ? overrides : DEFAULT_MIRRORS;
+  return [upstreamUrl, ...mirrors.map((prefix) => `${prefix}${upstreamUrl}`)];
+}
+
+/** A short label for logs: the direct URL, or the mirror's host. */
+function originLabel(url, directUrl) {
+  if (url === directUrl) return "github-direct";
+  try {
+    return `mirror ${new URL(url).host}`;
+  } catch {
+    return url.slice(0, 40);
+  }
+}
+
 /** Upstream fetches run with bounded concurrency (be a good citizen). */
 const FETCH_CONCURRENCY = 4;
 
@@ -113,11 +147,14 @@ function fontDirCandidates() {
   const list = [];
   if (process.env.FONTALLOY_DEV_FONT_DIR) list.push(process.env.FONTALLOY_DEV_FONT_DIR);
   list.push(
-    resolve(REPO_ROOT, "..", "fontalloy", "gui", "prototype", "fonts"),
-    resolve(REPO_ROOT, "gui", "prototype", "fonts"),
+    // Round 27 (owner ruling): the prototype layouts are REMOVED as
+    // byte sources — the design-draft bundle shipped ONE face per
+    // family, and "local first" let that single-Regular file shadow
+    // the multi-weight upstream artifact for every family it carried.
+    // The remaining local layouts are complete-by-construction: the
+    // repo's own fetch layout, and the upstream cache the fetch pass
+    // populates per pinned entry.
     resolve(REPO_ROOT, "assets", "fonts"),
-    // Round 9: the upstream-fetched faces (owner item 1) — populated by
-    // the fetch pass below, read here like any other local layout.
     resolve(UPSTREAM_CACHE, "faces"),
   );
   return list;
@@ -396,16 +433,39 @@ async function fetchEntryUpstream(entry, force = false) {
       );
       return null;
     }
-    console.info(`[dev-catalog] fetching upstream ${entry.file} (${entry.family}::${entry.variant})`);
-    const res = await fetch(entry.upstream_url, {
-      redirect: "follow",
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    artifact = Buffer.from(await res.arrayBuffer());
-    const actual = sha256hex(artifact);
-    if (actual !== entry.sha256) {
-      throw new Error(`sha256 mismatch (want ${entry.sha256.slice(0, 12)}…, got ${actual.slice(0, 12)}…)`);
+    // Round 27 (owner ruling: 抓不到是不允许的): the pinned artifact is
+    // fetched through an ORIGIN LIST — GitHub direct first, then the
+    // mirror prefixes — until one answers. Every origin is equally
+    // safe: the bytes must match the manifest's pinned sha256 or the
+    // artifact is rejected, so a proxy can never poison the catalog.
+    const reasons = [];
+    for (const url of upstreamOrigins(entry.upstream_url)) {
+      console.info(`[dev-catalog] fetching upstream ${entry.file} (${entry.family}::${entry.variant}) via ${originLabel(url, entry.upstream_url)}`);
+      try {
+        const res = await fetch(url, {
+          redirect: "follow",
+          signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        });
+        if (!res.ok) {
+          reasons.push(`${originLabel(url, entry.upstream_url)}: HTTP ${res.status}`);
+          continue;
+        }
+        artifact = Buffer.from(await res.arrayBuffer());
+        const actual = sha256hex(artifact);
+        if (actual !== entry.sha256) {
+          reasons.push(
+            `${originLabel(url, entry.upstream_url)}: sha256 mismatch (want ${entry.sha256.slice(0, 12)}…, got ${actual.slice(0, 12)}…)`,
+          );
+          artifact = null;
+          continue;
+        }
+        break;
+      } catch (err) {
+        reasons.push(`${originLabel(url, entry.upstream_url)}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    if (artifact === null) {
+      throw new Error(reasons.join("; "));
     }
     await mkdir(artifactDir, { recursive: true });
     await writeFile(artifactPath, artifact);
@@ -429,6 +489,12 @@ async function fetchEntryUpstream(entry, force = false) {
     if (faces === 0) throw new Error(`${entry.file} carries no font file`);
   }
   await writeFile(markerPath, `v2 ${entry.sha256}\n`);
+  // Round 27: the RAW artifact is pruned once its faces + marker are
+  // on disk — the upstream zips run to tens of MB each (they carry
+  // every cut and platform) and would balloon the cache by GBs. A
+  // warm entry never reads the zip again; a cold re-extraction
+  // refetches through the origin list.
+  await rm(artifactPath, { force: true }).catch(() => {});
   return (await readdir(faceDir)).filter((n) => FONT_EXT_RE.test(n)).sort();
 }
 

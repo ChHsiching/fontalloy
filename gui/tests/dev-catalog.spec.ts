@@ -505,3 +505,86 @@ function storedZip(entries: Array<{ name: string; data: Buffer }>): Buffer {
   eocd.writeUInt32LE(offset, 16);
   return Buffer.concat([...chunks, centralBuf, eocd]);
 }
+
+test("upstream fetch falls through the mirror origins until one answers (round 27)", async () => {
+  const root = join(tmpdir(), `fontalloy-mirror-${Date.now()}`);
+  await mkdir(root, { recursive: true });
+  const cacheDir = join(root, "cache");
+  const zip = storedZip([
+    { name: "FiraMonoNerdFont-Regular.ttf", data: Buffer.from("dummy-regular") },
+    { name: "FiraMonoNerdFont-Bold.ttf", data: Buffer.from("dummy-bold") },
+  ]);
+  const sha = (buf: Buffer): string => createHash("sha256").update(buf).digest("hex");
+  const manifest = {
+    schema: "fontalloy/font-catalog@v1",
+    families: [
+      {
+        family: "FiraMono",
+        variant: "Nerd Font",
+        file: "FiraMono.zip",
+        version: "test",
+        upstream_url: "https://github.com/test/fake/FiraMono.zip",
+        sha256: sha(zip),
+      },
+    ],
+  };
+  const manifestPath = join(root, "manifest.json");
+  await writeFile(manifestPath, JSON.stringify(manifest));
+
+  // GitHub direct fails; the first mirror serves a WRONG hash; the
+  // second mirror serves the right bytes. The artifact must land from
+  // the second mirror — and the bad mirror's bytes must be rejected.
+  const seen: string[] = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL): Promise<Response> => {
+    const url = String(input);
+    seen.push(url);
+    if (url === "https://github.com/test/fake/FiraMono.zip") {
+      return new Response("gone", { status: 404 });
+    }
+    if (url === "https://mirror-a.test/https://github.com/test/fake/FiraMono.zip") {
+      return new Response(new Uint8Array(Buffer.from("tampered")), { status: 200 });
+    }
+    if (url === "https://mirror-b.test/https://github.com/test/fake/FiraMono.zip") {
+      return new Response(new Uint8Array(zip), { status: 200 });
+    }
+    return new Response("gone", { status: 404 });
+  }) as typeof fetch;
+  process.env.FONTALLOY_DEV_CATALOG_CACHE = cacheDir;
+  process.env.FONTALLOY_DEV_CATALOG_MANIFEST = manifestPath;
+  process.env.FONTALLOY_DEV_CATALOG_MIRRORS =
+    "https://mirror-a.test/,https://mirror-b.test/";
+  try {
+    const { devCatalogPlugin } = await freshPlugin("mirror1");
+    let middleware: ((req: unknown, res: unknown, next: () => void) => Promise<void>) | null = null;
+    devCatalogPlugin().configureServer({
+      middlewares: { use: (fn: typeof middleware) => (middleware = fn) },
+    });
+    const doc = fakeRequest("/dev-catalog/catalog-release.json");
+    await middleware!(doc.req as never, doc.handlerRes as never, () => {});
+    expect(doc.captured.status).toBe(200);
+    const release = JSON.parse(doc.captured.body.toString("utf8")) as {
+      families: Array<{ family: string; files: Array<{ file: string }> }>;
+    };
+    const family = release.families.find((f) => f.family === "FiraMono");
+    expect(family).toBeDefined();
+    // The FULL family served — both faces from the mirrored artifact.
+    expect(family!.files.map((f) => f.file).sort()).toEqual([
+      "FiraMonoNerdFont-Bold.ttf",
+      "FiraMonoNerdFont-Regular.ttf",
+    ]);
+    // The origin chain ran in order: direct, mirror A, mirror B.
+    expect(seen[0]).toBe("https://github.com/test/fake/FiraMono.zip");
+    expect(seen[1]).toContain("mirror-a.test");
+    expect(seen[2]).toContain("mirror-b.test");
+    // The tampered mirror was NOT trusted: only after it failed did
+    // the right mirror get fetched, and exactly once each.
+    expect(seen.filter((u) => u.includes("mirror-a")).length).toBe(1);
+    expect(seen.filter((u) => u.includes("mirror-b")).length).toBe(1);
+  } finally {
+    globalThis.fetch = originalFetch;
+    delete process.env.FONTALLOY_DEV_CATALOG_CACHE;
+    delete process.env.FONTALLOY_DEV_CATALOG_MANIFEST;
+    delete process.env.FONTALLOY_DEV_CATALOG_MIRRORS;
+  }
+});
