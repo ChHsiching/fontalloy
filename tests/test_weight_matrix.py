@@ -227,9 +227,17 @@ class TestRequestedMatrix:
         assert len(faces) == 3
         # Slot order is the base file's face order, whatever the recipe
         # would have listed: Regular, Bold, Italic.
-        _assert_merged_face(faces[0], MERGED_AT_400, weight=400, italic=False)
-        _assert_merged_face(faces[1], {*BASE_CODEPOINTS, 0x4E2D, 0x6000}, weight=700, italic=False)
-        _assert_merged_face(faces[2], MERGED_AT_400, weight=400, italic=True)
+        # Round 26: output faces are weight-ascending (upright before
+        # italic at equal weight) — key by (weight, italic), never index.
+        by_slot = {
+            (face["OS/2"].usWeightClass, bool(face["OS/2"].fsSelection & 0x01)): face
+            for face in faces
+        }
+        _assert_merged_face(by_slot[(400, False)], MERGED_AT_400, weight=400, italic=False)
+        _assert_merged_face(
+            by_slot[(700, False)], {*BASE_CODEPOINTS, 0x4E2D, 0x6000}, weight=700, italic=False
+        )
+        _assert_merged_face(by_slot[(400, True)], MERGED_AT_400, weight=400, italic=True)
 
     def test_a_selection_subsets_the_matrix_in_base_face_order(
         self, tmp_path, matrix_base, weighty_donor
@@ -244,10 +252,12 @@ class TestRequestedMatrix:
         result = build(recipe, tmp_path / "out.ttc")
 
         faces = TTCollection(result.font_path).fonts
-        # The recipe listed italic first; the output keeps base face order.
-        assert [face["OS/2"].usWeightClass for face in faces] == [700, 400]
-        assert not faces[0]["OS/2"].fsSelection & 0x01
-        assert faces[1]["OS/2"].fsSelection & 0x01
+        # The recipe listed italic first; the output is weight-
+        # ascending regardless (round 26): the italic 400 first, then
+        # the upright 700.
+        assert [face["OS/2"].usWeightClass for face in faces] == [400, 700]
+        assert faces[0]["OS/2"].fsSelection & 0x01
+        assert not faces[1]["OS/2"].fsSelection & 0x01
 
     def test_a_single_selected_slot_builds_as_a_plain_ttf(
         self, tmp_path, matrix_base, weighty_donor
@@ -356,11 +366,16 @@ class TestNearestMatch:
         # ...slot 700 borrows the nearest (600, not 300: |100| < |300|).
         assert borrows[(700, "upright")]["weight"] == 600
         assert borrows[(400, "upright")]["via"] == "nearest"
-        # The distinguishing codepoints prove the faces actually landed.
-        faces = TTCollection(result.font_path).fonts
-        assert 0x56FD in faces[0].getBestCmap()  # the 400 face's extra
-        assert 0x6000 in faces[1].getBestCmap()  # the 600 face's extra
-        assert 0x3000 not in faces[0].getBestCmap()
+        # The distinguishing codepoints prove the faces actually landed
+        # (round 26: faces are weight-ascending, so key by weight —
+        # never by collection index).
+        faces = {
+            face["OS/2"].usWeightClass: face
+            for face in TTCollection(result.font_path).fonts
+        }
+        assert 0x56FD in faces[400].getBestCmap()  # the 400 face's extra
+        assert 0x6000 in faces[700].getBestCmap()  # the 600 face's extra
+        assert 0x3000 not in faces[400].getBestCmap()
 
     def test_a_tie_prefers_the_lighter_face(self, tmp_path, base_font):
         donor = synth_ttc(
@@ -612,7 +627,10 @@ class TestBorrowReporting:
         result = build(recipe, tmp_path / "out.ttc")
 
         weights = _load_report(result.report_path)["weights"]
-        # Report v2 (issue #12): every borrow also names the donor family.
+        # Report v2 (issue #12): every borrow also names the donor
+        # family. Round 26: slots are weight-ascending — 400 upright,
+        # 400 italic, then 700 — while base_face still names the SOURCE
+        # file's own face index.
         assert weights == [
             {
                 "index": 0,
@@ -633,23 +651,6 @@ class TestBorrowReporting:
             },
             {
                 "index": 1,
-                "weight": 700,
-                "style": "upright",
-                "base_face": 1,
-                "borrows": [
-                    {
-                        "donor": "donor-0",
-                        "face": 2,
-                        "weight": 600,
-                        "style": "upright",
-                        "family": "SynthCJK",
-                        "via": "nearest",
-                        "style_fallback": False,
-                    }
-                ],
-            },
-            {
-                "index": 2,
                 "weight": 400,
                 "style": "italic",
                 "base_face": 2,
@@ -662,6 +663,23 @@ class TestBorrowReporting:
                         "family": "SynthCJK",
                         "via": "nearest",
                         "style_fallback": True,
+                    }
+                ],
+            },
+            {
+                "index": 2,
+                "weight": 700,
+                "style": "upright",
+                "base_face": 1,
+                "borrows": [
+                    {
+                        "donor": "donor-0",
+                        "face": 2,
+                        "weight": 600,
+                        "style": "upright",
+                        "family": "SynthCJK",
+                        "via": "nearest",
+                        "style_fallback": False,
                     }
                 ],
             },
@@ -722,12 +740,15 @@ class TestMatrixPackaging:
 
         # TTCollection reload is the validity gate; per-face assertions
         # mirror what a single build of that face would satisfy.
-        faces = TTCollection(result.font_path).fonts
-        _assert_merged_face(faces[0], MERGED_AT_400, weight=400, italic=False)
+        by_slot = {
+            (face["OS/2"].usWeightClass, bool(face["OS/2"].fsSelection & 0x01)): face
+            for face in TTCollection(result.font_path).fonts
+        }
+        _assert_merged_face(by_slot[(400, False)], MERGED_AT_400, weight=400, italic=False)
         _assert_merged_face(
-            faces[1], {*BASE_CODEPOINTS, 0x4E2D, 0x6000}, weight=700, italic=False
+            by_slot[(700, False)], {*BASE_CODEPOINTS, 0x4E2D, 0x6000}, weight=700, italic=False
         )
-        _assert_merged_face(faces[2], MERGED_AT_400, weight=400, italic=True)
+        _assert_merged_face(by_slot[(400, True)], MERGED_AT_400, weight=400, italic=True)
 
     def test_a_single_face_base_builds_exactly_as_before(
         self, tmp_path, base_font, weighty_donor

@@ -353,10 +353,10 @@ def test_a_path_pattern_recipe_builds_the_family_matrix_as_a_collection(
         )
     )
     assert output.font_path.name.endswith(".ttc")
-    # Slot order follows the reference's deterministic file order
-    # (Bold sorts before Regular), like a catalog resolution.
+    # Round 26: the output's slots are weight-ascending — Regular
+    # first, Bold second — whatever the reference's file order.
     weights = [slot.weight for slot in output.report.weights]
-    assert weights == [700, 400]
+    assert weights == [400, 700]
     # Every slot merged the donor: the CJK pair is in each output face.
     from fontTools.ttLib import TTFont
 

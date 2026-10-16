@@ -281,6 +281,15 @@ def build_recipe(
 
     _stage("planning")
     slots = plan_matrix(bases, pools, recipe.weights)
+    # Round 26 (owner report): the output collection's FACE ORDER is
+    # weight-ascending, upright before italic — the glob's alphabetical
+    # file order put Bold first, and every consumer that reads face 1
+    # (the Windows preview, installed-font default pick) showed the
+    # Bold slot's Chinese (the donor's nearest-weight face) where the
+    # Regular the owner compared against was expected.
+    slots = tuple(
+        sorted(slots, key=lambda slot: (slot.base.info.weight, slot.base.info.italic))
+    )
     if fmt != "ttc" and len(slots) > 1:
         if recipe.weights:
             raise BuildError(
