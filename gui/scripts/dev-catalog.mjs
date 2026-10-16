@@ -70,7 +70,6 @@ import { readFile, readdir, mkdir, writeFile, rm } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { existsSync, statSync, readFileSync } from "node:fs";
-import { inflateRawSync } from "node:zlib";
 import { resolve, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -132,26 +131,21 @@ function originLabel(url, directUrl) {
 }
 
 /**
- * Round 27: unpack a sha-verified 7z artifact's FONT faces through the
- * repo's own Python (py7zr — the core pipeline's unpacker). No new JS
- * dependency: the venv the serve itself runs from is the extractor.
- * FONTALLOY_DEV_PYTHON overrides the interpreter outright.
+ * Round 27 (owner ruling: one unpacker, the Python one): extract a
+ * sha-verified archive artifact's FONT faces through the core
+ * pipeline's own extractor (fontalloy_core.assets.extract_font_faces
+ * — zip and 7z alike, sanitized member paths, the exact `assets
+ * fetch` code path). No JS archive code remains in this middleware.
+ * FONTALLOY_DEV_PYTHON overrides the interpreter outright; the repo's
+ * venv (the one the serve itself runs from) is the default.
  */
-async function extract7z(artifactPath, faceDir) {
-  const script = [
-    "import os, sys, py7zr",
-    "artifact, out = sys.argv[1], sys.argv[2]",
-    "exts = ('.ttf', '.otf', '.ttc', '.otc')",
-    "with py7zr.SevenZipFile(artifact) as z:",
-    "    names = [n for n in z.getnames() if n.lower().endswith(exts)]",
-    "    if names:",
-    "        z.extract(targets=names, path=out)",
-    "    # flat-name the faces (the cache layout is one directory)",
-    "    for root, _dirs, files in os.walk(out):",
-    "        for f in files:",
-    "            p = os.path.join(root, f)",
-    "            if p != os.path.join(out, f):",
-    "                os.replace(p, os.path.join(out, f))",
+async function extractArchiveViaPython(artifactPath, faceDir) {
+  const code = [
+    "import sys",
+    "from pathlib import Path",
+    "from fontalloy_core.assets import extract_font_faces",
+    "faces = extract_font_faces(Path(sys.argv[1]), Path(sys.argv[2]))",
+    "print(faces)",
   ].join("\n");
   const candidates = process.env.FONTALLOY_DEV_PYTHON
     ? [process.env.FONTALLOY_DEV_PYTHON]
@@ -165,7 +159,7 @@ async function extract7z(artifactPath, faceDir) {
   let lastError = null;
   for (const python of candidates) {
     try {
-      await run(python, ["-c", script, artifactPath, faceDir], {
+      await run(python, ["-c", code, artifactPath, faceDir], {
         cwd: REPO_ROOT,
         timeout: FETCH_TIMEOUT_MS,
       });
@@ -174,7 +168,7 @@ async function extract7z(artifactPath, faceDir) {
       lastError = err instanceof Error ? err.message : String(err);
     }
   }
-  throw new Error(`7z extraction failed (${lastError})`);
+  throw new Error(`archive extraction failed (${lastError})`);
 }
 
 /** Upstream fetches run with bounded concurrency (be a good citizen). */
@@ -316,41 +310,6 @@ function defaultEntryFor(entries) {
 }
 
 /** Read a zip's entries: basename -> bytes (stored + deflate). */
-function readZipEntries(buf) {
-  // Find EOCD (no zip64 in upstream release artifacts at our sizes).
-  let eocd = -1;
-  for (let i = buf.length - 22; i >= Math.max(0, buf.length - 22 - 65536); i--) {
-    if (buf.readUInt32LE(i) === 0x06054b50) {
-      eocd = i;
-      break;
-    }
-  }
-  if (eocd < 0) throw new Error("not a zip: no end-of-central-directory");
-  const count = buf.readUInt16LE(eocd + 10);
-  let ptr = buf.readUInt32LE(eocd + 16);
-  const out = new Map();
-  for (let n = 0; n < count; n++) {
-    if (buf.readUInt32LE(ptr) !== 0x02014b50) throw new Error("corrupt central directory");
-    const method = buf.readUInt16LE(ptr + 10);
-    const compressedSize = buf.readUInt32LE(ptr + 20);
-    const nameLen = buf.readUInt16LE(ptr + 28);
-    const extraLen = buf.readUInt16LE(ptr + 30);
-    const commentLen = buf.readUInt16LE(ptr + 32);
-    const localOffset = buf.readUInt32LE(ptr + 42);
-    const name = buf.toString("utf8", ptr + 46, ptr + 46 + nameLen);
-    ptr += 46 + nameLen + extraLen + commentLen;
-    if (name.endsWith("/")) continue; // directory entry
-    // Local header: skip its own (possibly different) name/extra lens.
-    if (buf.readUInt32LE(localOffset) !== 0x04034b50) throw new Error(`corrupt local header: ${name}`);
-    const localNameLen = buf.readUInt16LE(localOffset + 26);
-    const localExtraLen = buf.readUInt16LE(localOffset + 28);
-    const dataStart = localOffset + 30 + localNameLen + localExtraLen;
-    const raw = buf.subarray(dataStart, dataStart + compressedSize);
-    const data = method === 0 ? Buffer.from(raw) : inflateRawSync(raw);
-    out.set(basename(name), data);
-  }
-  return out;
-}
 
 /**
  * The cache identity of one manifest ENTRY: its artifact stem (the
@@ -527,22 +486,16 @@ async function fetchEntryUpstream(entry, force = false) {
   if (isFontFile) {
     // A bare font-file entry: the artifact IS the face.
     await writeFile(resolve(faceDir, file), artifact);
-  } else if (isZip) {
-    const unzipped = readZipEntries(artifact);
-    let faces = 0;
-    for (const name of unzipped.keys()) {
-      if (FONT_EXT_RE.test(name)) {
-        await writeFile(resolve(faceDir, name), unzipped.get(name));
-        faces++;
-      }
-    }
-    if (faces === 0) throw new Error(`${entry.file} carries no font file`);
   } else {
-    // 7z: the bytes are already sha-verified; hand the artifact to the
-    // repo's venv Python (py7zr) to extract the font faces.
+    // Round 27 (owner ruling: one unpacker, the Python one): zip AND
+    // 7z artifacts extract through the core pipeline's own extractor
+    // (fontalloy_core.assets.extract_font_faces — magic-byte format
+    // detection, sanitized member paths, the exact `assets fetch` code
+    // path). The bytes are already sha-verified; the raw artifact is
+    // written to disk for the extractor and pruned below with the rest.
     await mkdir(artifactDir, { recursive: true });
     await writeFile(artifactPath, artifact);
-    await extract7z(artifactPath, faceDir);
+    await extractArchiveViaPython(artifactPath, faceDir);
     const faces = (await readdir(faceDir)).filter((n) => FONT_EXT_RE.test(n));
     if (faces.length === 0) throw new Error(`${entry.file} carries no font file`);
   }

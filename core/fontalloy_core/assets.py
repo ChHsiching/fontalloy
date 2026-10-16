@@ -194,6 +194,21 @@ def _archive_kind(artifact: Path) -> str | None:
     return None
 
 
+def extract_font_faces(artifact: Path, into: Path) -> int:
+    """Extract an archive artifact's font faces (zip and 7z alike).
+
+    Round 27: the single public entry the dev-catalog middleware (and
+    any other in-repo consumer) delegates to — magic-byte format
+    detection plus the sanitized face extraction, the exact code path
+    ``fontalloy assets fetch`` runs. Raises on an unreadable archive;
+    returns 0 when the archive carries no font file.
+    """
+    kind = _archive_kind(artifact)
+    if kind is None:
+        raise ValueError(f"not a zip or 7z archive: {artifact.name}")
+    return _extract_faces(artifact, into, kind)
+
+
 def _extract_faces(archive: Path, into: Path, kind: str) -> int:
     """Extract the font files from a verified archive artifact.
 
