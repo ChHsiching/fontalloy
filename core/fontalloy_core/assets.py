@@ -202,11 +202,38 @@ def extract_font_faces(artifact: Path, into: Path) -> int:
     detection plus the sanitized face extraction, the exact code path
     ``fontalloy assets fetch`` runs. Raises on an unreadable archive;
     returns 0 when the archive carries no font file.
+
+    Round 27 (the corrupt-face heal): every extracted face must PARSE
+    (its name table opens) before the caller may treat the layout as
+    good — a face written partially (an interrupted extraction) is
+    deleted with the whole target and raised loudly, so a stale marker
+    can never canonize corrupt bytes into a sha-verified download.
     """
     kind = _archive_kind(artifact)
     if kind is None:
         raise ValueError(f"not a zip or 7z archive: {artifact.name}")
-    return _extract_faces(artifact, into, kind)
+    extracted = _extract_faces(artifact, into, kind)
+    try:
+        names = [
+            p for p in into.iterdir() if _wanted_face_name(p.name) is not None
+        ]
+        for face in sorted(names):
+            _validate_face_parses(face)
+    except Exception:
+        shutil.rmtree(into, ignore_errors=True)
+        raise
+    return extracted
+
+
+def _validate_face_parses(face: Path) -> None:
+    """A face is good only if fontTools can read its name table."""
+    from fontTools.ttLib import TTFont
+
+    font = TTFont(face, fontNumber=0, lazy=True)
+    try:
+        font["name"].getDebugName(1)
+    finally:
+        font.close()
 
 
 def _extract_faces(archive: Path, into: Path, kind: str) -> int:

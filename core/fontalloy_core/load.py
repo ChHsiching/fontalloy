@@ -234,6 +234,15 @@ def _scan_face(path: Path, index: int) -> FaceInfo:
             italic=_italic(font),
             variable="fvar" in font,
         )
+    except BuildError:
+        raise
+    except Exception as exc:  # round 27: a truncated table read inside
+        # the identity pass is as fatal as an unopenable file — convert
+        # it so the serve's per-file skip (fonts_document) catches it
+        # and one corrupt face never 500s the whole /fonts listing.
+        raise BuildError(
+            f"file is not a valid font: {path} ({exc})"
+        ) from None
     finally:
         font.close()
 
