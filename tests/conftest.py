@@ -44,6 +44,7 @@ def synth_font(
     weight: int = 400,
     subfamily: str = "Regular",
     italic: bool = False,
+    italic_angle: float = 0.0,
     fixed_pitch: bool = False,
     typographic_family: str | None = None,
     ink_dy: int = 0,
@@ -57,7 +58,9 @@ def synth_font(
     pass-through tests); ``ink_dy`` shifts every mapped glyph's ink
     vertically (the ink height is unchanged) so tests can tell a
     translated/scaled glyph from an unscaled one by its baseline-relative
-    bounds.
+    bounds; ``italic_angle`` sets post.italicAngle alone (round 29 —
+    the style side-cut fixtures: an Oblique face carries the angle but
+    not the fsSelection bit).
     """
     font = _build_font_object(
         family,
@@ -68,6 +71,7 @@ def synth_font(
         weight=weight,
         subfamily=subfamily,
         italic=italic,
+        italic_angle=italic_angle,
         fixed_pitch=fixed_pitch,
         typographic_family=typographic_family,
         ink_dy=ink_dy,
@@ -235,6 +239,7 @@ def _build_font_object(
     weight: int = 400,
     subfamily: str = "Regular",
     italic: bool = False,
+    italic_angle: float = 0.0,
     fixed_pitch: bool = False,
     typographic_family: str | None = None,
     ink_dy: int = 0,
@@ -282,7 +287,11 @@ def _build_font_object(
             name_table.setName(text, name_id, 1, 0, 0)
     builder.setupPost()
     builder.font["post"].isFixedPitch = 1 if fixed_pitch else 0
+    if italic_angle:
+        builder.font["post"].italicAngle = italic_angle
     builder.setupHead(unitsPerEm=upem, created=FIXED_TIMESTAMP, modified=FIXED_TIMESTAMP)
+    if italic:
+        builder.font["head"].macStyle |= 0x02  # the bit matching fsSelection
     return builder.font
 
 

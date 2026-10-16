@@ -169,6 +169,25 @@ class WeightSlotRecord:
 
 
 @dataclass(frozen=True)
+class SkippedFaceRecord:
+    """One base face the build excluded, and why (round 29).
+
+    The slot resolution (:func:`fontalloy_core.load.resolve_base_faces`)
+    drops a base face only when another face already holds the same
+    (weight, style) slot with flags that describe its ink — publisher
+    style side-cuts (Oblique flagged upright, Upright-Italic flagged
+    italic) pooled by a family-cut pattern. The record states the drop
+    so the report never hides what the recipe loaded.
+    """
+
+    file: str
+    weight: int
+    italic: bool
+    subfamily: str
+    reason: str
+
+
+@dataclass(frozen=True)
 class CoverageRecord:
     """One rule's requested target versus the effective result (issue #12).
 
@@ -276,6 +295,7 @@ class VerificationReport:
     format: str = "ttf"
     faces: tuple[FaceRecord, ...] = ()
     weights: tuple[WeightSlotRecord, ...] = ()
+    skipped_faces: tuple[SkippedFaceRecord, ...] = ()
     coverage_rules: tuple[CoverageRecord, ...] = ()
     metrics: tuple[MetricFaceRecord, ...] = ()
 
@@ -334,6 +354,17 @@ class VerificationReport:
                     "summary": face.summary,
                 }
                 for face in self.faces
+            ]
+        if self.skipped_faces:
+            output["skipped_faces"] = [
+                {
+                    "file": skipped.file,
+                    "weight": skipped.weight,
+                    "italic": skipped.italic,
+                    "subfamily": skipped.subfamily,
+                    "reason": skipped.reason,
+                }
+                for skipped in self.skipped_faces
             ]
         return {
             "schema": SCHEMA,

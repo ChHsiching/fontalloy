@@ -55,7 +55,12 @@ from fontTools.ttLib import TTFont
 from fontalloy_core.assets import resolve_recipe_fonts
 from fontalloy_core.errors import BuildCancelled, BuildError
 from fontalloy_core.graft import graft_effective_glyphs
-from fontalloy_core.load import LoadedFace, aggregate_families, load_faces
+from fontalloy_core.load import (
+    LoadedFace,
+    aggregate_families,
+    load_faces,
+    resolve_base_faces,
+)
 from fontalloy_core.matrix import DonorPool, MatrixSlot, plan_matrix
 from fontalloy_core.normalize import (
     HAN_COMMON_FIRST,
@@ -90,6 +95,7 @@ from fontalloy_core.report import (
     MetricFaceRecord,
     ProvenanceEntry,
     RuleRecord,
+    SkippedFaceRecord,
     SourceRecord,
     VerificationReport,
     WeightSlotRecord,
@@ -272,6 +278,15 @@ def build_recipe(
     # it. Loud, exactly like the donor-side check (round 23, owner
     # item 6).
     _base_family_check(bases, recipe.base)
+    # Round 29 (owner report: merged REGULAR text rendered italic): a
+    # pattern that pools a publisher's style side-cuts (Oblique faces
+    # flagged upright, Upright-Italic faces flagged italic — all under
+    # one umbrella typographic family, so the family check above sees
+    # one family) delivers several faces for one (weight, style) slot,
+    # and the output would hand normal text a sheared-ink face. One
+    # face per slot — the flag-consistent one; the drops ride the
+    # report, never silent.
+    bases, skipped_base_faces = resolve_base_faces(bases)
     pools: dict[str, DonorPool] = {}
     loaded_donors: list[LoadedFace] = []
     for index, ref in enumerate(recipe.donors):
@@ -504,6 +519,16 @@ def build_recipe(
             for conflict in resolutions[0].conflicts
         ),
         format=fmt,
+        skipped_faces=tuple(
+            SkippedFaceRecord(
+                file=str(skip.path.name),
+                weight=skip.weight,
+                italic=skip.italic,
+                subfamily=skip.subfamily,
+                reason=skip.reason,
+            )
+            for skip in skipped_base_faces
+        ),
         faces=tuple(
             FaceRecord(
                 # The face record's documented meaning: the base file's

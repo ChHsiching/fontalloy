@@ -35,8 +35,18 @@ class FaceInfo:
 
     ``family`` and ``subfamily`` prefer the typographic name records
     (nameID 16/17) and fall back to the legacy ones (1/2); ``weight`` is
-    OS/2.usWeightClass; ``italic`` is the OS/2 fsSelection italic bit.
-    ``variable`` records that the face on disk carried an ``fvar`` table.
+    OS/2.usWeightClass; ``italic`` is the face's slanted-ness (any of
+    the OS/2 fsSelection italic bit, the head macStyle italic bit, or a
+    nonzero post.italicAngle — round 29). ``variable`` records that the
+    face on disk carried an ``fvar`` table.
+
+    ``style_consistent`` (round 29) records whether the three italic
+    signals AGREE. Publisher style side-cuts disagree on purpose: Nerd
+    Fonts releases ship Oblique faces with sheared glyphs but upright
+    flags (inside their own legacy family the oblique IS the normal
+    member) and Upright-Italic faces flagged italic with upright ink.
+    A consistent face's flags describe its ink; an inconsistent face's
+    do not, which is what :func:`resolve_base_faces` breaks ties with.
     """
 
     path: Path
@@ -46,6 +56,7 @@ class FaceInfo:
     weight: int
     italic: bool
     variable: bool
+    style_consistent: bool = True
 
 
 @dataclass(frozen=True)
@@ -62,6 +73,76 @@ class LoadedFace:
 
     font: TTFont
     info: FaceInfo
+
+
+@dataclass(frozen=True)
+class SkippedFace:
+    """One base face the slot resolution dropped, and why (round 29).
+
+    Report data: the face's file, slot identity, its own subfamily,
+    and the reason it lost the slot — never a silent drop.
+    """
+
+    path: Path
+    face_index: int
+    weight: int
+    italic: bool
+    subfamily: str
+    reason: str
+
+
+def resolve_base_faces(
+    faces: list[LoadedFace],
+) -> tuple[list[LoadedFace], list[SkippedFace]]:
+    """One base face per (weight, italic) slot (round 29, owner report).
+
+    A base reference whose pattern pools a publisher's style side-cuts
+    (Nerd Fonts Oblique/Upright-Italic files — all under one umbrella
+    typographic family, so :func:`aggregate_families` sees a single
+    family) delivers several faces for the same (weight, style) slot.
+    The output would carry two faces claiming the same slot with
+    different ink — an upright-flagged face with sheared glyphs — and
+    every font matcher may then hand normal text the slanted one. That
+    is exactly the round-29 report: merged REGULAR text rendering
+    italic.
+
+    Resolution: when faces collide on a slot, the one whose own flags
+    describe its ink (``style_consistent``) keeps the slot; the file
+    order decides among equals, and a slot with no consistent face
+    keeps its first face. Dropped faces come back as
+    :class:`SkippedFace` records for the report — a drop is stated,
+    never silent. A pool with no collisions passes through untouched.
+    """
+    slots: dict[tuple[int, bool], list[LoadedFace]] = {}
+    for face in faces:
+        slots.setdefault((face.info.weight, face.info.italic), []).append(face)
+    dropped_ids: set[int] = set()
+    skipped: list[SkippedFace] = []
+    for (weight, italic), group in slots.items():
+        if len(group) == 1:
+            continue
+        consistent = [face for face in group if face.info.style_consistent]
+        winner = (consistent or group)[0]
+        style = "italic" if italic else "upright"
+        for face in group:
+            if face is winner:
+                continue
+            dropped_ids.add(id(face))
+            skipped.append(
+                SkippedFace(
+                    path=face.info.path,
+                    face_index=face.info.face_index,
+                    weight=weight,
+                    italic=italic,
+                    subfamily=face.info.subfamily,
+                    reason=(
+                        f"duplicate {weight} {style} slot; kept "
+                        f"{winner.info.subfamily or winner.info.family}"
+                    ),
+                )
+            )
+    kept = [face for face in faces if id(face) not in dropped_ids]
+    return kept, skipped
 
 
 def load_face(ref: FontRef, *, role: str) -> LoadedFace:
@@ -155,6 +236,7 @@ def _load_face_at(
     # A woff2 input is decoded: clearing the flavor makes every later
     # save (and the pass-through output) a plain TTF.
     font.flavor = None
+    italic, style_consistent = _style_identity(font)
     return LoadedFace(
         font=font,
         info=FaceInfo(
@@ -163,8 +245,9 @@ def _load_face_at(
             family=_name(font, 16, 1),
             subfamily=_name(font, 17, 2),
             weight=_weight(font),
-            italic=_italic(font),
+            italic=italic,
             variable=False,  # instantiated above: the face is static now
+            style_consistent=style_consistent,
         ),
     )
 
@@ -225,14 +308,16 @@ def _scan_face(path: Path, index: int) -> FaceInfo:
     except Exception as exc:  # fontTools raises TTLibError and friends
         raise BuildError(f"file is not a valid font: {path} ({exc})") from None
     try:
+        italic, style_consistent = _style_identity(font)
         return FaceInfo(
             path=path,
             face_index=index,
             family=_name(font, 16, 1),
             subfamily=_name(font, 17, 2),
             weight=_weight(font),
-            italic=_italic(font),
+            italic=italic,
             variable="fvar" in font,
+            style_consistent=style_consistent,
         )
     except BuildError:
         raise
@@ -336,11 +421,28 @@ def _weight(font: TTFont) -> int:
     return int(os2.usWeightClass)
 
 
-def _italic(font: TTFont) -> bool:
+def _style_identity(font: TTFont) -> tuple[bool, bool]:
+    """The face's (slanted, flags-describe-ink) style identity.
+
+    Slanted-ness is ANY italic signal (round 29): the OS/2 fsSelection
+    bit, the head macStyle bit, or a nonzero post.italicAngle — an
+    Oblique face flagged upright (its publisher keeps the oblique the
+    "normal" member of its own legacy family) still slants, and a slot
+    key that ignores that puts sheared ink under an upright slot.
+    Consistency requires all three to agree (see :class:`FaceInfo`).
+    """
     os2 = font.get("OS/2")
-    if os2 is not None:
-        return bool(os2.fsSelection & 0x01)
     head = font.get("head")
-    if head is not None:
-        return bool(head.macStyle & 0x02)
-    return False
+    post = font.get("post")
+    fs_bit = bool(os2.fsSelection & 0x01) if os2 is not None else False
+    mac_bit = bool(head.macStyle & 0x02) if head is not None else False
+    try:
+        angle_slant = (
+            post is not None and float(post.italicAngle) != 0.0
+        )
+    except (TypeError, ValueError):  # a malformed angle reads upright
+        angle_slant = False
+    return (
+        fs_bit or mac_bit or angle_slant,
+        fs_bit == mac_bit == angle_slant,
+    )
