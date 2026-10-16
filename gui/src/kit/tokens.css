@@ -166,6 +166,12 @@ select {
   padding: 12px 14px;
   font-size: 13px;
   line-height: 1.75;
+  /* Round 28 (bold parity): the scene preview renders only what the
+   * fonts really contain. Synthetic bold/italic made single-weight
+   * donors look bold BEFORE synthesis while the merged output (whose
+   * 700 face carries the donor's real ink) rendered them plain — the
+   * preview promised a bold the pipeline never had. */
+  font-synthesis: none;
 }
 
 [data-theme="dark"] .kit-term {
@@ -342,6 +348,8 @@ select {
 .kit-doc {
   font-size: 13.5px;
   line-height: 1.7;
+  /* Round 28 (bold parity): see .kit-term. */
+  font-synthesis: none;
 }
 
 .kit-doc h2 {

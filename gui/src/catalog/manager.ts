@@ -476,6 +476,22 @@ export class CatalogManager {
           // service). One read per face, one yield between faces.
           const meta = parseFontMeta(buffer, { coverage: false });
           if (meta.family !== repCssFamily) continue;
+          // Round 28 (owner item: bold parity): the sibling registers
+          // as a REAL FontFace with its own weight/style descriptor —
+          // the same discipline local loads follow since round 20.
+          // Before, a bold-weight sibling was a data-only record, the
+          // family resolved to its single 400 face, and the scene
+          // preview drew the browser's SYNTHETIC bold where the real
+          // face existed — the preview lied about the font.
+          document.fonts.add(
+            new FontFace(
+              meta.family,
+              buffer,
+              meta.italic
+                ? { weight: String(meta.weight), style: "italic" }
+                : { weight: String(meta.weight) },
+            ),
+          );
           faces.push({
             cssFamily: meta.family,
             family: family.family,
