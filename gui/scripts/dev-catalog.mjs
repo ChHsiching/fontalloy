@@ -67,6 +67,8 @@
 
 import { createHash } from "node:crypto";
 import { readFile, readdir, mkdir, writeFile, rm } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { existsSync, statSync, readFileSync } from "node:fs";
 import { inflateRawSync } from "node:zlib";
 import { resolve, dirname, basename } from "node:path";
@@ -127,6 +129,52 @@ function originLabel(url, directUrl) {
   } catch {
     return url.slice(0, 40);
   }
+}
+
+/**
+ * Round 27: unpack a sha-verified 7z artifact's FONT faces through the
+ * repo's own Python (py7zr — the core pipeline's unpacker). No new JS
+ * dependency: the venv the serve itself runs from is the extractor.
+ * FONTALLOY_DEV_PYTHON overrides the interpreter outright.
+ */
+async function extract7z(artifactPath, faceDir) {
+  const script = [
+    "import os, sys, py7zr",
+    "artifact, out = sys.argv[1], sys.argv[2]",
+    "exts = ('.ttf', '.otf', '.ttc', '.otc')",
+    "with py7zr.SevenZipFile(artifact) as z:",
+    "    names = [n for n in z.getnames() if n.lower().endswith(exts)]",
+    "    if names:",
+    "        z.extract(targets=names, path=out)",
+    "    # flat-name the faces (the cache layout is one directory)",
+    "    for root, _dirs, files in os.walk(out):",
+    "        for f in files:",
+    "            p = os.path.join(root, f)",
+    "            if p != os.path.join(out, f):",
+    "                os.replace(p, os.path.join(out, f))",
+  ].join("\n");
+  const candidates = process.env.FONTALLOY_DEV_PYTHON
+    ? [process.env.FONTALLOY_DEV_PYTHON]
+    : [
+        process.platform === "win32"
+          ? resolve(REPO_ROOT, ".venv/Scripts/python.exe")
+          : resolve(REPO_ROOT, ".venv/bin/python"),
+        "python",
+      ];
+  const run = promisify(execFile);
+  let lastError = null;
+  for (const python of candidates) {
+    try {
+      await run(python, ["-c", script, artifactPath, faceDir], {
+        cwd: REPO_ROOT,
+        timeout: FETCH_TIMEOUT_MS,
+      });
+      return;
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+    }
+  }
+  throw new Error(`7z extraction failed (${lastError})`);
 }
 
 /** Upstream fetches run with bounded concurrency (be a good citizen). */
@@ -390,11 +438,13 @@ async function fetchEntryUpstream(entry, force = false) {
   const file = basename(entry.file);
   const isFontFile = FONT_EXT_RE.test(file);
   const isZip = /\.zip$/i.test(file);
-  // 7z/tar artifacts unpack through the Python pipeline
-  // (`fontalloy assets fetch` writes the same `<stem>/` layout this
-  // resolver reads); the JS dev pass reports them honestly BEFORE
-  // touching the network or the cache layout.
-  if (!isFontFile && !isZip) {
+  const is7z = /\.7z$/i.test(file);
+  // Round 27 (owner: 7z 解起来又不困难): 7z artifacts unpack through
+  // the repo's own Python (py7zr — the core pipeline's unpacker, the
+  // same one `fontalloy assets fetch` uses) instead of being honest
+  // misses. Tar-family archives remain honest misses; nothing else
+  // ships in the manifest.
+  if (!isFontFile && !isZip && !is7z) {
     throw new Error(`${file}: unsupported archive in the JS dev pass — fetch via fontalloy assets fetch`);
   }
   const key = entryKey(entry);
@@ -477,7 +527,7 @@ async function fetchEntryUpstream(entry, force = false) {
   if (isFontFile) {
     // A bare font-file entry: the artifact IS the face.
     await writeFile(resolve(faceDir, file), artifact);
-  } else {
+  } else if (isZip) {
     const unzipped = readZipEntries(artifact);
     let faces = 0;
     for (const name of unzipped.keys()) {
@@ -487,6 +537,14 @@ async function fetchEntryUpstream(entry, force = false) {
       }
     }
     if (faces === 0) throw new Error(`${entry.file} carries no font file`);
+  } else {
+    // 7z: the bytes are already sha-verified; hand the artifact to the
+    // repo's venv Python (py7zr) to extract the font faces.
+    await mkdir(artifactDir, { recursive: true });
+    await writeFile(artifactPath, artifact);
+    await extract7z(artifactPath, faceDir);
+    const faces = (await readdir(faceDir)).filter((n) => FONT_EXT_RE.test(n));
+    if (faces.length === 0) throw new Error(`${entry.file} carries no font file`);
   }
   await writeFile(markerPath, `v2 ${entry.sha256}\n`);
   // Round 27: the RAW artifact is pruned once its faces + marker are

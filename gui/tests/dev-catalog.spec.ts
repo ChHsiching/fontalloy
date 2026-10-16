@@ -1,8 +1,9 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
+import { spawn } from "node:child_process";
 import { expect, test } from "@playwright/test";
 
 /**
@@ -586,5 +587,72 @@ test("upstream fetch falls through the mirror origins until one answers (round 2
     delete process.env.FONTALLOY_DEV_CATALOG_CACHE;
     delete process.env.FONTALLOY_DEV_CATALOG_MANIFEST;
     delete process.env.FONTALLOY_DEV_CATALOG_MIRRORS;
+  }
+});
+
+test("a 7z artifact unpacks through the repo python and serves the family (round 27)", async () => {
+  const root = join(tmpdir(), `fontalloy-sevenzip-${Date.now()}`);
+  await mkdir(root, { recursive: true });
+  const cacheDir = join(root, "cache");
+  // Build a REAL 7z artifact with two faces via the venv python.
+  const artifact = join(root, "LxgwBrightCode.7z");
+  const facesDir = join(root, "faces-src");
+  await mkdir(facesDir, { recursive: true });
+  await writeFile(join(facesDir, "LxgwBrightCodeNF-Regular.ttf"), Buffer.from("dummy-regular"));
+  await writeFile(join(facesDir, "LxgwBrightCodeNF-Bold.ttf"), Buffer.from("dummy-bold"));
+  const py = resolve(HERE, "../../.venv/Scripts/python.exe");
+  await new Promise<void>((resolveRun, rejectRun) => {
+    const child = spawn(py, ["-c", "import py7zr, sys; py7zr.pack_7zarchive(sys.argv[1], sys.argv[2])", artifact.replace(/\.7z$/, ""), facesDir], {
+      cwd: resolve(HERE, "../.."),
+    });
+    child.on("error", rejectRun);
+    child.on("exit", (code) => (code === 0 ? resolveRun() : rejectRun(new Error(`py7zr exit ${code}`))));
+  });
+  const artifactBytes = await readFile(artifact);
+  const sha = (buf: Buffer): string => createHash("sha256").update(buf).digest("hex");
+  const manifest = {
+    schema: "fontalloy/font-catalog@v1",
+    families: [
+      {
+        family: "LxgwBrightCode",
+        variant: "NF",
+        file: "LxgwBrightCode.7z",
+        version: "test",
+        upstream_url: "https://github.com/test/fake/LxgwBrightCode.7z",
+        sha256: sha(artifactBytes),
+      },
+    ],
+  };
+  const manifestPath = join(root, "manifest.json");
+  await writeFile(manifestPath, JSON.stringify(manifest));
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL): Promise<Response> =>
+    new Response(new Uint8Array(artifactBytes), { status: 200 })) as typeof fetch;
+  process.env.FONTALLOY_DEV_CATALOG_CACHE = cacheDir;
+  process.env.FONTALLOY_DEV_CATALOG_MANIFEST = manifestPath;
+  process.env.FONTALLOY_DEV_PYTHON = py;
+  try {
+    const { devCatalogPlugin } = await freshPlugin("sevenzip1");
+    let middleware: ((req: unknown, res: unknown, next: () => void) => Promise<void>) | null = null;
+    devCatalogPlugin().configureServer({
+      middlewares: { use: (fn: typeof middleware) => (middleware = fn) },
+    });
+    const doc = fakeRequest("/dev-catalog/catalog-release.json");
+    await middleware!(doc.req as never, doc.handlerRes as never, () => {});
+    expect(doc.captured.status).toBe(200);
+    const release = JSON.parse(doc.captured.body.toString("utf8")) as {
+      families: Array<{ family: string; files: Array<{ file: string }> }>;
+    };
+    const family = release.families.find((f) => f.family === "LxgwBrightCode");
+    expect(family).toBeDefined();
+    expect(family!.files.map((f) => f.file).sort()).toEqual([
+      "LxgwBrightCodeNF-Bold.ttf",
+      "LxgwBrightCodeNF-Regular.ttf",
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+    delete process.env.FONTALLOY_DEV_CATALOG_CACHE;
+    delete process.env.FONTALLOY_DEV_CATALOG_MANIFEST;
+    delete process.env.FONTALLOY_DEV_PYTHON;
   }
 });
