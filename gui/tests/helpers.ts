@@ -34,8 +34,12 @@ const BROWSER_NOISE: Array<{ pattern: RegExp; reason: string }> = [
       "made the fixture serve a party to every page boot)",
   },
   {
-    pattern: /https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?/,
-    reason: "a network error on the intentional loopback probe target",
+    pattern: /(?:https?|wss?):\/\/(127\.0\.0\.1|localhost)(:\d+)?/,
+    reason:
+      "a network error on the intentional loopback probe target (the " +
+      "dev server's own HMR socket included: under a heavy graft the " +
+      "page's ws reconnects get refused in the same transport-noise " +
+      "class — the socket is never under test)",
   },
   {
     pattern: /has been blocked by CORS policy/,
