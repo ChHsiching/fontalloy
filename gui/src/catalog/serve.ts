@@ -296,8 +296,12 @@ export function ensureCatalogRegistered(
   // empty — the red line trades the page-side cmap enumeration for the
   // serve's resolve answers, and the stats/counters read 0 until the
   // coverage moves core-side.
+  // The picked cut's OWN display name wins: a non-default cut (e.g. the
+  // NF cut) must not be shadowed by the family-level display_name — the
+  // pre-merge pick path parsed the picked binary's own name table, and
+  // the family name only stands in when the cut carries none.
   const displayName =
-    doc.display_name ?? cut.display_name ?? cut.label ?? family;
+    cut.display_name ?? doc.display_name ?? cut.label ?? family;
   const font: LoadedFont = {
     cssFamily: family,
     family,
@@ -307,6 +311,15 @@ export function ensureCatalogRegistered(
     catalog: identity,
     codepoints: [],
   };
-  store.set({ fonts: [...store.get().fonts, font] });
+  // One record per catalog family: a prior pick of another variant is
+  // the stale identity — every label surface resolves by css family
+  // (find-first), so the record must follow the LATEST pick, exactly as
+  // the pre-merge pick path's per-binary name key moved with the cut.
+  store.set({
+    fonts: [
+      ...store.get().fonts.filter((prior) => prior.catalog?.family !== family),
+      font,
+    ],
+  });
   return family;
 }
