@@ -29,6 +29,10 @@ path           method  response
 ``/catalog``   GET     the manifest's families (grouped per family)
 ``/catalog/status`` GET  the catalog sync state machine (issue #26)
 ``/catalog/sync``   POST re-run the catalog sync (re-check + repair)
+``/catalog/families`` GET  per-family picker documents (issue #38)
+``/catalog/faces/fam/file`` GET  one face's bytes, streamed + cached
+``/catalog/families/fam/preview`` GET  the family's preview subset
+``/catalog/stars`` GET  launch-cached GitHub stars (offline-tolerant)
 ``/fonts``     GET     local font directories, scanned into families
 ``/builds``    GET     every retained build, newest last
 ``/builds``    POST    submit a merge (recipe-shaped JSON) -> 202 + id
@@ -85,12 +89,14 @@ from fontalloy_core.build import build_recipe
 from fontalloy_core.catalog import Catalog, load_manifest
 from fontalloy_core.catalog_sync import CatalogSync
 from fontalloy_core.errors import BuildCancelled, FontAlloyError
+from fontalloy_core.family_docs import FamilyDocuments
 from fontalloy_core.load import (
     FaceInfo,
     aggregate_families,
     scan_families,
 )
 from fontalloy_core.recipe import Recipe, parse_recipe
+from fontalloy_core.stars import StarsCache
 from fontalloy_core.systemfonts import (
     ScanResult,
     load_cache,
@@ -123,6 +129,11 @@ FONT_CONTENT_TYPES = {
 
 #: Font file suffixes the local-font enumeration considers.
 _FONT_SUFFIXES = {".ttf", ".otf", ".ttc", ".woff2"}
+
+#: Disk artifacts stream in these chunks (a face is never buffered
+#: whole inside a handler — the renderer-side byte-pinning lesson,
+#: server-side).
+_STREAM_CHUNK = 1 << 20
 
 
 @dataclass(frozen=True)
@@ -306,6 +317,14 @@ class ServeState:
         self.catalog_sync = CatalogSync(
             options.catalog_release_origin, options.catalog_dir
         )
+        # Issue #38: the picker-facing catalog model (family documents,
+        # face/preview byte sources) and the launch-cached stars. The
+        # documents build on their own thread as the sync lands
+        # families; both are snapshot-only from request handlers.
+        self.family_docs = FamilyDocuments(
+            self.catalog, self.catalog_sync, options.catalog_dir
+        )
+        self.stars = StarsCache(self.catalog)
 
     # -- startup -----------------------------------------------------------
 
@@ -857,6 +876,12 @@ class _ServeHandler(BaseHTTPRequestHandler):
             # on catalog work — the round-25 starvation lesson).
             state.catalog_sync.request_sync()
             self._send_json(state.catalog_sync.status_document(), status=202)
+        elif path == "/catalog/families":
+            self._require_methods(method, ("GET",))
+            self._send_json(state.family_docs.documents())
+        elif path == "/catalog/stars":
+            self._require_methods(method, ("GET",))
+            self._send_json(state.stars.document())
         elif path == "/fonts":
             self._require_methods(method, ("GET",))
             self._send_json(state.fonts_document())
@@ -899,10 +924,18 @@ class _ServeHandler(BaseHTTPRequestHandler):
                     }
                 )
         else:
+            preview = re.fullmatch(r"/catalog/families/([^/]+)/preview", path)
+            face = re.fullmatch(r"/catalog/faces/([^/]+)/([^/]+)", path)
             detail = re.fullmatch(r"/builds/([^/]+)", path)
             cancel = re.fullmatch(r"/builds/([^/]+)/cancel", path)
             artifact = re.fullmatch(r"/builds/([^/]+)/(font|report)", path)
-            if detail is not None:
+            if preview is not None:
+                self._require_methods(method, ("GET",))
+                self._catalog_preview(preview.group(1))
+            elif face is not None:
+                self._require_methods(method, ("GET",))
+                self._catalog_face(face.group(1), face.group(2))
+            elif detail is not None:
                 self._require_methods(method, ("GET",))
                 self._build_detail(detail.group(1))
             elif cancel is not None:
@@ -1002,6 +1035,78 @@ class _ServeHandler(BaseHTTPRequestHandler):
             extra = {}
         self._send(200, payload, content_type, extra_headers=extra)
 
+    def _catalog_face(self, family: str, file: str) -> None:
+        """``GET /catalog/faces/{family}/{file}``: one release-listed
+        face's bytes (issue #38).
+
+        Only files the release document lists are servable — the byte
+        source behind the picker's face cards, never a general file
+        reader (unlisted names and traversal shapes are plain 404s).
+        The ETag is the face's release-pinned sha256, so the cache
+        truth and the checksum truth are one string.
+        """
+        source = self.state.family_docs.face_source(family, file)
+        if source is None:
+            self._send_error(404, f"not a release-listed face: {family}/{file}")
+            return
+        path, sha256 = source
+        self._send_font_file(
+            path,
+            FONT_CONTENT_TYPES.get(
+                path.suffix.lower().lstrip("."), "application/octet-stream"
+            ),
+            etag=sha256,
+        )
+
+    def _catalog_preview(self, family: str) -> None:
+        """``GET /catalog/families/{family}/preview``: the family's tiny
+        name-subset font (issue #38) — the artifact a picker row loads
+        as its own FontFace. Served from the disk cache; the ETag is
+        the subset's cache key (source checksum + names), so a name
+        change means new bytes AND a new ETag."""
+        source = self.state.family_docs.preview_source(family)
+        if source is None:
+            self._send_error(404, f"no preview subset for family: {family}")
+            return
+        path, etag = source
+        self._send_font_file(path, "font/ttf", etag=etag or None)
+
+    def _send_font_file(
+        self, path: Path, content_type: str, etag: str | None = None
+    ) -> None:
+        """Stream one immutable disk artifact in bounded chunks — a face
+        is never buffered whole inside a handler (:data:`_STREAM_CHUNK`).
+
+        Cache truth rides the headers: ``immutable`` (the bytes behind
+        an ETag never change — the release checksums and the preview
+        cache keys pin them) and the ETag itself, so a matching
+        ``If-None-Match`` revalidates to a 304 without reading the file.
+        """
+        try:
+            size = path.stat().st_size
+        except OSError:
+            self._send_error(404, f"artifact is no longer available: {path.name}")
+            return
+        headers = {"Cache-Control": "public, max-age=31536000, immutable"}
+        if etag is not None:
+            headers["ETag"] = f'"{etag}"'
+        if etag is not None and self.headers.get("If-None-Match") == f'"{etag}"':
+            # 304 carries the same cache truth, none of the bytes.
+            self.send_response(304)
+            for name, value in {**self._cors_headers(), **headers}.items():
+                self.send_header(name, value)
+            self.end_headers()
+            return
+        self.send_response(200)
+        for name, value in {**self._cors_headers(), **headers}.items():
+            self.send_header(name, value)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(size))
+        self.end_headers()
+        with open(path, "rb") as stream:
+            while chunk := stream.read(_STREAM_CHUNK):
+                self.wfile.write(chunk)
+
 
 def _health_document(state: ServeState) -> dict[str, Any]:
     import fontalloy_core
@@ -1087,8 +1192,12 @@ def run_serve(options: ServeOptions) -> None:
     # The catalog lifecycle starts with the service (issue #26): the
     # sync runs on its own daemon thread, so the ready line below may
     # print while families are still downloading — /catalog/status is
-    # the progress truth from the first moment.
+    # the progress truth from the first moment. The family documents
+    # (issue #38) build behind the sync on their own thread (a handler
+    # never scans a face), and the stars sweep runs once per launch.
     state.catalog_sync.start()
+    state.family_docs.start()
+    state.stars.start()
     print(f"http://{BIND_ADDRESS}:{state.port}", flush=True)
     try:
         # A timed wait, not a plain block: on Windows an unbounded
@@ -1102,5 +1211,6 @@ def run_serve(options: ServeOptions) -> None:
         serve_thread.join(timeout=5)
         server.server_close()
         state.stop.set()  # aborts a running build at its next stage boundary
+        state.family_docs.stop()
         worker.join(timeout=30)
         state.cleanup()
