@@ -53,6 +53,24 @@ def _box_glyph(x_min: int, y_min: int, x_max: int, y_max: int):
     return pen.glyph()
 
 
+def _sheared_box_glyph(
+    x_min: int, y_min: int, x_max: int, y_max: int, lean: int
+):
+    """A parallelogram: the TOP edge shifted right by ``lean`` units.
+
+    Positive lean is the oblique slant (top ink leans right); negative
+    lean leaves the BOTTOM leaning right — the kai-donor shape whose
+    measured canvas slant (bottom band minus top band) reads positive.
+    """
+    pen = TTGlyphPen(None)
+    pen.moveTo((x_min, y_min))
+    pen.lineTo((x_max, y_min))
+    pen.lineTo((x_max + lean, y_max))
+    pen.lineTo((x_min + lean, y_max))
+    pen.closePath()
+    return pen.glyph()
+
+
 def synth_font(
     path: Path | BinaryIO,
     *,
@@ -412,6 +430,124 @@ def synth_big_ttc(outdir: Path, *, family: str, stem: str) -> Path:
     return path
 
 
+def synth_style_face(
+    path: Path,
+    *,
+    family: str,
+    style: str,
+    weight: int,
+    italic_flags: bool,
+    post_angle: float,
+    lean: int,
+    codepoints: tuple[int, ...],
+    height_base: int = 300,
+) -> None:
+    """Write one face of the round-29 style-parity fixtures.
+
+    The glyphs are sheared parallelograms (``lean`` units at the top
+    edge); the name table carries the UMBRELLA typographic family
+    (nameID 16) with the face's own subfamily (17), so a pool of these
+    faces is ONE family whose slots must be resolved. ``italic_flags``
+    sets the fsSelection/macStyle italic bits; ``post_angle`` is the
+    post table's italicAngle — the three signals together spell the
+    face's style consistency exactly the way the pipeline reads it.
+    """
+    glyph_names = [".notdef"] + [f"uni{cp:04X}" for cp in codepoints]
+    glyphs = {".notdef": _box_glyph(0, 0, 500, 700)}
+    metrics = {".notdef": (600, 40)}
+    for index, cp in enumerate(codepoints):
+        glyphs[f"uni{cp:04X}"] = _sheared_box_glyph(
+            40, 0, 560, height_base + (100 * (index % 5)), lean
+        )
+        metrics[f"uni{cp:04X}"] = (600, 40)
+
+    builder = FontBuilder(unitsPerEm=1000, isTTF=True)
+    builder.setupGlyphOrder(glyph_names)
+    builder.setupCharacterMap({cp: f"uni{cp:04X}" for cp in codepoints})
+    builder.setupGlyf(glyphs)
+    builder.setupHorizontalMetrics(metrics)
+    builder.setupHorizontalHeader(ascent=800, descent=-200)
+    builder.setupOS2(
+        sTypoAscender=800,
+        sTypoDescender=-200,
+        usWinAscent=900,
+        usWinDescent=300,
+        usWeightClass=weight,
+    )
+    builder.setupNameTable({"familyName": family, "styleName": style})
+    builder.setupPost()
+    builder.setupHead(
+        unitsPerEm=1000, created=FIXED_TIMESTAMP, modified=FIXED_TIMESTAMP
+    )
+    font = builder.font
+    names = font["name"]
+    names.setName(family, 16, 3, 1, 0x409)
+    names.setName(style, 17, 3, 1, 0x409)
+    names.setName(f"{family}-{style}".replace(" ", ""), 6, 3, 1, 0x409)
+    if italic_flags:
+        font["OS/2"].fsSelection = (font["OS/2"].fsSelection & ~0x40) | 0x01
+        font["head"].macStyle |= 0x02
+    font["post"].italicAngle = post_angle
+    builder.save(path)
+
+
+#: The round-29 side-cut trio: ONE family, three faces — the Oblique
+#: file carries sheared ink under UPRIGHT flag bits with a nonzero post
+#: angle (the three italic signals disagree, exactly a publisher's
+#: style side-cut), so it collides with the true Italic on the
+#: (400, italic) slot and must lose it to the consistent face.
+STYLE_CUT_FACES = (
+    # (subfamily, weight, italic flag bits, post.italicAngle, glyph lean)
+    ("Regular", 400, False, 0.0, 0),
+    ("Italic", 400, True, -12.0, 150),
+    ("Regular Oblique", 400, False, -12.0, 150),
+)
+
+
+def synth_style_cut(outdir: Path, *, family: str, stem: str) -> list[Path]:
+    """Write the style side-cut trio as ``<stem>-<Subfamily>.ttf`` files."""
+    paths = []
+    for style, weight, italic_flags, angle, lean in STYLE_CUT_FACES:
+        path = outdir / f"{stem}-{style.replace(' ', '')}.ttf"
+        synth_style_face(
+            path,
+            family=family,
+            style=style,
+            weight=weight,
+            italic_flags=italic_flags,
+            post_angle=angle,
+            lean=lean,
+            codepoints=BASE_CODEPOINTS,
+        )
+        paths.append(path)
+    return paths
+
+
+#: The kai-lean donor: CJK coverage including 汉, every glyph's bottom
+#: leaning right by 80 units (a measured canvas slant of about +5px at
+#: 100px — the range the style-parity probe pins). Glyphs sit at
+#: 450..650 units tall so the probe's ink-row census (40+ rows at
+#: 100px) always has rows to measure.
+KAI_CODEPOINTS = (0x6C49,) + tuple(range(DONOR_FIRST, DONOR_FIRST + 120))
+
+
+def synth_kai_donor(outdir: Path, *, family: str, stem: str) -> Path:
+    """Write the kai-lean CJK donor as ``<stem>-Regular.ttf``."""
+    path = outdir / f"{stem}-Regular.ttf"
+    synth_style_face(
+        path,
+        family=family,
+        style="Regular",
+        weight=400,
+        italic_flags=False,
+        post_angle=0.0,
+        lean=-80,
+        codepoints=KAI_CODEPOINTS,
+        height_base=450,
+    )
+    return path
+
+
 def synth_subset_donor(outdir: Path, src: Path) -> Path:
     """Write a real donor subset: the first 400 ideographs of 一.
 
@@ -553,9 +689,39 @@ def main() -> int:
         help="write LXGWSubset-Regular.ttf — a real fontTools subset of "
         "the given donor (the round-20 fast fixture donor)",
     )
+    parser.add_argument(
+        "--style-cut",
+        nargs=2,
+        metavar=("FAMILY", "STEM"),
+        help="write the round-29 style side-cut trio (Regular + Italic + "
+        "Regular Oblique, one umbrella family, sheared oblique ink under "
+        "upright flags) as <STEM>-<Subfamily>.ttf — the style-parity "
+        "fixture base",
+    )
+    parser.add_argument(
+        "--kai-donor",
+        nargs=2,
+        metavar=("FAMILY", "STEM"),
+        help="write the kai-lean CJK donor (bottom-leaning glyphs, 汉 "
+        "covered) as <STEM>-Regular.ttf — the style-parity fixture donor",
+    )
     args = parser.parse_args()
 
     args.outdir.mkdir(parents=True, exist_ok=True)
+    generated: list[Path] = []
+    if args.style_cut is not None:
+        generated += synth_style_cut(
+            args.outdir, family=args.style_cut[0], stem=args.style_cut[1]
+        )
+    if args.kai_donor is not None:
+        generated.append(
+            synth_kai_donor(
+                args.outdir, family=args.kai_donor[0], stem=args.kai_donor[1]
+            )
+        )
+    if generated:
+        print("wrote " + ", ".join(path.name for path in generated))
+        return 0
     if args.nf_family is not None:
         paths = synth_nf_family(args.outdir, args.nf_family)
         print("wrote " + ", ".join(path.name for path in paths))

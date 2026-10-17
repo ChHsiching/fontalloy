@@ -14,8 +14,9 @@ import { sweepLocalFamily } from "../fonts/localFamily";
 import {
   ensureCatalogRegistered,
   previewCssFamily,
+  starsFor,
+  subscribeStars,
 } from "../catalog/serve";
-import { starsFor, subscribeStars } from "../catalog/stars";
 import { appMessages } from "./charmap";
 import {
   TOKEN_HELP_ROWS,
@@ -193,8 +194,8 @@ function catalogNote(catalog: CatalogState): string | null {
  * owner item 2): every name surface reads the registered font's own
  * name table (see variantDisplayName); unfetched rows fall back to the
  * upstream release artifact's own name. Star counts come through
- * `starsFor` (round 5): the live startup fetch, falling back to the
- * curated seed when offline.
+ * `starsFor` (round 5; ticket #33): the SERVE's launch-cached sweep,
+ * falling back to this curated seed when it landed nothing.
  */
 const CURATED_META = curatedMeta.families as Record<
   string,
@@ -248,10 +249,15 @@ const MANIFEST_META = new Map<string, FontMeta>(
   }),
 );
 
-/** The meta line of one family (stars resolved live-first). */
+/**
+ * The meta line of one family (stars resolved live-first): the SERVE's
+ * launch-cached count (ticket #33 — the page no longer fetches GitHub
+ * itself), falling back to the curated seed when the sweep has not
+ * landed a count.
+ */
 function familyMeta(family: string): FontMeta | undefined {
   const base = MANIFEST_META.get(family);
-  const stars = starsFor(family);
+  const stars = starsFor(family) ?? CURATED_META[family]?.stars;
   if (base === undefined && stars === undefined) return undefined;
   return { license: base?.license, stars, trait: base?.trait };
 }
