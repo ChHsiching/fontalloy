@@ -1,7 +1,8 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
-import { writeFile, copyFile, mkdtemp, mkdir } from "node:fs/promises";
+import { writeFile, copyFile, mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve, basename } from "node:path";
+import { pathToFileURL } from "node:url";
 import { readFileSync } from "node:fs";
 import { parseFontMeta } from "../src/fonts/sfnt";
 import {
@@ -12,6 +13,7 @@ import {
   type ServeFixture,
 } from "./serve";
 import { SimCatalog, injectCatalogConfig, makeZip, sha256hex } from "./catalog-fixtures";
+import { buildServeCatalogSite } from "./catalog-serve-site";
 import {
   assertNoJsErrors,
   collectJsErrors,
@@ -112,6 +114,10 @@ test.describe("sidecar synthesize", () => {
   test("synthesizes a font over the real service, saves it, and renders the report", async ({
     page,
   }) => {
+    // A REAL graft over the synthetic pair — the same budget class as
+    // the file's other real-build tests (the 30s fixture default
+    // cannot cover a full merge on a loaded box).
+    test.setTimeout(180_000);
     const service = await startServeFixture();
     const saved: string[] = [];
     try {
@@ -1245,30 +1251,45 @@ test.describe("sidecar synthesize", () => {
     // same binaries the dev catalog serves), the real recipe the GUI
     // builds (boot zh_cn preset included), the real service.
     const real = realCatalogFontPaths();
-    const fontsDir = await mkdtemp(resolve(tmpdir(), "fontalloy-real-"));
-    await copyFile(real.base, resolve(fontsDir, basename(real.base)));
-    await copyFile(real.donor, resolve(fontsDir, basename(real.donor)));
-    const service = await spawnServeOverFonts(fontsDir);
+    // Ticket #30's boot: the picks come from ROWS, and rows only exist
+    // over a CONFIGURED serve catalog — a bare serve over a font dir
+    // reports configured:false and lists no families. Build the
+    // file:// release site over the real pair (unload.spec's template)
+    // and sync it into the serve's catalog cache.
+    const site = await buildServeCatalogSite([
+      {
+        family: "JetBrainsMono",
+        faces: [{ file: basename(real.base), fontPath: real.base }],
+        manifestEntries: [{ variant: "Nerd Font", file: "JetBrainsMono.zip" }],
+      },
+      {
+        family: "MapleMono",
+        faces: [{ file: basename(real.donor), fontPath: real.donor }],
+        manifestEntries: [{ variant: "Regular", file: "MapleMono.zip" }],
+      },
+    ]);
+    const service = await spawnServeOverFonts(site.catalogDir, [
+      "--catalog-release-origin",
+      site.originUri,
+      "--catalog-dir",
+      site.catalogDir,
+      "--manifest",
+      site.manifestPath!,
+    ]);
 
     const saved: string[] = [];
     const saveDir = await mkdtemp(resolve(tmpdir(), "fontalloy-save-"));
     try {
-      // A catalog over the same binaries — the picks come from ROWS.
-      const sim = await SimCatalog.create([
-        { family: "JetBrainsMono", file: basename(real.base), fontPath: real.base },
-        { family: "MapleMono", file: basename(real.donor), fontPath: real.donor },
-      ]);
-      await sim.install(page);
-      await injectCatalogConfig(page);
       const serveUrl = await service.url;
       await page.addInitScript((serve: string) => {
         const config = window as unknown as {
           __FONTALLOY_CONFIG__: Record<string, unknown>;
         };
+        config.__FONTALLOY_CONFIG__ ??= {};
         config.__FONTALLOY_CONFIG__.serveUrl = serve;
       }, serveUrl);
-      // The page has a catalog configured, so the star refresh fires;
-      // keep it hermetic and quiet (a fulfilled count logs nothing).
+      // The page may probe GitHub for stars; keep it hermetic and
+      // quiet (a fulfilled count logs nothing).
       await page.route("https://api.github.com/repos/**", (route) =>
         route.fulfill({
           status: 200,
@@ -1303,6 +1324,15 @@ test.describe("sidecar synthesize", () => {
       });
       collectJsErrors(page, jsErrors);
       await page.goto("/");
+      // The documents sweep must land before the row clicks: the real
+      // pair's fontTools-cold family documents fill AFTER the sync
+      // counts settle — a picker opened in between sits rowless
+      // (unload.spec's boot contract).
+      await page.waitForFunction(
+        () => document.documentElement.dataset.catalogSweep === "done",
+        undefined,
+        { timeout: 120_000 },
+      );
       await waitForFontsReady(page);
       await expect(page.locator(".catalog-screen")).toBeHidden({
         timeout: 30_000,
@@ -1358,6 +1388,7 @@ test.describe("sidecar synthesize", () => {
       expect(meta.codepoints).toContain(0xe0b0); // a Nerd Font powerline glyph
     } finally {
       await service.dispose();
+      await rm(site.root, { recursive: true, force: true });
     }
   });
 
@@ -1449,11 +1480,47 @@ test.describe("sidecar synthesize", () => {
     // picks would resolve through the PATH form (pinned by the sibling
     // test below). This test pins the CATALOG-FAMILY form, so the serve
     // watches an EMPTY local-fonts view — exactly the consumer whose
-    // layout the listing cannot see.
+    // layout the listing cannot see. Ticket #30's boot still needs the
+    // ROWS: the fetched layout's own zips double as a file:// release
+    // origin the serve syncs into a scratch catalog cache.
     const emptyFontsDir = await mkdtemp(resolve(tmpdir(), "fontalloy-blind-"));
+    const catalogCache = await mkdtemp(resolve(tmpdir(), "fontalloy-catcache-"));
+    await writeFile(
+      resolve(fontsDir, "catalog-release.json"),
+      JSON.stringify(
+        {
+          schema: "fontalloy/catalog-release@v1",
+          tag: "font-catalog-e2e",
+          origins: [{ id: "primary", base_url: pathToFileURL(fontsDir).href }],
+          families: [
+            {
+              family: "JetBrainsMono",
+              zip: "JetBrainsMono.zip",
+              sha256: sha256hex(baseZip),
+              files: [
+                { file: baseFace, sha256: sha256hex(baseBytes) },
+                { file: boldFace, sha256: sha256hex(boldBytes) },
+              ],
+            },
+            {
+              family: "MapleMono",
+              zip: "MapleMono-NF-CN.zip",
+              sha256: sha256hex(donorZip),
+              files: [{ file: donorFace, sha256: sha256hex(donorBytes) }],
+            },
+          ],
+        },
+        null,
+        1,
+      ) + "\n",
+    );
     const service = await spawnServeOverFonts(emptyFontsDir, [
       "--manifest",
       resolve(assetsDir, "fonts.manifest.json"),
+      "--catalog-release-origin",
+      pathToFileURL(fontsDir).href,
+      "--catalog-dir",
+      catalogCache,
     ]);
 
     const saved: string[] = [];
@@ -1463,29 +1530,12 @@ test.describe("sidecar synthesize", () => {
       // the GUI can emit {family, variant} references. The base family
       // carries BOTH faces of its cut (round 12) — the GUI registers
       // the set, the recipe narrows by the cut pattern.
-      const sim = await SimCatalog.create([
-        {
-          family: "JetBrainsMono",
-          variant: "Nerd Font",
-          faces: [
-            { file: baseFace, fontPath: real.base },
-            { file: boldFace, fontPath: boldPath },
-          ],
-        },
-        {
-          family: "MapleMono",
-          variant: "NF-CN",
-          file: donorFace,
-          fontPath: real.donor,
-        },
-      ]);
-      await sim.install(page);
-      await injectCatalogConfig(page);
       const serveUrl = await service.url;
       await page.addInitScript((serve: string) => {
         const config = window as unknown as {
           __FONTALLOY_CONFIG__: Record<string, unknown>;
         };
+        config.__FONTALLOY_CONFIG__ ??= {};
         config.__FONTALLOY_CONFIG__.serveUrl = serve;
       }, serveUrl);
       await page.route("https://api.github.com/repos/**", (route) =>
@@ -1522,6 +1572,15 @@ test.describe("sidecar synthesize", () => {
       });
       collectJsErrors(page, jsErrors);
       await page.goto("/");
+      // The documents sweep must land before the row clicks: the real
+      // pair's fontTools-cold family documents fill AFTER the sync
+      // counts settle — a picker opened in between sits rowless
+      // (unload.spec's boot contract).
+      await page.waitForFunction(
+        () => document.documentElement.dataset.catalogSweep === "done",
+        undefined,
+        { timeout: 120_000 },
+      );
       await waitForFontsReady(page);
       await expect(page.locator(".catalog-screen")).toBeHidden({
         timeout: 30_000,
@@ -1595,7 +1654,10 @@ test.describe("sidecar synthesize", () => {
         .locator(".report-section")
         .filter({ hasText: "字重档位" });
       await expect(weightSection).toBeVisible();
-      await expect(weightSection).toContainText("2 档全部取自 Maple Mono CN");
+      // The staged T12 donor's own name-table family (「Maple Mono NF
+      // CN」) names the sentence — the same donor swap countertruth's
+      // conversion accepted.
+      await expect(weightSection).toContainText("2 档全部取自 Maple Mono NF CN");
       await expect(
         weightSection
           .locator('[data-role="report-tag"]')
@@ -1718,9 +1780,50 @@ test.describe("sidecar synthesize", () => {
         1,
       ),
     );
+    // Ticket #30's boot: the ROWS come from the serve's configured
+    // catalog (a manifest-only serve lists none) — the fetched
+    // layout's own zips double as the file:// release origin, synced
+    // into a scratch cache, while /fonts keeps watching this nested
+    // layout so the picks resolve through the PATH form (the pin).
+    const catalogCache = await mkdtemp(resolve(tmpdir(), "fontalloy-catcache-"));
+    await writeFile(
+      resolve(fontsDir, "catalog-release.json"),
+      JSON.stringify(
+        {
+          schema: "fontalloy/catalog-release@v1",
+          tag: "font-catalog-e2e",
+          origins: [{ id: "primary", base_url: pathToFileURL(fontsDir).href }],
+          families: [
+            {
+              family: "JetBrainsMono",
+              zip: "JetBrainsMono.zip",
+              sha256: sha256hex(baseZip),
+              files: [
+                { file: baseFace, sha256: sha256hex(readFileSync(real.base)) },
+                { file: boldFace, sha256: sha256hex(readFileSync(boldPath)) },
+              ],
+            },
+            {
+              family: "MapleMono",
+              zip: "MapleMono-NF-CN.zip",
+              sha256: sha256hex(donorZip),
+              files: [
+                { file: donorFace, sha256: sha256hex(readFileSync(real.donor)) },
+              ],
+            },
+          ],
+        },
+        null,
+        1,
+      ) + "\n",
+    );
     const service = await spawnServeOverFonts(fontsDir, [
       "--manifest",
       resolve(assetsDir, "fonts.manifest.json"),
+      "--catalog-release-origin",
+      pathToFileURL(fontsDir).href,
+      "--catalog-dir",
+      catalogCache,
     ]);
 
     const saved: string[] = [];
@@ -1734,29 +1837,12 @@ test.describe("sidecar synthesize", () => {
         )
         .then((request) => request.postDataJSON() as Record<string, unknown>);
     try {
-      const sim = await SimCatalog.create([
-        {
-          family: "JetBrainsMono",
-          variant: "Nerd Font",
-          faces: [
-            { file: baseFace, fontPath: real.base },
-            { file: boldFace, fontPath: boldPath },
-          ],
-        },
-        {
-          family: "MapleMono",
-          variant: "NF-CN",
-          file: donorFace,
-          fontPath: real.donor,
-        },
-      ]);
-      await sim.install(page);
-      await injectCatalogConfig(page);
       const serveUrl = await service.url;
       await page.addInitScript((serve: string) => {
         const config = window as unknown as {
           __FONTALLOY_CONFIG__: Record<string, unknown>;
         };
+        config.__FONTALLOY_CONFIG__ ??= {};
         config.__FONTALLOY_CONFIG__.serveUrl = serve;
       }, serveUrl);
       await page.route("https://api.github.com/repos/**", (route) =>
@@ -1793,6 +1879,15 @@ test.describe("sidecar synthesize", () => {
       });
       collectJsErrors(page, jsErrors);
       await page.goto("/");
+      // The documents sweep must land before the row clicks: the real
+      // pair's fontTools-cold family documents fill AFTER the sync
+      // counts settle — a picker opened in between sits rowless
+      // (unload.spec's boot contract).
+      await page.waitForFunction(
+        () => document.documentElement.dataset.catalogSweep === "done",
+        undefined,
+        { timeout: 120_000 },
+      );
       await waitForFontsReady(page);
       await expect(page.locator(".catalog-screen")).toBeHidden({
         timeout: 30_000,
