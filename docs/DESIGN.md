@@ -58,7 +58,7 @@ Measured anchor — JetBrains Mono × Noto/Source Han (both 1000 upem): A = 600,
 
 ## Weight and style mapping
 
-Nearest match by default (by OS/2 usWeightClass), and every borrow is stated explicitly — in the interface and the build report. A recipe may rewrite the mapping per weight. When the base font has no italic, CJK falls back to upright (the terminal convention). Interpolation and synthesis stay out: they violate transform-only.
+The default matrix keeps both sides' weights (round 26): its slots are the union of the base's and the donors' (weight, style) slots, confined to the styles the base carries — a base without an italic never gains one. A donor-only slot borrows the nearest base face for its base-side contribution (a tie prefers the lighter face), stated in the borrow table next to the donor borrows; only the slot's identity records (weight class, style bits, subfamily names) state the union weight — the outlines stay the borrowed face's and the donor's own. An explicit `weights` selection — or a base face pin — replaces the union. Donors match nearest by default (by OS/2 usWeightClass), and every borrow is stated explicitly — in the interface and the build report. A recipe may rewrite the mapping per weight. When the base font has no italic, CJK falls back to upright (the terminal convention). Interpolation and synthesis stay out: they violate transform-only.
 
 ## Output naming
 
