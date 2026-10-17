@@ -49,8 +49,6 @@ async function parsedFontMeta(path: string) {
 }
 const parsedDisplayName = async (path: string) =>
   (await parsedFontMeta(path)).names.display;
-const parsedCssFamily = async (path: string) =>
-  (await parsedFontMeta(path)).family;
 
 /** Three fake families over two host binaries. */
 const FAMILY_SPECS: SiteFamilySpec[] = [
@@ -262,13 +260,12 @@ test.describe("the serve-backed catalog", () => {
     }
   });
 
-  test("selecting a catalog font registers it through the registry path and drives the workspace", async ({
+  test("selecting a catalog font registers it by URL and drives the workspace", async ({
     page,
   }) => {
     const jsErrors: string[] = [];
     collectJsErrors(page, jsErrors);
     const nameB = await parsedDisplayName(FONT_B);
-    const cssB = await parsedCssFamily(FONT_B);
     const { url, dispose } = await startCatalogServe(FAMILY_SPECS);
     try {
       await openOnServe(page, url);
@@ -278,21 +275,29 @@ test.describe("the serve-backed catalog", () => {
       await pointerClick(page, catalogRow(page, nameB));
       await waitForFontsReady(page);
 
-      // The pick registered the cut's representative through the same
-      // FontFace path local files take (the registry's parsed family),
-      // and every identity surface reads the scanned name-table name.
+      // Ticket #32 (the MEMORY RED LINE): the pick registered the
+      // cut's slot winners as URL FontFaces under the MANIFEST family
+      // id with their descriptors — never a byte in the page — and
+      // every identity surface still reads the scanned name-table
+      // name from the family document.
       await expect(
         page.locator('[data-role="picker-en"] .kit-hd b'),
       ).toHaveText(nameB);
       await expect(
         page.locator("[data-role='font-pair'] [data-pair='base']"),
       ).toHaveText(nameB);
-      const loaded = await page.evaluate(
-        (fam) => document.fonts.check(`16px "${fam}"`, "A"),
-        cssB,
-      );
-      expect(loaded).toBe(true);
-      await expect(page.locator("[data-stat='en']")).not.toHaveText("0");
+      const loaded = await page.evaluate(() => ({
+        face: document.fonts.check(`16px "AlloySerif"`, "A"),
+        weight: [...document.fonts]
+          .filter((f) => f.family === "AlloySerif")
+          .map((f) => `${f.weight}/${f.style}`),
+      }));
+      expect(loaded.face).toBe(true);
+      expect(loaded.weight).toEqual(["400/normal"]);
+      // A URL pick carries no client-side cmap (the red line): the
+      // script-region counters read 0 — the serve's resolve answers
+      // stay the coloring truth (ticket #35).
+      await expect(page.locator("[data-stat='en']")).toHaveText("0");
       assertNoJsErrors(jsErrors);
     } finally {
       await dispose();

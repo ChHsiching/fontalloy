@@ -97,14 +97,19 @@ test("the owner's window: EN 71 rows / CJK 25, self-rendered, no page-side bytes
     );
     expect(previews.length).toBeGreaterThan(0);
 
-    // A pick drives the workspace through the existing registry path.
+    // A pick drives the workspace through the URL FontFace path
+    // (ticket #32: the family's slot winners register by URL with
+    // descriptors, no page-side bytes).
     await pointerClick(page, page.locator('[data-role="picker-en"] .kit-hd'));
     await pointerClick(page, enPopup.locator(".kit-fp").first());
     await waitForFontsReady(page);
     await expect(
       page.locator("[data-role='font-pair'] [data-pair='base']"),
     ).not.toHaveText("");
-    await expect(page.locator("[data-stat='en']")).not.toHaveText("0");
+    // The red line's honest counter: a URL pick carries no client-side
+    // cmap, so the script-region counters read 0 (the serve's resolve
+    // answers stay the coloring truth).
+    await expect(page.locator("[data-stat='en']")).toHaveText("0");
 
     // Observability hook 3: the error capture — zero JS errors across
     // the whole scenario.
