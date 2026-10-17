@@ -119,6 +119,19 @@ test.describe("round-9 rule × visibility shots", () => {
       page.locator("[data-role='font-pair'] [data-pair='donor']"),
     ).not.toBeEmpty();
 
+    // Ticket #35: the announce card diffs two resolve documents, and
+    // announceAssignment returns WITHOUT pushing while the pair's first
+    // document has not landed (the serve's first answer over the host
+    // pair is fontTools-cold) — anchor the click after it, exactly as
+    // design.spec's first-document gate does. Page 1 of the 全部 view
+    // is Basic Latin: 'A' carries the default winner (the base's).
+    const landedCell = page.locator(
+      ".charmap-grid .kit-cell[data-cp='U+0041']",
+    );
+    await expect(landedCell).toHaveAttribute("data-winner", "base", {
+      timeout: 60_000,
+    });
+
     // The rule state the shots need: a block rule, a range rule, and
     // TWO single-character rules (aggregate row + expandable children).
     await pointerClick(
