@@ -161,6 +161,38 @@ export class ServeError extends Error {
   }
 }
 
+/**
+ * Round 30 (owner report: a second build stuck 排队中 forever and
+ * uncancelable): the serve PROCESS can stay alive with its HTTP thread
+ * dead — the kernel still accepts TCP connections into the backlog, so
+ * fetch() never refuses AND never settles. Every request carries an
+ * abort timeout: a service that cannot answer within it reads as
+ * unreachable, the build row flips to its error card, and a cancel
+ * that gets no answer fails visibly instead of hanging the panel.
+ */
+const CONTROL_TIMEOUT_MS = 15_000;
+const SUBMIT_TIMEOUT_MS = 30_000;
+const REPORT_TIMEOUT_MS = 60_000;
+/** Byte transfers: artifacts reach hundreds of MB over the loopback. */
+const BYTES_TIMEOUT_MS = 10 * 60_000;
+
+function timeoutSignal(ms: number): AbortSignal | undefined {
+  return typeof AbortSignal !== "undefined" && "timeout" in AbortSignal
+    ? AbortSignal.timeout(ms)
+    : undefined;
+}
+
+function isTimeout(err: unknown): boolean {
+  return (
+    err instanceof Error &&
+    (err.name === "TimeoutError" || err.name === "AbortError")
+  );
+}
+
+function timeoutMessage(ms: number): string {
+  return `本地合成服务无响应（${Math.round(ms / 1000)} 秒超时）。`;
+}
+
 async function parseError(res: Response): Promise<string> {
   try {
     const body = (await res.json()) as { error?: string };
@@ -179,25 +211,38 @@ export class ServeClient {
   private async requestJson<T>(
     path: string,
     init?: RequestInit,
+    timeoutMs: number = CONTROL_TIMEOUT_MS,
   ): Promise<T> {
     let res: Response;
     try {
       res = await fetch(`${this.baseUrl}${path}`, {
         headers: { "Content-Type": "application/json" },
         ...init,
+        ...(timeoutSignal(timeoutMs) !== undefined
+          ? { signal: timeoutSignal(timeoutMs) }
+          : {}),
       });
-    } catch {
+    } catch (err) {
+      if (isTimeout(err)) throw new ServeError(timeoutMessage(timeoutMs), 0);
       throw new ServeError("无法连接本地合成服务。", 0);
     }
     if (!res.ok) throw new ServeError(await parseError(res), res.status);
     return (await res.json()) as T;
   }
 
-  private async getJson<T>(path: string): Promise<T> {
+  private async getJson<T>(
+    path: string,
+    timeoutMs: number = CONTROL_TIMEOUT_MS,
+  ): Promise<T> {
     let res: Response;
     try {
-      res = await fetch(`${this.baseUrl}${path}`);
-    } catch {
+      res = await fetch(`${this.baseUrl}${path}`, {
+        ...(timeoutSignal(timeoutMs) !== undefined
+          ? { signal: timeoutSignal(timeoutMs) }
+          : {}),
+      });
+    } catch (err) {
+      if (isTimeout(err)) throw new ServeError(timeoutMessage(timeoutMs), 0);
       throw new ServeError("无法连接本地合成服务。", 0);
     }
     if (!res.ok) throw new ServeError(await parseError(res), res.status);
@@ -232,8 +277,14 @@ export class ServeClient {
     try {
       res = await fetch(
         `${this.baseUrl}/system-fonts/file?path=${encodeURIComponent(path)}`,
+        {
+          ...(timeoutSignal(BYTES_TIMEOUT_MS) !== undefined
+            ? { signal: timeoutSignal(BYTES_TIMEOUT_MS) }
+            : {}),
+        },
       );
-    } catch {
+    } catch (err) {
+      if (isTimeout(err)) throw new ServeError(timeoutMessage(BYTES_TIMEOUT_MS), 0);
       throw new ServeError("无法读取系统字体文件。", 0);
     }
     if (!res.ok) throw new ServeError(await parseError(res), res.status);
@@ -258,7 +309,7 @@ export class ServeClient {
   }
 
   report(id: string): Promise<ReportDocument> {
-    return this.getJson<ReportDocument>(`/builds/${id}/report`);
+    return this.getJson<ReportDocument>(`/builds/${id}/report`, REPORT_TIMEOUT_MS);
   }
 
   /** Submit a recipe-shaped JSON body; a 400 carries the service message. */
@@ -269,8 +320,12 @@ export class ServeClient {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(recipe),
+        ...(timeoutSignal(SUBMIT_TIMEOUT_MS) !== undefined
+          ? { signal: timeoutSignal(SUBMIT_TIMEOUT_MS) }
+          : {}),
       });
-    } catch {
+    } catch (err) {
+      if (isTimeout(err)) throw new ServeError(timeoutMessage(SUBMIT_TIMEOUT_MS), 0);
       throw new ServeError("无法连接本地合成服务。", 0);
     }
     if (!res.ok) throw new ServeError(await parseError(res), res.status);
@@ -281,8 +336,13 @@ export class ServeClient {
   async fontBytes(id: string): Promise<Uint8Array> {
     let res: Response;
     try {
-      res = await fetch(`${this.baseUrl}/builds/${id}/font`);
-    } catch {
+      res = await fetch(`${this.baseUrl}/builds/${id}/font`, {
+        ...(timeoutSignal(BYTES_TIMEOUT_MS) !== undefined
+          ? { signal: timeoutSignal(BYTES_TIMEOUT_MS) }
+          : {}),
+      });
+    } catch (err) {
+      if (isTimeout(err)) throw new ServeError(timeoutMessage(BYTES_TIMEOUT_MS), 0);
       throw new ServeError("无法连接本地合成服务。", 0);
     }
     if (!res.ok) throw new ServeError(await parseError(res), res.status);

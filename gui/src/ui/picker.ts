@@ -32,6 +32,7 @@ import { readConfig } from "../platform/config";
 import {
   registerSystemFamily,
   systemFamilies,
+  systemFontsPending,
 } from "../service/systemfonts";
 import { synthStore } from "../service/state";
 import {
@@ -694,6 +695,19 @@ export function mountPicker(
         .filter((display) => !frontSet.has(display.id))
         .map((display) => rowsByFamily.get(display.id)!),
     ];
+    // Round 30 (owner report: the picker sat empty with no hint while
+    // the release document was fetched and every stored family
+    // verified — the bootstrapping window owns no rows of its own):
+    // a disabled loading row heads the list until the catalog settles.
+    // The first-run DOWNLOAD progress screen stays what it is — it
+    // shows only when something actually downloads.
+    if (catalog.status === "bootstrapping") {
+      rows.unshift({
+        id: "catalog-loading",
+        name: "内置目录准备中…",
+        disabled: true,
+      });
+    }
     // The live row id (a css key once registered) back to its display
     // family — the chip handler resolves rows by id, never by name.
     const displayByRowId = new Map(
@@ -755,6 +769,16 @@ export function mountPicker(
           family.family,
           ...family.faces.map((face) => face.subfamily),
         ].join(" "),
+      });
+    }
+    // Round 30 (owner report: no hint while the serve's system-font
+    // scan warms): the scan's own loading row, appended exactly where
+    // the system rows will land — never once they exist.
+    if (systemFontsPending() && systemFamilies().length === 0) {
+      rows.push({
+        id: "system-loading",
+        name: "系统字体扫描中…",
+        disabled: true,
       });
     }
 

@@ -89,20 +89,28 @@ let requested = false;
 export async function ensureSystemFonts(client: ServeClient): Promise<void> {
   if (requested) return;
   requested = true;
+  patchService({ systemFontsPending: true });
   for (let attempt = 0; attempt < 90; attempt++) {
     try {
       const doc = await client.systemFonts();
       if (doc.ready) {
-        patchService({ systemFonts: groupSystemFamilies(doc.faces) });
+        patchService({
+          systemFonts: groupSystemFamilies(doc.faces),
+          systemFontsPending: false,
+        });
         return;
       }
     } catch {
       // No enumeration endpoint (older service) — the feature is
       // simply absent; nothing else changes.
+      patchService({ systemFontsPending: false });
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 2000));
   }
+  // Bounded poll exhausted (the scan never answered ready) — the
+  // loading row stands down rather than promising forever.
+  patchService({ systemFontsPending: false });
 }
 
 /** Reset the once-guard when a new service connects (tests). */
@@ -145,4 +153,13 @@ export async function registerSystemFamily(
 /** The service's system families, when the enumeration has landed. */
 export function systemFamilies(): SystemFontFamily[] {
   return synthStore.get().service.systemFonts ?? [];
+}
+
+/**
+ * Round 30: true while the enumeration poll is out (the pickers'
+ * 系统字体扫描中 loading row); false once it lands, on services
+ * without the endpoint, and when the bounded poll gives up.
+ */
+export function systemFontsPending(): boolean {
+  return synthStore.get().service.systemFontsPending;
 }

@@ -59,6 +59,13 @@ export interface ServiceState {
    * rows, classified by each family's own coverage.
    */
   systemFonts: SystemFontFamily[] | null;
+  /**
+   * Round 30 (owner report: the pickers sit empty with no hint while
+   * the serve's system-font scan warms): true from the first
+   * enumeration request until it lands (or the endpoint turns out
+   * absent) — the pickers' 系统字体扫描中 loading row.
+   */
+  systemFontsPending: boolean;
 }
 
 export type BuildRowStatus =
@@ -118,6 +125,7 @@ export const synthStore = createStore<SynthesisState>({
     fontsIndexAt: null,
     catalogIndex: null,
     systemFonts: null,
+    systemFontsPending: false,
   },
   builds: [],
 });

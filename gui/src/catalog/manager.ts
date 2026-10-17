@@ -34,6 +34,21 @@ export interface CatalogManagerDeps {
 /** Written LAST, after every face of the family passed its sha256 check. */
 const COMPLETE_MARKER = ".complete";
 
+/**
+ * Round 30: the release document must answer quickly (a hung bootstrap
+ * fetch with no timeout left the pickers empty for minutes when the
+ * machine's socket pool was exhausted); family zips are byte transfers
+ * and get the long budget.
+ */
+const RELEASE_DOC_TIMEOUT_MS = 30_000;
+const FAMILY_ZIP_TIMEOUT_MS = 10 * 60_000;
+
+function fetchTimeoutSignal(ms: number): RequestInit | undefined {
+  return typeof AbortSignal !== "undefined" && "timeout" in AbortSignal
+    ? { signal: AbortSignal.timeout(ms) }
+    : undefined;
+}
+
 /** Storage key namespace: `catalog/families/<encoded family>`. */
 function familyDir(family: string): string {
   return `catalog/families/${encodeURIComponent(family)}`;
@@ -103,7 +118,10 @@ export class CatalogManager {
 
     let text: string;
     try {
-      const res = await this.fetchFn(bootstrapUrl);
+      const res = await this.fetchFn(
+        bootstrapUrl,
+        fetchTimeoutSignal(RELEASE_DOC_TIMEOUT_MS),
+      );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       text = await res.text();
     } catch (err) {
@@ -185,7 +203,10 @@ export class CatalogManager {
     for (const origin of origins) {
       const url = `${origin.baseUrl.replace(/\/+$/, "")}/${zipName}`;
       try {
-        const res = await this.fetchFn(url);
+        const res = await this.fetchFn(
+          url,
+          fetchTimeoutSignal(FAMILY_ZIP_TIMEOUT_MS),
+        );
         if (!res.ok) {
           reasons.push(`${origin.id}: HTTP ${res.status}`);
           continue;
