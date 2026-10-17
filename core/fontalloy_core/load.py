@@ -113,35 +113,52 @@ def resolve_base_faces(
     :class:`SkippedFace` records for the report — a drop is stated,
     never silent. A pool with no collisions passes through untouched.
     """
-    slots: dict[tuple[int, bool], list[LoadedFace]] = {}
-    for face in faces:
-        slots.setdefault((face.info.weight, face.info.italic), []).append(face)
+    kept_infos, skipped = resolve_slot_faces([face.info for face in faces])
+    kept_ids = {id(info) for info in kept_infos}
+    return [face for face in faces if id(face.info) in kept_ids], skipped
+
+
+def resolve_slot_faces(
+    infos: list[FaceInfo],
+) -> tuple[list[FaceInfo], list[SkippedFace]]:
+    """The slot rule over scanned identities (no loaded fonts).
+
+    The same one-face-per-(weight, italic) resolution
+    :func:`resolve_base_faces` applies to loaded merge inputs, stated
+    over bare :class:`FaceInfo` identities so scan-shaped consumers
+    (the local-font picker model, issue #31) enforce the identical rule
+    without paying for loaded fonts. The record and the tiebreaks are
+    the very same ones; only the payload differs.
+    """
+    slots: dict[tuple[int, bool], list[FaceInfo]] = {}
+    for info in infos:
+        slots.setdefault((info.weight, info.italic), []).append(info)
     dropped_ids: set[int] = set()
     skipped: list[SkippedFace] = []
     for (weight, italic), group in slots.items():
         if len(group) == 1:
             continue
-        consistent = [face for face in group if face.info.style_consistent]
+        consistent = [info for info in group if info.style_consistent]
         winner = (consistent or group)[0]
         style = "italic" if italic else "upright"
-        for face in group:
-            if face is winner:
+        for info in group:
+            if info is winner:
                 continue
-            dropped_ids.add(id(face))
+            dropped_ids.add(id(info))
             skipped.append(
                 SkippedFace(
-                    path=face.info.path,
-                    face_index=face.info.face_index,
+                    path=info.path,
+                    face_index=info.face_index,
                     weight=weight,
                     italic=italic,
-                    subfamily=face.info.subfamily,
+                    subfamily=info.subfamily,
                     reason=(
                         f"duplicate {weight} {style} slot; kept "
-                        f"{winner.info.subfamily or winner.info.family}"
+                        f"{winner.subfamily or winner.family}"
                     ),
                 )
             )
-    kept = [face for face in faces if id(face) not in dropped_ids]
+    kept = [info for info in infos if id(info) not in dropped_ids]
     return kept, skipped
 
 
