@@ -5,7 +5,12 @@ import { resolve } from "node:path";
 import { readFileSync } from "node:fs";
 import { parseFontMeta } from "../src/fonts/sfnt";
 import { browseUniverseSize } from "../src/unicode/universe";
-import { generateFonts, startServeFixture, type ServeFixture } from "./serve";
+import {
+  generateFonts,
+  spawnServeOverFonts,
+  startServeFixture,
+  type ServeFixture,
+} from "./serve";
 import {
   assertNoJsErrors,
   collectJsErrors,
@@ -113,7 +118,7 @@ test.describe("placeholder coverage", () => {
     page,
   }) => {
     const dir = await mkdtemp(resolve(tmpdir(), "fontalloy-mass-"));
-    const { donor } = await generateFonts(dir, {
+    const { base, donor } = await generateFonts(dir, {
       donorGlyphs: 64,
       sharedGlyphDonor: 80,
     });
@@ -129,35 +134,62 @@ test.describe("placeholder coverage", () => {
     );
     expect(meta.codepoints).toHaveLength(64);
 
-    // The grid keeps rendering the FONT'S OWN glyph under the missing
-    // style (the box the font really draws there) — the missing-unmapped
-    // treatment (no glyph at all) is for codepoints nothing maps.
-    collectJsErrors(page, jsErrors);
-    await page.goto("/");
-    await waitForFontsReady(page);
-    await pointerClick(page, page.locator('[data-role="picker-cjk"] .kit-hd'));
-    await page.locator("input[data-role='font-file']").setInputFiles(donor);
-    await expect(page.locator('[data-picker-popup="cjk"]')).toBeHidden();
-    await pointerClick(
-      page,
-      page.locator(".kit-cat-g[data-group='icons']"),
-    );
-    const cell = page.locator(".charmap-grid .kit-cell[data-cp='U+E000']");
-    await expect(cell).toHaveClass(/miss/);
-    await expect(cell.locator(".cp")).toHaveText("E000");
-    await expect(cell.locator(".ch")).toHaveText("\uE000");
-    const family = await cell.evaluate((el) => getComputedStyle(el).fontFamily);
-    expect(family).toContain("AlloyDonor");
+    // Ticket #35: the grid's per-cell missing verdict is the serve's
+    // answer, so the page rides a serve over the fixture directory and
+    // BOTH fonts are picked (a lone CJK pick has no request — the
+    // resolve body's picks.base is mandatory).
+    const service = await spawnServeOverFonts(dir);
+    try {
+      collectJsErrors(page, jsErrors);
+      await page.addInitScript((url: string) => {
+        const config = window as unknown as {
+          __FONTALLOY_CONFIG__: Record<string, unknown>;
+        };
+        config.__FONTALLOY_CONFIG__ ??= {};
+        config.__FONTALLOY_CONFIG__.serveUrl = url;
+      }, await service.url);
+      await page.goto("/");
+      await waitForFontsReady(page);
+      for (const [role, path] of [
+        ["en", base],
+        ["cjk", donor],
+      ] as const) {
+        await pointerClick(
+          page,
+          page.locator(`[data-role="picker-${role}"] .kit-hd`),
+        );
+        await page
+          .locator("input[data-role='font-file']")
+          .setInputFiles(path);
+        await expect(page.locator(`[data-picker-popup="${role}"]`)).toBeHidden();
+      }
+      await pointerClick(page, page.locator(".kit-cat-g[data-group='icons']"));
+      // The document must land before the per-cell verdicts: anchor on
+      // a covered icon... none exist here, so anchor on the missing
+      // style itself arriving at the mass-duplicated run's head.
+      const cell = page.locator(".charmap-grid .kit-cell[data-cp='U+E000']");
+      await expect(cell).toHaveClass(/miss/);
+      await expect(cell.locator(".cp")).toHaveText("E000");
+      await expect(cell.locator(".ch")).toHaveText("");
+      const family = await cell.evaluate((el) => getComputedStyle(el).fontFamily);
+      expect(family).toContain("AlloyDonor");
 
-    // The missing counters include the mass-duplicated run: the lone
-    // pick covers its 64 hanzi and nothing else of the universe.
-    const chip = page.locator(".kit-catbar .kit-cat-g[data-group='missing']");
-    await expect(chip.locator(".n")).toHaveText(
-      (browseUniverseSize() - 64).toLocaleString("en-US"),
-    );
-    await expect(page.locator("[data-stat='missing']")).toHaveText(
-      (browseUniverseSize() - 64).toLocaleString("en-US"),
-    );
+      // The missing counters include the mass-duplicated run: the pair
+      // covers the base's 26 letters and the donor's 64 hanzi — nothing
+      // else of the universe.
+      const chip = page.locator(".kit-catbar .kit-cat-g[data-group='missing']");
+      await expect(chip.locator(".n")).toHaveText(
+        (browseUniverseSize() - 90).toLocaleString("en-US"),
+      );
+      await expect(page.locator("[data-stat='missing']")).toHaveText(
+        (browseUniverseSize() - 90).toLocaleString("en-US"),
+      );
+      // Quiesce before the dispose (an in-flight boot probe killed
+      // mid-air would log a transport error).
+      await page.waitForLoadState("networkidle");
+    } finally {
+      await service.dispose();
+    }
   });
 
   test("a CFF face flags its .notdef-outline glyph the same way", async () => {

@@ -14,6 +14,12 @@ test.setTimeout(60_000);
 test("the picker states its catalog loading window", async ({ page }) => {
   const jsErrors: string[] = [];
   collectJsErrors(page, jsErrors);
+  // The stars refresh stays hermetic (the suite convention — a live
+  // api.github.com answers 403 under rate limiting and its console
+  // line would trip the gate).
+  await page.route("https://api.github.com/repos/**", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: "{}" }),
+  );
 
   // A real serve with a real (tiny) catalog — but the PAGE's status
   // fetch is held at the route, so the boot sits in its loading window

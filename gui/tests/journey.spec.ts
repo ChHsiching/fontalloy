@@ -44,6 +44,15 @@ import { spawnServeOverFonts } from "./serve";
  * pointer events with elementFromPoint hit-test guards, DOM
  * textContent assertions, fonts.ready waits, and the zero-JS-errors
  * gate per journey.
+ *
+ * Ticket #35 (spec #25): every journey whose steps read the effective
+ * table (J3–J7: preset effects, grid winners, popup facts, assignment
+ * cards, scene provenance) boots against a SHARED serve over the run
+ * assets — the same layout J9 uses — so the coloring is the serve's
+ * resolve answer, never a client-side mirror. J1/J2 assert only
+ * chrome and identity (no coloring), J8 deliberately boots
+ * no-service (the CLI panel is its recipe surface), J10 is theme
+ * chrome. J9 keeps its own serve (it also submits builds).
  */
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -78,6 +87,8 @@ type JourneyRecord = {
 };
 
 const journeyResults: JourneyRecord[] = [];
+/** Suite-scoped dispose hooks (the shared coloring serve). */
+const journeyTeardown: Array<() => Promise<void>> = [];
 
 async function writeReport(): Promise<void> {
   const report = {
@@ -509,6 +520,14 @@ async function paintDrag(page: Page, cps: string[]): Promise<void> {
   await page.mouse.up();
 }
 
+/** Boot a launch against the shared coloring serve (J3–J7). */
+async function bootWithServe(page: Page): Promise<void> {
+  if (coloringServeUrl === null) {
+    throw new Error("the coloring serve never started (run assets absent?)");
+  }
+  await boot(page, `/?serve=${encodeURIComponent(coloringServeUrl)}`);
+}
+
 /** Boot a launch and wait until the workspace is usable. */
 async function boot(page: Page, url = "/"): Promise<void> {
   jsErrors.length = 0;
@@ -632,11 +651,41 @@ async function parseBuiltFont(path: string): Promise<{
 }
 
 /* ------------------------------------------------------------------ */
-/* The ten journeys                                                    */
+/* The shared coloring serve (ticket #35)                              */
 /* ------------------------------------------------------------------ */
 
+/**
+ * One serve over the run assets for the whole run (J3–J7): the
+ * journeys' picks are the real catalog faces, whose files the run
+ * layout holds — the picks resolve by file name against the serve's
+ * /fonts index, exactly the slot resolution a build submission walks.
+ * Null when the run assets are absent (the J9-only environments):
+ * the coloring journeys then degrade to the plain preview, and their
+ * effective-table steps fail loudly rather than silently passing.
+ */
+let coloringServeUrl: string | null = null;
+
 test.describe("user journey", () => {
+  test.beforeAll(async () => {
+    const service = await spawnServeOverFonts(RUN_FONTS, [
+      "--manifest",
+      RUN_MANIFEST,
+    ]);
+    // A failed spawn (assets absent, port trouble) must NOT take the
+    // whole file down: J1/J2/J8/J10 need no serve, and the coloring
+    // journeys fail loudly at bootWithServe instead — null carries the
+    // documented degradation, a thrown beforeAll would fail even the
+    // journeys that never color.
+    coloringServeUrl = await service.url.catch(() => null);
+    journeyTeardown.push(async () => {
+      await service.dispose();
+    });
+  });
+
   test.afterAll(async () => {
+    for (const teardown of journeyTeardown.splice(0)) {
+      await teardown();
+    }
     await writeReport();
   });
 
@@ -918,8 +967,15 @@ test.describe("user journey", () => {
   }) => {
     await journey("J3 文字范围", async (step) => {
       await step("J3.1 setup: the flagship pair picked through the UI", async () => {
-        await boot(page);
+        await bootWithServe(page);
         await pickFlagshipPair(page);
+        // Ticket #35: the effective table is the serve's resolve answer,
+        // and the real pair's FIRST resolve is fontTools-cold (double-
+        // digit seconds) — anchor a landed winner before any step reads
+        // the table, so every later read is the served truth.
+        await expect(
+          page.locator(".charmap-grid .kit-cell[data-cp='U+0041']"),
+        ).toHaveAttribute("data-winner", "base", { timeout: 60_000 });
       });
 
       await step("J3.2 the four language chips, verbatim labels + real counts", async () => {
@@ -958,7 +1014,11 @@ test.describe("user journey", () => {
         const ja = page.locator("[data-role='lang-chip'][data-preset='ja']");
         await pointerClick(page, ja);
         await expect(ja).toHaveAttribute("aria-pressed", "true");
-        await expect(jaCell).toHaveAttribute("data-via", /rule-\d+/);
+        // The preset change re-resolves through the serve (ticket #35):
+        // a warm re-resolve is seconds, not the deleted mirror's sync.
+        await expect(jaCell).toHaveAttribute("data-via", /rule-\d+/, {
+          timeout: 30_000,
+        });
       });
 
       await step("J3.4 preset changes reach the rules summary surface (pressed chips)", async () => {
@@ -1000,8 +1060,15 @@ test.describe("user journey", () => {
   }) => {
     await journey("J4 字符表遨游", async (step) => {
       await step("J4.1 setup: the flagship pair picked through the UI", async () => {
-        await boot(page);
+        await bootWithServe(page);
         await pickFlagshipPair(page);
+        // Ticket #35: the effective table is the serve's resolve answer,
+        // and the real pair's FIRST resolve is fontTools-cold (double-
+        // digit seconds) — anchor a landed winner before any step reads
+        // the table, so every later read is the served truth.
+        await expect(
+          page.locator(".charmap-grid .kit-cell[data-cp='U+0041']"),
+        ).toHaveAttribute("data-winner", "base", { timeout: 60_000 });
       });
 
       await step("J4.2 category groups navigate (全部 → 中日韩文字 → 拉丁文字)", async () => {
@@ -1145,14 +1212,18 @@ test.describe("user journey", () => {
           page,
           blockRow.locator(".kit-mseg button", { hasText: /^用中文$/ }),
         );
-        await expect(brace).toHaveAttribute("data-winner", "donor-0");
+        await expect(brace).toHaveAttribute("data-winner", "donor-0", {
+          timeout: 30_000,
+        });
         await expect(brace).toHaveAttribute("data-via", /rule-\d+/);
         // The GLYPH flips with the data: the brace now paints in the
         // donor's own face (item 1a — assignment visibly moves glyphs).
         await assertWinnerGlyphs(page);
         // Undo returns the block to the no-rule default.
         await pointerClick(page, page.locator("[data-role='undo']"));
-        await expect(brace).toHaveAttribute("data-winner", "base");
+        await expect(brace).toHaveAttribute("data-winner", "base", {
+          timeout: 30_000,
+        });
         await assertWinnerGlyphs(page);
       });
 
@@ -1211,8 +1282,15 @@ test.describe("user journey", () => {
   }) => {
     await journey("J5 单字符交互", async (step) => {
       await step("J5.1 setup: the flagship pair picked through the UI", async () => {
-        await boot(page);
+        await bootWithServe(page);
         await pickFlagshipPair(page);
+        // Ticket #35: the effective table is the serve's resolve answer,
+        // and the real pair's FIRST resolve is fontTools-cold (double-
+        // digit seconds) — anchor a landed winner before any step reads
+        // the table, so every later read is the served truth.
+        await expect(
+          page.locator(".charmap-grid .kit-cell[data-cp='U+0041']"),
+        ).toHaveAttribute("data-winner", "base", { timeout: 60_000 });
         await pointerClick(
           page,
           page.locator(".kit-cat-g[data-group='latin-europe']"),
@@ -1254,7 +1332,9 @@ test.describe("user journey", () => {
         const cell = page.locator(
           ".charmap-grid .kit-cell[data-cp='U+0041']",
         );
-        await expect(cell).toHaveAttribute("data-winner", "donor-0");
+        await expect(cell).toHaveAttribute("data-winner", "donor-0", {
+          timeout: 30_000,
+        });
         await expect(cell).toHaveAttribute("data-via", /rule-\d+/);
         await expect(cell).toHaveClass(/ov/);
         await expect(page.locator("[data-role='rule-solo']")).toHaveText(
@@ -1306,6 +1386,12 @@ test.describe("user journey", () => {
         );
         // The glyph identity holds through the flip (item 3): every
         // effective cell — A now donor-supplied — paints its winner.
+        // Gate the re-applied document's land first (the body is a
+        // cache hit, but the read below must never race a pre-land
+        // snapshot).
+        await expect(cell).toHaveAttribute("data-winner", "donor-0", {
+          timeout: 30_000,
+        });
         await assertWinnerGlyphs(page);
       });
 
@@ -1322,7 +1408,9 @@ test.describe("user journey", () => {
         const cell = page.locator(
           ".charmap-grid .kit-cell[data-cp='U+0041']",
         );
-        await expect(cell).toHaveAttribute("data-winner", "base");
+        await expect(cell).toHaveAttribute("data-winner", "base", {
+          timeout: 30_000,
+        });
         await expect(cell).not.toHaveClass(/ov/);
         await expect(page.locator("[data-role='rule-solo']")).toHaveCount(0);
         await assertWinnerGlyphs(page);
@@ -1436,8 +1524,15 @@ test.describe("user journey", () => {
   }) => {
     await journey("J6 批量与撤销", async (step) => {
       await step("J6.1 setup: the flagship pair picked through the UI", async () => {
-        await boot(page);
+        await bootWithServe(page);
         await pickFlagshipPair(page);
+        // Ticket #35: the effective table is the serve's resolve answer,
+        // and the real pair's FIRST resolve is fontTools-cold (double-
+        // digit seconds) — anchor a landed winner before any step reads
+        // the table, so every later read is the served truth.
+        await expect(
+          page.locator(".charmap-grid .kit-cell[data-cp='U+0041']"),
+        ).toHaveAttribute("data-winner", "base", { timeout: 60_000 });
         await pointerClick(
           page,
           page.locator(".kit-cat-g[data-group='latin-europe']"),
@@ -1463,7 +1558,9 @@ test.describe("user journey", () => {
         const cell = page.locator(
           ".charmap-grid .kit-cell[data-cp='U+0041']",
         );
-        await expect(cell).toHaveAttribute("data-winner", "donor-0");
+        await expect(cell).toHaveAttribute("data-winner", "donor-0", {
+          timeout: 30_000,
+        });
         await expect(cell).toHaveAttribute("data-via", /rule-\d+/);
         await expect(cell).toHaveClass(/ov/); // supplier changed → the dot
         // Item 3: the whole basic-latin page (now donor-declared) still
@@ -1572,7 +1669,9 @@ test.describe("user journey", () => {
           page,
           groupRow.locator(".kit-mseg button", { hasText: /^全用英文$/ }),
         );
-        await expect(cell).toHaveAttribute("data-via", /rule-\d+/);
+        await expect(cell).toHaveAttribute("data-via", /rule-\d+/, {
+          timeout: 30_000,
+        });
         await expect(cell).not.toHaveClass(/ov/);
         // The English assignment adds NOTHING to the 已调整 counter
         // (its [base, donor] preference IS the default chain, so no
@@ -1707,7 +1806,9 @@ test.describe("user journey", () => {
         const cell = page.locator(
           ".charmap-grid .kit-cell[data-cp='U+0041']",
         );
-        await expect(cell).toHaveAttribute("data-winner", "donor-0");
+        await expect(cell).toHaveAttribute("data-winner", "donor-0", {
+          timeout: 30_000,
+        });
         await expect(cell).toHaveClass(/ov/);
         await expect(
           page.locator("[data-role='rule-row'][data-kind='range']"),
@@ -1771,7 +1872,7 @@ test.describe("user journey", () => {
         );
         await expect(
           page.locator(".charmap-grid .kit-cell[data-cp='U+0041']"),
-        ).toHaveAttribute("data-winner", "base");
+        ).toHaveAttribute("data-winner", "base", { timeout: 30_000 });
         expect(
           num(await page.locator("[data-stat='adjusted']").textContent()),
         ).toBe(0);
@@ -1790,8 +1891,16 @@ test.describe("user journey", () => {
   }) => {
     await journey("J7 场景", async (step) => {
       await step("J7.1 setup: picks made, the scene mode entered", async () => {
-        await boot(page);
+        await bootWithServe(page);
         await pickFlagshipPair(page);
+        // Ticket #35: the effective table is the serve's resolve answer,
+        // and the real pair's FIRST resolve is fontTools-cold (double-
+        // digit seconds) — anchor a landed winner before any step reads
+        // the table, so every later read is the served truth (the scene
+        // cards resolve through the same landed document).
+        await expect(
+          page.locator(".charmap-grid .kit-cell[data-cp='U+0041']"),
+        ).toHaveAttribute("data-winner", "base", { timeout: 60_000 });
         await pointerClick(
           page,
           page.locator(".kit-modebar .kit-mseg [data-value='scene']"),

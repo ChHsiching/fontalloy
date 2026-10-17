@@ -22,8 +22,9 @@ import {
  *
  * The pair is REAL and goes through the app's real pick path (the
  * catalog fixture harness over real binaries: a real JetBrainsMono
- * Nerd Font face in the EN slot, a real LXGW WenKai face in the CJK
- * slot). The ground truth is computed in node, OUTSIDE the app's
+ * Nerd Font face in the EN slot, a real Maple Mono CN face in the CJK
+ * slot — the staged T12 verification donor wherever the dev catalog's
+ * WenKai face is absent). The ground truth is computed in node, OUTSIDE the app's
  * counting code path: gui/scripts/counter_truth.py reads the very same
  * font files with fontTools and applies the same effective-coverage
  * spec the GUI's sfnt reader defines (best cmap subtable by the
@@ -46,17 +47,28 @@ import {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../..");
 
-/** Locate the two real catalog binaries (font binaries never enter git). */
+/**
+ * Locate the two real catalog binaries (font binaries never enter git).
+ * The CJK slot accepts the staged donor of the T12 verification layout
+ * (MapleMonoCN-Regular.ttf — internally 「Maple Mono NF CN」) wherever
+ * the dev catalog's WenKai face is absent; the ground truth reads the
+ * actual file either way, so the counters are pinned against whatever
+ * pair is really served.
+ */
 function realFontPaths(): { en: string; cjk: string } {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const repoRoot = resolve(here, "../..");
   const candidates = [
     process.env.FONTALLOY_DEV_FONT_DIR,
-    resolve(REPO_ROOT, "..", "fontalloy", "gui", "prototype", "fonts"),
-    resolve(REPO_ROOT, "gui", "prototype", "fonts"),
+    resolve(repoRoot, "..", "fontalloy", "gui", "prototype", "fonts"),
+    resolve(repoRoot, "gui", "prototype", "fonts"),
   ].filter((p): p is string => typeof p === "string" && p.length > 0);
   for (const dir of candidates) {
     const en = resolve(dir, "JetBrainsMonoNerdFont-Regular.ttf");
-    const cjk = resolve(dir, "LXGWWenKai-Regular.ttf");
-    if (existsSync(en) && existsSync(cjk)) return { en, cjk };
+    for (const cjkName of ["LXGWWenKai-Regular.ttf", "MapleMonoCN-Regular.ttf"]) {
+      const cjk = resolve(dir, cjkName);
+      if (existsSync(en) && existsSync(cjk)) return { en, cjk };
+    }
   }
   throw new Error(
     "the real catalog fonts were not found (tried " +
@@ -241,9 +253,13 @@ test.describe("status-bar counters vs fontTools ground truth", () => {
         fontPath: paths.en,
       },
       {
-        family: "LXGWWenKai",
+        // The manifest id keys the CJK slot scoping (curated-meta's
+        // slots.cjk); the artifact served under it is the staged CN
+        // cut, whose own name table (「Maple Mono NF CN」) is what the
+        // row and the picks display.
+        family: "MapleMono",
         variant: "Regular",
-        file: "LXGWWenKai-Regular.ttf",
+        file: "MapleMonoCN-Regular.ttf",
         fontPath: paths.cjk,
       },
     ]);
