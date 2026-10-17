@@ -281,11 +281,13 @@ test.describe("repeat-click unload (round 18, owner item 3)", () => {
     await expect(stat(page, "en")).toHaveText(regions.en);
     await expect(stat(page, "cjk")).toHaveText(regions.cjk);
     await expect(synthesize(page)).toHaveAttribute("aria-disabled", "false");
-    // A cell both fonts cover resolves to the base under the default
-    // precedence (base keeps).
-    await expect(
-      page.locator(".charmap-grid .kit-cell[data-cp='U+0041']"),
-    ).toHaveAttribute("data-winner", "base");
+    // Ticket #35: the grid's coloring is the SERVE's resolve answer, and
+    // this fake carries neither font files nor a catalog index — the
+    // picks cannot be referenced to it, so nothing resolves and the page
+    // renders the PLAIN PREVIEW: cells carry no winner facts, and the
+    // picks' own stack leads the rendering (asserted below).
+    const covered = page.locator(".charmap-grid .kit-cell[data-cp='U+0041']");
+    await expect(covered).not.toHaveAttribute("data-winner");
 
     // UNLOAD the EN slot: open the picker, click the SAME row again.
     await openPicker(page, "en");
@@ -303,11 +305,12 @@ test.describe("repeat-click unload (round 18, owner item 3)", () => {
     await expect(pairTag(page, "donor")).toHaveText(fx.nameB);
     await expect(cardName(page, "cjk")).toHaveText(fx.nameB);
     // The grid stays judged under the lone pick (round 20): the covered
-    // cells resolve to the remaining pick — its own face leads the
-    // stack — and the winner facts stay exposed exactly like the
-    // popup's (a lone pick has resolved since round 19).
+    // cells render through the remaining pick — its own face leads the
+    // plain-preview stack (the fake service cannot resolve, so no
+    // winner facts exist — ticket #35; the cmap-driven counters and the
+    // stack semantics are exactly what the unload rules need).
     const cell = page.locator(".charmap-grid .kit-cell[data-cp='U+0041']");
-    await expect(cell).toHaveAttribute("data-winner", "donor-0");
+    await expect(cell).not.toHaveAttribute("data-winner");
     expect(await cell.evaluate((el) => getComputedStyle(el).fontFamily)).toContain(
       fx.cssB,
     );
