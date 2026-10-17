@@ -37,6 +37,12 @@ const BROWSER_NOISE: Array<{ pattern: RegExp; reason: string }> = [
     pattern: /has been blocked by CORS policy/,
     reason: "a probe target answered without allowing this origin",
   },
+  {
+    pattern: /Failed to load resource.*status of 400 \(Bad Request\)/,
+    reason:
+      "a serve submission the strict recipe gate rejected (ticket #29: " +
+      "the row error IS the design, the page handles the 400)",
+  },
 ];
 
 /**

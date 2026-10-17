@@ -2093,7 +2093,9 @@ test.describe("user journey", () => {
 
       await step("J8.4 width chips select 1.8× then 1.5×; the recipe reflects it", async () => {
         // No service: the synthesize flow offers the CLI panel, whose
-        // YAML is the recipe the CLI would run — the width knob shows.
+        // JSON is the recipe the CLI would run — the width knob shows.
+        // (Ticket #29: the panel emits the wire JSON — the same body
+        // the serve submission sends — not YAML.)
         const synthesize = page.locator(".topbar [data-role='synthesize']");
         await expect(synthesize).toHaveAttribute("aria-disabled", "true");
         await pointerClick(page, synthesize);
@@ -2102,8 +2104,8 @@ test.describe("user journey", () => {
         await expect(
           panel.locator("[data-testid='copy-command']"),
         ).toHaveAttribute("aria-disabled", "false");
-        const yaml = panel.locator("[data-testid='recipe-yaml']");
-        await expect(yaml).toContainText("width_factor: 1.8");
+        const recipe = panel.locator("[data-testid='recipe-json']");
+        await expect(recipe).toContainText('"width_factor": 1.8');
         // Switch to 1.5× — the recipe follows.
         const select = page.locator("[data-role='select-cjkWidth']");
         await pointerClick(page, select.locator(".kit-csel"));
@@ -2111,51 +2113,51 @@ test.describe("user journey", () => {
           page,
           select.locator(".kit-cso", { hasText: "1.5 倍英文宽" }),
         );
-        await expect(yaml).toContainText("width_factor: 1.5");
-        // Back to the 2× default: the knob disappears from the YAML
+        await expect(recipe).toContainText('"width_factor": 1.5');
+        // Back to the 2× default: the knob disappears from the recipe
         // (round 11: the label reads 2 倍英文宽, matching its siblings).
         await pointerClick(page, select.locator(".kit-csel"));
         await pointerClick(
           page,
           select.locator(".kit-cso", { hasText: "2 倍英文宽" }),
         );
-        await expect(yaml).not.toContainText("width_factor");
+        await expect(recipe).not.toContainText("width_factor");
         // Round 20 (owner item 7): the baseline school writes the
         // recipe's normalization block ONLY when it is explicit — grid
         // and optical name their mode; 自动 is the core's default now
         // and writes NOTHING. J8.2 left the baseline at grid, so the
         // block is live here; with the width back at the 2× default
         // and the baseline back on 自动, the block disappears entirely.
-        await expect(yaml).toContainText("normalization:");
-        await expect(yaml).toContainText("mode: grid");
+        await expect(recipe).toContainText('"normalization"');
+        await expect(recipe).toContainText('"mode": "grid"');
         const baselineSelect = page.locator("[data-role='select-baseline']");
         await pointerClick(page, baselineSelect.locator(".kit-csel"));
         await pointerClick(
           page,
           baselineSelect.locator(".kit-cso", { hasText: "中文字缩小一点更匀称" }),
         );
-        await expect(yaml).toContainText("mode: optical");
+        await expect(recipe).toContainText('"mode": "optical"');
         await pointerClick(page, baselineSelect.locator(".kit-csel"));
         await pointerClick(
           page,
           baselineSelect.locator(".kit-cso", { hasText: /^自动/ }),
         );
-        await expect(yaml).not.toContainText("normalization");
-        await expect(yaml).not.toContainText("mode:");
+        await expect(recipe).not.toContainText("normalization");
+        await expect(recipe).not.toContainText('"mode"');
         // Round 12 (owner item 7): the output-format setting rides the
-        // recipe's output.format — J8.2 left it at WOFF2, so the YAML
-        // names woff2; back on TTF the YAML reads ttf again. Round 13
+        // recipe's output.format — J8.2 left it at WOFF2, so the recipe
+        // names woff2; back on TTF the recipe reads ttf again. Round 13
         // (owner item 2): the TTF option label is the bare proper noun
         // — the 默认 badge moved onto 自动 — so the row is matched by
         // its exact text (the auto row's description also names TTF).
-        await expect(yaml).toContainText("format: woff2");
+        await expect(recipe).toContainText('"format": "woff2"');
         const formatSelect = page.locator("[data-role='select-outputFormat']");
         await pointerClick(page, formatSelect.locator(".kit-csel"));
         await pointerClick(
           page,
           formatSelect.locator(".kit-cso").filter({ hasText: /^TTF$/ }),
         );
-        await expect(yaml).toContainText("format: ttf");
+        await expect(recipe).toContainText('"format": "ttf"');
       });
 
       await step("J8.5 zero JS errors across the journey", assertNoJsErrors);
