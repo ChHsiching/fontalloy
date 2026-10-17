@@ -1,8 +1,10 @@
 import { test, expect, type Page } from "@playwright/test";
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { resolve } from "node:path";
-import { generateFonts } from "./serve";
+import { dirname } from "node:path";
+import {
+  spawnServeOverFonts,
+  startServeFixture,
+  type ServeFixture,
+} from "./serve";
 import {
   assertNoJsErrors,
   collectJsErrors,
@@ -18,6 +20,12 @@ import {
  * 按编码指定 range popup contract, the toolbar's batch variant (多选
  * mode), the char popup at the cell, the 编码 codepoint rows, the
  * missing-cell codepoint, and the single-character locator.
+ *
+ * Ticket #35 (spec #25): every effective-table assertion (winners,
+ * via/kind, adjusted dots) is the SERVE's answer, so the suite drives
+ * the shared fixture serve for the synthetic pair and a serve over the
+ * real catalog directory for the real-pair test — the same seam the
+ * app speaks, never a client-side mirror.
  */
 
 /** The count of human summary rows in the 自定义规则 section. */
@@ -29,25 +37,63 @@ test.describe("action bar rule wiring", () => {
   test.describe.configure({ mode: "serial" });
   const jsErrors: string[] = [];
 
+  /** The shared fixture serve (ticket #35: the grid resolves through it). */
+  let service: ServeFixture | null = null;
+
+  test.beforeAll(async () => {
+    service = await startServeFixture({ donorGlyphs: 64, donorAscii: 6 });
+  });
+
+  test.afterAll(async () => {
+    await service?.dispose();
+    service = null;
+  });
+
   test.beforeEach(() => {
     jsErrors.length = 0;
   });
 
   test.afterEach(() => assertNoJsErrors(jsErrors));
 
-  /** Small fixture pair: base = A–Z, donor = A–F + U+4E00..U+4E3F. */
-  async function makeLocalFixtures(): Promise<{ base: string; donor: string }> {
-    const dir = await mkdtemp(resolve(tmpdir(), "fontalloy-design-"));
-    return generateFonts(dir, { donorGlyphs: 64, donorAscii: 6 });
+  /** The fixture pair: base = A–Z, donor = A–F + U+4E00..U+4E3F. */
+  function makeLocalFixtures(): { base: string; donor: string } {
+    const live = service!;
+    return { base: live.baseFont, donor: live.donorFont };
   }
 
   async function openWithFonts(
     page: Page,
     fonts: { base: string; donor: string },
   ): Promise<void> {
+    await openWithFontsAt(page, service!.url, fonts);
+  }
+
+  /** Open the page pointed at ONE serve's url, with both fonts picked. */
+  async function openWithFontsAt(
+    page: Page,
+    url: string,
+    fonts: { base: string; donor: string },
+  ): Promise<void> {
     collectJsErrors(page, jsErrors);
+    // The stars refresh stays hermetic (an empty body reads "no data").
+    await page.route("https://api.github.com/repos/**", (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: "{}" }),
+    );
+    await page.addInitScript((serveUrl: string) => {
+      const config = window as unknown as {
+        __FONTALLOY_CONFIG__: Record<string, unknown>;
+      };
+      config.__FONTALLOY_CONFIG__ ??= {};
+      config.__FONTALLOY_CONFIG__.serveUrl = serveUrl;
+    }, url);
     await page.goto("/");
     await waitForFontsReady(page);
+    // The first-run catalog screen may cover the workspace while its
+    // release fetch settles (the journey suite's boot contract): wait
+    // it out before the picker clicks.
+    await expect(page.locator(".catalog-screen")).toBeHidden({
+      timeout: 30_000,
+    });
     for (const [role, path] of [
       ["en", fonts.base],
       ["cjk", fonts.donor],
@@ -290,61 +336,103 @@ test.describe("action bar rule wiring", () => {
   test("the CJK group assignment visibly rules the grid with the real catalog pair", async ({
     page,
   }) => {
-    test.setTimeout(60_000);
+    // The real pair's resolves are fontTools-cold over two full fonts
+    // (~5s each on this class of machine, ~12s for the pair) and every
+    // assignment re-resolves: budget the whole journey, not the fixture
+    // suite's 30s default.
+    test.setTimeout(240_000);
     const real = realCatalogFontPaths();
-    await openWithFonts(page, real);
+    // Ticket #35: the coloring is the serve's answer, so the real pair
+    // rides a serve over the catalog's own font directory (the picks
+    // match the serve's /fonts faces by file name — the same slot
+    // resolution a build submission walks).
+    const catalog = await spawnServeOverFonts(dirname(real.base));
+    // spawnServeOverFonts's `url` is the startup-line PROMISE (unlike
+    // the fixture helper it does not await internally) — await it or
+    // the injected config would stringify the promise object.
+    const catalogUrl = await catalog.url;
+    try {
+      await openWithFontsAt(page, catalogUrl, real);
 
-    await pointerClick(page, page.locator(".kit-cat-g[data-group='cjk']"));
-    const groupRow = page
-      .locator(".kit-toolrow")
-      .filter({ hasText: "所有中日韩文字字符" });
-    await expect(groupRow).toBeVisible();
-    const groupButton = (label: string) =>
-      groupRow.locator(".kit-mseg button", { hasText: new RegExp(`^${label}$`) });
+      await pointerClick(page, page.locator(".kit-cat-g[data-group='cjk']"));
+      const groupRow = page
+        .locator(".kit-toolrow")
+        .filter({ hasText: "所有中日韩文字字符" });
+      await expect(groupRow).toBeVisible();
+      const groupButton = (label: string) =>
+        groupRow.locator(".kit-mseg button", { hasText: new RegExp(`^${label}$`) });
 
-    // Boot state: the donor alone covers the group — 全用中文 pressed,
-    // the first visible cell (、U+3001) resolves via the default with
-    // no adjusted dot.
-    await expect(groupButton("全用中文")).toHaveAttribute("aria-pressed", "true");
-    const cell = page.locator(".charmap-grid .kit-cell[data-cp='U+3001']");
-    await expect(cell).toHaveAttribute("data-winner", "donor-0");
-    await expect(cell).toHaveAttribute("data-via", "default");
-    await expect(cell).not.toHaveClass(/ov/);
+      // Boot state: the donor alone covers the group — 全用中文 pressed,
+      // the first visible cell (、U+3001) resolves via the default with
+      // no adjusted dot.
+      await expect(groupButton("全用中文")).toHaveAttribute("aria-pressed", "true");
+      const cell = page.locator(".charmap-grid .kit-cell[data-cp='U+3001']");
+      // The pair's first document lands after the cold ~12s resolve —
+      // every subsequent assignment's document re-lands in seconds
+      // (the serve holds its font cache by then); anchor generously.
+      await expect(cell).toHaveAttribute("data-winner", "donor-0", {
+        timeout: 60_000,
+      });
+      await expect(cell).toHaveAttribute("data-via", "default");
+      await expect(cell).not.toHaveClass(/ov/);
 
-    // Assign 全用英文 — the rule must visibly take the group.
-    await pointerClick(page, groupButton("全用英文"));
-    await expect(page.locator("[data-role='rule-row'][data-kind='group']")).toHaveText(
-      /所有中日韩文字字符用英文字体/,
-    );
-    await expect(groupButton("全用英文")).toHaveAttribute("aria-pressed", "true");
-    // The grid updates: the covering rule's via — and the winner stays
-    // the merge truth (the English font lacks the glyphs; the preference
-    // list fills through the Chinese font, exactly what the merge does).
-    // Round 8: the winner did NOT change, so no dot — the dot means
-    // 实际生效. In fact NO codepoint flips (an English assignment's
-    // [base, donor] preference IS the default chain), so the 已调整
-    // counter stays at 0.
-    await expect(cell).toHaveAttribute("data-via", /rule-\d+/);
-    await expect(cell).toHaveAttribute("data-winner", "donor-0");
-    await expect(cell).not.toHaveClass(/ov/);
-    await expect(page.locator("[data-stat='adjusted']")).toHaveText("0");
+      // Assign 全用英文 — the rule must visibly take the group.
+      await pointerClick(page, groupButton("全用英文"));
+      await expect(page.locator("[data-role='rule-row'][data-kind='group']")).toHaveText(
+        /所有中日韩文字字符用英文字体/,
+      );
+      await expect(groupButton("全用英文")).toHaveAttribute("aria-pressed", "true");
+      // The grid updates: the covering rule's via — and the winner stays
+      // the merge truth (the English font lacks the glyphs; the preference
+      // list fills through the Chinese font, exactly what the merge does).
+      // Round 8: the winner did NOT change, so no dot — the dot means
+      // 实际生效. In fact NO codepoint flips (an English assignment's
+      // [base, donor] preference IS the default chain), so the 已调整
+      // counter stays at 0.
+      await expect(cell).toHaveAttribute("data-via", /rule-\d+/, {
+        timeout: 60_000,
+      });
+      await expect(cell).toHaveAttribute("data-winner", "donor-0");
+      await expect(cell).not.toHaveClass(/ov/);
+      await expect(page.locator("[data-stat='adjusted']")).toHaveText("0");
 
-    // Assigning the side the group already carries by default writes the
-    // rule; only the codepoints BOTH fonts cover flip suppliers (the
-    // fullwidth braces the EN base holds) — the donor-only 、 stays
-    // undotted while the counter rises.
-    await pointerClick(page, groupButton("全用中文"));
-    await expect(cell).toHaveAttribute("data-via", /rule-\d+/);
-    await expect(cell).not.toHaveClass(/ov/);
-    const adjusted = await page.locator("[data-stat='adjusted']").textContent();
-    expect(Number((adjusted ?? "0").replace(/,/g, ""))).toBeGreaterThan(0);
+      // Assigning the side the group already carries by default writes the
+      // rule; only the codepoints BOTH fonts cover flip suppliers (the
+      // fullwidth braces the EN base holds) — the donor-only 、 stays
+      // undotted while the counter rises.
+      await pointerClick(page, groupButton("全用中文"));
+      await expect(cell).toHaveAttribute("data-via", /rule-\d+/, {
+        timeout: 60_000,
+      });
+      await expect(cell).not.toHaveClass(/ov/);
+      // Ticket #35: the counter reads the landed document — poll for
+      // the flip (the read was instant against the deleted TS mirror).
+      await expect
+        .poll(
+          async () =>
+            Number(
+              ((await page.locator("[data-stat='adjusted']").textContent()) ?? "0")
+                .replace(/,/g, ""),
+            ),
+          { timeout: 60_000 },
+        )
+        .toBeGreaterThan(0);
 
-    // Two Ctrl+Z revert both assignments (英文 then 中文) to the boot
-    // state: the preset default supplies again, no dot.
-    await page.keyboard.press("Control+z");
-    await page.keyboard.press("Control+z");
-    await expect(cell).toHaveAttribute("data-via", "default");
-    await expect(cell).not.toHaveClass(/ov/);
+      // Two Ctrl+Z revert both assignments (英文 then 中文) to the boot
+      // state: the preset default supplies again, no dot.
+      await page.keyboard.press("Control+z");
+      await page.keyboard.press("Control+z");
+      await expect(cell).toHaveAttribute("data-via", "default", {
+        timeout: 60_000,
+      });
+      await expect(cell).not.toHaveClass(/ov/);
+      // Quiesce before the dispose: killing the serve while a boot-time
+      // probe (the /system-fonts scan) is still in flight would surface
+      // as a browser-level ERR_CONNECTION_RESET and trip the gate.
+      await page.waitForLoadState("networkidle");
+    } finally {
+      await catalog.dispose();
+    }
   });
 
   // Round 6, owner item 3b — jump-to-page: clicking the 第 N/M 页 label
@@ -718,8 +806,11 @@ test.describe("action bar rule wiring", () => {
 
     // 编码 mode: every cell gains the codepoint row (U+0041 is covered
     // by the base, so it starts WITHOUT the row; a missing cell like
-    // U+0020 already shows it — see the assertion below).
+    // U+0020 already shows it — see the assertion below). Ticket #35:
+    // anchor on a landed winner first — the missing verdicts of the
+    // normal views arrive with the resolve document.
     const cell = page.locator(".charmap-grid .kit-cell[data-cp='U+0041']");
+    await expect(cell).toHaveAttribute("data-winner", "base");
     await expect(cell.locator(".cp")).toHaveCount(0);
     await pointerClick(page, page.locator("[data-role='toggle-codepoints']"));
     await expect(cell.locator(".cp")).toHaveText("0041");

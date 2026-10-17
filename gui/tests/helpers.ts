@@ -26,8 +26,12 @@ import { fileURLToPath } from "node:url";
 const BROWSER_NOISE: Array<{ pattern: RegExp; reason: string }> = [
   {
     pattern:
-      /Failed to load resource.*net::ERR_(CONNECTION_REFUSED|FAILED|ABORTED|TIMED_OUT)/,
-    reason: "an intentional loopback probe was refused at network level",
+      /Failed to load resource.*net::ERR_(CONNECTION_REFUSED|RESET|FAILED|ABORTED|TIMED_OUT)/,
+    reason:
+      "an intentional loopback probe was refused at network level " +
+      "(RESET included: the threading serve's keep-alive reaper can close " +
+      "a reused connection in the same transport-noise class — ticket #35 " +
+      "made the fixture serve a party to every page boot)",
   },
   {
     pattern: /https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?/,
