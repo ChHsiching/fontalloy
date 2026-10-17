@@ -70,6 +70,42 @@ _RIBBI = ("Regular", "Bold", "Italic", "Bold Italic")
 #: Characters a validated family name (and a PostScript name) may use.
 _NAME_CHARS = re.compile(r"[A-Za-z0-9-]+")
 
+#: The WWS weight names of the OpenType usWeightClass registry — what a
+#: borrowed union slot's subfamily is called when the base has no face
+#: at its weight (issue #27).
+WEIGHT_NAMES = {
+    100: "Thin",
+    200: "ExtraLight",
+    300: "Light",
+    400: "Regular",
+    500: "Medium",
+    600: "SemiBold",
+    700: "Bold",
+    800: "ExtraBold",
+    900: "Black",
+}
+
+
+def weight_subfamily(weight: int, italic: bool) -> str:
+    """The WWS style name of a ``(weight, italic)`` slot identity.
+
+    The four RIBBI combinations keep their canonical names; every other
+    weight takes its registry name (a non-registry value the nearest
+    one, a tie preferring the lighter) with ``Italic`` appended for the
+    slanted style — the JetBrainsMono/Noto convention the identity
+    rewrite already stands behind.
+    """
+    name = WEIGHT_NAMES.get(weight)
+    if name is None:
+        name = WEIGHT_NAMES[
+            min(WEIGHT_NAMES, key=lambda w: (abs(w - weight), w))
+        ]
+    if name == "Regular":
+        return "Italic" if italic else "Regular"
+    if name == "Bold":
+        return "Bold Italic" if italic else "Bold"
+    return f"{name} Italic" if italic else name
+
 
 @dataclass(frozen=True)
 class OutputNaming:
@@ -180,6 +216,48 @@ def apply_output_identity(font: TTFont, naming: OutputNaming) -> None:
         name.setName(text, name_id, *MACINTOSH)
 
 
+def apply_weight_identity(font: TTFont, weight: int, italic: bool) -> str:
+    """Stamp a borrowed container with a union slot's weight, in place.
+
+    A donor-only slot borrows the nearest base face as its container
+    (transform-only: the outlines stay the borrowed face's own — no
+    interpolation toward the slot's weight). The output slot still
+    NAMES its own weight: OS/2 ``usWeightClass``, the RIBBI style bits
+    (fsSelection and head.macStyle), and the subfamily name records
+    (the typographic 17 and the legacy 2, both platform encodings)
+    state the slot's ``(weight, style)``, so :func:`apply_output_identity`
+    reads a coherent weight off a borrowed container exactly the way it
+    reads a base's own face. Returns the subfamily name written.
+    """
+    subfamily = weight_subfamily(weight, italic)
+    bold = subfamily in ("Bold", "Bold Italic")
+    os2 = font.get("OS/2")
+    if os2 is not None:
+        os2.usWeightClass = weight
+        selection = os2.fsSelection & ~0x61  # clear ITALIC, BOLD, REGULAR
+        if bold:
+            selection |= 0x20
+        if italic:
+            selection |= 0x01
+        elif not bold:
+            selection |= 0x40  # REGULAR: neither bold nor italic
+        os2.fsSelection = selection
+    head = font.get("head")
+    if head is not None:
+        mac_style = head.macStyle & ~0x3  # clear the BOLD and ITALIC bits
+        if bold:
+            mac_style |= 0x1
+        if italic:
+            mac_style |= 0x2
+        head.macStyle = mac_style
+    name = font.get("name")
+    if name is not None:
+        for name_id in (2, 17):
+            name.setName(subfamily, name_id, *WINDOWS)
+            name.setName(subfamily, name_id, *MACINTOSH)
+    return subfamily
+
+
 def apply_os2_corrections(font: TTFont) -> None:
     """Correct the OS/2 table of ``font``, in place.
 
@@ -187,7 +265,9 @@ def apply_os2_corrections(font: TTFont) -> None:
     is measured against the output cmap and hmtx, so donor glyphs that
     won lowercase codepoints are accounted for. ``usWeightClass`` needs
     no code here — the container's OS/2 table is the base's, which is
-    precisely the "inherited from the base" contract.
+    precisely the "inherited from the base" contract (a borrowed union
+    container's weight was already restamped by
+    :func:`apply_weight_identity` at the planning stage).
     """
     os2 = font.get("OS/2")
     if os2 is None:  # a base without OS/2 has nothing to correct

@@ -11,7 +11,11 @@ the base and donor fonts (TTC face selection, variable instantiation,
 woff2 decode), plan the weight/style matrix — one output slot per
 requested weight/style, donors matched at the nearest OS/2
 usWeightClass per slot with recipe overrides beating nearest-match
-(issue #9) — resolve the precedence rules — layered rules at every
+(issue #9); the DEFAULT matrix is the weight union (issue #27): every
+base face plus a donor-only slot for every (weight, style) the donors
+carry that the base's styles cover, each borrowing the nearest base
+face for its base side (stated in the borrow table) — resolve the
+precedence rules — layered rules at every
 granularity, absence never overrides — into the effective table, plan
 the normalization per slot (ADR-0003, issue #8: upem unified by
 s0 = U/u, the auto school's scale k by default — the grid term capped
@@ -164,9 +168,11 @@ def build(
     it flips — a cancelled build writes no artifact and no report.
 
     The requested matrix comes from the base font file's faces (a
-    recipe ``weights`` section selects a subset); every donor family
-    matches its nearest-weight face per slot, and the report states
-    every borrow. Raises :class:`~fontalloy_core.errors.RecipeError`
+    recipe ``weights`` section selects a subset) plus, under the
+    default selection, the union's donor-only weights (issue #27);
+    every donor family matches its nearest-weight face per slot, and
+    the report states every borrow. Raises
+    :class:`~fontalloy_core.errors.RecipeError`
     for an invalid recipe and
     :class:`~fontalloy_core.errors.BuildError` when the build fails on
     its font inputs or output paths.
@@ -295,7 +301,12 @@ def build_recipe(
         pools[f"donor-{index}"] = _donor_pool(f"donor-{index}", faces, ref, index)
 
     _stage("planning")
-    slots = plan_matrix(bases, pools, recipe.weights)
+    # A pinned base face narrows the matrix to that one face (ADR-0006)
+    # — an explicit selection the union must not expand; an unpinned
+    # base with no weights selection gets the weight union (issue #27).
+    slots = plan_matrix(
+        bases, pools, recipe.weights, union=recipe.base.face is None
+    )
     # Round 26 (owner report): the output collection's FACE ORDER is
     # weight-ascending, upright before italic — the glob's alphabetical
     # file order put Bold first, and every consumer that reads face 1
@@ -311,6 +322,13 @@ def build_recipe(
                 f"the weights selection requests {len(slots)} slots, but the "
                 f"{fmt!r} output carries exactly one face — select a single "
                 "slot or use output.format ttc"
+            )
+        if len(slots) > len(bases):
+            raise BuildError(
+                f"the weight union (the base's {len(bases)} faces plus "
+                f"donor-only weights) requests {len(slots)} slots, but the "
+                f"{fmt!r} output carries exactly one face — declare a single "
+                "weights slot or use output.format ttc"
             )
         raise BuildError(
             f"base font file is a collection with {len(bases)} faces; the "
@@ -549,6 +567,7 @@ def build_recipe(
                 weight=slot.base.info.weight,
                 italic=slot.base.info.italic,
                 base_face=slot.base.info.face_index,
+                base_borrow=slot.borrowed_base,
                 borrows=tuple(
                     BorrowRecord(
                         donor=match.donor_id,

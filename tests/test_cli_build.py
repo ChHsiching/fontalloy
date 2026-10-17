@@ -110,13 +110,19 @@ class TestCliBuildMatrix:
 
         assert result.returncode == 0, result.stderr
         # The borrow table in the interface: which donor weight landed
-        # in which output weight, chosen how.
+        # in which output weight, chosen how. The donor's 600 is a
+        # donor-only weight, so it also gets a slot of its own (issue
+        # #27's union) whose base side borrows the Bold — stated.
         assert "weight 400 upright: donor-0 from 400 (nearest)" in result.stdout
+        assert (
+            "weight 600 upright: base from 700 (borrowed), donor-0 from 600 (nearest)"
+            in result.stdout
+        )
         assert "weight 700 upright: donor-0 from 600 (nearest)" in result.stdout
         report = json.loads(
             (tmp_path / "recipe.report.json").read_text(encoding="utf-8")
         )
-        assert [slot["weight"] for slot in report["weights"]] == [400, 700]
+        assert [slot["weight"] for slot in report["weights"]] == [400, 600, 700]
 
 
 class TestCliBuildFormat:

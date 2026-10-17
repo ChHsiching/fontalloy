@@ -214,7 +214,15 @@ class TestWeightsRecipe:
 class TestRequestedMatrix:
     """The requested set comes from the base's faces; recipes may select."""
 
-    def test_the_default_matrix_is_every_base_face(self, tmp_path, matrix_base, weighty_donor):
+    def test_the_default_matrix_unions_base_and_donor_weights(
+        self, tmp_path, matrix_base, weighty_donor
+    ):
+        """Round 26 / issue #27: no weights selection means the union.
+
+        The base's three faces plus the donor's donor-only weights (300
+        and 600 upright; the base's styles cover no other), the union
+        slots borrowing the nearest base face for their base side.
+        """
         recipe = _recipe(
             tmp_path,
             f"base: {matrix_base.name}\ndonors:\n  - {weighty_donor.name}\n"
@@ -224,20 +232,29 @@ class TestRequestedMatrix:
         result = build(recipe, tmp_path / "out.ttc")
 
         faces = TTCollection(result.font_path).fonts
-        assert len(faces) == 3
-        # Slot order is the base file's face order, whatever the recipe
-        # would have listed: Regular, Bold, Italic.
+        assert len(faces) == 5
         # Round 26: output faces are weight-ascending (upright before
         # italic at equal weight) — key by (weight, italic), never index.
         by_slot = {
             (face["OS/2"].usWeightClass, bool(face["OS/2"].fsSelection & 0x01)): face
             for face in faces
         }
+        assert set(by_slot) == {
+            (300, False), (400, False), (400, True), (600, False), (700, False)
+        }
         _assert_merged_face(by_slot[(400, False)], MERGED_AT_400, weight=400, italic=False)
         _assert_merged_face(
             by_slot[(700, False)], {*BASE_CODEPOINTS, 0x4E2D, 0x6000}, weight=700, italic=False
         )
         _assert_merged_face(by_slot[(400, True)], MERGED_AT_400, weight=400, italic=True)
+        # The union's donor-only slots carry the donor's own glyphs
+        # (300 borrows the Regular container, 600 the Bold container).
+        _assert_merged_face(
+            by_slot[(300, False)], {*BASE_CODEPOINTS, 0x4E2D, 0x3000}, weight=300, italic=False
+        )
+        _assert_merged_face(
+            by_slot[(600, False)], {*BASE_CODEPOINTS, 0x4E2D, 0x6000}, weight=600, italic=False
+        )
 
     def test_a_selection_subsets_the_matrix_in_base_face_order(
         self, tmp_path, matrix_base, weighty_donor
@@ -334,12 +351,15 @@ class TestRequestedMatrix:
     def test_an_unpinned_collection_base_still_requires_selection_for_ttf(
         self, tmp_path, matrix_base, weighty_donor
     ):
+        """No selection and a multi-face base: the one-face formats stay
+        a clear error — now via the union (the donor's 300 and 600 join
+        the base's faces as slots), pointing at ttc."""
         recipe = _recipe(
             tmp_path,
             f"base: {matrix_base.name}\ndonors:\n  - {weighty_donor.name}\n",
         )
 
-        with pytest.raises(BuildError, match=r"collection.*3 faces"):
+        with pytest.raises(BuildError, match="union"):
             build(recipe, tmp_path / "out.ttf")
 
 
@@ -385,8 +405,13 @@ class TestNearestMatch:
                 dict(family="SynthTie", weight=500, codepoints=(0x4E2D, 0x56FD)),
             ],
         )
+        # The single 400 slot is declared: the donor's 300 and 500 are
+        # donor-only weights, and the union would rightly demand ttc for
+        # the three-slot matrix — the tie itself lives in the matching.
         recipe = _recipe(
-            tmp_path, f"base: {base_font.name}\ndonors:\n  - {donor.name}\n"
+            tmp_path,
+            f"base: {base_font.name}\ndonors:\n  - {donor.name}\n"
+            "weights:\n  - weight: 400\n",
         )
 
         result = build(recipe, tmp_path / "out.ttf")
@@ -628,12 +653,31 @@ class TestBorrowReporting:
 
         weights = _load_report(result.report_path)["weights"]
         # Report v2 (issue #12): every borrow also names the donor
-        # family. Round 26: slots are weight-ascending — 400 upright,
-        # 400 italic, then 700 — while base_face still names the SOURCE
-        # file's own face index.
+        # family. Round 26: slots are weight-ascending — 300, 400
+        # upright, 400 italic, 600, 700 — while base_face still names
+        # the SOURCE file's own face index. Issue #27: the donor-only
+        # union slots (300, 600) state their base-side borrow.
         assert weights == [
             {
                 "index": 0,
+                "weight": 300,
+                "style": "upright",
+                "base_face": 0,
+                "base_borrow": 400,
+                "borrows": [
+                    {
+                        "donor": "donor-0",
+                        "face": 0,
+                        "weight": 300,
+                        "style": "upright",
+                        "family": "SynthCJK",
+                        "via": "nearest",
+                        "style_fallback": False,
+                    }
+                ],
+            },
+            {
+                "index": 1,
                 "weight": 400,
                 "style": "upright",
                 "base_face": 0,
@@ -650,7 +694,7 @@ class TestBorrowReporting:
                 ],
             },
             {
-                "index": 1,
+                "index": 2,
                 "weight": 400,
                 "style": "italic",
                 "base_face": 2,
@@ -667,7 +711,25 @@ class TestBorrowReporting:
                 ],
             },
             {
-                "index": 2,
+                "index": 3,
+                "weight": 600,
+                "style": "upright",
+                "base_face": 1,
+                "base_borrow": 700,
+                "borrows": [
+                    {
+                        "donor": "donor-0",
+                        "face": 2,
+                        "weight": 600,
+                        "style": "upright",
+                        "family": "SynthCJK",
+                        "via": "nearest",
+                        "style_fallback": False,
+                    }
+                ],
+            },
+            {
+                "index": 4,
                 "weight": 700,
                 "style": "upright",
                 "base_face": 1,
@@ -751,11 +813,13 @@ class TestMatrixPackaging:
         _assert_merged_face(by_slot[(400, True)], MERGED_AT_400, weight=400, italic=True)
 
     def test_a_single_face_base_builds_exactly_as_before(
-        self, tmp_path, base_font, weighty_donor
+        self, tmp_path, base_font, donor_font
     ):
-        """No weights section, plain base: the matrix is invisible."""
+        """No weights section, plain base, subset donor: the matrix is
+        invisible — the union adds nothing a base face doesn't cover
+        (the non-subset case is test_weight_union.py's territory)."""
         recipe = _recipe(
-            tmp_path, f"base: {base_font.name}\ndonors:\n  - {weighty_donor.name}\n"
+            tmp_path, f"base: {base_font.name}\ndonors:\n  - {donor_font.name}\n"
         )
 
         result = build(recipe, tmp_path / "out.ttf")
@@ -796,7 +860,12 @@ class TestMatrixPackaging:
         result = build(recipe, tmp_path / "out.ttc")
 
         faces = TTCollection(result.font_path).fonts
-        regular, medium = faces[0], faces[1]
+        # The union added the donor's 300 and 600 to the base's 400 and
+        # 500 — key by weight (round 26's weight-ascending order), never
+        # by collection index.
+        by_weight = {face["OS/2"].usWeightClass: face for face in faces}
+        assert set(by_weight) == {300, 400, 500, 600}
+        regular, medium = by_weight[400], by_weight[500]
         # RIBBI slot: family/subfamily split, no typographic pair.
         assert _name(regular, 1) == "ChHsich"
         assert _name(regular, 2) == "Regular"
