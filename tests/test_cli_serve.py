@@ -327,10 +327,17 @@ def serve_service(
 
 @pytest.fixture
 def build_recipe_json(tmp_path: Path, serve_fonts: Path) -> dict[str, Any]:
-    """A submittable recipe: the base and donor from the font directory."""
+    """A submittable recipe: the base and donor from the font directory.
+
+    The donor sits at 700 against the base's 400, so the no-selection
+    weight union (issue #27) would request two slots and the default
+    single-face ttf output refuses. These suites exercise the build
+    lifecycle, not the matrix, so the recipe pins the base's own weight.
+    """
     return {
         "base": str(serve_fonts / "Alpha.ttf"),
         "donors": [str(serve_fonts / "Beta.ttf")],
+        "weights": [{"weight": 400}],
     }
 
 
@@ -594,6 +601,9 @@ class TestBuildLifecycle:
         recipe = {
             "base": str(serve_fonts / "Alpha.ttf"),
             "donors": [str(serve_fonts / "Beta.ttf")],
+            # woff2 carries one face; pin the base's weight so the union
+            # (400 + the donor's 700, issue #27) stays out of the way.
+            "weights": [{"weight": 400}],
             "output": {"format": "woff2", "family": "Merged-Duo"},
         }
         build_id = serve_service.submit(recipe).json()["id"]
