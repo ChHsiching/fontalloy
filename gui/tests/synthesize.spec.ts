@@ -1181,6 +1181,44 @@ test.describe("sidecar synthesize", () => {
     }
   });
 
+  // Ticket #29 (core unification): the client-side recipe validation
+  // mirror is gone — the serve's submit-time validation is the gate.
+  // An output name the core rejects (non-ASCII, exactly what a CJK
+  // user might type) must not be blocked locally: the action stays
+  // enabled, the recipe is submitted as declared, and the serve's own
+  // rejection surfaces in the build row as page text. No local
+  // pre-validation pretending to be the truth.
+  test("a name the serve rejects submits anyway and surfaces the serve's error in the row", async ({
+    page,
+  }) => {
+    const service = await startServeFixture();
+    const saved: string[] = [];
+    try {
+      await openWithService(page, service, saved);
+      await loadIntoPicker(page, "en", service.baseFont);
+      await loadIntoPicker(page, "cjk", service.donorFont);
+
+      // A non-ASCII family name: the core's strict parser rejects it
+      // at submit; nothing client-side does.
+      await page.locator("input[data-role='font-name']").fill("合金字体");
+
+      const synthesize = page.locator(".topbar [data-role='synthesize']");
+      await expect(synthesize).toHaveAttribute("aria-disabled", "false");
+      await pointerClick(page, synthesize);
+
+      // The submission really happened (the strict gate answered), and
+      // its message — the serve's own words — renders in the row.
+      const panel = page.locator('[data-testid="build-panel"]');
+      await expect(panel).toBeVisible();
+      await expect(panel).toContainText("失败");
+      await expect(panel).toContainText("output.family");
+      await expect(panel).toContainText("ASCII");
+      expect(saved.length).toBe(0);
+    } finally {
+      await service.dispose();
+    }
+  });
+
   test("without a service the synthesize action stays disabled and explains so", async ({
     page,
   }) => {
