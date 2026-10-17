@@ -1,15 +1,20 @@
 import { test, expect, type Page } from "@playwright/test";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { resolve } from "node:path";
 import { parseFontMeta } from "../src/fonts/sfnt";
 import { BROWSE_UNIVERSE, isCjkRegionCodepoint } from "../src/unicode/universe";
 import {
   assertNoJsErrors,
   collectJsErrors,
-  fixtureFontPaths,
   pointerClick,
   waitForFontsReady,
 } from "./helpers";
-import { SimCatalog, injectCatalogConfig } from "./catalog-fixtures";
+import { generateNamedFace, spawnServeOverFonts } from "./serve";
+import {
+  buildServeCatalogSite,
+  type ServeCatalogSite,
+} from "./catalog-serve-site";
 
 /**
  * Round 18 (owner item 3): repeat-click unload. Clicking the row — or
@@ -24,14 +29,17 @@ import { SimCatalog, injectCatalogConfig } from "./catalog-fixtures";
  *
  * The synthesize enablement rule needs a CONNECTED service to be
  * pick-driven (service reasons outrank pick reasons in the disabled
- * explanation), so every test runs against a page.route-faked serve
- * over the real /health probe — no merge is ever submitted; the
- * disabled state never reaches the network.
+ * explanation), so every test boots against a REAL spawned serve over
+ * a tiny worktree-local catalog site (ticket #30's boot: the catalog
+ * rows come from the serve's family documents) — no merge is ever
+ * submitted; the disabled state never reaches the network. Ticket #35:
+ * with both picks made the coloring is that serve's resolve answer; a
+ * lone DONOR has no resolve request at all (picks.base is required),
+ * so the unloaded state's page is the plain preview by the serve's
+ * own rule, never a client-side mirror.
  */
 
-const [FONT_A, FONT_B] = fixtureFontPaths();
-
-/** One host font's parsed name-table strings (the row/pair identity). */
+/** One generated face's parsed name-table strings (the row/pair identity). */
 const metaCache = new Map<string, ReturnType<typeof parseFontMeta>>();
 async function parsedMeta(path: string): Promise<ReturnType<typeof parseFontMeta>> {
   const cached = metaCache.get(path);
@@ -44,131 +52,116 @@ async function parsedMeta(path: string): Promise<ReturnType<typeof parseFontMeta
   return meta;
 }
 
-/**
- * The simulated catalog: one invented EN-slot family (a plain
- * release-only row, no chips) plus the WenKai GROUP row for the CJK
- * slot — two fetched member families over two distinct host faces, so
- * the default cut (标准) and the Screen cut resolve to visibly
- * different fonts.
- */
-async function simCatalog(): Promise<SimCatalog> {
-  return SimCatalog.create([
-    { family: "Alloy Sans", file: "AlloySans-Regular.ttf", fontPath: FONT_A },
-    {
-      family: "LXGWWenKai",
-      variant: "Regular",
-      file: "LXGWWenKai-Regular.ttf",
-      fontPath: FONT_B,
-    },
-    {
-      family: "LXGWWenKaiScreen",
-      variant: "Regular",
-      file: "LXGWWenKaiScreen-Regular.ttf",
-      fontPath: FONT_A,
-    },
-  ]);
-}
+/** Suite-scoped serve/site disposers (one boot per test, torn down after). */
+const bootDisposers: Array<() => Promise<void>> = [];
 
-const SERVE_ORIGIN = "https://serve.test";
-
-/**
- * A connected merge service, faked at the network layer: /health
- * answers the fontalloy probe, /fonts and /catalog answer empty
- * indexes (their failures are tolerated by the client anyway). The
- * synthesize action's enablement is then EXACTLY the pick pair — the
- * same rule the fresh initial state sits under.
- */
-async function installFakeService(page: Page): Promise<void> {
-  await page.route(`${SERVE_ORIGIN}/**`, (route) => {
-    const cors = { "access-control-allow-origin": "*" };
-    const path = new URL(route.request().url()).pathname;
-    if (path === "/health") {
-      return route.fulfill({
-        status: 200,
-        headers: { ...cors, "content-type": "application/json" },
-        body: JSON.stringify({
-          service: "fontalloy",
-          version: "test",
-          address: "127.0.0.1",
-          port: 1,
-        }),
-      });
-    }
-    if (path === "/fonts") {
-      return route.fulfill({
-        status: 200,
-        headers: { ...cors, "content-type": "application/json" },
-        body: JSON.stringify({ directories: [], families: [], skipped: [] }),
-      });
-    }
-    if (path === "/catalog") {
-      return route.fulfill({
-        status: 200,
-        headers: { ...cors, "content-type": "application/json" },
-        body: JSON.stringify({ families: [] }),
-      });
-    }
-    // Round 24: the system-font enumeration answers empty (this fake
-    // serves no installed fonts) — a 404 here would log a console
-    // error and trip the zero-JS-errors gate.
-    if (path === "/system-fonts") {
-      return route.fulfill({
-        status: 200,
-        headers: { ...cors, "content-type": "application/json" },
-        body: JSON.stringify({ dirs: [], ready: true, faces: [] }),
-      });
-    }
-    return route.fulfill({ status: 404, headers: cors, body: "not found" });
-  });
-  // After injectCatalogConfig (which ASSIGNS the config object): add
-  // the serve URL onto it.
-  await page.addInitScript((url: string) => {
-    const config = window as unknown as {
-      __FONTALLOY_CONFIG__?: Record<string, unknown>;
-    };
-    config.__FONTALLOY_CONFIG__ ??= {};
-    config.__FONTALLOY_CONFIG__.serveUrl = url;
-  }, SERVE_ORIGIN);
-}
-
-/** The identity strings the assertions compare against. */
+/** The identity strings and face paths the assertions compare against. */
 interface Fixture {
-  /** FONT_A's name-table display name (Alloy Sans's face; the Screen cut). */
+  /** Alloy Sans's face display name (the EN pick's identity). */
   nameA: string;
-  /** FONT_B's name-table display name (the WenKai default cut's face). */
+  /** The WenKai default cut's face display name (the CJK pick's identity). */
   nameB: string;
-  /** FONT_B's css family (the lone-donor preview face). */
+  /** The WenKai Screen cut's OWN face display name (the switch target). */
+  nameS: string;
+  /** The WenKai face's css family (the lone-donor preview face). */
   cssB: string;
+  /** The generated face paths (the counters' expectations read them). */
+  sans: string;
+  wenkai: string;
 }
 
-/** Boot the workspace over the sim catalog + fake service. */
+/**
+ * Boot the workspace over the serve-backed catalog (one per test):
+ * THREE generated faces — one invented EN-slot family (a plain row over
+ * its own face) plus the WenKai GROUP row's two member families, each
+ * cut resolving to its OWN name-table identity. Distinct families must
+ * not share a face (ticket #30 keys a row by its registered css
+ * family — two families over one binary would collide into one row).
+ * The manifest entries pin each member's Regular variant, the chip ids
+ * the assertions key on.
+ */
 async function bootWorkspace(page: Page): Promise<Fixture> {
-  const metaA = await parsedMeta(FONT_A);
-  const metaB = await parsedMeta(FONT_B);
   await page.route("https://api.github.com/repos/**", (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: "{}" }),
   );
-  const sim = await simCatalog();
-  await sim.install(page);
-  await injectCatalogConfig(page);
-  await installFakeService(page);
+  const root = await mkdtemp(resolve(tmpdir(), "fontalloy-unload-"));
+  const [sans, wenkai, screen] = await Promise.all([
+    generateNamedFace(root, "Alloy Sans", "AlloySans"),
+    generateNamedFace(root, "LXGW WenKai", "LXGWWenKai"),
+    generateNamedFace(root, "LXGW WenKai Screen", "LXGWWenKaiScreen"),
+  ]);
+  const site = await buildServeCatalogSite(
+    [
+      {
+        family: "AlloySans",
+        faces: [{ file: "AlloySans-Regular.ttf", fontPath: sans }],
+      },
+      {
+        family: "LXGWWenKai",
+        faces: [{ file: "LXGWWenKai-Regular.ttf", fontPath: wenkai }],
+        manifestEntries: [{ variant: "Regular", file: "LXGWWenKai.zip" }],
+      },
+      {
+        family: "LXGWWenKaiScreen",
+        faces: [{ file: "LXGWWenKaiScreen-Regular.ttf", fontPath: screen }],
+        manifestEntries: [{ variant: "Regular", file: "LXGWWenKaiScreen.zip" }],
+      },
+    ],
+    { manifest: true },
+  );
+  const spawned = await spawnServeOverFonts(site.catalogDir, [
+    "--catalog-release-origin",
+    site.originUri,
+    "--catalog-dir",
+    site.catalogDir,
+    "--manifest",
+    site.manifestPath!,
+  ]);
+  bootDisposers.push(async () => {
+    await spawned.dispose();
+    await rm(site.root, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true });
+  });
+  const serveUrl = await spawned.url;
+  await page.addInitScript((serve: string) => {
+    (window as { __FONTALLOY_CONFIG__?: unknown }).__FONTALLOY_CONFIG__ = {
+      serveUrl: serve,
+    };
+  }, serveUrl);
   await page.goto("/");
   await expect(
     page.locator(".catalog-screen [data-stat='catalog-done']"),
-  ).toHaveText("3");
+  ).toHaveText("3", { timeout: 30_000 });
   await expect(page.locator(".catalog-screen")).toBeHidden();
+  // The documents sweep must land too: the rows list from the serve's
+  // family documents, which fill AFTER the sync counts settle — a
+  // picker opened in between would sit rowless.
+  await page.waitForFunction(
+    () => document.documentElement.dataset.catalogSweep === "done",
+    undefined,
+    { timeout: 60_000 },
+  );
   await waitForFontsReady(page);
-  return { nameA: metaA.names.display, nameB: metaB.names.display, cssB: metaB.family };
+  const metaSans = await parsedMeta(sans);
+  const metaWenkai = await parsedMeta(wenkai);
+  const metaScreen = await parsedMeta(screen);
+  return {
+    nameA: metaSans.names.display,
+    nameB: metaWenkai.names.display,
+    nameS: metaScreen.names.display,
+    cssB: metaWenkai.family,
+    sans,
+    wenkai,
+  };
 }
 
 /**
- * The expected script-region counters (round 20) of the given host
- * faces' union coverage: the browsed universe's codepoints the faces
- * cover, split by where each SITS (inside the 中日韩文字 region → 中文,
- * else → 英文). Host fixtures may carry no CJK at all (Arial stands in
- * for WenKai on this host) — a Latin-only donor legitimately leaves
- * 中文 at 0 now, which the old winner-side `not 0` expectation could
- * never survive.
+ * The expected script-region counters (round 20) of the given faces'
+ * union coverage: the browsed universe's codepoints the faces cover,
+ * split by where each SITS (inside the 中日韩文字 region → 中文, else →
+ * 英文). The generated fixtures are Latin-only (A–Z) — a Latin-only
+ * donor legitimately leaves 中文 at 0, which the old winner-side
+ * `not 0` expectation could never survive.
  */
 async function expectedRegionCounts(
   ...fonts: string[]
@@ -225,10 +218,13 @@ async function pickAlloySans(page: Page): Promise<void> {
   await expect(popupOf(page, "en")).toBeHidden();
 }
 
-/** Pick the CJK slot's WenKai row (its active cut — the default 标准). */
+/** Pick the CJK slot's WenKai row (its active cut — the default 标准).
+ *  The click targets the row's NAME: the group row's chip cluster sits
+ *  mid-row, and a raw center hit can land on the default-cut chip — a
+ *  chip never closes the popup (only the row does). */
 async function pickWenkaiRow(page: Page): Promise<void> {
   await openPicker(page, "cjk");
-  await pointerClick(page, wenkaiRow(page));
+  await pointerClick(page, wenkaiRow(page).locator(".kit-nm"));
   await expect(popupOf(page, "cjk")).toBeHidden();
 }
 
@@ -250,7 +246,12 @@ test.describe("repeat-click unload (round 18, owner item 3)", () => {
     collectJsErrors(page, jsErrors);
   });
 
-  test.afterEach(() => assertNoJsErrors(jsErrors));
+  test.afterEach(async () => {
+    for (const dispose of bootDisposers.splice(0)) {
+      await dispose();
+    }
+    assertNoJsErrors(jsErrors);
+  });
 
   test("re-clicking the picked row unloads that slot; the other side and the initial-state rules hold", async ({
     page,
@@ -277,17 +278,19 @@ test.describe("repeat-click unload (round 18, owner item 3)", () => {
     // The counters classify by script region (round 20): the pair's
     // union coverage split by WHERE each codepoint sits, so a Latin-only
     // donor leaves 中文 exactly at the pair's CJK-region coverage.
-    const regions = await expectedRegionCounts(FONT_A, FONT_B);
+    const regions = await expectedRegionCounts(fx.sans, fx.wenkai);
     await expect(stat(page, "en")).toHaveText(regions.en);
     await expect(stat(page, "cjk")).toHaveText(regions.cjk);
     await expect(synthesize(page)).toHaveAttribute("aria-disabled", "false");
-    // Ticket #35: the grid's coloring is the SERVE's resolve answer, and
-    // this fake carries neither font files nor a catalog index — the
-    // picks cannot be referenced to it, so nothing resolves and the page
-    // renders the PLAIN PREVIEW: cells carry no winner facts, and the
-    // picks' own stack leads the rendering (asserted below).
+    // Ticket #35: the grid's coloring is the SERVE's resolve answer —
+    // with both picks referenced to it, the document lands and a cell
+    // both fonts cover resolves to the base under the default
+    // precedence (base keeps). The fixture pair is tiny, but the first
+    // resolve is still an async land — anchor it, never assume it.
     const covered = page.locator(".charmap-grid .kit-cell[data-cp='U+0041']");
-    await expect(covered).not.toHaveAttribute("data-winner");
+    await expect(covered).toHaveAttribute("data-winner", "base", {
+      timeout: 30_000,
+    });
 
     // UNLOAD the EN slot: open the picker, click the SAME row again.
     await openPicker(page, "en");
@@ -306,9 +309,11 @@ test.describe("repeat-click unload (round 18, owner item 3)", () => {
     await expect(cardName(page, "cjk")).toHaveText(fx.nameB);
     // The grid stays judged under the lone pick (round 20): the covered
     // cells render through the remaining pick — its own face leads the
-    // plain-preview stack (the fake service cannot resolve, so no
-    // winner facts exist — ticket #35; the cmap-driven counters and the
-    // stack semantics are exactly what the unload rules need).
+    // stack. A lone DONOR has no resolve request at all (ticket #35:
+    // picks.base is required), so the page is the PLAIN PREVIEW by the
+    // serve's own rule — no winner facts exist; the cmap-driven
+    // counters and the stack semantics are exactly what the unload
+    // rules need.
     const cell = page.locator(".charmap-grid .kit-cell[data-cp='U+0041']");
     await expect(cell).not.toHaveAttribute("data-winner");
     expect(await cell.evaluate((el) => getComputedStyle(el).fontFamily)).toContain(
@@ -317,7 +322,7 @@ test.describe("repeat-click unload (round 18, owner item 3)", () => {
     // The stats bar (round 20, script region): the lone donor's Latin
     // coverage counts into 英文 — where it sits — and 中文 holds the
     // donor's own CJK-region coverage (0 for a Latin-only stand-in).
-    const lone = await expectedRegionCounts(FONT_B);
+    const lone = await expectedRegionCounts(fx.wenkai);
     await expect(stat(page, "en")).toHaveText(lone.en);
     await expect(stat(page, "cjk")).toHaveText(lone.cjk);
     // Synthesize is disabled under the SAME rule as the initial state.
@@ -398,7 +403,7 @@ test.describe("repeat-click unload (round 18, owner item 3)", () => {
       ".kit-vchip[data-chip='LXGWWenKaiScreen::Regular']",
     );
     await pointerClick(page, screenChip);
-    await expect(pairTag(page, "donor")).toHaveText(fx.nameA);
+    await expect(pairTag(page, "donor")).toHaveText(fx.nameS);
     await expect(popupOf(page, "cjk")).toBeVisible();
     await expect(screenChip).toHaveClass(/on/);
 
