@@ -3,7 +3,6 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { parseFontMeta } from "../src/fonts/sfnt";
-import { BROWSE_UNIVERSE, isCjkRegionCodepoint } from "../src/unicode/universe";
 import {
   assertNoJsErrors,
   collectJsErrors,
@@ -21,11 +20,18 @@ import {
  * the row's ACTIVE variant chip — that this picker role ALREADY picked
  * clears that slot's selection back to the fresh never-picked null.
  *
- * The workspace must degrade exactly like the initial state (lone-pick
- * preview grid, synthesize disabled under the initial pick-missing
- * rule), the OTHER slot stays untouched, and re-picking still works.
- * A DIFFERENT chip still switches cuts: only the chip that IS the
- * active cut of the picked row unloads.
+ * Ticket #32 (the MEMORY RED LINE) adds the eviction contract to the
+ * same gesture: unloading a catalog pick REMOVES the family's URL
+ * FontFaces from document.fonts and drops the registry record, and
+ * re-picking re-registers them — repeat-click unload keeps working
+ * across the whole cycle. The picks themselves are URL FontFaces with
+ * weight/style descriptors from the family document (never
+ * ArrayBuffers). The stats counters are the honest red-line
+ * consequence: a URL pick carries no client-side cmap, so the
+ * script-region counters read 0 for catalog picks (the serve's
+ * resolve answers remain the coloring truth — ticket #35); restoring
+ * counted coverage is the serve-coverage-endpoint question, not a
+ * reason to re-enter bytes into the page.
  *
  * The synthesize enablement rule needs a CONNECTED service to be
  * pick-driven (service reasons outrank pick reasons in the disabled
@@ -63,9 +69,9 @@ interface Fixture {
   nameB: string;
   /** The WenKai Screen cut's OWN face display name (the switch target). */
   nameS: string;
-  /** The WenKai face's css family (the lone-donor preview face). */
+  /** The WenKai family's css key (ticket #32: the manifest family id). */
   cssB: string;
-  /** The generated face paths (the counters' expectations read them). */
+  /** The generated face paths (the name-table expectations read them). */
   sans: string;
   wenkai: string;
 }
@@ -149,38 +155,20 @@ async function bootWorkspace(page: Page): Promise<Fixture> {
     nameA: metaSans.names.display,
     nameB: metaWenkai.names.display,
     nameS: metaScreen.names.display,
-    cssB: metaWenkai.family,
+    cssB: "LXGWWenKai",
     sans,
     wenkai,
   };
 }
 
-/**
- * The expected script-region counters (round 20) of the given faces'
- * union coverage: the browsed universe's codepoints the faces cover,
- * split by where each SITS (inside the 中日韩文字 region → 中文, else →
- * 英文). The generated fixtures are Latin-only (A–Z) — a Latin-only
- * donor legitimately leaves 中文 at 0, which the old winner-side
- * `not 0` expectation could never survive.
- */
-async function expectedRegionCounts(
-  ...fonts: string[]
-): Promise<{ en: string; cjk: string }> {
-  const covered = new Set<string>();
-  for (const path of fonts) {
-    const meta = await parsedMeta(path);
-    for (const cp of meta.codepoints) covered.add(cp);
-  }
-  let en = 0;
-  let cjk = 0;
-  for (const [start, end] of BROWSE_UNIVERSE) {
-    for (let cp = start; cp <= end; cp++) {
-      if (!covered.has(cp)) continue;
-      if (isCjkRegionCodepoint(cp)) cjk++;
-      else en++;
-    }
-  }
-  return { en: en.toLocaleString("en-US"), cjk: cjk.toLocaleString("en-US") };
+/** The document.fonts face inventory of one css family (`w/style`). */
+function facesOf(page: Page, family: string): Promise<string[]> {
+  return page.evaluate((fam) => {
+    const faces = [...document.fonts].filter((f) => f.family === fam);
+    return faces
+      .map((f) => `${f.weight}/${f.style}`)
+      .sort((a, b) => Number(a.split("/")[0]) - Number(b.split("/")[0]));
+  }, family);
 }
 
 /* ---------- small shared locators ---------- */
@@ -275,12 +263,16 @@ test.describe("repeat-click unload (round 18, owner item 3)", () => {
     await waitForFontsReady(page);
     await expect(pairTag(page, "base")).toHaveText(fx.nameA);
     await expect(pairTag(page, "donor")).toHaveText(fx.nameB);
-    // The counters classify by script region (round 20): the pair's
-    // union coverage split by WHERE each codepoint sits, so a Latin-only
-    // donor leaves 中文 exactly at the pair's CJK-region coverage.
-    const regions = await expectedRegionCounts(fx.sans, fx.wenkai);
-    await expect(stat(page, "en")).toHaveText(regions.en);
-    await expect(stat(page, "cjk")).toHaveText(regions.cjk);
+    // Ticket #32: the picks are URL FontFaces with descriptors — one
+    // per (weight, style) slot winner, registered under the manifest
+    // family id (the fixtures are single-face families).
+    expect(await facesOf(page, "AlloySans")).toEqual(["400/normal"]);
+    expect(await facesOf(page, fx.cssB)).toEqual(["400/normal"]);
+    // The counters (round 20's script regions) read the picks' cmaps —
+    // a URL pick carries none (the red line), so catalog picks count
+    // 0/0; the serve's resolve answers stay the coloring truth.
+    await expect(stat(page, "en")).toHaveText("0");
+    await expect(stat(page, "cjk")).toHaveText("0");
     await expect(synthesize(page)).toHaveAttribute("aria-disabled", "false");
     // Ticket #35: the grid's coloring is the SERVE's resolve answer —
     // with both picks referenced to it, the document lands and a cell
@@ -300,6 +292,11 @@ test.describe("repeat-click unload (round 18, owner item 3)", () => {
     await expect(checkedRow.locator(".kit-chk")).toHaveCount(1); // it IS the pick
     await pointerClick(page, checkedRow);
     await expect(popupOf(page, "en")).toBeHidden();
+    // Ticket #32: the unload EVICTED the pick — none of the family's
+    // faces remain on document.fonts (the registry record is gone with
+    // them; the re-pick below proves it re-registers).
+    await waitForFontsReady(page);
+    expect(await facesOf(page, "AlloySans")).toEqual([]);
 
     // The EN slot is empty — the never-picked surfaces are back.
     await expect(pairTag(page, "base")).toBeHidden();
@@ -319,21 +316,22 @@ test.describe("repeat-click unload (round 18, owner item 3)", () => {
     expect(await cell.evaluate((el) => getComputedStyle(el).fontFamily)).toContain(
       fx.cssB,
     );
-    // The stats bar (round 20, script region): the lone donor's Latin
-    // coverage counts into 英文 — where it sits — and 中文 holds the
-    // donor's own CJK-region coverage (0 for a Latin-only stand-in).
-    const lone = await expectedRegionCounts(fx.wenkai);
-    await expect(stat(page, "en")).toHaveText(lone.en);
-    await expect(stat(page, "cjk")).toHaveText(lone.cjk);
+    // The stats bar (round 20, script region): the URL picks carry no
+    // client-side cmap — every catalog pick counts 0/0 (see above).
+    await expect(stat(page, "en")).toHaveText("0");
+    await expect(stat(page, "cjk")).toHaveText("0");
     // Synthesize is disabled under the SAME rule as the initial state.
     await expectDisabledNotice(
       page,
       "请先选择英文字体与中文字体，再进行合成。",
     );
 
-    // Loading a family still works after clearing.
+    // Loading a family still works after clearing — and the re-pick
+    // re-registers the family's URL faces (the eviction left nothing
+    // behind that a repeat-click unload could trip over).
     await pickAlloySans(page);
     await expect(pairTag(page, "base")).toHaveText(fx.nameA);
+    expect(await facesOf(page, "AlloySans")).toEqual(["400/normal"]);
     await expect(synthesize(page)).toHaveAttribute("aria-disabled", "false");
   });
 
@@ -409,10 +407,12 @@ test.describe("repeat-click unload (round 18, owner item 3)", () => {
 
     // Clicking that SAME chip — now the active cut of the picked row —
     // clears the whole family pick (the chip IS the cut; no cut left
-    // means no family).
+    // means no family) and EVICTS that cut's URL faces (ticket #32).
     await pointerClick(page, screenChip);
     await expect(pairTag(page, "donor")).toBeHidden();
     await expect(screenChip).not.toHaveClass(/on/);
+    await waitForFontsReady(page);
+    expect(await facesOf(page, "LXGWWenKaiScreen")).toEqual([]);
     // The base slot is untouched throughout.
     await expect(pairTag(page, "base")).toHaveText(fx.nameA);
     await page.keyboard.press("Escape");
@@ -420,6 +420,7 @@ test.describe("repeat-click unload (round 18, owner item 3)", () => {
     // A new family load still works after the clear.
     await pickWenkaiRow(page);
     await expect(pairTag(page, "donor")).toHaveText(fx.nameB);
+    expect(await facesOf(page, fx.cssB)).toEqual(["400/normal"]);
     await expect(synthesize(page)).toHaveAttribute("aria-disabled", "false");
   });
 });

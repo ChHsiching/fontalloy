@@ -7,6 +7,7 @@ import {
 import {
   registerLocalFontFiles,
   fontDisplayName,
+  evictCssFamily,
   type LocalFontFile,
 } from "../fonts/registry";
 import { sweepLocalFamily } from "../fonts/localFamily";
@@ -457,11 +458,38 @@ export function mountPicker(
   };
 
   /**
+   * Round 18 + ticket #32: unload THIS slot's pick — the selection
+   * returns to the never-picked null AND a catalog pick's URL faces
+   * evict from document.fonts with their registry record (the MEMORY
+   * RED LINE's other half: unloading actually frees the font memory).
+   * Local and system picks keep their registrations (a user-loaded
+   * file stays loaded — the original round-18 behavior); the other
+   * slot holding the same family holds it too.
+   */
+  const unloadSlotPick = (): void => {
+    const prior = store.get().selected[options.role];
+    if (prior !== null) {
+      const record = store.get().fonts.find((f) => f.cssFamily === prior);
+      const other = options.role === "en" ? "cjk" : "en";
+      if (
+        record !== undefined &&
+        record.origin === "catalog" &&
+        store.get().selected[other] !== prior
+      ) {
+        evictCssFamily(prior);
+      }
+    }
+    store.set({
+      selected: { ...store.get().selected, [options.role]: null },
+    });
+  };
+
+  /**
    * Select a catalog entry for preview (round 7: an entry names the
    * exact manifest family + VARIANT a row or chip resolved to; ticket
-   * #30): the serve serves the cut's representative face, registration
-   * goes through the SAME FontFace path local files take, and the load
-   * is awaited so the anchor renders in it immediately.
+   * #30/#32): the cut's slot winners register as lazy URL FontFaces
+   * with their descriptors, and the family's default slot is loaded
+   * so the anchor renders in it immediately.
    */
   const selectCatalogEntry = async (
     entry: CatalogEntryLike,
@@ -481,8 +509,18 @@ export function mountPicker(
       rerender();
       return;
     }
-    // Deterministic load for immediate rendering (lazy faces load on use).
-    await document.fonts.load(`16px ${cssFamily(cssKey)}`);
+    // Deterministic load of the default slot for immediate rendering;
+    // the other slots stay lazy (a load failure is the picker's error
+    // line, never an unhandled rejection).
+    try {
+      await document.fonts.load(`16px ${cssFamily(cssKey)}`);
+    } catch (err) {
+      error = `无法载入目录字体 ${entry.family}：${
+        err instanceof Error ? err.message : String(err)
+      }`;
+      rerender();
+      return;
+    }
     store.set({
       selected: { ...store.get().selected, [options.role]: cssKey },
     });
@@ -520,7 +558,8 @@ export function mountPicker(
   /**
    * Plain pick of a release family the manifest mirror does not carry
    * (the e2e fixtures' invented families, the dev extras): the serve
-   * document's own default cut rides the catalog identity.
+   * document's own default cut rides the catalog identity (ticket #32:
+   * the same URL FontFace registration as any catalog pick).
    */
   const selectReleaseFamily = async (family: string): Promise<void> => {
     error = null;
@@ -538,7 +577,15 @@ export function mountPicker(
       rerender();
       return;
     }
-    await document.fonts.load(`16px ${cssFamily(cssKey)}`);
+    try {
+      await document.fonts.load(`16px ${cssFamily(cssKey)}`);
+    } catch (err) {
+      error = `无法载入目录字体 ${family}：${
+        err instanceof Error ? err.message : String(err)
+      }`;
+      rerender();
+      return;
+    }
     store.set({
       selected: { ...store.get().selected, [options.role]: cssKey },
     });
@@ -878,15 +925,14 @@ export function mountPicker(
         // pick is always a css key and an unregistered row id starts
         // with `cat:`, so a plain identity check decides it. The row's
         // explicit-cut memory goes with the pick (a fresh pick starts
-        // from the family default again).
+        // from the family default again). Ticket #32: a catalog pick's
+        // URL faces evict with the selection.
         if (id === store.get().selected[options.role]) {
           const pickedDisplay = displayByRowId.get(id);
           if (pickedDisplay !== undefined) {
             variantSelections.delete(pickedDisplay);
           }
-          store.set({
-            selected: { ...store.get().selected, [options.role]: null },
-          });
+          unloadSlotPick();
           return;
         }
         if (id.startsWith("cat:")) {
@@ -931,7 +977,8 @@ export function mountPicker(
         // chip IS the cut, and clearing means no family. The active cut
         // is the explicit selection, else the family default, so the
         // default chip unloads exactly like an accented one. A
-        // DIFFERENT chip still switches cuts below.
+        // DIFFERENT chip still switches cuts below. Ticket #32: the
+        // cleared pick's URL faces evict with the selection.
         const activeCutId =
           variantSelections.get(display.id) ?? cuts[0]?.id ?? null;
         if (
@@ -939,9 +986,7 @@ export function mountPicker(
           chipId === activeCutId
         ) {
           variantSelections.delete(display.id);
-          store.set({
-            selected: { ...store.get().selected, [options.role]: null },
-          });
+          unloadSlotPick();
           return;
         }
         // Clicking the selected cut reverts the family to its default.

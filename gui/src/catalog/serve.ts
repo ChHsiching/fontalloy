@@ -18,10 +18,16 @@
  *   each row registers as its OWN lazy URL FontFace (`fa-cat-<family>`),
  *   so rows self-render without the page ever holding font bytes.
  *
- * Picking a family still goes through the EXISTING registry path
- * (fonts/registry.registerFontBytes): the representative's bytes are
- * fetched from `GET /catalog/faces/{family}/{file}` on demand and
- * registered exactly like a local file (ticket #32 reworks that path).
+ * Picking a family (ticket #32, the MEMORY RED LINE) registers the
+ * cut's faces as URL FontFaces straight from the family document —
+ * one per (weight, style) slot winner, each with its descriptor, lazy
+ * per used descriptor. The page NEVER constructs an ArrayBuffer for a
+ * catalog font: no byte fetch, no sfnt parse, no cmap enumeration in
+ * the pick path (the registry record carries the document's own
+ * metadata; the store's `codepoints` stay empty, and the serve's
+ * resolve answers remain the coloring truth — ticket #35). Unloading
+ * the pick evicts the faces (fonts/registry.evictCssFamily, wired by
+ * the picker's repeat-click unload).
  *
  * Observability (the round-30 diagnostic, formalized): the boot sets
  * `data-catalog-sweep` = running/done on <html> — the settle signal
@@ -32,11 +38,13 @@
 
 import {
   store,
+  type CatalogFaceDoc,
   type CatalogFamilyDoc,
   type CatalogFamilyProgress,
   type CatalogState,
+  type LoadedFont,
 } from "../state";
-import { registerFontBytes } from "../fonts/registry";
+import { registerCatalogUrlFaces } from "../fonts/registry";
 import { synthStore } from "../service/state";
 
 /** The GET /catalog/status document (issue #26's state machine). */
@@ -211,7 +219,7 @@ async function runCatalogPoll(base: string): Promise<void> {
   sweep?.setAttribute("data-catalog-sweep", "done");
 }
 
-/* ---------- the pick path (the EXISTING registry path) ---------- */
+/* ---------- the pick path (ticket #32: URL FontFaces only) ---------- */
 
 /** The cut a pick resolves to: the variant's own, else the default. */
 function cutOf(doc: CatalogFamilyDoc, variant: string | null): CatalogFamilyDoc["cuts"][number] | null {
@@ -221,16 +229,41 @@ function cutOf(doc: CatalogFamilyDoc, variant: string | null): CatalogFamilyDoc[
 }
 
 /**
- * Make one catalog family selectable: fetch the cut's representative
- * face from the serve (the page's ONLY font-byte fetch, on the user's
- * click) and register it through the same FontFace path local files
- * take (fonts/registry.registerFontBytes — reworked by #32). Returns
- * the registered css family, or null when the family is not usable.
+ * The cut's (weight, style) slot winners (ticket #32): the document's
+ * face list can carry several faces for one slot (the round-29
+ * side-cut layout — sheared ink under upright flags); one face per
+ * slot keeps the browser's match deterministic, exactly like the local
+ * path's resolveStyleSlots. The winner prefers a face the placeholder
+ * rules trust (the document's own honest-coverage flag), file order
+ * among equals — the serve's scan order is stable.
  */
-export async function ensureCatalogRegistered(
+function slotWinners(
+  faces: readonly CatalogFaceDoc[],
+): CatalogFaceDoc[] {
+  const winners = new Map<string, CatalogFaceDoc>();
+  for (const face of faces) {
+    const key = `${face.weight}/${face.italic ? "italic" : "normal"}`;
+    const held = winners.get(key);
+    if (held === undefined || (held.placeholder && !face.placeholder)) {
+      winners.set(key, face);
+    }
+  }
+  return [...winners.values()];
+}
+
+/**
+ * Make one catalog family selectable (ticket #32): register the cut's
+ * slot winners as URL FontFaces under the manifest family id — one per
+ * (weight, style), each with its descriptor, lazy per used descriptor
+ * — and record ONE document-driven registry entry. No byte is ever
+ * fetched into the page here: the browser pulls a face when something
+ * renders in its weight/style. Returns the registered css family, or
+ * null when the family carries no usable face.
+ */
+export function ensureCatalogRegistered(
   family: string,
   variant: string | null,
-): Promise<string | null> {
+): string | null {
   const client = synthStore.get().service.client;
   if (client === null) return null;
   const doc = store
@@ -239,8 +272,6 @@ export async function ensureCatalogRegistered(
   if (doc === undefined) return null;
   const cut = cutOf(doc, variant);
   if (cut === null) return null;
-  const file = cut.representative ?? cut.faces[0]?.file ?? null;
-  if (file === null) return null;
   const identity = { family, variant: cut.variant || null };
   const existing = store
     .get()
@@ -250,26 +281,32 @@ export async function ensureCatalogRegistered(
         font.catalog?.variant === identity.variant,
     );
   if (existing !== undefined) return existing.cssFamily;
-  let bytes: ArrayBuffer;
-  try {
-    const res = await fetch(
-      `${client.baseUrl}/catalog/faces/${family}/${file}`,
-      timeoutInit(),
-    );
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    bytes = await res.arrayBuffer();
-  } catch (err) {
-    throw new Error(`无法载入目录字体 ${family}：${describe(err)}`);
-  }
-  try {
-    const { font } = await registerFontBytes(bytes, {
-      family,
-      fileName: file,
-      origin: "catalog",
-      catalog: identity,
-    });
-    return font.cssFamily;
-  } catch {
-    return null;
-  }
+  const winners = slotWinners(cut.faces);
+  if (winners.length === 0) return null;
+  registerCatalogUrlFaces(
+    family,
+    winners.map((face) => ({
+      url: `${client.baseUrl}${face.href}`,
+      weight: face.weight,
+      style: face.italic ? ("italic" as const) : ("normal" as const),
+    })),
+  );
+  // The registry record: document-driven metadata only. `names` rides
+  // the serve's own name-table scan (display_name); `codepoints` stay
+  // empty — the red line trades the page-side cmap enumeration for the
+  // serve's resolve answers, and the stats/counters read 0 until the
+  // coverage moves core-side.
+  const displayName =
+    doc.display_name ?? cut.display_name ?? cut.label ?? family;
+  const font: LoadedFont = {
+    cssFamily: family,
+    family,
+    names: { family: displayName, display: displayName },
+    fileName: cut.representative ?? winners[0]!.file,
+    origin: "catalog",
+    catalog: identity,
+    codepoints: [],
+  };
+  store.set({ fonts: [...store.get().fonts, font] });
+  return family;
 }

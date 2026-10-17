@@ -81,13 +81,17 @@ export interface RegisterOptions {
 
 /**
  * The shared FontFace(arrayBuffer) registration path (ticket #15 for local
- * files, ticket #17 for catalog downloads): parse the sfnt metadata (family
- * name, cmap coverage), register the face on document.fonts, and record it
- * in the store.
+ * files): parse the sfnt metadata (family name, cmap coverage), register the
+ * face on document.fonts, and record it in the store.
  *
  * Registration is idempotent per css family: when the same underlying face
  * is already registered (e.g. a local file that also exists in the
  * catalog), the existing entry is reused and counted once.
+ *
+ * Ticket #32 (the MEMORY RED LINE): this path serves LOCAL and SYSTEM
+ * picks only — a user-loaded file is the one flow allowed to hold bytes
+ * in the page. CATALOG picks register through the URL path below and
+ * never construct an ArrayBuffer anywhere in their pick path.
  */
 export async function registerFontBytes(
   buffer: ArrayBuffer,
@@ -129,6 +133,63 @@ export async function registerFontBytes(
     store.set({ fonts: [...store.get().fonts, font] });
   }
   return { font, isNewFamily: true };
+}
+
+/* ---------- the URL FontFace path (ticket #32: catalog picks) ---------- */
+
+/** One catalog face to register by URL: the serve href + its slot. */
+export interface CatalogFaceUrl {
+  /** The serve's absolute face URL (streamed bytes, cache headers). */
+  url: string;
+  /** The face's OS/2 weight, as the family document reports it. */
+  weight: number;
+  style: "normal" | "italic";
+}
+
+/**
+ * Register a catalog family's faces as URL FontFaces (ticket #32, the
+ * MEMORY RED LINE): one FontFace per (weight, style) slot winner, each
+ * carrying its descriptor and a `url(...)` source — the page holds NO
+ * bytes; the browser fetches a face only when something actually
+ * renders in that weight/style (lazy per used descriptor). Nothing is
+ * awaited: load errors surface at use time, exactly like the preview
+ * subsets' own lazy faces.
+ *
+ * The eviction counterpart is {@link evictCssFamily}.
+ */
+export function registerCatalogUrlFaces(
+  cssFamily: string,
+  faces: readonly CatalogFaceUrl[],
+): void {
+  for (const face of faces) {
+    document.fonts.add(
+      new FontFace(cssFamily, `url(${JSON.stringify(face.url)})`, {
+        weight: String(face.weight),
+        style: face.style,
+      }),
+    );
+  }
+}
+
+/**
+ * Evict one css family's registration (ticket #32): every face of the
+ * family comes off document.fonts — the browser releases the native
+ * font data behind them — and the store's records for the family drop,
+ * so a re-pick re-registers from scratch. Repeat-click unload keeps
+ * working across the whole cycle.
+ *
+ * Scoped to one css family key; a catalog family's key is its manifest
+ * id, so a same-named LOCAL load colliding with it (a family whose
+ * manifest id equals its name-table family) is evicted with it — the
+ * acceptable edge, re-loadable from either side.
+ */
+export function evictCssFamily(cssFamily: string): void {
+  for (const face of [...document.fonts]) {
+    if (face.family === cssFamily) document.fonts.delete(face);
+  }
+  const before = store.get().fonts;
+  const after = before.filter((font) => font.cssFamily !== cssFamily);
+  if (after.length !== before.length) store.set({ fonts: after });
 }
 
 /** What a local load run registered (round 20; stats round 21). */
