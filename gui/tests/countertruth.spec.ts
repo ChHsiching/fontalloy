@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -9,7 +10,8 @@ import {
   pointerClick,
   waitForFontsReady,
 } from "./helpers";
-import { SimCatalog, injectCatalogConfig } from "./catalog-fixtures";
+import { spawnServeOverFonts } from "./serve";
+import { buildServeCatalogSite } from "./catalog-serve-site";
 import {
   BROWSE_UNIVERSE,
   CJK_UNIVERSE,
@@ -190,18 +192,36 @@ function logTruth(state: string, picks: FontTruth[], truth: GroundTruth): void {
 /** Every counter in the status bar, asserted against the ground truth. */
 async function assertCounters(page: Page, truth: GroundTruth): Promise<void> {
   const fmt = (n: number): string => n.toLocaleString("en-US");
-  await expect(page.locator("[data-stat='total']")).toHaveText(fmt(truth.total));
-  await expect(page.locator("[data-stat='en']")).toHaveText(fmt(truth.en));
-  await expect(page.locator("[data-stat='cjk']")).toHaveText(fmt(truth.cjk));
+  // Ticket #35: the counters read the landed serve documents — the
+  // real pair's first resolve is fontTools-cold, so anchor generously
+  // (design.spec's contract), not at the 5s expect default.
+  const landed = { timeout: 60_000 };
+  await expect(page.locator("[data-stat='total']")).toHaveText(
+    fmt(truth.total),
+    landed,
+  );
+  await expect(page.locator("[data-stat='en']")).toHaveText(
+    fmt(truth.en),
+    landed,
+  );
+  await expect(page.locator("[data-stat='cjk']")).toHaveText(
+    fmt(truth.cjk),
+    landed,
+  );
   await expect(page.locator("[data-stat='missing']")).toHaveText(
     fmt(truth.missing),
+    landed,
   );
   await expect(page.locator("[data-stat='coverage']")).toHaveText(
     truth.coverage,
+    landed,
   );
   // No non-preset rule exists in any state here, so nothing can be
   // adjusted (the boot zh_cn preset rule never counts).
-  await expect(page.locator("[data-stat='adjusted']")).toHaveText("0");
+  await expect(page.locator("[data-stat='adjusted']")).toHaveText(
+    "0",
+    landed,
+  );
 }
 
 /** Open a picker and pick the one catalog row it lists for the pair. */
@@ -226,31 +246,41 @@ async function pickCatalogFont(
 test.describe("status-bar counters vs fontTools ground truth", () => {
   const jsErrors: string[] = [];
 
+  /** Suite-scoped serve/site disposers (one boot per test, torn down after). */
+  const bootDisposers: Array<() => Promise<void>> = [];
+
   test.beforeEach(async ({ page }) => {
     jsErrors.length = 0;
     collectJsErrors(page, jsErrors);
-    // The catalog fixture families are manifest families, so the stars
-    // refresh fires; keep it hermetic (an empty body reads "no data").
-    await page.route("https://api.github.com/repos/**", (route) =>
-      route.fulfill({ status: 200, contentType: "application/json", body: "{}" }),
-    );
   });
 
-  test.afterEach(() => assertNoJsErrors(jsErrors));
+  test.afterEach(async () => {
+    for (const dispose of bootDisposers.splice(0)) {
+      await dispose();
+    }
+    assertNoJsErrors(jsErrors);
+  });
 
-  /** The real pair behind the simulated catalog origin, fully fetched. */
+  /** The real pair behind a REAL serve-backed catalog, fully synced. */
   async function openWithRealCatalog(page: Page): Promise<{
     en: FontTruth;
     cjk: FontTruth;
   }> {
     const paths = realFontPaths();
     const [en, cjk] = [fontTruth(paths.en), fontTruth(paths.cjk)];
-    const sim = await SimCatalog.create([
+    // Ticket #30's boot: the catalog rows come from a spawned serve
+    // whose catalog syncs a file:// release site built over the staged
+    // pair — the page-side downloader this spec rode before is no
+    // longer called from the boot path (see main.ts).
+    const site = await buildServeCatalogSite([
       {
         family: "JetBrainsMono",
-        variant: "Nerd Font",
-        file: "JetBrainsMonoNerdFont-Regular.ttf",
-        fontPath: paths.en,
+        faces: [
+          { file: "JetBrainsMonoNerdFont-Regular.ttf", fontPath: paths.en },
+        ],
+        manifestEntries: [
+          { variant: "Nerd Font", file: "JetBrainsMono.zip" },
+        ],
       },
       {
         // The manifest id keys the CJK slot scoping (curated-meta's
@@ -258,18 +288,43 @@ test.describe("status-bar counters vs fontTools ground truth", () => {
         // cut, whose own name table (「Maple Mono NF CN」) is what the
         // row and the picks display.
         family: "MapleMono",
-        variant: "Regular",
-        file: "MapleMonoCN-Regular.ttf",
-        fontPath: paths.cjk,
+        faces: [{ file: "MapleMonoCN-Regular.ttf", fontPath: paths.cjk }],
+        manifestEntries: [{ variant: "Regular", file: "MapleMono.zip" }],
       },
     ]);
-    await sim.install(page);
-    await injectCatalogConfig(page);
+    const spawned = await spawnServeOverFonts(site.catalogDir, [
+      "--catalog-release-origin",
+      site.originUri,
+      "--catalog-dir",
+      site.catalogDir,
+      "--manifest",
+      site.manifestPath!,
+    ]);
+    bootDisposers.push(async () => {
+      await spawned.dispose();
+      await rm(site.root, { recursive: true, force: true });
+    });
+    const serveUrl = await spawned.url;
+    await page.addInitScript((serve: string) => {
+      (window as { __FONTALLOY_CONFIG__?: unknown }).__FONTALLOY_CONFIG__ = {
+        serveUrl: serve,
+      };
+    }, serveUrl);
     await page.goto("/");
     await expect(
       page.locator(".catalog-screen [data-stat='catalog-done']"),
-    ).toHaveText("2");
+    ).toHaveText("2", { timeout: 30_000 });
     await expect(page.locator(".catalog-screen")).toBeHidden();
+    // The documents sweep must land too: the rows list from the serve's
+    // family documents, which fill AFTER the sync counts settle — a
+    // picker opened in between would sit rowless (unload.spec's boot
+    // contract). The real pair's fontTools-cold resolves budget the
+    // whole sweep, not the small-fixture 60s.
+    await page.waitForFunction(
+      () => document.documentElement.dataset.catalogSweep === "done",
+      undefined,
+      { timeout: 120_000 },
+    );
     await waitForFontsReady(page);
     return { en, cjk };
   }
@@ -277,6 +332,9 @@ test.describe("status-bar counters vs fontTools ground truth", () => {
   test("a lone EN pick: every counter equals the ground truth", async ({
     page,
   }) => {
+    // The real pair's resolves are fontTools-cold inside the spawned
+    // serve — budget the whole journey, not the 30s fixture default.
+    test.setTimeout(180_000);
     const { en } = await openWithRealCatalog(page);
     const truth = groundTruth([en]);
     logTruth("lone EN", [en], truth);
@@ -288,6 +346,7 @@ test.describe("status-bar counters vs fontTools ground truth", () => {
   test("a lone CJK pick: every counter equals the ground truth", async ({
     page,
   }) => {
+    test.setTimeout(180_000);
     const { cjk } = await openWithRealCatalog(page);
     const truth = groundTruth([cjk]);
     logTruth("lone CJK", [cjk], truth);
@@ -299,6 +358,7 @@ test.describe("status-bar counters vs fontTools ground truth", () => {
   test("the pair: the union and both region arms equal the ground truth", async ({
     page,
   }) => {
+    test.setTimeout(180_000);
     const { en, cjk } = await openWithRealCatalog(page);
     const truth = groundTruth([en, cjk]);
     logTruth("pair", [en, cjk], truth);
