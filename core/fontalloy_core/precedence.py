@@ -79,6 +79,20 @@ def rule_id(index: int) -> str:
     return f"rule-{index}"
 
 
+def winner_selection_order(
+    rules: Sequence[PrecedenceRule],
+) -> tuple[tuple[int, PrecedenceRule], ...]:
+    """(declaration index, rule) pairs in winner-selection order.
+
+    Narrowest granularity first, and within a layer the last declared —
+    the order in which the first rule COVERING a codepoint is that
+    codepoint's winning rule. Public because the resolve API (ticket
+    #28) walks the same order to expose the covering declaration (the
+    assignment layer) alongside the supplying winner.
+    """
+    return tuple(sorted(enumerate(rules), key=lambda item: (-item[1].rank, -item[0])))
+
+
 @dataclass(frozen=True)
 class PrecedenceRule:
     """One precedence declaration: a codepoint target → ordered font list.
@@ -228,9 +242,7 @@ def resolve_precedence(
     # Winner selection order: narrowest granularity first, and within a
     # layer the last declared — so the first rule covering a codepoint in
     # this order is the winning rule.
-    ordered = sorted(
-        enumerate(rules), key=lambda item: (-item[1].rank, -item[0])
-    )
+    ordered = list(winner_selection_order(rules))
     base_coverage = coverages["base"]
     table: list[EffectiveEntry] = []
     resolved = 0

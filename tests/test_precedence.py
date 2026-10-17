@@ -766,3 +766,120 @@ class TestConflictAndFillReport:
                 "fonts": ["donor-0"],
             },
         ]
+
+
+class TestResolveDocument:
+    """Ticket #28: the precedence-resolve document, pinned against the
+    resolver it wraps — the same picks/rules/sets, resolved by a direct
+    :func:`~fontalloy_core.precedence.resolve_precedence` call, must
+    yield the identical per-codepoint winners the document compresses.
+    """
+
+    @staticmethod
+    def _document(tmp_path, synth_font_factory, rules_text, universe=None):
+        from fontalloy_core.precedence_api import resolve_document
+
+        base = synth_font_factory(
+            tmp_path / "base.ttf", family="SynthBase", codepoints=(0x41, 0x4E00)
+        )
+        donor0 = synth_font_factory(
+            tmp_path / "donor0.ttf",
+            family="SynthDonorZero",
+            codepoints=(0x4E00, 0x4E01, 0x4E02),
+        )
+        donor1 = synth_font_factory(
+            tmp_path / "donor1.ttf",
+            family="SynthDonorOne",
+            codepoints=(0x4E01, 0x2100),
+        )
+        body = {
+            "picks": {"base": str(base), "donors": [str(donor0), str(donor1)]},
+            "sets": {"alpha": ["0x4E00-0x4E02"]},
+        }
+        if rules_text is not None:
+            body["rules"] = rules_text
+        if universe is not None:
+            body["universe"] = universe
+        return resolve_document(body, root=tmp_path)
+
+    @staticmethod
+    def _library(tmp_path, synth_font_factory, rules_text):
+        from fontalloy_core.load import load_faces
+        from fontalloy_core.placeholder import face_coverage
+        from fontalloy_core.precedence import (
+            BUILTIN_NAMED_SETS,
+            resolve_precedence,
+        )
+        from fontalloy_core.recipe import parse_recipe
+
+        base = tmp_path / "base.ttf"
+        recipe = parse_recipe(
+            {
+                "base": str(base),
+                "donors": [str(tmp_path / "donor0.ttf"), str(tmp_path / "donor1.ttf")],
+                "sets": {"alpha": ["0x4E00-0x4E02"]},
+                **({"rules": rules_text} if rules_text is not None else {}),
+            },
+            tmp_path,
+        )
+        coverages = {}
+        for font_id, ref in [
+            ("base", recipe.base),
+            ("donor-0", recipe.donors[0]),
+            ("donor-1", recipe.donors[1]),
+        ]:
+            union = set()
+            for face in load_faces(ref, role=font_id):
+                union |= set(face_coverage(face.font).codepoints)
+            coverages[font_id] = union
+        return resolve_precedence(
+            recipe.rules,
+            coverages=coverages,
+            named_sets={**BUILTIN_NAMED_SETS, **recipe.named_sets},
+        )
+
+    def test_the_document_matches_the_resolver_codepoint_for_codepoint(
+        self, tmp_path, synth_font_factory
+    ):
+        rules = [
+            {"set": "alpha", "fonts": ["donor-0"]},
+            {"range": "0x4E00-0x4E01", "fonts": ["donor-1"]},
+            {"codepoint": 0x4E00, "fonts": ["donor-0"]},
+            {"range": "0x2100-0x2101", "fonts": ["donor-0"]},
+        ]
+        document = self._document(tmp_path, synth_font_factory, rules)
+        resolution = self._library(tmp_path, synth_font_factory, rules)
+
+        table = {
+            codepoint: run
+            for run in document["runs"]
+            for codepoint in range(run["start"], run["end"] + 1)
+        }
+        expected = {
+            entry.codepoint: entry for entry in resolution.effective_table
+        }
+        assert set(table) == set(expected)
+        for codepoint, entry in expected.items():
+            run = table[codepoint]
+            assert (run["winner"], run["via"], run["kind"]) == (
+                entry.winner,
+                entry.via,
+                entry.kind,
+            ), codepoint
+        assert document["counts"] == resolution.counts
+        assert document["rules"] == len(rules)
+
+    def test_the_universe_bounds_the_document(self, tmp_path, synth_font_factory):
+        document = self._document(
+            tmp_path,
+            synth_font_factory,
+            [{"range": "0x4E00-0x4E02", "fonts": ["donor-0"]}],
+            universe={"intervals": ["0x4E00-0x4E01"]},
+        )
+        table = {
+            codepoint
+            for run in document["runs"]
+            for codepoint in range(run["start"], run["end"] + 1)
+        }
+        assert table == {0x4E00, 0x4E01}
+        assert document["codepoints"] == 2
