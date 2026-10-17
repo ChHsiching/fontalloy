@@ -1,8 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { resolve } from "node:path";
-import { generateFonts } from "./serve";
+import { startServeFixture, type ServeFixture } from "./serve";
 import {
   assertNoJsErrors,
   collectJsErrors,
@@ -26,6 +23,11 @@ import { browseUniverseSize, ICON_UNIVERSE } from "../src/unicode/universe";
  * honest covered-by-either ÷ browsed-scope share (owner item 6). The
  * mode bar's 定位 field (jump + select from either content mode) rides
  * along.
+ *
+ * Ticket #35: the per-cell missing verdict of the NORMAL views is the
+ * serve's answer too (the cell is missing when no run covers it), so
+ * the suite drives a real fixture serve — base = A–Z, donor = 64
+ * hanzi, no overlap.
  */
 
 const UNIVERSE = browseUniverseSize();
@@ -33,19 +35,40 @@ const UNIVERSE = browseUniverseSize();
 test.describe("missing glyph scope", () => {
   const jsErrors: string[] = [];
 
+  /** The shared fixture serve (ticket #35: normal-view missing verdicts
+   *  read the resolve document). */
+  let service: ServeFixture | null = null;
+
+  test.beforeAll(async () => {
+    service = await startServeFixture({ donorGlyphs: 64 });
+  });
+
+  test.afterAll(async () => {
+    await service?.dispose();
+    service = null;
+  });
+
   test.beforeEach(() => {
     jsErrors.length = 0;
   });
 
   test.afterEach(() => assertNoJsErrors(jsErrors));
 
-  /** Small fixture pair: base = A–Z, donor = a hanzi run (disjoint). */
-  async function makeLocalFixtures(donorGlyphs = 64): Promise<{
-    base: string;
-    donor: string;
-  }> {
-    const dir = await mkdtemp(resolve(tmpdir(), "fontalloy-missing-"));
-    return generateFonts(dir, { donorGlyphs });
+  /** The fixture pair: base = A–Z, donor = a 64-hanzi run (disjoint). */
+  function makeLocalFixtures(): { base: string; donor: string } {
+    const live = service!;
+    return { base: live.baseFont, donor: live.donorFont };
+  }
+
+  /** Point the page at the fixture serve. */
+  async function serveConfig(page: Page): Promise<void> {
+    await page.addInitScript((url: string) => {
+      const config = window as unknown as {
+        __FONTALLOY_CONFIG__: Record<string, unknown>;
+      };
+      config.__FONTALLOY_CONFIG__ ??= {};
+      config.__FONTALLOY_CONFIG__.serveUrl = url;
+    }, service!.url);
   }
 
   async function openWithFonts(
@@ -53,6 +76,7 @@ test.describe("missing glyph scope", () => {
     fonts: { base: string; donor: string },
   ): Promise<void> {
     collectJsErrors(page, jsErrors);
+    await serveConfig(page);
     await page.goto("/");
     await waitForFontsReady(page);
     for (const [role, path] of [
@@ -79,6 +103,7 @@ test.describe("missing glyph scope", () => {
     path: string,
   ): Promise<void> {
     collectJsErrors(page, jsErrors);
+    await serveConfig(page);
     await page.goto("/");
     await waitForFontsReady(page);
     await pointerClick(
@@ -94,8 +119,9 @@ test.describe("missing glyph scope", () => {
   test("the 缺失 chip is automatic: coverage-driven, preset-independent", async ({
     page,
   }) => {
-    const fonts = await makeLocalFixtures(64);
+    const fonts = makeLocalFixtures();
     collectJsErrors(page, jsErrors);
+    await serveConfig(page);
     await page.goto("/");
     await waitForFontsReady(page);
 
@@ -157,7 +183,7 @@ test.describe("missing glyph scope", () => {
   test("the missing view: dashed cells, its own pager, honest coverage", async ({
     page,
   }) => {
-    const fonts = await makeLocalFixtures(64);
+    const fonts = makeLocalFixtures();
     await openWithFonts(page, fonts);
     const missing = UNIVERSE - 26 - 64;
 
@@ -202,7 +228,7 @@ test.describe("missing glyph scope", () => {
   test("a lone EN pick judges the universe: missing = universe − its cmap", async ({
     page,
   }) => {
-    const fonts = await makeLocalFixtures(64);
+    const fonts = makeLocalFixtures();
     await openWithOneFont(page, "en", fonts.base);
     const missing = UNIVERSE - 26;
 
@@ -250,7 +276,7 @@ test.describe("missing glyph scope", () => {
   });
 
   test("a lone CJK pick judges its side the same way", async ({ page }) => {
-    const fonts = await makeLocalFixtures(64);
+    const fonts = makeLocalFixtures();
     await openWithOneFont(page, "cjk", fonts.donor);
     const missing = UNIVERSE - 64;
 
@@ -274,7 +300,7 @@ test.describe("missing glyph scope", () => {
   test("the mode bar's 定位 field jumps to the cell from scene mode", async ({
     page,
   }) => {
-    const fonts = await makeLocalFixtures();
+    const fonts = makeLocalFixtures();
     await openWithFonts(page, fonts);
 
     await pointerClick(
@@ -299,7 +325,7 @@ test.describe("missing glyph scope", () => {
   test("unmapped icon cells count as missing: no fallback tofu in the 图标 ranges", async ({
     page,
   }) => {
-    const fonts = await makeLocalFixtures(64);
+    const fonts = makeLocalFixtures();
     await openWithOneFont(page, "en", fonts.base);
 
     // Round 20 (owner item 1): the 图标 ranges have no fixed meanings —
