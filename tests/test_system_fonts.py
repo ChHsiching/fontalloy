@@ -10,13 +10,17 @@ implementation starved every request on the GIL for minutes).
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import time
+import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
 import pytest
+from fontTools.ttLib import TTFont
 
 from fontalloy_core.serve import ServeOptions, make_serve_server
 from fontalloy_core.systemfonts import (
@@ -142,6 +146,158 @@ def test_cache_round_trip_and_incremental_scan(tmp_path: Path):
 def _get(url: str, timeout: float = 5.0) -> object:
     with urllib.request.urlopen(url, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
+
+
+def _get_status(url: str, timeout: float = 5.0) -> tuple[int, bytes | None]:
+    """One GET's (status, body); HTTP errors return their raw payload."""
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as response:
+            return response.status, response.read()
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read()
+
+
+def _wait_ready(port: int, timeout: float = 10.0) -> dict:
+    """Poll /system-fonts until the background scan lands."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        doc = _get(f"http://127.0.0.1:{port}/system-fonts")
+        assert isinstance(doc, dict)
+        if doc["ready"]:
+            return doc
+        time.sleep(0.05)
+    raise AssertionError("the system-font scan never answered ready")
+
+
+def test_families_group_in_the_enumeration_document(tmp_path: Path):
+    """Ticket #34: the GROUPING is the serve's, not the frontend's.
+
+    ``/system-fonts`` answers a ``families`` list — one entry per
+    name-table family, representative first (400-upright preferred,
+    else the scan's first face), with the family's latin/cjk flags
+    riding its faces' ACTUAL coverage (any face covering Latin marks
+    the family Latin; the owner's 微软雅黑 ruling) — and every face
+    carries the ``href`` its bytes serve at.
+    """
+    synth_font(
+        tmp_path / "AlloyGroup-Bold.ttf",
+        family="AlloyGroup",
+        weight=700,
+        codepoints=(0x41,),
+    )
+    synth_font(
+        tmp_path / "AlloyGroup-Regular.ttf",
+        family="AlloyGroup",
+        weight=400,
+        codepoints=(0x4E2D,),
+    )
+    synth_font(
+        tmp_path / "AlloySoloEN-Regular.ttf",
+        family="AlloySoloEN",
+        codepoints=(0x41, 0x61),
+    )
+
+    server = make_serve_server(
+        ServeOptions(port=0, system_font_dirs=(tmp_path,))
+    )
+    thread = None
+    try:
+        port = server.server_address[1]
+        thread = serve_thread(server)
+        doc = _wait_ready(port)
+        families = {family["family"]: family for family in doc["families"]}
+
+        # Scan order puts Bold first on disk; the 400-upright Regular is
+        # still the representative (faces[0]).
+        group = families["AlloyGroup"]
+        assert [face["weight"] for face in group["faces"]] == [400, 700]
+        # The family's flags ride its faces' ACTUAL coverage: Regular
+        # covers CJK only, Bold Latin only — the family is BOTH.
+        assert group["latin"] is True
+        assert group["cjk"] is True
+
+        solo = families["AlloySoloEN"]
+        assert solo["latin"] is True
+        assert solo["cjk"] is False
+        assert [face["file"] for face in solo["faces"]] == [
+            "AlloySoloEN-Regular.ttf"
+        ]
+
+        # Every face carries its byte-source href.
+        for family in doc["families"]:
+            for face in family["faces"]:
+                assert face["href"].startswith("/system-fonts/file?path=")
+                assert "index=" in face["href"]
+    finally:
+        server.shutdown()
+        if thread is not None:
+            thread.join(timeout=5)
+
+
+def test_the_file_endpoint_serves_per_face_by_index(tmp_path: Path):
+    """Ticket #34: system faces serve by URL, one face per index.
+
+    A plain font streams its exact disk bytes; a collection face
+    serves its EXTRACTED standalone sfnt (never the collection blob —
+    the 428 MB non-transfer rule), with the scan's fingerprint as the
+    ETag so cache truth and scan truth are one string. Only scanned
+    (path, index) pairs answer; the index is required.
+    """
+    plain = _latin(tmp_path / "AlloyPlain-Regular.ttf")
+    synth_ttc(
+        tmp_path / "AlloySysTTC.ttc",
+        faces=[
+            dict(family="AlloySysA", weight=400, codepoints=(0x41,)),
+            dict(family="AlloySysB", weight=700, codepoints=(0x4E2D,)),
+        ],
+    )
+
+    server = make_serve_server(
+        ServeOptions(port=0, system_font_dirs=(tmp_path,))
+    )
+    thread = None
+    try:
+        port = server.server_address[1]
+        thread = serve_thread(server)
+        doc = _wait_ready(port)
+        faces = {(face["file"], face["face"]): face for face in doc["faces"]}
+        base = f"http://127.0.0.1:{port}"
+
+        # A plain font: the exact disk bytes, ETagged.
+        plain_href = faces["AlloyPlain-Regular.ttf", 0]["href"]
+        status, body = _get_status(f"{base}{plain_href}")
+        assert status == 200
+        assert body == plain.read_bytes()
+
+        # A collection face: the extracted standalone font — a plain
+        # sfnt, never 'ttcf', opening as exactly that face.
+        face_href = faces["AlloySysTTC.ttc", 1]["href"]
+        status, body = _get_status(f"{base}{face_href}")
+        assert status == 200
+        assert body[:4] != b"ttcf"
+        extracted = TTFont(io.BytesIO(body))
+        try:
+            assert extracted["name"].getDebugName(1) == "AlloySysB"
+        finally:
+            extracted.close()
+
+        # The gate: no index is a 400, an unscanned path and an
+        # out-of-range index are 404s.
+        status, _ = _get_status(
+            f"{base}/system-fonts/file?path={urllib.parse.quote(str(plain))}"
+        )
+        assert status == 400
+        status, _ = _get_status(f"{base}/system-fonts/file?path=C%3A%5Cnope.ttf&index=0")
+        assert status == 404
+        status, _ = _get_status(
+            f"{base}/system-fonts/file"
+            f"?path={urllib.parse.quote(str(tmp_path / 'AlloySysTTC.ttc'))}&index=9"
+        )
+        assert status == 404
+    finally:
+        server.shutdown()
+        if thread is not None:
+            thread.join(timeout=5)
 
 
 def test_serve_stays_responsive_while_the_scan_runs(tmp_path: Path):

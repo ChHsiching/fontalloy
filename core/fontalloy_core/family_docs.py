@@ -307,6 +307,9 @@ class FaceScan:
     placeholders: int
     latin: bool
     cjk: bool
+    #: Ticket #34: the face's glyph count (maxp numGlyphs) — the local
+    #: load outcome's 字形 figure, summed over the registered faces.
+    glyphs: int
 
     @property
     def placeholder(self) -> bool:
@@ -335,11 +338,13 @@ def _coverage_summary(path: Path, face_index: int) -> dict[str, Any]:
     font = TTFont(path, fontNumber=face_index)
     try:
         coverage = face_coverage(font)
+        maxp = font.get("maxp")
         return {
             "codepoints": len(coverage.codepoints),
             "placeholders": len(coverage.placeholders),
             "latin": any(marker in coverage.codepoints for marker in _LATIN_MARKERS),
             "cjk": any(marker in coverage.codepoints for marker in _CJK_MARKERS),
+            "glyphs": int(maxp.numGlyphs) if maxp is not None else 0,
         }
     finally:
         font.close()
