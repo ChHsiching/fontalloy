@@ -297,8 +297,9 @@ async function resolveFontPathWithRefresh(
  * font-name field (default the fixed brand default, never derived from
  * the source fonts — spec naming rule). Built through the shared recipe
  * modules (issue #21's model), then serialized by recipeJson for POST
- * /builds — and by recipeYaml for the no-service CLI panel, always from
- * the SAME state (the build and the panel can never drift apart).
+ * /builds — and by the SAME serializer for the no-service CLI panel's
+ * download, always from the SAME state (the build and the panel can
+ * never drift apart).
  */
 
 /** The currently picked pair, as loaded fonts (undefined when unset). */
@@ -633,7 +634,8 @@ export async function synthesize(): Promise<void> {
 
   // The SAME draft the no-service CLI panel builds (issue #22's
   // absorption): the two font slots, the rail's rule state, the
-  // settings — one recipe model for the service and the YAML alike.
+  // settings — one recipe model, one wire-JSON serializer, for the
+  // service submission and the panel's download alike.
   const faces = synthStore.get().service.fontsIndex?.families.flatMap(
     (family) => family.faces,
   ) ?? [];
@@ -683,6 +685,9 @@ async function runBuild(
 
   let submitted;
   try {
+    // Ticket #29: submit-time validation on the serve IS the recipe
+    // gate — a rejection (the strict parser's own message) lands in
+    // the row as inline text, no local mirror ran first.
     submitted = await client.submit(recipeJson(draft));
   } catch (err) {
     fail(err instanceof Error ? err.message : String(err));

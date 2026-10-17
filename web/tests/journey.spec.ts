@@ -485,7 +485,7 @@ test("J11 Web 目标 — detection, picks, preset, live merge, report, download,
       expect(parsed.cjkCodepoints).toBeGreaterThan(0);
     });
 
-    await step("J11.8 no service: the degrade panel offers copy-CLI + the YAML download", async () => {
+    await step("J11.8 no service: the degrade panel offers copy-CLI + the JSON download", async () => {
       // Same page (the stored catalog + theme persist by origin): a
       // navigation to an address nothing answers is the honest state.
       await page.goto(`/?serve=${encodeURIComponent(UNUSED_SERVE)}`);
@@ -509,22 +509,25 @@ test("J11 Web 目标 — detection, picks, preset, live merge, report, download,
       await expect(
         panel.locator('[data-testid="copy-command"]'),
       ).toHaveAttribute("aria-disabled", "false");
-      // The recipe YAML download: a real browser download of the file.
+      // The recipe JSON download: a real browser download of the file
+      // (ticket #29: the wire JSON — the same body a serve submission
+      // sends; the CLI command runs it as-is, YAML being a JSON
+      // superset).
       await expect(
-        panel.locator('[data-testid="recipe-yaml"]'),
-      ).toContainText("base:");
-      const yamlDownload = page.waitForEvent("download");
+        panel.locator('[data-testid="recipe-json"]'),
+      ).toContainText('"base"');
+      const jsonDownload = page.waitForEvent("download");
       await pointerClick(
         page,
         panel.locator('[data-testid="download-recipe"]'),
       );
-      const yamlFile = await yamlDownload;
-      const yamlPath = path.join(tmpdir(), "fontalloy-j11-recipe.yaml");
-      await yamlFile.saveAs(yamlPath);
-      const yaml = await readFile(yamlPath, "utf8");
-      expect(yaml).toContain("base:");
-      expect(yaml).toContain("donors:");
-      expect(yaml).toContain("family: ChHsich");
+      const jsonFile = await jsonDownload;
+      const jsonPath = path.join(tmpdir(), "fontalloy-j11-recipe.json");
+      await jsonFile.saveAs(jsonPath);
+      const recipe = JSON.parse(await readFile(jsonPath, "utf8"));
+      expect(typeof recipe.base).toBeTruthy();
+      expect(Array.isArray(recipe.donors)).toBe(true);
+      expect(recipe.output.family).toBe("ChHsich");
     });
 
     await step("J11.9 zero JS errors across the journey", () =>
