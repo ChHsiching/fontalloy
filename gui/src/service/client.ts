@@ -89,6 +89,41 @@ export interface SubmitResult {
   href: string;
 }
 
+/**
+ * One compressed run of `POST /precedence-resolve` (ticket #28/#35): a
+ * maximal stretch of consecutive codepoints sharing the full answer
+ * tuple. `declared` is the covering rule's first font + granularity
+ * (exposed even when that rule cannot supply); `adjusted` is the 已调整
+ * discipline — a non-set rule effectively moved the winner off the
+ * no-rule default.
+ */
+export interface PrecedenceRun {
+  start: number;
+  end: number;
+  /** Font ref: `base` or `donor-<index>`. */
+  winner: string;
+  /** `default`, or the winning rule's id (`rule-<declaration index>`). */
+  via: string;
+  kind: "base" | "fill" | "override";
+  declared: { font: string; granularity: string } | null;
+  adjusted: boolean;
+}
+
+/** `POST /precedence-resolve` — the effective table as compressed runs. */
+export interface PrecedenceDocument {
+  /** The merge's font ids in default order (`base`, `donor-0`, …). */
+  fonts: string[];
+  /** The declaration count (complete rules that serialize). */
+  rules: number;
+  /** |universe ∩ coverage union|. */
+  codepoints: number;
+  /** Sorted, disjoint, maximal same-answer stretches. */
+  runs: PrecedenceRun[];
+  counts: Record<string, number>;
+  conflicts: unknown[];
+  universe: string[] | null;
+}
+
 /** The machine form of the verification report (schema v2 fields used). */
 export interface ReportDocument {
   schema?: string;
@@ -173,6 +208,12 @@ export class ServeError extends Error {
 const CONTROL_TIMEOUT_MS = 15_000;
 const SUBMIT_TIMEOUT_MS = 30_000;
 const REPORT_TIMEOUT_MS = 60_000;
+/**
+ * A precedence resolve loads the picks server-side (the same loading a
+ * build performs) — the endpoint is synchronous by measurement, but a
+ * big real family pair needs the same headroom a report readback has.
+ */
+const RESOLVE_TIMEOUT_MS = 60_000;
 /** Byte transfers: artifacts reach hundreds of MB over the loopback. */
 const BYTES_TIMEOUT_MS = 10 * 60_000;
 
@@ -310,6 +351,20 @@ export class ServeClient {
 
   report(id: string): Promise<ReportDocument> {
     return this.getJson<ReportDocument>(`/builds/${id}/report`, REPORT_TIMEOUT_MS);
+  }
+
+  /**
+   * The effective precedence table for picks+rules (ticket #35): one
+   * request per picks/rules change, the answer's compressed runs
+   * serving every local lookup. The body is
+   * `{picks, rules, sets}` in the recipe schema (codepoint targets as
+   * integers); a 400 carries the service's own message.
+   */
+  resolvePrecedence(body: unknown): Promise<PrecedenceDocument> {
+    return this.requestJson<PrecedenceDocument>("/precedence-resolve", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }, RESOLVE_TIMEOUT_MS);
   }
 
   /** Submit a recipe-shaped JSON body; a 400 carries the service message. */

@@ -482,8 +482,12 @@ function globRegExp(pattern: string): RegExp {
  *    artifact faces.
  *
  * Null when neither form resolves (the caller's inline failure).
+ *
+ * Exported since ticket #35: the precedence-resolve request resolves
+ * its picks through the SAME slot logic a build submission uses — one
+ * path, never a fork.
  */
-async function resolvePickSlot(
+export async function resolvePickSlot(
   font: LoadedFont,
   role: "base" | "donor",
 ): Promise<FontSlot | null> {
