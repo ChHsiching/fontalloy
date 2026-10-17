@@ -275,13 +275,19 @@ def _coverage_lines(report: VerificationReport) -> list[str]:
 
 def _weights_lines(report: VerificationReport) -> list[str]:
     """The borrow table of the text form — the same line per slot the
-    CLI has stated since issue #9, so every consumer reads one shape."""
+    CLI has stated since issue #9, so every consumer reads one shape.
+    A donor-only union slot's base-side borrow (issue #27) leads the
+    line: the base weight the container came from, stated as a borrow."""
     lines = ["", "weights:"]
     if not report.weights:
         return lines
     for slot in report.weights:
         style = "italic" if slot.italic else "upright"
         borrows = ", ".join(_borrow_text(borrow) for borrow in slot.borrows)
+        if slot.base_borrow is not None:
+            borrows = ", ".join(
+                filter(None, (f"base from {slot.base_borrow} (borrowed)", borrows))
+            )
         lines.append(f"  weight {slot.weight} {style}: {borrows or 'no donors'}")
     return lines
 
@@ -378,9 +384,14 @@ def _gap_summary_html(record: CoverageRecord) -> str:
 
 def _slot_row_html(slot: WeightSlotRecord, body: str, borrow=None) -> str:
     style = "italic" if slot.italic else "upright"
+    # A donor-only union slot names its base-side borrow in the output
+    # cell (issue #27): "600 upright (base 700)".
+    output = f"{slot.weight} {style}"
+    if slot.base_borrow is not None:
+        output += f" (base {slot.base_borrow})"
     cells = [
         str(slot.index),
-        f"{slot.weight} {style}",
+        output,
         body,
     ]
     if borrow is not None:

@@ -156,15 +156,21 @@ class WeightSlotRecord:
 
     ``index`` is the slot's output position (its face position in a
     collection); ``weight``/``italic`` are the output identity — the
-    base face's own; ``base_face`` is that face's index in the base
-    font file; ``borrows`` states every donor landing: which donor
-    weight ended up in this output weight, and how it was chosen.
+    base face's own, or the union weight of a donor-only slot (issue
+    #27); ``base_face`` is the container face's index in the base font
+    file; ``base_borrow`` states the union's base-side borrow — the
+    base weight the container was taken from (``None`` when the base
+    has its own face at the slot, and then absent from the JSON so a
+    union-inert report stays byte-identical); ``borrows`` states every
+    donor landing: which donor weight ended up in this output weight,
+    and how it was chosen.
     """
 
     index: int
     weight: int
     italic: bool
     base_face: int
+    base_borrow: int | None = None
     borrows: tuple[BorrowRecord, ...] = ()
 
 
@@ -418,6 +424,11 @@ class VerificationReport:
                     "weight": slot.weight,
                     "style": "italic" if slot.italic else "upright",
                     "base_face": slot.base_face,
+                    # The base-side borrow of a donor-only union slot
+                    # (issue #27); own slots omit the key entirely so a
+                    # union-inert report keeps its exact former bytes.
+                    **({"base_borrow": slot.base_borrow}
+                       if slot.base_borrow is not None else {}),
                     "borrows": [
                         {
                             "donor": borrow.donor,

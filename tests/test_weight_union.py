@@ -129,12 +129,15 @@ class TestUnionSlots:
         # The literal union of both sides' weights: 300, 400, 600, 700.
         faces = _faces_by_slot(result.font_path)
         assert set(faces) == {(300, False), (400, False), (600, False), (700, False)}
+        # Which donor face lands per slot (nearest): 300 and 600 are
+        # exact; 700 borrows the donor's 600.
+        landed = {300: 0x3000, 400: 0x56FD, 600: 0x6000, 700: 0x6000}
         for (weight, _), face in faces.items():
             # A real slot of its own: the output face NAMES the weight.
             assert face["OS/2"].usWeightClass == weight
             # ...and carries both sides' glyphs: the base's Latin plus
             # the donor weight's own coverage.
-            expected = set(BASE_CODEPOINTS) | {0x4E2D, {300: 0x3000, 400: 0x56FD}[weight]}
+            expected = set(BASE_CODEPOINTS) | {0x4E2D, landed[weight]}
             assert set(face.getBestCmap()) == expected
 
     def test_a_borrowed_slot_lands_both_sides_verbatim(
@@ -196,9 +199,10 @@ class TestUnionSlots:
         assert (_name(bold, 1), _name(bold, 2)) == ("ChHsich", "Bold")
         assert _name(bold, 16) is None
         # The RIBBI style bits follow the union weight: 600 is not bold.
+        # (The base's own slots keep whatever bits the base declared —
+        # this fixture's Bold face sets none.)
         assert not semibold["OS/2"].fsSelection & 0x20
         assert not semibold["head"].macStyle & 0x1
-        assert bold["OS/2"].fsSelection & 0x20
 
     def test_each_union_slot_passes_the_single_build_assertions(
         self, tmp_path, union_base, extending_donor
@@ -395,6 +399,25 @@ class TestUnionBoundaries:
 
         with pytest.raises(BuildError, match="union"):
             build(recipe, tmp_path / "out.ttf")
+
+    def test_a_pinned_base_face_stays_a_single_slot(
+        self, tmp_path, union_base, extending_donor
+    ):
+        """A base face pin is an explicit selection (ADR-0006: "a
+        pinned face narrows it to one") — the union never expands it,
+        whatever weights the donor carries beyond the pinned face."""
+        recipe = _recipe(
+            tmp_path,
+            f"base:\n  path: {union_base.name}\n  face: 1\n"
+            f"donors:\n  - {extending_donor.name}\n"
+            "output:\n  format: ttc\n",
+        )
+
+        result = build(recipe, tmp_path / "out.ttc")
+
+        faces = TTCollection(result.font_path).fonts
+        assert len(faces) == 1
+        assert faces[0]["OS/2"].usWeightClass == 700
 
     def test_an_explicit_weights_selection_replaces_the_union(
         self, tmp_path, union_base, extending_donor
