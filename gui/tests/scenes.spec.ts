@@ -33,16 +33,29 @@ test.describe("scene previews and synthesis settings", () => {
   test.describe.configure({ mode: "serial" });
   const jsErrors: string[] = [];
 
+  /** The shared fixture serve (ticket #35: scene coloring resolves
+   *  through `POST /precedence-resolve` — the TS mirror is gone). */
+  let service: ServeFixture | null = null;
+
+  test.beforeAll(async () => {
+    service = await startServeFixture({ donorGlyphs: 64, donorAscii: 6 });
+  });
+
+  test.afterAll(async () => {
+    await service?.dispose();
+    service = null;
+  });
+
   test.beforeEach(() => {
     jsErrors.length = 0;
   });
 
   test.afterEach(() => assertNoJsErrors(jsErrors));
 
-  /** Small fixture pair: base = A–Z, donor = A–F + U+4E00..U+4E3F. */
-  async function makeLocalFixtures(): Promise<{ base: string; donor: string }> {
-    const dir = await mkdtemp(resolve(tmpdir(), "fontalloy-scene-"));
-    return generateFonts(dir, { donorGlyphs: 64, donorAscii: 6 });
+  /** The fixture pair: base = A–Z, donor = A–F + U+4E00..U+4E3F. */
+  function makeLocalFixtures(): { base: string; donor: string } {
+    const live = service!;
+    return { base: live.baseFont, donor: live.donorFont };
   }
 
   /** Load one font file into a picker through its file input. */
@@ -63,12 +76,19 @@ test.describe("scene previews and synthesis settings", () => {
     await expect(popup).toBeHidden();
   }
 
-  /** Open the page (no service) with both fixture fonts picked. */
+  /** Open the page pointed at the fixture serve, with both fonts picked. */
   async function openWithFonts(
     page: Page,
     fonts: { base: string; donor: string },
   ): Promise<void> {
     collectJsErrors(page, jsErrors);
+    await page.addInitScript((url: string) => {
+      const config = window as unknown as {
+        __FONTALLOY_CONFIG__: Record<string, unknown>;
+      };
+      config.__FONTALLOY_CONFIG__ ??= {};
+      config.__FONTALLOY_CONFIG__.serveUrl = url;
+    }, service!.url);
     await page.goto("/");
     await waitForFontsReady(page);
     await loadIntoPicker(page, "en", fonts.base);

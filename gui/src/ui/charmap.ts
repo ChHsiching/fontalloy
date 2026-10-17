@@ -16,13 +16,13 @@ import {
   type UnicodeBlock,
 } from "../unicode/blocks";
 import { newRule, parseCodepointInput, type EditorRule } from "../precedence/model";
-import { currentResolver, defaultResolver } from "../precedence/live";
 import {
-  arrayCoverage,
-  EffectiveResolver,
-  isAdjusted,
-  type Coverage,
-} from "../precedence/resolve";
+  deeperWinner,
+  documentFor,
+  liveDocument,
+  lookupEntry,
+  precedenceStore,
+} from "../precedence/document";
 import { pickRefs, refFont, type PickRefs } from "../precedence/picks";
 import {
   beginSelectionGesture,
@@ -57,17 +57,19 @@ import { liveNotice } from "./live";
  * prototype — plus 多选/编码/撤销, the pager, the 已调整 legend, the
  * codepoint locator, and the 按编码指定 entry), and the effective grid.
  *
- * The grid renders the EFFECTIVE merged result: each cell resolves
- * through the client-side precedence mirror (same semantics as the core
- * resolver) against the coverage of the actually-loaded fonts, rendered
- * in the winning font's own face, and carries its resolution as DOM
- * attributes (`data-winner` / `data-via` / `data-kind`) — the grid never
- * lies, however complex the rules. Adjusted cells carry the kit's corner
- * dot, paired with the 已调整 legend: a NON-PRESET rule that EFFECTIVELY
- * changes the supplier — the resolved winner differs from the no-rule
- * default (round 8: the dot means 实际生效; a declaration whose font
- * lacks the glyph cannot move the winner and carries no dot; see
- * precedence/resolve.ts `isAdjusted`).
+ * The grid renders the EFFECTIVE merged result: each cell reads the
+ * landed precedence document (ticket #35 — `POST /precedence-resolve`
+ * once per picks/rules change, the SERVE's own answer, never a
+ * client-side mirror), rendered in the winning font's own face and
+ * carrying its resolution as DOM attributes (`data-winner` /
+ * `data-via` / `data-kind`) — the grid never lies, however complex
+ * the rules, and what it shows is what the build resolves. Adjusted
+ * cells carry the kit's corner dot, paired with the 已调整 legend: a
+ * NON-PRESET rule that EFFECTIVELY changes the supplier — the
+ * resolved winner differs from the no-rule default (round 8: the dot
+ * means 实际生效; a declaration whose font lacks the glyph cannot move
+ * the winner and carries no dot; the run's `adjusted` flag IS that
+ * discipline, computed where the build computes it).
  *
  * Interaction surfaces (prototype parity, restored):
  *
@@ -111,37 +113,17 @@ function applyCodepointSide(cp: number, side: FontSide): void {
   if (!picks.refs.includes(wanted)) return;
   // Prototype semantics (setOv): pressing the side the character
   // already carries WITHOUT its own override reverts the override —
-  // the deeper layers (defaults, ranges) show through again.
+  // the deeper layers (defaults, ranges) show through again. The
+  // deeper winner is the serve's answer for the rules beneath the
+  // codepoint layer (precedence/document.ts `deeperWinner`).
   const withoutOwn = store
     .get()
     .rules.filter((rule) => !targetsCodepoint(rule, cp));
-  if (deeperWinner(withoutOwn, picks, cp) === wanted) {
+  if (deeperWinner(cp) === wanted) {
     mutateRules(withoutOwn);
     return;
   }
   upsertCodepointRule(cp, sideRuleFonts(side));
-}
-
-/**
- * The winner of `cp` when its OWN codepoint rule is stripped — the
- * prototype's `layC` layer (block assignments and custom ranges
- * included, the per-character override excluded). Null when nothing
- * resolves it.
- */
-function deeperWinner(
-  rulesWithoutOwn: readonly EditorRule[],
-  picks: PickRefs,
-  cp: number,
-): string | null {
-  if (picks.refs.length === 0) return null;
-  const coverages = new Map<string, Coverage>();
-  if (picks.base) coverages.set("base", arrayCoverage(picks.base.codepoints));
-  if (picks.donor) {
-    coverages.set("donor-0", arrayCoverage(picks.donor.codepoints));
-  }
-  const resolver = new EffectiveResolver(rulesWithoutOwn, coverages);
-  const entry = resolver.resolve(cp);
-  return entry ? entry.winner : null;
 }
 
 /** Drop the codepoint rule targeting `cp` (the popup's 恢复默认). */
@@ -256,16 +238,6 @@ export function appMessages(): MessageStack {
   return messages();
 }
 
-/** The pick coverages as the resolver's map (shared builder). */
-function coveragesOf(
-  picks: PickRefs,
-): Map<string, Coverage | null> {
-  const map = new Map<string, Coverage | null>();
-  if (picks.base) map.set("base", arrayCoverage(picks.base.codepoints));
-  if (picks.donor) map.set("donor-0", arrayCoverage(picks.donor.codepoints));
-  return map;
-}
-
 /** Comma-grouped plain number (报告-style, en-US grouping). */
 const plainNum = (n: number): string => n.toLocaleString("en-US");
 
@@ -276,8 +248,10 @@ const plainNum = (n: number): string => n.toLocaleString("en-US");
  * (the success count ALWAYS stated, even when 0), the ineffective
  * reason as a dim sub-line only when nonzero, and the undo hint as a
  * kbd chip. `nextRules` is the rule list the assignment is about to
- * commit; the counts compare the resolved table before and after. The
- * card auto-dismisses on its countdown (round 9, owner item 7).
+ * commit; the counts compare the landed document against the document
+ * those rules resolve to (the same memo the commit itself will hit —
+ * never a second request for the state that lands). The card
+ * auto-dismisses on its countdown (round 9, owner item 7).
  */
 function announceAssignment(
   blocks: readonly UnicodeBlock[],
@@ -285,65 +259,65 @@ function announceAssignment(
   side: FontSide,
   nextRules: readonly EditorRule[],
   reverted: boolean,
-  picks: PickRefs,
 ): void {
-  const before = currentResolver(picks);
-  if (before === null) return; // no pair: the segments are no-ops anyway
-  const after = new EffectiveResolver(nextRules, coveragesOf(picks));
-
-  // Sweep the assigned intervals (a group assignment sweeps every block
-  // interval of the group; the resolver is per-codepoint, so this is a
-  // one-off walk, never a render path).
-  let switched = 0;
-  let ineffective = 0;
-  let noop = 0;
-  for (const block of blocks) {
-    for (const [start, end] of blockRanges(block)) {
-      for (let cp = start; cp <= end; cp++) {
-        const was = before.resolve(cp);
-        const now = after.resolve(cp);
-        if (was === null || now === null) continue; // neither pick covers
-        if (now.winner !== was.winner) {
-          switched++;
-          continue;
-        }
-        if (reverted) continue;
-        if (now.declared !== null && now.winner !== now.declared.font) {
-          // The assignment's own rule covers this codepoint but its
-          // font lacks the glyph — the other font keeps supplying it.
-          ineffective++;
-        } else {
-          // Already supplied by the assigned side; the rule changes
-          // nothing here (the declaration is now explicit, the glyph
-          // is the same one).
-          noop++;
+  const before = liveDocument();
+  if (before === null) return; // no resolve: the segments are no-ops anyway
+  void documentFor(nextRules).then((after) => {
+    if (after === null) return;
+    // Sweep the assigned intervals (a group assignment sweeps every
+    // block interval of the group); both sides answer from compressed
+    // runs, so this is a one-off walk, never a render path.
+    let switched = 0;
+    let ineffective = 0;
+    let noop = 0;
+    for (const block of blocks) {
+      for (const [start, end] of blockRanges(block)) {
+        for (let cp = start; cp <= end; cp++) {
+          const was = lookupEntry(before, cp);
+          const now = lookupEntry(after, cp);
+          if (was === null || now === null) continue; // neither pick covers
+          if (now.winner !== was.winner) {
+            switched++;
+            continue;
+          }
+          if (reverted) continue;
+          if (now.declared !== null && now.winner !== now.declared.font) {
+            // The assignment's own rule covers this codepoint but its
+            // font lacks the glyph — the other font keeps supplying it.
+            ineffective++;
+          } else {
+            // Already supplied by the assigned side; the rule changes
+            // nothing here (the declaration is now explicit, the glyph
+            // is the same one).
+            noop++;
+          }
         }
       }
     }
-  }
 
-  const sideWord = side === "base" ? "英文" : "中文";
-  if (reverted) {
+    const sideWord = side === "base" ? "英文" : "中文";
+    if (reverted) {
+      messages().push({
+        icon: "undo",
+        title: `${scope}恢复默认`,
+        stats: [{ value: plainNum(switched), label: "恢复" }],
+        undo: "撤销",
+      });
+      return;
+    }
     messages().push({
-      icon: "undo",
-      title: `${scope}恢复默认`,
-      stats: [{ value: plainNum(switched), label: "恢复" }],
+      icon: ineffective > 0 ? "warn" : "check",
+      title: `${scope}用${sideWord}字体`,
+      stats: [
+        { value: plainNum(switched), label: "生效" },
+        { value: plainNum(ineffective + noop), label: "未变" },
+      ],
+      // The reason names the ASSIGNED side's lack (the char popup's own
+      // vocabulary) — and only ever when there is an ineffective count
+      // to explain; the title already carries the side once.
+      reason: ineffective > 0 ? `${sideWord}字体不含此码位` : undefined,
       undo: "撤销",
     });
-    return;
-  }
-  messages().push({
-    icon: ineffective > 0 ? "warn" : "check",
-    title: `${scope}用${sideWord}字体`,
-    stats: [
-      { value: plainNum(switched), label: "生效" },
-      { value: plainNum(ineffective + noop), label: "未变" },
-    ],
-    // The reason names the ASSIGNED side's lack (the char popup's own
-    // vocabulary) — and only ever when there is an ineffective count
-    // to explain; the title already carries the side once.
-    reason: ineffective > 0 ? `${sideWord}字体不含此码位` : undefined,
-    undo: "撤销",
   });
 }
 
@@ -589,7 +563,7 @@ function assignBlocks(
       }
     }
   }
-  announceAssignment(blocks, scope, side, rules, already, picks);
+  announceAssignment(blocks, scope, side, rules, already);
   mutateRules(rules);
 }
 
@@ -625,8 +599,8 @@ function charFacts(cp: number): CharPopupFacts {
   const ch = String.fromCodePoint(cp);
   const picks = pickRefs();
   const effective = picks.refs.length > 0;
-  const resolver = effective ? currentResolver(picks) : null;
-  const entry = resolver ? resolver.resolve(cp) : null;
+  const doc = effective ? liveDocument() : null;
+  const entry = doc !== null ? lookupEntry(doc, cp) : null;
   const classification = classificationOf(cp);
 
   if (entry === null) {
@@ -689,17 +663,13 @@ function charFacts(cp: number): CharPopupFacts {
 
   // 恢复默认 shows only when the character carries its own override
   // AND that override changes the outcome (prototype: S.ov[ch] &&
-  // S.ov[ch] !== layC(ch,b)).
+  // S.ov[ch] !== layC(ch,b)). The deeper winner is the serve's answer
+  // beneath the codepoint layer.
   let showReset = false;
   const own = codepointRule(cp);
   if (own !== undefined) {
     const ownRef = own.fonts[0] ?? null;
-    const deeper = deeperWinner(
-      store.get().rules.filter((rule) => !targetsCodepoint(rule, cp)),
-      picks,
-      cp,
-    );
-    showReset = ownRef !== null && ownRef !== deeper;
+    showReset = ownRef !== null && ownRef !== deeperWinner(cp);
   }
 
   return {
@@ -1055,6 +1025,7 @@ export function mountCharmap(root: HTMLElement): void {
     );
   };
   store.subscribe(render);
+  precedenceStore.subscribe(render);
   render();
 
   /* ---------------- chip bar ---------------- */
@@ -1282,10 +1253,11 @@ export function mountCharmap(root: HTMLElement): void {
     // not wait for the pair to mark the gaps (the round-19 plain
     // preview rendered an icon-less pick's unmapped NF cells as fallback
     // tofu, exactly the misleading frame the owner rejected). `plain`
-    // stays for the no-pick state only.
+    // stays for the no-pick state — and for the no-document state: a
+    // lone CJK pick (the request's `picks.base` is mandatory) or an
+    // absent serve has no coloring to show yet (ticket #35).
     const judged = picks.base !== null || picks.donor !== null;
-    const resolver = judged ? currentResolver(picks) : null;
-    const base = judged ? defaultResolver(picks) : null;
+    const doc = judged ? liveDocument() : null;
     const selectionSet = new Set(selection);
     // The picks' suspected-placeholder sets (round 20): a cell whose
     // codepoint a pick maps to a placeholder glyph keeps rendering that
@@ -1345,12 +1317,13 @@ export function mountCharmap(root: HTMLElement): void {
       }
       const cp = nthCodepoint(categoryId, first + i);
       const ch = String.fromCodePoint(cp);
-      // The effective merged result: resolve, expose, render in the
-      // winner's own face (the grid never lies — issue #18).
-      const entry = resolver ? resolver.resolve(cp) : null;
-      const baseEntry = base ? base.resolve(cp) : null;
+      // The effective merged result: the landed document's run for the
+      // cell, exposed and rendered in the winner's own face (the grid
+      // never lies — issue #18; what it shows is what the build
+      // resolves — ticket #35).
+      const entry = doc !== null ? lookupEntry(doc, cp) : null;
       const winnerFont = entry ? refFont(entry.winner, picks) : null;
-      if (entry === null && judged) {
+      if (entry === null && judged && doc !== null) {
         // Missing, two ways (round 20): a pick maps the codepoint to a
         // suspected placeholder glyph → the font's own glyph rides the
         // missing frame; nothing maps it inside the 图标 ranges → no
@@ -1376,9 +1349,10 @@ export function mountCharmap(root: HTMLElement): void {
             ? "base"
             : "donor"
           : "plain",
-        // Adjusted = a non-preset rule EFFECTIVELY changes the
-        // supplier (see isAdjusted — round 8).
-        adjusted: isAdjusted(entry, baseEntry),
+        // Adjusted = a non-preset rule EFFECTIVELY changes the supplier
+        // (the run's own flag — round 8's discipline, computed where
+        // the build computes it).
+        adjusted: entry?.adjusted ?? false,
         selected: selectionSet.has(cp),
         cursor: cp === selectedCodepoint,
         fontFamily: winnerFont

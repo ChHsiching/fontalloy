@@ -138,7 +138,8 @@ instruction from the hands-on review, not a silent drift):
   stays kit-derived; the 图标 group itself is prototype content).
 - **已调整 keys on the declared side** (owner item 4): the prototype's
   ov discipline — a non-preset rule declaring a side the no-rule default
-  does not carry — see `precedence/resolve.ts` `isAdjusted`. Winner-only
+  does not carry — since ticket #35 the verdict is the resolve API's
+  per-run `adjusted` flag (`precedence/document.ts`). Winner-only
   comparison went mute exactly where an assignment cannot move the
   winner (absence never overrides).
 

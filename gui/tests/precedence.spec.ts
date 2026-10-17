@@ -2,7 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { generateFonts, startServeFixture, type ServeFixture } from "./serve";
+import { startServeFixture, type ServeFixture } from "./serve";
 import {
   assertNoJsErrors,
   collectJsErrors,
@@ -12,19 +12,22 @@ import {
 
 /**
  * Issue #18 (prototype parity): precedence and the effective preview
- * grid.
+ * grid. Ticket #35 (spec #25): the grid's coloring is the SERVE's
+ * answer — `POST /precedence-resolve` once per picks/rules change, the
+ * response's compressed runs paged locally — so the whole suite drives
+ * a REAL fixture serve (the TS resolver mirror is deleted; what the
+ * grid shows is what the build resolves).
  *
- * The grid must render the EFFECTIVE merged result (each codepoint in
- * its winning font per the resolver semantics); the user sets
- * precedence through the workspace's own affordances — the 文字范围
- * language chips, the 按编码指定 popup, the char popup at the cell, and
- * the toolbar's block/group segments — with the rail's 自定义规则 list
- * as the read-only human summary of the same rule state.
+ * The user sets precedence through the workspace's own affordances —
+ * the 文字范围 language chips, the 按编码指定 popup, the char popup at
+ * the cell, and the toolbar's block/group segments — with the rail's
+ * 自定义规则 list as the read-only human summary of the same rule
+ * state.
  *
  * The fixtures are synthetic (e2e_fonts.py): a base covering the ASCII
- * letters, a donor covering a CJK run plus — with `--donor-ascii N` —
- * the first N ASCII letters so override cases exist (the two coverages
- * are otherwise disjoint and "override" could never be observed).
+ * letters, a donor covering a CJK run plus the first 6 ASCII letters
+ * so override cases exist (the two coverages are otherwise disjoint
+ * and "override" could never be observed).
  */
 
 /** The count of human summary rows in the 自定义规则 section. */
@@ -36,16 +39,28 @@ test.describe("precedence editing", () => {
   test.describe.configure({ mode: "serial" });
   const jsErrors: string[] = [];
 
+  /** The shared fixture serve (ticket #35: the grid resolves through it). */
+  let service: ServeFixture | null = null;
+
+  test.beforeAll(async () => {
+    service = await startServeFixture({ donorGlyphs: 64, donorAscii: 6 });
+  });
+
+  test.afterAll(async () => {
+    await service?.dispose();
+    service = null;
+  });
+
   test.beforeEach(() => {
     jsErrors.length = 0;
   });
 
   test.afterEach(() => assertNoJsErrors(jsErrors));
 
-  /** Small fixture pair: base = A–Z, donor = A–F + U+4E00..U+4E3F. */
-  async function makeLocalFixtures(): Promise<{ base: string; donor: string }> {
-    const dir = await mkdtemp(resolve(tmpdir(), "fontalloy-prec-"));
-    return generateFonts(dir, { donorGlyphs: 64, donorAscii: 6 });
+  /** The fixture pair: base = A–Z, donor = A–F + U+4E00..U+4E3F. */
+  function makeLocalFixtures(): { base: string; donor: string } {
+    const live = service!;
+    return { base: live.baseFont, donor: live.donorFont };
   }
 
   /** Load one font file into a picker through its file input. */
@@ -66,12 +81,19 @@ test.describe("precedence editing", () => {
     await page.keyboard.press("Escape");
   }
 
-  /** Open the page (no service) with both fixture fonts picked. */
+  /** Open the page pointed at the fixture serve, with both fonts picked. */
   async function openWithFonts(
     page: Page,
     fonts: { base: string; donor: string },
   ): Promise<void> {
     collectJsErrors(page, jsErrors);
+    await page.addInitScript((url: string) => {
+      const config = window as unknown as {
+        __FONTALLOY_CONFIG__: Record<string, unknown>;
+      };
+      config.__FONTALLOY_CONFIG__ ??= {};
+      config.__FONTALLOY_CONFIG__.serveUrl = url;
+    }, service!.url);
     await page.goto("/");
     await waitForFontsReady(page);
     await loadIntoPicker(page, "en", fonts.base);
@@ -230,153 +252,213 @@ test.describe("precedence editing", () => {
   test("grid resolution matches the serve build's report provenance", async ({
     page,
   }) => {
-    const service = await startServeFixture({
-      donorGlyphs: 64,
-      donorAscii: 6,
-    });
     const saved: string[] = [];
-    try {
-      // The save stand-in (the synthesize flow saves through it).
-      const saveDir = await mkdtemp(resolve(tmpdir(), "fontalloy-save-"));
-      await page.exposeFunction("__fontalloyTestSave", async (name: string, b64: string) => {
-        const target = resolve(saveDir, name);
-        await writeFile(target, Buffer.from(b64, "base64"));
-        saved.push(target);
-        return target;
-      });
-      await page.addInitScript(() => {
-        const config = window as unknown as {
-          __FONTALLOY_CONFIG__: Record<string, unknown>;
-        };
-        config.__FONTALLOY_CONFIG__ = {
-          saveArtifact: async (
-            _name: string,
-            bytes: Uint8Array,
-          ): Promise<{ saved: boolean; path: string | null }> => {
-            const b64 = btoa(
-              Array.from(bytes, (b) => String.fromCharCode(b)).join(""),
-            );
-            const path = await window.__fontalloyTestSave(_name, b64);
-            return path === null
-              ? { saved: false, path: null }
-              : { saved: true, path };
-          },
-        };
-      });
-      await page.addInitScript((url: string) => {
-        const config = window as unknown as {
-          __FONTALLOY_CONFIG__: Record<string, unknown>;
-        };
-        config.__FONTALLOY_CONFIG__ ??= {};
-        config.__FONTALLOY_CONFIG__.serveUrl = url;
-      }, service.url);
-      collectJsErrors(page, jsErrors);
-      await page.goto("/");
-      await waitForFontsReady(page);
-
-      await loadIntoPicker(page, "en", service.baseFont);
-      await loadIntoPicker(page, "cjk", service.donorFont);
-
-      // Rule set exercising every granularity through the real UI, in
-      // declaration order (the boot-seeded zh_cn preset — [base,
-      // donor-0], resolution-neutral — is complete rule 0 before these;
-      // round 6: side assignments carry the PREFERENCE list [side,
-      // other] — "用X字体" means X first, the other font filling what X
-      // lacks, so the rule supplies everywhere it covers):
-      //   rule-1 range 0x41-0x46 -> [base, donor-0]
-      //   rule-2 codepoint 0x42 -> [donor-0, base] (cp beats the range)
-      //   rule-3 range 0x4E00-0x4E0F -> [base, donor-0] (base lacks CJK:
-      //        the rule still supplies, through the donor)
-      await addRangeRule(page, "0x41", "0x46", "base");
-      await setCodepointSide(page, "U+0042", "donor");
-      await addRangeRule(page, "0x4E00", "0x4E0F", "base");
-      await expect.poll(() => summaryRowCount(page)).toBe(2);
-      await expect(page.locator("[data-role='rule-solo']")).toHaveCount(1);
-
-      // Collect the client-side resolution over the whole coverage union
-      // (base A–Z on page 1 of "all"; donor 4E00–4E3F on CJK page 1).
-      const asciiPage = await collectGrid(page);
-      await gotoCjkPage(page);
-      const cjkPage = await collectGrid(page);
-      const dom: Record<string, [string, string, string]> = {
-        ...asciiPage,
-        ...cjkPage,
+    // The save stand-in (the synthesize flow saves through it).
+    const saveDir = await mkdtemp(resolve(tmpdir(), "fontalloy-save-"));
+    await page.exposeFunction("__fontalloyTestSave", async (name: string, b64: string) => {
+      const target = resolve(saveDir, name);
+      await writeFile(target, Buffer.from(b64, "base64"));
+      saved.push(target);
+      return target;
+    });
+    await page.addInitScript(() => {
+      const config = window as unknown as {
+        __FONTALLOY_CONFIG__: Record<string, unknown>;
       };
-
-      // Synthesize: the same rule state through the real serve pipeline.
-      const synthesize = page.locator(".topbar [data-role='synthesize']");
-      await expect(synthesize).toHaveAttribute("aria-disabled", "false");
-      await pointerClick(page, synthesize);
-      await expect(
-        page.locator(".build-row", { hasText: "已保存" }),
-      ).toBeVisible({ timeout: 60_000 });
-
-      // The report (fetched over the same serve contract) is the oracle.
-      const builds = (await fetchJson(`${service.url}/builds`)) as {
-        builds: Array<{ id: string; status: string }>;
-      };
-      const job = builds.builds[builds.builds.length - 1]!;
-      expect(job.status).toBe("done");
-      const report = (await fetchJson(
-        `${service.url}/builds/${job.id}/report`,
-      )) as {
-        rules: Array<{
-          id: string;
-          granularity: string;
-          target: string;
-          fonts: string[];
-        }>;
-        provenance: Array<{
-          codepoint: number;
-          winner: string;
-          in_output: boolean;
-          via: string;
-          kind: string;
-        }>;
-      };
-
-      // The recipe the GUI submitted echoes the serialized rule list
-      // (the boot-seeded zh_cn preset first, then the UI-declared rules;
-      // round 6: assignments carry the [side, other] preference lists).
-      expect(report.rules).toEqual([
-        { id: "rule-0", granularity: "set", target: "zh_cn", fonts: ["base", "donor-0"] },
-        {
-          id: "rule-1",
-          granularity: "range",
-          target: "0x41-0x46",
-          fonts: ["base", "donor-0"],
+      config.__FONTALLOY_CONFIG__ = {
+        saveArtifact: async (
+          _name: string,
+          bytes: Uint8Array,
+        ): Promise<{ saved: boolean; path: string | null }> => {
+          const b64 = btoa(
+            Array.from(bytes, (b) => String.fromCharCode(b)).join(""),
+          );
+          const path = await window.__fontalloyTestSave(_name, b64);
+          return path === null
+            ? { saved: false, path: null }
+            : { saved: true, path };
         },
-        { id: "rule-2", granularity: "codepoint", target: "0x42", fonts: ["donor-0", "base"] },
-        {
-          id: "rule-3",
-          granularity: "range",
-          target: "0x4E00-0x4E0F",
-          fonts: ["base", "donor-0"],
-        },
+      };
+    });
+    await openWithFonts(page, makeLocalFixtures());
+    const svc = service!;
+
+    // Rule set exercising every granularity through the real UI, in
+    // declaration order (the boot-seeded zh_cn preset — [base,
+    // donor-0], resolution-neutral — is complete rule 0 before these;
+    // round 6: side assignments carry the PREFERENCE list [side,
+    // other] — "用X字体" means X first, the other font filling what X
+    // lacks, so the rule supplies everywhere it covers):
+    //   rule-1 range 0x41-0x46 -> [base, donor-0]
+    //   rule-2 codepoint 0x42 -> [donor-0, base] (cp beats the range)
+    //   rule-3 range 0x4E00-0x4E0F -> [base, donor-0] (base lacks CJK:
+    //        the rule still supplies, through the donor)
+    await addRangeRule(page, "0x41", "0x46", "base");
+    await setCodepointSide(page, "U+0042", "donor");
+    await addRangeRule(page, "0x4E00", "0x4E0F", "base");
+    await expect.poll(() => summaryRowCount(page)).toBe(2);
+    await expect(page.locator("[data-role='rule-solo']")).toHaveCount(1);
+
+    // The resolution is now the serve's answer: wait for the latest
+    // document to land on a known cell (the codepoint rule flips
+    // U+0042 to the donor) before walking the grid.
+    await expect(
+      page.locator(".charmap-grid .kit-cell[data-cp='U+0042']"),
+    ).toHaveAttribute("data-winner", "donor-0");
+
+    // Collect the client-side resolution over the whole coverage union
+    // (base A–Z on page 1 of "all"; donor 4E00–4E3F on CJK page 1).
+    const asciiPage = await collectGrid(page);
+    await gotoCjkPage(page);
+    const cjkPage = await collectGrid(page);
+    const dom: Record<string, [string, string, string]> = {
+      ...asciiPage,
+      ...cjkPage,
+    };
+
+    // Synthesize: the same rule state through the real serve pipeline.
+    const synthesize = page.locator(".topbar [data-role='synthesize']");
+    await expect(synthesize).toHaveAttribute("aria-disabled", "false");
+    await pointerClick(page, synthesize);
+    await expect(
+      page.locator(".build-row", { hasText: "已保存" }),
+    ).toBeVisible({ timeout: 60_000 });
+
+    // The report (fetched over the same serve contract) is the oracle.
+    const builds = (await fetchJson(`${svc.url}/builds`)) as {
+      builds: Array<{ id: string; status: string }>;
+    };
+    const job = builds.builds[builds.builds.length - 1]!;
+    expect(job.status).toBe("done");
+    const report = (await fetchJson(
+      `${svc.url}/builds/${job.id}/report`,
+    )) as {
+      rules: Array<{
+        id: string;
+        granularity: string;
+        target: string;
+        fonts: string[];
+      }>;
+      provenance: Array<{
+        codepoint: number;
+        winner: string;
+        in_output: boolean;
+        via: string;
+        kind: string;
+      }>;
+    };
+
+    // The recipe the GUI submitted echoes the serialized rule list
+    // (the boot-seeded zh_cn preset first, then the UI-declared rules;
+    // round 6: assignments carry the [side, other] preference lists).
+    expect(report.rules).toEqual([
+      { id: "rule-0", granularity: "set", target: "zh_cn", fonts: ["base", "donor-0"] },
+      {
+        id: "rule-1",
+        granularity: "range",
+        target: "0x41-0x46",
+        fonts: ["base", "donor-0"],
+      },
+      { id: "rule-2", granularity: "codepoint", target: "0x42", fonts: ["donor-0", "base"] },
+      {
+        id: "rule-3",
+        granularity: "range",
+        target: "0x4E00-0x4E0F",
+        fonts: ["base", "donor-0"],
+      },
+    ]);
+
+    // Winners agree per codepoint — winner, via, and kind.
+    expect(report.provenance.length).toBeGreaterThan(0);
+    const seen = new Set<string>();
+    for (const entry of report.provenance) {
+      const cp = `U+${entry.codepoint.toString(16).toUpperCase().padStart(4, "0")}`;
+      const domEntry = dom[cp];
+      expect(domEntry, `codepoint ${cp} missing from the grid walk`).toBeDefined();
+      seen.add(cp);
+      expect(domEntry, `codepoint ${cp}`).toEqual([
+        entry.winner,
+        entry.via,
+        entry.kind,
       ]);
-
-      // Winners agree per codepoint — winner, via, and kind.
-      expect(report.provenance.length).toBeGreaterThan(0);
-      const seen = new Set<string>();
-      for (const entry of report.provenance) {
-        const cp = `U+${entry.codepoint.toString(16).toUpperCase().padStart(4, "0")}`;
-        const domEntry = dom[cp];
-        expect(domEntry, `codepoint ${cp} missing from the grid walk`).toBeDefined();
-        seen.add(cp);
-        expect(domEntry, `codepoint ${cp}`).toEqual([
-          entry.winner,
-          entry.via,
-          entry.kind,
-        ]);
-        expect(entry.in_output, `codepoint ${cp} should be in the built font`).toBe(true);
-      }
-      // And the grid claims no covered codepoint the resolver does not.
-      const domCovered = Object.entries(dom).filter(([, v]) => v[0] !== "");
-      expect(domCovered.length).toBe(report.provenance.length);
-      for (const [cp] of domCovered) expect(seen.has(cp), `${cp} not in provenance`).toBe(true);
-    } finally {
-      await service.dispose();
+      expect(entry.in_output, `codepoint ${cp} should be in the built font`).toBe(true);
     }
+    // And the grid claims no covered codepoint the resolver does not.
+    const domCovered = Object.entries(dom).filter(([, v]) => v[0] !== "");
+    expect(domCovered.length).toBe(report.provenance.length);
+    for (const [cp] of domCovered) expect(seen.has(cp), `${cp} not in provenance`).toBe(true);
+  });
+
+  /* --------------------------------------------------------------- */
+  /* Ticket #35: the coloring IS the API — memoized, locally paged.    */
+  /* --------------------------------------------------------------- */
+
+  test("the grid colors through the resolve API: one request per change, paging local", async ({
+    page,
+  }) => {
+    // Count POST /precedence-resolve requests from the page itself.
+    let resolves = 0;
+    page.on("request", (request) => {
+      if (
+        request.method() === "POST" &&
+        request.url().endsWith("/precedence-resolve")
+      ) {
+        resolves++;
+      }
+    });
+    const fonts = makeLocalFixtures();
+    collectJsErrors(page, jsErrors);
+    await page.addInitScript((url: string) => {
+      const config = window as unknown as {
+        __FONTALLOY_CONFIG__: Record<string, unknown>;
+      };
+      config.__FONTALLOY_CONFIG__ ??= {};
+      config.__FONTALLOY_CONFIG__.serveUrl = url;
+    }, service!.url);
+    await page.goto("/");
+    await waitForFontsReady(page);
+    expect(resolves).toBe(0); // no picks yet: nothing to resolve
+
+    // Each pick change resolves exactly once. The base-only wait is
+    // safe (nothing colored before it); the PAIR's wait must anchor on
+    // a cell only the pair's document colors — the donor-only CJK run —
+    // because A–Z read identically under both documents.
+    await loadIntoPicker(page, "en", fonts.base);
+    await expect(
+      page.locator(".charmap-grid .kit-cell[data-cp='U+0041']"),
+    ).toHaveAttribute("data-winner", "base");
+    expect(resolves).toBe(1);
+    await loadIntoPicker(page, "cjk", fonts.donor);
+    await gotoCjkPage(page);
+    await expect(
+      page.locator(".charmap-grid .kit-cell[data-cp='U+4E00']"),
+    ).toHaveAttribute("data-winner", "donor-0");
+    expect(resolves).toBe(2);
+    await pointerClick(page, page.locator(".kit-cat-g[data-group='all']"));
+
+    // A rules change resolves exactly once more...
+    await addRangeRule(page, "0x0041", "0x005A", "donor");
+    await expect(
+      page.locator(".charmap-grid .kit-cell[data-cp='U+0041']"),
+    ).toHaveAttribute("data-winner", "donor-0");
+    expect(resolves).toBe(3);
+
+    // ...and paging the grid, switching categories, and scrolling pages
+    // of cells resolve NOTHING more — the runs answer locally.
+    await pointerClick(page, page.locator("[data-pager-arrow='next']").first());
+    await gotoCjkPage(page);
+    await expect(
+      page.locator(".charmap-grid .kit-cell[data-cp='U+4E00']"),
+    ).toHaveAttribute("data-winner", "donor-0");
+    await pointerClick(page, page.locator("[data-pager-arrow='next']").first());
+    expect(resolves).toBe(3);
+
+    // An unrelated state change (a category switch back) stays at 3.
+    await pointerClick(page, page.locator(".kit-cat-g[data-group='all']"));
+    await expect(
+      page.locator(".charmap-grid .kit-cell[data-cp='U+0041']"),
+    ).toHaveAttribute("data-winner", "donor-0");
+    expect(resolves).toBe(3);
   });
 
   /* --------------------------------------------------------------- */

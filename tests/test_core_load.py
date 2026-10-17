@@ -81,7 +81,12 @@ class TestCollectionInput:
         recipe = tmp_path / "recipe.yaml"
         recipe.write_text(
             f"base: {base.name}\n"
-            "donors:\n  - path: coll.ttc\n    face: 1\n",
+            "donors:\n  - path: coll.ttc\n    face: 1\n"
+            # The subject is the donor's face pick, not the matrix: the
+            # selected face 1 is Bold (700) against the 400 base, so the
+            # recipe pins the base's weight to stay single-slot under
+            # the union default (issue #27).
+            "weights:\n  - weight: 400\n",
             encoding="utf-8",
         )
 
@@ -103,7 +108,11 @@ class TestCollectionInput:
         recipe = tmp_path / "recipe.yaml"
         recipe.write_text(
             f"base: {base.name}\n"
-            "donors:\n  - coll.ttc#1\n",
+            "donors:\n  - coll.ttc#1\n"
+            # Same shape as the explicit-face test above: the string
+            # fragment's face 1 is Bold (700), pinned away from the
+            # union so the pick stays the only subject (issue #27).
+            "weights:\n  - weight: 400\n",
             encoding="utf-8",
         )
 
@@ -193,7 +202,11 @@ class TestVariableInput:
         recipe.write_text(
             f"base:\n  path: {variable_font.name}\n"
             "  instance:\n    wght: 700\n"
-            f"donors:\n  - {donor.name}\n",
+            f"donors:\n  - {donor.name}\n"
+            # The pinned instance is the subject; the base instantiates
+            # to 700 and the 400 donor would add a donor-only slot under
+            # the union default (issue #27).
+            "weights:\n  - weight: 700\n",
             encoding="utf-8",
         )
 
@@ -222,7 +235,10 @@ class TestVariableInput:
         recipe.write_text(
             f"base:\n  path: {variable.name}\n"
             "  instance:\n    wght: 700\n"
-            f"donors:\n  - {donor.name}\n",
+            f"donors:\n  - {donor.name}\n"
+            # As above: the pinned wght=700 base against the 400 donor,
+            # pinned away from the union (issue #27).
+            "weights:\n  - weight: 700\n",
             encoding="utf-8",
         )
 
@@ -238,7 +254,11 @@ class TestVariableInput:
         recipe = tmp_path / "recipe.yaml"
         recipe.write_text(
             f"base: {base_font.name}\n"
-            f"donors:\n  - path: {variable_font.name}\n    instance:\n      wght: 900\n",
+            f"donors:\n  - path: {variable_font.name}\n    instance:\n      wght: 900\n"
+            # The subject is the instantiated donor's graft; its wght=900
+            # face is a donor-only weight, pinned away from the union so
+            # the 400 base stays the single output face (issue #27).
+            "weights:\n  - weight: 400\n",
             encoding="utf-8",
         )
 
@@ -288,7 +308,10 @@ class TestVariableInput:
         recipe = tmp_path / "recipe.yaml"
         recipe.write_text(
             f"base:\n  path: {variable_font.name}\n  instance:\n    wght: 700\n"
-            f"donors:\n  - {donor.name}\n",
+            f"donors:\n  - {donor.name}\n"
+            # Determinism over one fixed subject: the 700 base and the
+            # 400 donor, pinned away from the union (issue #27).
+            "weights:\n  - weight: 700\n",
             encoding="utf-8",
         )
         output = tmp_path / "out.ttf"

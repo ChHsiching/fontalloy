@@ -35,9 +35,23 @@ directory; a CLI-specified directory elsewhere):
 The marker is written ONLY after the archive's sha256, every listed
 face's sha256, and every face's parse have all been verified, so a run
 killed mid-download leaves at worst a ``.part`` temp file — never a
-falsely-complete family — and the next run re-verifies everything the
-marker claims (a stale marker can never canonize corrupt bytes) and
-repairs what is missing.
+falsely-complete family. The marker records the release tag plus the
+byte sizes that verification pinned (the archive's and every listed
+face's), which is all a relaunch needs to trust the family.
+
+Launch checks are STAT-ONLY (the ticket #26 follow-up: re-hashing a
+~10 GB catalog at every GUI launch was a full-disk-read storm on the
+owner's workstation). At startup a family counts as complete iff the
+marker exists, its tag matches the release tag, the archive is
+present at its recorded size, and every listed face is present at its
+recorded size — no byte is hashed. Bytes are sha256-verified on
+download, on the explicit ``POST /catalog/sync`` repair pass (which
+re-hashes everything), and whenever a launch check finds an anomaly:
+a missing or stale marker, a missing file, or a size mismatch —
+partial writes and truncations always change a size (the round-27
+failure mode). Same-size bit-rot is deliberately out of launch-time
+scope: it is caught by the explicit sync's re-hash, not by the stat
+pass.
 
 The sync runs on its own daemon thread, never inside a request handler
 (the round-25 starvation lesson): the state lock is held only for
@@ -47,6 +61,7 @@ snapshot-sized mutations, and the loop yields between families, so
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import threading
@@ -82,6 +97,9 @@ FAILED = "failed"
 
 #: Complete-marker suffix: ``<archive>.complete``, written only after
 #: the archive, every listed face, and every parse have been verified.
+#: The marker's JSON body records the release tag and the verified
+#: byte sizes (the archive's and every face's) that the stat-only
+#: launch check compares against.
 COMPLETE_SUFFIX = ".complete"
 
 #: Temp-suffix of in-flight downloads. A run killed mid-download or
@@ -123,6 +141,31 @@ def _yield_between_families() -> None:
     time.sleep(float(delay) if delay else SYNC_YIELD_SECONDS)
 
 
+def _marker_claim(marker: Path, tag: str) -> tuple[int, dict[str, int]] | None:
+    """Parse a complete marker's claim: the release tag it was written
+    under plus the byte sizes its verification pinned (the archive's
+    and every listed face's). ``None`` when the marker is missing,
+    unreadable, malformed, or was written under a different tag — every
+    such case is an anomaly the caller repairs. A marker from a run
+    before sizes were recorded carries only the bare tag string; it
+    parses as malformed and the repair rewrites it in the recorded-
+    sizes form (a one-time re-verification after the upgrade).
+    """
+    try:
+        claim = json.loads(marker.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(claim, dict) or claim.get("tag") != tag:
+        return None
+    archive_size = claim.get("archive")
+    faces = claim.get("faces")
+    if not isinstance(archive_size, int) or not isinstance(faces, dict):
+        return None
+    if not all(isinstance(size, int) for size in faces.values()):
+        return None
+    return archive_size, {str(name): size for name, size in faces.items()}
+
+
 class CatalogSync:
     """The catalog lifecycle service behind ``/catalog/status``.
 
@@ -151,6 +194,7 @@ class CatalogSync:
             self._error = None
         self._tag: str | None = None
         self._families: dict[str, _FamilyProgress] = {}
+        self._verify_hashes = True
 
     # -- configuration -----------------------------------------------------
 
@@ -194,20 +238,32 @@ class CatalogSync:
     # -- lifecycle -----------------------------------------------------------
 
     def start(self) -> None:
-        """Start the startup sync (a no-op unless fully configured)."""
-        self.request_sync()
+        """Start the startup sync — the stat-only fast path.
 
-    def request_sync(self) -> None:
+        A warm catalog hashes nothing: every intact family is confirmed
+        by its marker, the release tag, and file sizes alone. Hashing
+        happens only where a launch check finds an anomaly.
+        """
+        self.request_sync(verify_hashes=False)
+
+    def request_sync(self, *, verify_hashes: bool = True) -> None:
         """Run a full sync pass (re-check and repair) on a daemon thread.
 
         Idempotent: while a run is in flight the call is a no-op, so
         ``POST /catalog/sync`` never piles runs onto each other.
+
+        With ``verify_hashes`` (the default — the ``POST /catalog/sync``
+        repair pass) every family is re-verified by sha256 against the
+        release document, whatever the marker claims — the repair path
+        that also catches same-size bit-rot. Without it (the startup
+        pass) intact families are confirmed by stat alone.
         """
         if not self._active:
             return
         with self._lock:
             if self._thread is not None and self._thread.is_alive():
                 return
+            self._verify_hashes = verify_hashes
             self._thread = threading.Thread(
                 target=self._run, name="fontalloy-catalog-sync", daemon=True
             )
@@ -219,6 +275,7 @@ class CatalogSync:
         — a failing family never aborts the others."""
         assert self._origin is not None and self._dir is not None
         with self._lock:
+            verify_hashes = self._verify_hashes
             self._state = BOOTSTRAPPING
             self._error = None
         try:
@@ -237,7 +294,7 @@ class CatalogSync:
         failures: list[str] = []
         for family in release.families:
             try:
-                self._sync_family(release, family)
+                self._sync_family(release, family, verify_hashes=verify_hashes)
             except FontAlloyError as exc:
                 self._mark_family(family.family, FAILED, error=str(exc))
                 failures.append(f"{family.family}: {exc}")
@@ -313,23 +370,35 @@ class CatalogSync:
 
     # -- one family ------------------------------------------------------------
 
-    def _sync_family(self, release: CatalogRelease, family: ReleaseFamily) -> None:
+    def _sync_family(
+        self,
+        release: CatalogRelease,
+        family: ReleaseFamily,
+        *,
+        verify_hashes: bool,
+    ) -> None:
         """Make one family whole: verify, repair, and only then mark.
 
-        The fast path re-validates what the marker claims (the archive's
-        sha256 and every listed face's sha256, against the document) and
-        skips the family when it all holds. Anything short of that runs
-        the full repair: fetch the archive through the ordered origin
-        list (skipped when the local archive still verifies), re-extract
-        from scratch with per-face parse validation, verify every listed
-        face's checksum, and write the marker last.
+        The launch fast path (``verify_hashes`` off) trusts the marker's
+        stat-level claim — matching tag, archive at its recorded size,
+        every face at its recorded size — and skips the family when it
+        all holds; no byte is hashed. The repair pass
+        (``verify_hashes`` on, the explicit sync) re-hashes the archive
+        and every listed face against the document instead. Anything
+        short of a passing check runs the full repair: fetch the
+        archive through the ordered origin list (skipped when the local
+        archive still verifies), re-extract from scratch with per-face
+        parse validation, verify every listed face's checksum, and
+        write the marker last.
         """
         archive = self._dir / family.zip
         extracted = self._dir / Path(family.zip).stem
         marker = self._dir / (family.zip + COMPLETE_SUFFIX)
 
         self._mark_family(family.family, VERIFYING)
-        if self._family_complete(release, family, marker):
+        if self._family_complete(
+            release, family, marker, verify_hashes=verify_hashes
+        ):
             self._mark_family(family.family, DONE)
             return
 
@@ -360,33 +429,71 @@ class CatalogSync:
                     f"{actual}, the release document pins {listed.sha256}"
                 )
 
-        marker.write_text(release.tag, encoding="utf-8")
+        marker.write_text(
+            json.dumps(
+                {
+                    "tag": release.tag,
+                    "archive": archive.stat().st_size,
+                    "faces": {
+                        listed.file: (extracted / listed.file).stat().st_size
+                        for listed in family.files
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
         self._mark_family(family.family, DONE)
 
     def _family_complete(
-        self, release: CatalogRelease, family: ReleaseFamily, marker: Path
+        self,
+        release: CatalogRelease,
+        family: ReleaseFamily,
+        marker: Path,
+        *,
+        verify_hashes: bool,
     ) -> bool:
         """Whether the marker's completeness claim still holds.
 
-        Re-hashes the archive and every listed face — a stale marker can
-        never canonize corrupt bytes into a complete family.
+        The marker must exist and name the current release tag; past
+        that the two checks diverge. The launch check
+        (``verify_hashes`` off) is stat-only: the archive and every
+        listed face must be present at the byte size the marker
+        recorded when the family was verified — partial writes and
+        truncations always change a size, so nothing short of same-size
+        bit-rot slips through, and that is the explicit sync's job, not
+        the launch's. The repair check (``verify_hashes`` on) hashes
+        the archive and every listed face against the release document
+        — a stale marker can never canonize corrupt bytes into a
+        complete family.
         """
-        try:
-            if (
-                not marker.is_file()
-                or marker.read_text(encoding="utf-8").strip() != release.tag
-            ):
+        claim = _marker_claim(marker, release.tag)
+        if claim is None:
+            return False
+        archive_size, face_sizes = claim
+        archive = self._dir / family.zip
+        extracted = self._dir / Path(family.zip).stem
+        if verify_hashes:
+            if not archive.is_file() or sha256_of(archive) != family.sha256:
                 return False
+            for listed in family.files:
+                face = extracted / listed.file
+                if not face.is_file() or sha256_of(face) != listed.sha256:
+                    return False
+            return True
+        try:
+            if not archive.is_file() or archive.stat().st_size != archive_size:
+                return False
+            for listed in family.files:
+                face = extracted / listed.file
+                recorded = face_sizes.get(listed.file)
+                if (
+                    recorded is None
+                    or not face.is_file()
+                    or face.stat().st_size != recorded
+                ):
+                    return False
         except OSError:
             return False
-        archive = self._dir / family.zip
-        if not archive.is_file() or sha256_of(archive) != family.sha256:
-            return False
-        extracted = self._dir / Path(family.zip).stem
-        for listed in family.files:
-            face = extracted / listed.file
-            if not face.is_file() or sha256_of(face) != listed.sha256:
-                return False
         return True
 
     def _mark_family(

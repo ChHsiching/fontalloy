@@ -6,9 +6,15 @@ the configured cache directory with every family (streaming sha256-
 verified downloads through the ordered origin list, zip AND 7z
 extraction with per-face parse validation), writes complete markers
 only after full validation, and heals corrupt or partial families on
-later runs. Everything here is asserted the way the frontends see it:
-the real ``fontalloy`` executable as a subprocess, real HTTP, and the
-on-disk outcomes — never the sync service's internals.
+later runs. Launch passes trust those markers by STAT alone (release
+tag plus the sizes the marker recorded); hashing happens on download,
+on the explicit sync's repair pass, and wherever a launch check finds
+a marker or size anomaly. ``TestFastPath`` pins that split with a
+counting seam around the sync's hash calls — the suite's one
+in-process exception, because a subprocess serve cannot expose them.
+Everything else is asserted the way the frontends see it: the real
+``fontalloy`` executable as a subprocess, real HTTP, and the on-disk
+outcomes — never the sync service's internals.
 
 The origins are local directories addressed via ``file://`` URLs (the
 offline-suite convention of the assets suites); the faces inside the
@@ -33,6 +39,8 @@ import py7zr
 import pytest
 
 from conftest import fontalloy_exe, synth_font  # noqa: F401
+from fontalloy_core.assets import sha256_of as _real_sha256_of
+from fontalloy_core.catalog_sync import CatalogSync
 from test_cli_serve import running_service
 
 RELEASE_SCHEMA = "fontalloy/catalog-release@v1"
@@ -306,8 +314,15 @@ class TestStartupSync:
             for name, payload in spec.faces.items():
                 assert (extracted / name).read_bytes() == payload
             assert not (extracted / "readme.md").exists()
+            # The marker pins the release tag and the verified byte
+            # sizes — everything the stat-only launch check needs.
             marker = catalog_dir / (spec.archive + ".complete")
-            assert marker.read_text(encoding="utf-8").strip() == TAG
+            claim = json.loads(marker.read_text(encoding="utf-8"))
+            assert claim["tag"] == TAG
+            assert claim["archive"] == (site.origin_dir / spec.archive).stat().st_size
+            assert claim["faces"] == {
+                name: len(payload) for name, payload in spec.faces.items()
+            }
         assert list(catalog_dir.glob("*.part")) == []
 
     def test_health_and_status_answer_while_the_sync_runs(
@@ -425,9 +440,11 @@ class TestHealing:
     def test_a_corrupt_archive_is_refetched_on_restart(
         self, fontalloy_exe, site, catalog_dir, work_dir, tmp_path
     ):
-        """A corrupted archive with its marker still present: the fast
-        path re-hashes, a mismatch cannot be canonized by the marker,
-        and the family is re-fetched from the origins.
+        """A corrupted archive with its marker still present: the garbage
+        bytes cannot match the size the marker recorded, the stat check
+        flags the anomaly at launch, and the family is re-fetched from
+        the origins (same-size bit-rot is the explicit sync's job, not
+        the launch's — the ticket #26 follow-up ruling).
         """
         args = sync_args(site.release_origin, catalog_dir, work_dir)
         with running_service(fontalloy_exe, args, cwd=tmp_path) as (client, _):
@@ -535,3 +552,88 @@ class TestOrigins:
             assert doc["state"] == "unavailable"
             assert "catalog-release" in doc["error"]
             assert doc["families"] == []
+
+
+class TestFastPath:
+    """The launch/repair hashing split (the ticket #26 follow-up).
+
+    The suite's only in-process tests: the zero-hash assertions need a
+    counting seam around the sync's ``sha256_of`` calls, which a
+    subprocess serve cannot expose. The site fixtures, the cache
+    directories, and the sync lifecycle driven through
+    ``request_sync`` are the real ones.
+    """
+
+    @pytest.fixture
+    def hash_counter(self, monkeypatch) -> list[str]:
+        """Every path the sync hashes, via a counting wrapper that
+        still delegates to the real sha256."""
+        calls: list[str] = []
+
+        def counting(path: Path) -> str:
+            calls.append(str(path))
+            return _real_sha256_of(path)
+
+        monkeypatch.setattr("fontalloy_core.catalog_sync.sha256_of", counting)
+        return calls
+
+    @staticmethod
+    def _launch(
+        site: CatalogSite, catalog_dir: Path, *, verify_hashes: bool
+    ) -> dict[str, Any]:
+        """One sync pass, driven exactly as the serve drives it and
+        run to its terminal state."""
+        sync = CatalogSync(site.release_origin, catalog_dir)
+        sync.request_sync(verify_hashes=verify_hashes)
+        thread = sync._thread
+        assert thread is not None
+        thread.join(timeout=60)
+        doc = sync.status_document()
+        assert doc["state"] in ("ready", "unavailable"), doc
+        return doc
+
+    def test_a_same_content_relaunch_hashes_nothing(
+        self, tmp_path, catalog_dir, hash_counter
+    ):
+        """The warm launch is stat-only: with the catalog intact, a
+        relaunch must not read one byte for hashing — the ~10 GB
+        full-disk-read storm the follow-up exists to kill."""
+        site = build_site(tmp_path, families=[("FakeCode", ".zip")])
+        first = self._launch(site, catalog_dir, verify_hashes=False)
+        assert first["state"] == "ready", first["error"]
+        assert hash_counter  # the cold pass verifies bytes by hash
+
+        hash_counter.clear()
+        relaunch = self._launch(site, catalog_dir, verify_hashes=False)
+        assert relaunch["state"] == "ready", relaunch["error"]
+        assert hash_counter == []
+
+    def test_a_size_mutated_face_reverifies_on_the_next_start(
+        self, tmp_path, catalog_dir, hash_counter
+    ):
+        site = build_site(tmp_path, families=[("FakeCode", ".zip")])
+        first = self._launch(site, catalog_dir, verify_hashes=False)
+        assert first["state"] == "ready", first["error"]
+
+        face = catalog_dir / "FakeCode" / "FakeCode-Regular.ttf"
+        original = face.read_bytes()
+        face.write_bytes(original[:-6])  # a truncation changes the size
+
+        hash_counter.clear()
+        doc = self._launch(site, catalog_dir, verify_hashes=False)
+        assert doc["state"] == "ready", doc["error"]
+        assert face.read_bytes() == original  # the face was rebuilt
+        assert hash_counter  # the anomaly re-verified bytes by hash
+
+    def test_explicit_sync_rehashes_everything(self, site, catalog_dir, hash_counter):
+        """The POST /catalog/sync repair pass trusts no marker: every
+        family's archive and every listed face is hashed again — this
+        is also the path that catches same-size bit-rot."""
+        first = self._launch(site, catalog_dir, verify_hashes=False)
+        assert first["state"] == "ready", first["error"]
+
+        hash_counter.clear()
+        doc = self._launch(site, catalog_dir, verify_hashes=True)
+        assert doc["state"] == "ready", doc["error"]
+        # Three families, each re-hashed whole: archive + both faces.
+        assert len(hash_counter) == 3 * (1 + 2)

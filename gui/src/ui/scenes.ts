@@ -1,6 +1,11 @@
 import { store } from "../state";
-import { liveResolver } from "../precedence/live";
-import { refFont } from "../precedence/picks";
+import {
+  liveDocument,
+  lookupEntry,
+  precedenceStore,
+  precedenceVersion,
+} from "../precedence/document";
+import { pickRefs, refFont } from "../precedence/picks";
 import { cssFamily } from "../kit/pickerPopup";
 import {
   mountSceneCard,
@@ -19,8 +24,9 @@ import { formatCp } from "./charmap";
  * its 全屏查看 expand.
  *
  * Every character renders in the font that would WIN it in the merge —
- * the same memoized `EffectiveResolver` the preview grid resolves
- * through, never a separate path — and carries its resolution as DOM
+ * the same landed precedence document the preview grid reads (ticket
+ * #35: `POST /precedence-resolve` once per picks/rules change; never
+ * a separate resolution path) — and carries its resolution as DOM
  * attributes (`data-winner` / `data-via` / `data-kind`), so the scenes
  * are walkable exactly like the grid.
  *
@@ -103,14 +109,16 @@ function isCjkChar(ch: string): boolean {
   return /[\u2E80-\u9FFF\uF900-\uFAFF\uFF00-\uFFEF]/.test(ch);
 }
 
-/** The content props resolving every character through the live resolver. */
+/** The content props resolving every character through the landed
+ *  precedence document (the same one the grid reads). */
 function contentProps(): SceneContentProps {
-  const { picks, resolver } = liveResolver();
+  const picks = pickRefs();
+  const doc = liveDocument();
   return {
     customText: store.get().customPreview || undefined,
     resolveFont: (ch) => {
       const cp = ch.codePointAt(0)!;
-      const entry = resolver ? resolver.resolve(cp) : null;
+      const entry = doc !== null ? lookupEntry(doc, cp) : null;
       if (entry) {
         const font = refFont(entry.winner, picks);
         if (font) return `${cssFamily(font.cssFamily)},sans-serif`;
@@ -132,7 +140,7 @@ function contentProps(): SceneContentProps {
       // winner/via/kind provenance marks the covered ones — an uncovered
       // character is a span with data-cp and no data-winner.
       const cp = ch.codePointAt(0)!;
-      const entry = resolver ? resolver.resolve(cp) : null;
+      const entry = doc !== null ? lookupEntry(doc, cp) : null;
       if (!entry) return { cp: formatCp(cp) };
       return {
         cp: formatCp(cp),
@@ -169,10 +177,12 @@ export function mountScenes(root: HTMLElement, fullscreenHost: HTMLElement): voi
 
   const render = (): void => {
     const { rules, customPreview } = store.get();
-    const { picks } = liveResolver();
+    const picks = pickRefs();
+    // The document's version rides in the signature: a landed resolve
+    // re-renders the characters even when the store itself stood still.
     const signature = `${rules.length}:${rules
       .map((r) => `${r.id}:${JSON.stringify(r.target)}:${r.fonts.join(",")}`)
-      .join("|")}:${picks.base?.cssFamily ?? ""}:${picks.donor?.cssFamily ?? ""}:${customPreview}`;
+      .join("|")}:${picks.base?.cssFamily ?? ""}:${picks.donor?.cssFamily ?? ""}:${customPreview}:${precedenceVersion()}`;
     if (signature === lastSignature) return;
     lastSignature = signature;
     for (const [kind, card] of cards) {
@@ -185,5 +195,6 @@ export function mountScenes(root: HTMLElement, fullscreenHost: HTMLElement): voi
   };
   renderCards = render;
   store.subscribe(render);
+  precedenceStore.subscribe(render);
   render();
 }
