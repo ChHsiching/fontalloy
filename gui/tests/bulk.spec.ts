@@ -1,8 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { resolve } from "node:path";
-import { generateFonts } from "./serve";
+import { startServeFixture, type ServeFixture } from "./serve";
 import {
   assertNoJsErrors,
   collectJsErrors,
@@ -25,6 +22,10 @@ import {
  *   (selection) and the toolbar's 撤销 / Ctrl+Z (rules).
  * - The centerpiece: a bulk edit followed by undo returns the app to
  *   the prior state EXACTLY — rules state, grid winners, stats.
+ *
+ * Ticket #35 (spec #25): the winners the round trips compare are the
+ * SERVE's resolve answer, so the suite drives the shared fixture
+ * serve — never a client-side mirror.
  */
 
 /** The multi-selection cell class (kit vocabulary; the cursor is `cur`). */
@@ -53,16 +54,28 @@ test.describe("multi-select, batch operations, undo", () => {
   test.describe.configure({ mode: "serial" });
   const jsErrors: string[] = [];
 
+  /** The shared fixture serve (ticket #35: the grid resolves through it). */
+  let service: ServeFixture | null = null;
+
+  test.beforeAll(async () => {
+    service = await startServeFixture({ donorGlyphs: 64, donorAscii: 6 });
+  });
+
+  test.afterAll(async () => {
+    await service?.dispose();
+    service = null;
+  });
+
   test.beforeEach(() => {
     jsErrors.length = 0;
   });
 
   test.afterEach(() => assertNoJsErrors(jsErrors));
 
-  /** Small fixture pair: base = A–Z, donor = A–F + U+4E00..U+4E3F. */
-  async function makeLocalFixtures(): Promise<{ base: string; donor: string }> {
-    const dir = await mkdtemp(resolve(tmpdir(), "fontalloy-bulk-"));
-    return generateFonts(dir, { donorGlyphs: 64, donorAscii: 6 });
+  /** The fixture pair: base = A–Z, donor = A–F + U+4E00..U+4E3F. */
+  function makeLocalFixtures(): { base: string; donor: string } {
+    const live = service!;
+    return { base: live.baseFont, donor: live.donorFont };
   }
 
   /** Load one font file into a picker through its file input. */
@@ -83,12 +96,19 @@ test.describe("multi-select, batch operations, undo", () => {
     await expect(popup).toBeHidden();
   }
 
-  /** Open the page (no service) with both fixture fonts picked. */
+  /** Open the page pointed at the fixture serve, with both fonts picked. */
   async function openWithFonts(
     page: Page,
     fonts: { base: string; donor: string },
   ): Promise<void> {
     collectJsErrors(page, jsErrors);
+    await page.addInitScript((url: string) => {
+      const config = window as unknown as {
+        __FONTALLOY_CONFIG__: Record<string, unknown>;
+      };
+      config.__FONTALLOY_CONFIG__ ??= {};
+      config.__FONTALLOY_CONFIG__.serveUrl = url;
+    }, service!.url);
     await page.goto("/");
     await waitForFontsReady(page);
     await loadIntoPicker(page, "en", fonts.base);
@@ -160,6 +180,13 @@ test.describe("multi-select, batch operations, undo", () => {
     const fonts = await makeLocalFixtures();
     await openWithFonts(page, fonts);
     await gotoCjkPage(page);
+
+    // Anchor the landed document before any popup or grid read: the
+    // winners the round trip compares are the serve's answer (ticket
+    // #35) — the donor owns U+4E10 the moment the resolve lands.
+    await expect(
+      page.locator(".charmap-grid .kit-cell[data-cp='U+4E10']"),
+    ).toHaveAttribute("data-winner", "donor-0");
 
     // A plain click opens the char popup at the cell — no selection.
     await pointerClick(
@@ -236,7 +263,13 @@ test.describe("multi-select, batch operations, undo", () => {
     });
 
     // Ctrl+Z (rule undo): everything rule-related returns EXACTLY.
+    // Ticket #35: the revert's document must LAND first (the undo's
+    // re-resolve is async) — anchor on the run's return to the seeded
+    // preset's rule-0 before the exact table compare.
     await page.keyboard.press("Control+z");
+    await expect(
+      page.locator(".charmap-grid .kit-cell[data-cp='U+4E10']"),
+    ).toHaveAttribute("data-via", "rule-0");
     expect(await collectGrid(page)).toEqual(gridBefore);
     expect(await page.locator(".statsbar").textContent()).toBe(statsBefore);
     await expect.poll(() => summaryRowCount(page)).toBe(0);
@@ -309,6 +342,11 @@ test.describe("multi-select, batch operations, undo", () => {
     await gotoCjkPage(page);
     await enterMultiMode(page);
 
+    // Ticket #35: capture the prior table only after the resolve
+    // document lands (winners are the serve's answer, not a mirror).
+    await expect(
+      page.locator(".charmap-grid .kit-cell[data-cp='U+4E10']"),
+    ).toHaveAttribute("data-winner", "donor-0");
     const gridBefore = await collectGrid(page);
 
     // Two separate painted runs; the second starts on an unselected
@@ -337,8 +375,12 @@ test.describe("multi-select, batch operations, undo", () => {
     // The dashed summary counts the four single-character overrides.
     await expect(page.locator("[data-role='rule-solo']")).toHaveText(/单个字符 4/);
 
-    // And the same Ctrl+Z round-trip: the grid returns exactly.
+    // And the same Ctrl+Z round-trip: the grid returns exactly (the
+    // revert's document anchored first, as in the centerpiece above).
     await page.keyboard.press("Control+z");
+    await expect(
+      page.locator(".charmap-grid .kit-cell[data-cp='U+4E10']"),
+    ).toHaveAttribute("data-via", "rule-0");
     expect(await collectGrid(page)).toEqual(gridBefore);
     await expect(page.locator("[data-role='rule-solo']")).toHaveCount(0);
   });
