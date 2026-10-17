@@ -27,6 +27,8 @@ path           method  response
 =============  ======  ==================================================
 ``/health``    GET     service identity + the bound 127.0.0.1 address
 ``/catalog``   GET     the manifest's families (grouped per family)
+``/catalog/status`` GET  the catalog sync state machine (issue #26)
+``/catalog/sync``   POST re-run the catalog sync (re-check + repair)
 ``/fonts``     GET     local font directories, scanned into families
 ``/builds``    GET     every retained build, newest last
 ``/builds``    POST    submit a merge (recipe-shaped JSON) -> 202 + id
@@ -34,6 +36,7 @@ path           method  response
 ``/builds/id/cancel`` POST  stop a queued/running build (idempotent)
 ``/builds/id/font``   GET  the output font (ttf/ttc/woff2 bytes)
 ``/builds/id/report`` GET  the verification report JSON
+``/precedence-resolve`` POST  the effective table for picks+rules (28)
 =============  ======  ==================================================
 
 Progress transport is polling: ``GET /builds/{id}`` reports the stage
@@ -81,12 +84,14 @@ from typing import Any
 
 from fontalloy_core.build import build_recipe
 from fontalloy_core.catalog import Catalog, load_manifest
+from fontalloy_core.catalog_sync import CatalogSync
 from fontalloy_core.errors import BuildCancelled, FontAlloyError
 from fontalloy_core.load import (
     FaceInfo,
     aggregate_families,
     scan_families,
 )
+from fontalloy_core.precedence_api import resolve_document
 from fontalloy_core.recipe import Recipe, parse_recipe
 from fontalloy_core.systemfonts import (
     ScanResult,
@@ -151,6 +156,16 @@ class ServeOptions:
     # cache; the scan re-runs per process). The GUI passes its app-data
     # directory so a steady-state launch stat-walks instead of parsing.
     system_cache_dir: Path | None = None
+    # Issue #26 (spec #25): the catalog lifecycle the serve owns. The
+    # release document's origin — the base URL serving
+    # catalog-release.json (the catalog release tag's download address
+    # in production, a file:// directory in the offline suite) — and
+    # the cache directory the families land in (the desktop appData
+    # font dir; a CLI-specified directory elsewhere). Both together
+    # activate the sync service behind /catalog/status; neither means a
+    # local-fonts-only serve with a quiescent catalog.
+    catalog_release_origin: str | None = None
+    catalog_dir: Path | None = None
 
 
 class _BuildAborted(Exception):
@@ -286,6 +301,13 @@ class ServeState:
         # scans the machine at all; spawning it at boot made every
         # fixture serve parse the real font directory.
         self._system_thread: threading.Thread | None = None
+        # Issue #26: the catalog sync service polled at /catalog/status.
+        # Unlike the system-fonts scan it starts EAGERLY at serve
+        # startup when configured — filling the catalog is the point of
+        # a launch — on its own daemon thread, never in a handler.
+        self.catalog_sync = CatalogSync(
+            options.catalog_release_origin, options.catalog_dir
+        )
 
     # -- startup -----------------------------------------------------------
 
@@ -316,6 +338,24 @@ class ServeState:
             self.jobs[job.id] = job
         self._queue.put(job)
         return job
+
+    def precedence_resolve(self, data: object) -> dict[str, Any]:
+        """Resolve one precedence request (ticket #28) to its document.
+
+        Synchronous by measurement (see
+        :mod:`fontalloy_core.precedence_api`): the walk is the same one
+        the build pipeline's resolving stage performs, and at
+        visible-universe scale it answers in a few seconds while the
+        threaded server keeps every other endpoint live. Raises
+        :class:`~fontalloy_core.errors.FontAlloyError` for a malformed
+        request or an unresolvable font reference (the caller maps that
+        to a 400 response).
+        """
+        return resolve_document(
+            data,
+            root=self.recipe_root,
+            manifest=self.options.manifest,
+        )
 
     def queue_position(self, job: BuildJob) -> int | None:
         """1-based position among the queued builds, None once running."""
@@ -827,6 +867,16 @@ class _ServeHandler(BaseHTTPRequestHandler):
         elif path == "/catalog":
             self._require_methods(method, ("GET",))
             self._send_json(state.catalog_document())
+        elif path == "/catalog/status":
+            self._require_methods(method, ("GET",))
+            self._send_json(state.catalog_sync.status_document())
+        elif path == "/catalog/sync":
+            self._require_methods(method, ("POST",))
+            # The handler only arms the sync thread; the run itself is
+            # polled through /catalog/status (a handler must never wait
+            # on catalog work — the round-25 starvation lesson).
+            state.catalog_sync.request_sync()
+            self._send_json(state.catalog_sync.status_document(), status=202)
         elif path == "/fonts":
             self._require_methods(method, ("GET",))
             self._send_json(state.fonts_document())
@@ -856,6 +906,9 @@ class _ServeHandler(BaseHTTPRequestHandler):
                     + '"'
                 },
             )
+        elif path == "/precedence-resolve":
+            self._require_methods(method, ("POST",))
+            self._precedence_resolve()
         elif path == "/builds":
             self._require_methods(method, ("GET", "POST"))
             if method == "POST":
@@ -923,6 +976,30 @@ class _ServeHandler(BaseHTTPRequestHandler):
             status=202,
             extra_headers={"Location": document["href"]},
         )
+
+    def _precedence_resolve(self) -> None:
+        """``POST /precedence-resolve`` (ticket #28): the effective table.
+
+        A malformed body, an invalid rule set, or an unresolvable font
+        reference is a synchronous 400 — the resolve never queues, so
+        there is nothing to poll and no partial state to clean up.
+        """
+        length = int(self.headers.get("Content-Length") or 0)
+        if length > MAX_BODY_BYTES:
+            self._send_error(413, "submission body exceeds the size limit")
+            return
+        raw = self.rfile.read(length) if length else b""
+        try:
+            data = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            self._send_error(400, f"submission is not valid JSON: {exc}")
+            return
+        try:
+            document = self.state.precedence_resolve(data)
+        except FontAlloyError as exc:
+            self._send_error(400, str(exc))
+            return
+        self._send_json(document)
 
     def _build_detail(self, build_id: str) -> None:
         job = self._find_job(build_id)
@@ -1054,6 +1131,11 @@ def run_serve(options: ServeOptions) -> None:
 
     worker.start()
     serve_thread.start()
+    # The catalog lifecycle starts with the service (issue #26): the
+    # sync runs on its own daemon thread, so the ready line below may
+    # print while families are still downloading — /catalog/status is
+    # the progress truth from the first moment.
+    state.catalog_sync.start()
     print(f"http://{BIND_ADDRESS}:{state.port}", flush=True)
     try:
         # A timed wait, not a plain block: on Windows an unbounded

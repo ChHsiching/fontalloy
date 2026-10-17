@@ -1,34 +1,33 @@
 /**
- * The no-service CLI panel (issue #22's absorption, repair round 2):
- * when no local merge service is detected, the synthesize flow offers
- * the copy-CLI alternative as the workspace's OWN state — a kit-styled,
- * non-modal panel above the stats bar (the same surface discipline as
- * the build panel) carrying:
+ * The no-service CLI panel (issue #22's absorption, repair round 2;
+ * core unification ticket #29): when no local merge service is
+ * detected, the synthesize flow offers the copy-CLI alternative as the
+ * workspace's OWN state — a kit-styled, non-modal panel above the
+ * stats bar (the same surface discipline as the build panel) carrying:
  *
  * - the service statement (why live merging is unavailable at the
  *   probed address) with a click-reachable re-probe;
- * - the recipe YAML built from the SAME workspace state the service
- *   flow submits (picks, rail rules, settings — one recipe model);
- * - the `fontalloy build` command that reproduces the same merge, as
- *   copyable DOM text, and the recipe file as a browser download.
+ * - the recipe JSON built from the SAME workspace state the service
+ *   flow submits (picks, rail rules, settings — one recipe model,
+ *   one serializer: the wire JSON of POST /builds);
+ * - the `fontalloy build <file>` command that reproduces the same
+ *   merge, as copyable DOM text, and the recipe file as a browser
+ *   download (the CLI loads JSON — YAML parsing is a superset).
  *
- * Download/copy stay gated on a problem-free draft (the strict-loader
- * mirror in recipe/validate.ts); while problems remain the buttons
- * carry `aria-disabled` and a click-reachable explanation.
+ * Ticket #29: there is NO client-side validation mirror. Download/copy
+ * are gated only on a recipe existing at all (both picks made); an
+ * incomplete or invalid recipe is emitted as declared, and the CLI —
+ * exactly like the serve — is the gate that names what is wrong.
  */
 
 import { store, type LoadedFont } from "../state";
 import { synthStore } from "../service/state";
 import { buildWorkspaceDraft, connectService } from "../service/synthesize";
-import { buildCommand, recipeFileName, recipeYaml } from "../recipe/yaml";
-import { validateDraft } from "../recipe/validate";
-import type { FontSlot, Preset } from "../recipe/model";
+import { recipeFileName, recipeJson } from "../recipe/json";
+import type { FontSlot } from "../recipe/model";
 import { brandMark } from "../kit/topBar";
 import { icon, sep } from "../kit/icons";
-import presetsJson from "../data/presets.json";
 import catalogManifest from "../data/catalog.json";
-
-const PRESETS = presetsJson.presets as Preset[];
 
 /**
  * The recipe-side path of a pick WITHOUT a service: the platform's own
@@ -36,8 +35,8 @@ const PRESETS = presetsJson.presets as Preset[];
  * else — for catalog families — the `fontalloy assets fetch` layout
  * hint seeded with the stored face's file name (the old builder's
  * convention: the user completes the exact face they fetched).
- * Local browser files have no path: null (a stated validation problem,
- * never an invented one).
+ * Local browser files have no path: an empty string, stated by the
+ * emitted JSON itself (no invented validation problem).
  */
 function recipePathHint(font: LoadedFont | undefined): string | null {
   if (!font) return null;
@@ -52,11 +51,10 @@ function recipePathHint(font: LoadedFont | undefined): string | null {
 /**
  * The no-service draft from the workspace state: null only while a PICK
  * is missing; a picked font whose path cannot be resolved (a local
- * browser file) contributes an empty path so validation names it
- * precisely (缺少字体文件路径), never a silent gap. The CLI panel stays
- * path-based (round 6 ruling): a YAML someone runs by hand names files
- * they can see, not a manifest they must fetch first — the catalog
- * reference form is the connected service's contract.
+ * browser file) contributes an empty path the JSON states itself. The
+ * CLI panel stays path-based (round 6 ruling): a file someone runs by
+ * hand names files they can see, not a manifest they must fetch first —
+ * the catalog reference form is the connected service's contract.
  */
 function workspaceCliDraft(): ReturnType<typeof buildWorkspaceDraft> | null {
   const { fonts, selected } = store.get();
@@ -97,9 +95,8 @@ export function mountCliPanel(): void {
     <div class="cli-actions">
       <button class="kit-btn gh sm" type="button" data-testid="reprobe">重新检测本地服务</button>
     </div>
-    <ul class="cli-problems" data-testid="problems"></ul>
-    <div class="cli-label">配方预览（YAML）</div>
-    <pre class="cli-yaml" data-testid="recipe-yaml"></pre>
+    <div class="cli-label">配方预览（JSON）</div>
+    <pre class="cli-yaml" data-testid="recipe-json"></pre>
     <div class="cli-label">CLI 命令（同一合并）</div>
     <div class="cli-command-box"><code data-testid="cli-command"></code></div>
     <div class="cli-actions">
@@ -129,8 +126,7 @@ export function mountCliPanel(): void {
     });
 
   const notice = root.querySelector<HTMLElement>('[data-testid="service-notice"]')!;
-  const problems = root.querySelector<HTMLElement>('[data-testid="problems"]')!;
-  const yamlPre = root.querySelector<HTMLElement>('[data-testid="recipe-yaml"]')!;
+  const jsonPre = root.querySelector<HTMLElement>('[data-testid="recipe-json"]')!;
   const commandCode = root.querySelector<HTMLElement>('[data-testid="cli-command"]')!;
   const copyButton = root.querySelector<HTMLButtonElement>(
     '[data-testid="copy-command"]',
@@ -168,7 +164,8 @@ export function mountCliPanel(): void {
   synthStore.subscribe(renderNotice);
   renderNotice();
 
-  let yamlText = "";
+  let jsonText = "";
+  let fileName = "fontalloy-recipe.json";
   let ready = false;
 
   /** Copy via the clipboard API; fall back to selecting the text. */
@@ -191,12 +188,13 @@ export function mountCliPanel(): void {
   };
 
   const downloadRecipe = (): void => {
-    if (cachedDraft === null) return;
-    const blob = new Blob([yamlText], { type: "text/yaml;charset=utf-8" });
+    const blob = new Blob([jsonText], {
+      type: "application/json;charset=utf-8",
+    });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = recipeFileName(cachedDraft);
+    anchor.download = fileName;
     anchor.rel = "noopener";
     root.appendChild(anchor);
     anchor.click();
@@ -211,32 +209,24 @@ export function mountCliPanel(): void {
     if (ready) downloadRecipe();
   });
 
-  /** The last render's draft (null while a pick or its path is missing). */
-  let cachedDraft: ReturnType<typeof buildWorkspaceDraft> | null = null;
-
   const render = (): void => {
-    cachedDraft = workspaceCliDraft();
-    // Without both picks there is no recipe at all: the YAML preview
-    // stays empty and the problems state what is missing.
-    const draft =
-      cachedDraft ??
-      buildWorkspaceDraft({
-        en: { catalog: null, path: "", face: null },
-        cjk: { catalog: null, path: "", face: null },
-      });
-    yamlText = recipeYaml(draft);
-    yamlPre.textContent = cachedDraft === null ? "" : yamlText;
-    commandCode.textContent = buildCommand(draft);
-
-    const issues = validateDraft(draft, PRESETS);
-    problems.replaceChildren(
-      ...issues.map((issue) => {
-        const li = document.createElement("li");
-        li.textContent = `${issue.where}：${issue.message}`;
-        return li;
-      }),
-    );
-    ready = issues.length === 0 && cachedDraft !== null;
+    const draft = workspaceCliDraft();
+    // Without both picks there is no recipe at all: the JSON preview
+    // stays empty and the status line states what is missing. With the
+    // pair made, the recipe is emitted AS DECLARED — the CLI (like the
+    // serve) is the gate that names anything wrong with it.
+    if (draft === null) {
+      jsonText = "";
+      jsonPre.textContent = "";
+      fileName = "fontalloy-recipe.json";
+      commandCode.textContent = `fontalloy build ${fileName}`;
+    } else {
+      jsonText = `${JSON.stringify(recipeJson(draft), null, 2)}\n`;
+      fileName = recipeFileName(draft);
+      jsonPre.textContent = jsonText;
+      commandCode.textContent = `fontalloy build ${fileName}`;
+    }
+    ready = draft !== null;
     const disabled = !ready;
     copyButton.setAttribute("aria-disabled", String(disabled));
     downloadButton.setAttribute("aria-disabled", String(disabled));
@@ -244,9 +234,7 @@ export function mountCliPanel(): void {
     downloadButton.classList.toggle("is-blocked", disabled);
     // Click-reachable explanation while blocked (page text, not hover).
     copyStatus.textContent = disabled
-      ? cachedDraft === null
-        ? "请先在左侧选择英文字体与中文字体，再复制命令与下载配方。"
-        : `尚有 ${issues.length} 个问题待解决，解决后即可复制命令与下载配方。`
+      ? "请先在左侧选择英文字体与中文字体，再复制命令与下载配方。"
       : "";
   };
   store.subscribe(render);

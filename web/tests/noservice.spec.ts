@@ -12,14 +12,21 @@ import {
 } from "./helpers";
 
 /**
- * The absorbed recipe builder (issue #22 → repair round 2): when no
- * service is detected, the synthesize flow offers the copy-CLI command
- * and the recipe YAML download in the workspace's own no-service panel.
- * The recipe is built from the SAME workspace state the live flow
- * submits (picks → base/donor, rail rules, settings, the top bar's
- * output name), so the YAML/command assertions here are the semantic
- * YAML coverage the old builder specs carried (adjusted: donors are the
- * workspace's pick pair, not an editable donor list).
+ * The absorbed recipe builder (issue #22 → repair round 2; core
+ * unification ticket #29): when no service is detected, the synthesize
+ * flow offers the copy-CLI command and the recipe JSON download in the
+ * workspace's own no-service panel. The recipe is built from the SAME
+ * workspace state the live flow submits (picks → base/donor, rail
+ * rules, settings, the top bar's output name) through the SAME
+ * wire-JSON serializer the serve submission uses — the downloaded file
+ * is byte-for-byte the POST /builds body shape, so the CLI command
+ * (`fontalloy build <file>`, YAML being a JSON superset) runs exactly
+ * what the service would have run.
+ *
+ * Ticket #29: there is NO client-side validation mirror anymore. The
+ * serve's submit-time validation is the only gate; this panel emits
+ * the draft as declared. The one blocked state is no recipe at all
+ * (a pick missing) — workspace state, not recipe validation.
  */
 
 test.beforeEach(async ({ page }) => {
@@ -58,6 +65,11 @@ test("no service: the synthesize flow offers the CLI panel as page text", async 
   // The live-merge surface (the build panel) stays out of the
   // no-service rendering.
   await expect(page.locator('[data-testid="build-panel"]')).toBeHidden();
+  // Ticket #29: the recipe surface is the wire JSON — the YAML writer
+  // and the client-side validation mirror (the problems list) are gone.
+  await expect(panel.locator('[data-testid="recipe-json"]')).toBeVisible();
+  await expect(panel.locator('[data-testid="problems"]')).toHaveCount(0);
+  await expect(panel).not.toContainText("YAML");
 });
 
 test("absent service: the re-probe affordance is click-reachable", async ({
@@ -81,15 +93,15 @@ test("absent service: the re-probe affordance is click-reachable", async ({
   assertNoJsErrors(errors);
 });
 
-test("an incomplete pair blocks copy/download with a visible problem list", async ({
+test("a missing pick blocks copy/download; a made pick emits the declared JSON", async ({
   page,
 }) => {
   const panel = await openCliPanel(page);
-  const problems = panel.locator('[data-testid="problems"]');
-  // No picks: no recipe at all — the YAML preview stays empty, the
-  // problems state the unresolvable paths, and the status line names
-  // the missing picks.
-  await expect(problems).toContainText("基底字体：缺少字体文件路径");
+  // No picks: no recipe at all — the JSON preview stays empty and the
+  // status line names the missing picks. This is workspace state (a
+  // pick missing), the only gate left after the validation mirror died
+  // (ticket #29): the serve's submit-time validation owns everything
+  // recipe-shaped.
   await expect(panel.locator('[data-testid="copy-command"]')).toHaveAttribute(
     "aria-disabled",
     "true",
@@ -98,17 +110,37 @@ test("an incomplete pair blocks copy/download with a visible problem list", asyn
     "aria-disabled",
     "true",
   );
-  await expect(panel.locator('[data-testid="recipe-yaml"]')).toHaveText("");
+  await expect(panel.locator('[data-testid="recipe-json"]')).toHaveText("");
   await expect(panel.locator('[data-testid="copy-status"]')).toContainText(
     "请先在左侧选择英文字体与中文字体",
   );
 
-  // A browser-loaded local font has no path the recipe could name:
-  // with the EN pick made from a local file, the empty-path problem is
-  // the precise statement for exactly that pick.
+  // Browser-loaded local fonts have no path the recipe could name: with
+  // the pair made, the emitted JSON says so itself (empty base path and
+  // donor), with NO local validation mirror inventing a problem list —
+  // the file is what it is, and the CLI (like the serve) rejects it
+  // loudly when run.
   const fontsDir = await import("./serve").then((m) => m.serveFixtureDir());
-  const alpha = (await import("node:path")).join(fontsDir, "Alpha.ttf");
-  await loadLocalFont(page, "en", alpha);
-  await expect(problems).toContainText("基底字体：缺少字体文件路径");
-  await expect(problems).toContainText("供体 1：缺少字体文件路径");
+  const nodePath = await import("node:path");
+  await loadLocalFont(page, "en", nodePath.join(fontsDir, "Alpha.ttf"));
+  await loadLocalFont(page, "cjk", nodePath.join(fontsDir, "Beta.ttf"));
+  await expect(panel.locator('[data-testid="recipe-json"]')).toContainText(
+    '"base": ""',
+  );
+  await expect(panel.locator('[data-testid="recipe-json"]')).toContainText(
+    '"donors": [\n    ""\n  ]',
+  );
+  // The recipe exists: the buttons are enabled (no pre-validation).
+  await expect(panel.locator('[data-testid="copy-command"]')).toHaveAttribute(
+    "aria-disabled",
+    "false",
+  );
+  await expect(panel.locator('[data-testid="download-recipe"]')).toHaveAttribute(
+    "aria-disabled",
+    "false",
+  );
+  // The command names the JSON file the download produces.
+  await expect(panel.locator('[data-testid="cli-command"]')).toContainText(
+    ".json",
+  );
 });

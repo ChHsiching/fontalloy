@@ -214,6 +214,26 @@ def serve(
             "nothing). No disk cache when omitted.",
         ),
     ] = None,
+    catalog_release_origin: Annotated[
+        Optional[str],
+        typer.Option(
+            "--catalog-release-origin",
+            help="Base URL serving catalog-release.json (the catalog "
+            "release tag's download address; file:// works for offline "
+            "setups). Together with --catalog-dir it activates the "
+            "serve-side catalog sync polled at /catalog/status.",
+        ),
+    ] = None,
+    catalog_dir: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--catalog-dir",
+            help="Cache directory the catalog sync fills with verified "
+            "family archives and extracted faces (the app's font "
+            "directory). Together with --catalog-release-origin it "
+            "activates the sync.",
+        ),
+    ] = None,
 ) -> None:
     """Run the core as a localhost HTTP service (127.0.0.1 only).
 
@@ -242,6 +262,8 @@ def serve(
             tuple(system_font_dir) if system_font_dir is not None else None
         ),
         system_cache_dir=system_cache_dir,
+        catalog_release_origin=catalog_release_origin,
+        catalog_dir=catalog_dir,
     )
     try:
         fontalloy_core.run_serve(options)

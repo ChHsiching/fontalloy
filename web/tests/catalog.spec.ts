@@ -181,7 +181,7 @@ test("a catalog family verifies, becomes pickable, and self-renders", async ({
   assertNoJsErrors(errors);
 });
 
-test("the real catalog drives the panel end to end (YAML, download, copy)", async ({
+test("the real catalog drives the panel end to end (JSON, download, copy)", async ({
   page,
 }) => {
   test.setTimeout(300_000);
@@ -285,22 +285,22 @@ test("the real catalog drives the panel end to end (YAML, download, copy)", asyn
   );
 
   const panel = await openCliPanel(page);
-  await expect(panel.locator('[data-testid="problems"]')).toBeEmpty();
   await expect(
     panel.locator('[data-testid="copy-command"]'),
   ).toHaveAttribute("aria-disabled", "false");
 
-  // The YAML is the workspace's own recipe: fetch-layout paths for the
-  // two real picks, the three rail rules, the normalization switches.
-  const yamlText = await panel
-    .locator('[data-testid="recipe-yaml"]')
+  // The JSON is the workspace's own recipe (ticket #29: the wire JSON,
+  // the same body a serve submission sends): fetch-layout paths for
+  // the two real picks, the three rail rules, the normalization
+  // switches.
+  const jsonText = await panel
+    .locator('[data-testid="recipe-json"]')
     .textContent();
-  expect(yamlText).toContain(
-    'base: "fonts/JetBrainsMono/JetBrainsMonoNerdFont-Regular.ttf"',
+  expect(jsonText).toContain(
+    '"base": "fonts/JetBrainsMono/JetBrainsMonoNerdFont-Regular.ttf"',
   );
-  expect(yamlText).toContain("MapleMono-NF-Regular.ttf");
-  const YAMLmod = await import("yaml");
-  const recipe = YAMLmod.default.parse(yamlText);
+  expect(jsonText).toContain("MapleMono-NF-Regular.ttf");
+  const recipe = JSON.parse(jsonText);
   expect(recipe.donors).toEqual([
     "fonts/MapleMono-NF/MapleMono-NF-Regular.ttf",
   ]);
@@ -327,10 +327,10 @@ test("the real catalog drives the panel end to end (YAML, download, copy)", asyn
     page.waitForEvent("download"),
     pointerClick(page, panel.locator('[data-testid="download-recipe"]')),
   ]);
-  expect(await download.suggestedFilename()).toBe("ChHsich.yaml");
+  expect(await download.suggestedFilename()).toBe("ChHsich.json");
   const downloaded = await download.path();
   expect((await readFile(downloaded, "utf8")).replace(/\r\n/g, "\n")).toBe(
-    yamlText,
+    jsonText,
   );
 
   // Copy: clipboard API when the browser grants it, otherwise the
@@ -340,7 +340,7 @@ test("the real catalog drives the panel end to end (YAML, download, copy)", asyn
     /已复制到剪贴板|请按 Ctrl\+C/,
   );
   await expect(panel.locator('[data-testid="cli-command"]')).toContainText(
-    "fontalloy build ChHsich.yaml",
+    "fontalloy build ChHsich.json",
   );
 
   assertNoJsErrors(errors);
