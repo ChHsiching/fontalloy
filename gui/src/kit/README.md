@@ -81,8 +81,9 @@ App-level PRODUCT-EXTENSION surfaces (NOT kit — they live in `gui/src/ui` /
 `gui/src/catalog` with chrome in `app.css`, and must stay marked): the build
 panel (`ui/buildpanel.ts`), the no-service CLI panel (`ui/noservice.ts`),
 the first-run catalog screen (`catalog/screen.ts`), the synthesize notice strip
-(`ui/topbar.ts`), the live GitHub stars fetch (`catalog/stars.ts`, round 5:
-once per launch from the manifest's pinned repos, cached to storage, curated
+(`ui/topbar.ts`), the serve's launch-cached GitHub stars overlay
+(`catalog/serve.ts`, ticket #33: the SERVE sweeps the manifest's pinned
+repos once per launch, the page polls `GET /catalog/stars`, curated
 values as the offline seed), and the custom window controls
 (`ui/wincontrols.ts`, round 4: minimize/maximize/close + drag region for the
 undecorated Tauri window — never mounted in the web target). The
