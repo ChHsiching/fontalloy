@@ -1,7 +1,10 @@
 import { test, expect, type Locator } from "@playwright/test";
 import { mkdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { copyFile, mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawnServeOverFonts } from "./serve";
 import {
   fixtureFontPaths,
   pointerClick,
@@ -68,8 +71,27 @@ test.describe("round-9 rule × visibility shots", () => {
   }) => {
     test.setTimeout(120_000);
     const [font1, font2] = fixtureFontPaths();
+    const serveDir = await mkdtemp(resolve(tmpdir(), "fontalloy-r9-serve-"));
+    await copyFile(font1, join(serveDir, basename(font1)));
+    await copyFile(font2, join(serveDir, basename(font2)));
+    const service = await spawnServeOverFonts(serveDir);
+    const serveUrl = await service.url;
+    try {
+    await page.route("https://api.github.com/repos/**", (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: "{}" }),
+    );
+    await page.addInitScript((url: string) => {
+      const w = window as unknown as {
+        __FONTALLOY_CONFIG__?: Record<string, unknown>;
+      };
+      w.__FONTALLOY_CONFIG__ ??= {};
+      w.__FONTALLOY_CONFIG__.serveUrl = url;
+    }, serveUrl);
     await page.goto("/");
     await waitForFontsReady(page);
+    await expect(page.locator(".catalog-screen")).toBeHidden({
+      timeout: 30_000,
+    });
 
     // Two local picks through the real flow: the shared input loads
     // both files into the EN picker's flow (the first family takes the
@@ -114,7 +136,9 @@ test.describe("round-9 rule × visibility shots", () => {
     // The redesigned anatomy is real DOM (status icon, stat pairs, the
     // kbd undo chip) before the shot is taken.
     const message = page.locator("[data-role='message']").first();
-    await expect(message).toBeVisible();
+    // Ticket #35: the card's counts diff two resolve documents — the
+    // serve's first answers over the host pair are fontTools-cold.
+    await expect(message).toBeVisible({ timeout: 30_000 });
     await expect(message.locator(".kit-msg-icon svg")).toHaveCount(1);
     await expect(message.locator(".kit-msg-stat")).toHaveCount(2);
     await expect(message.locator(".kit-msg-kbd")).toHaveText("Ctrl+Z");
@@ -244,5 +268,11 @@ test.describe("round-9 rule × visibility shots", () => {
     await expect(
       page.locator("[data-role='rule-row'][data-kind='block']"),
     ).toHaveCount(1);
+    // Quiesce before the dispose (an in-flight boot probe killed
+    // mid-air would log a transport error).
+    await page.waitForLoadState("networkidle");
+    } finally {
+      await service.dispose();
+    }
   });
 });
