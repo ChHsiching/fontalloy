@@ -36,7 +36,10 @@ variable font whose fvar default is wght=100; the anchor measurement
 corresponds to that default instance (the recipe leaves ``instance``
 unset, which is the pipeline's documented "default instance" behavior),
 and the anchor's [-68, +830] is exactly the representative common
-glyph 中 under the auto k = 0.9988.
+glyph 中 under the auto k = 0.9988. That default instance also sits at
+a donor-only weight (100 against the base's 400), so the anchor recipe
+declares the base's single 400 slot explicitly: the anchor measures
+one merged face, not the union matrix (issue #27).
 """
 
 from __future__ import annotations
@@ -157,7 +160,8 @@ class TestMeasuredAnchor:
         recipe.write_text(
             f"base: {base_path.resolve().as_posix()}\n"
             f"donors:\n  - {donor_path.resolve().as_posix()}\n"
-            "normalization:\n  mode: auto\n",
+            "normalization:\n  mode: auto\n"
+            "weights:\n  - weight: 400\n",
             encoding="utf-8",
         )
 
@@ -240,7 +244,8 @@ class TestMeasuredAnchor:
         recipe.write_text(
             f"base: {base_path.resolve().as_posix()}\n"
             f"donors:\n  - {donor_path.resolve().as_posix()}\n"
-            "normalization:\n  mode: auto\n",
+            "normalization:\n  mode: auto\n"
+            "weights:\n  - weight: 400\n",
             encoding="utf-8",
         )
 

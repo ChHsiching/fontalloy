@@ -648,7 +648,15 @@ class TestOS2Corrections:
             codepoints=DONOR_CODEPOINTS,
             weight=700,
         )
-        recipe = write_recipe(tmp_path, minimal_recipe(base, donor))
+        # The subject is the base's own weight class, so the matrix must
+        # stay single-slot: the 700 donor is a donor-only weight under
+        # the union default (issue #27), and the recipe pins the base's
+        # 400 instead of letting it borrow a second face.
+        recipe = write_recipe(
+            tmp_path,
+            f"base: {base.name}\ndonors:\n  - {donor.name}\n"
+            "weights:\n  - weight: 400\n",
+        )
 
         result = build(recipe, tmp_path / "out.ttf")
 
