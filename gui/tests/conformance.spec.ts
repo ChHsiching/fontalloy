@@ -84,11 +84,12 @@ const NON_URL_FONTFACE_BUDGET: ReadonlyArray<{
 }> = [
   {
     file: "gui/src/fonts/registry.ts",
-    budget: 2,
+    budget: 3,
     reason:
-      "registerFontBytes + the sibling-face add: the local/system pick " +
-      "byte path (ticket #32's carve-out; retired when that path moves " +
-      "serve-side)",
+      "the local/system pick byte path (ticket #32's carve-out; retired " +
+      "when that path moves serve-side): registerFontBytes' ternary pair " +
+      "(with/without descriptors) + the sibling-face add — two reviewed " +
+      "sites, three constructions",
   },
 ];
 

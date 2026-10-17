@@ -2,28 +2,21 @@
  * Runtime configuration for the shared frontend.
  *
  * The frontend runs in two environments (ADR-0002): inside the Tauri shell
- * and as a plain browser page (Vite dev server, future WebApp build). The
- * catalog bootstrap differs per environment, and the seam-3 Playwright
- * suite drives the whole first-run flow OUTSIDE Tauri by injecting a config
- * object before the app boots:
+ * and as a plain browser page (Vite dev server, the static WebApp build).
+ * Ticket #33 deleted the last reader of the classic page-side catalog
+ * bootstrap seam (`catalogBootstrapUrl`): the catalog arrives through the
+ * serve (`serveUrl` below) and nothing else — the vite dev server's
+ * /dev-catalog fixture origin is served to the SERVE, never fetched by
+ * the page. The seam-3 Playwright suite drives the app OUTSIDE Tauri by
+ * injecting a config object before the app boots:
  *
  * ```ts
  * await page.addInitScript(() => {
- *   window.__FONTALLOY_CONFIG__ = { catalogBootstrapUrl: "https://…" };
+ *   window.__FONTALLOY_CONFIG__ = { serveUrl: "http://127.0.0.1:…" };
  * });
  * ```
  *
- * Plain-browser PRODUCTION builds deliberately default to NO catalog
- * bootstrap — a deployed page must never start pulling the real ~375 MB
- * catalog from GitHub. The Vite DEV server is the one exception: it
- * serves a small fixture catalog itself (host fonts), so `npm run dev`
- * boots a working catalog; the e2e web server opts out via
- * VITE_DEV_CATALOG=0. `tauri dev` loads the frontend from that same
- * dev server, so it boots the real dev catalog too (round 4) — only a
- * PRODUCTION Tauri build (or an explicit injected config) turns the
- * real GitHub downloader on.
- *
- * Issue #16 adds two more injectable seams on the same object:
+ * The injectable seams on the object:
  * - `serveUrl` — where the merge service answers (`http://127.0.0.1:<port>`).
  *   Under Tauri the shell's sidecar resolves it (the `serve_url` command);
  *   in tests the bootstrap injects the address of the REAL `fontalloy
@@ -53,44 +46,6 @@
  *   indicator and drive the workspace DURING a load, deterministically.
  *   Never set outside tests.
  */
-
-/** GitHub Releases tag carrying the consolidated catalog (ADR-0005, #14). */
-export const CATALOG_TAG = "font-catalog-v1";
-export const CATALOG_REPO = "ChHsiching/fontalloy";
-
-/**
- * The dev-server REAL catalog (see gui/scripts/dev-catalog.mjs): the
- * repo manifest's families zipped from a local fonts directory, served
- * by vite (dev AND preview) at this path so a plain `npm run dev` and
- * the built WebApp under `vite preview` boot the real catalog — picker
- * rows with real meta, real glyph rendering. Opt out with
- * VITE_DEV_CATALOG=0 — the gui e2e suite's web server does, keeping its
- * pages catalog-free unless a test injects its own origin.
- */
-export const DEV_CATALOG_URL = "/dev-catalog/catalog-release.json";
-
-/**
- * Ticket #30: the RELEASE-DOCUMENT ORIGINS the Tauri sidecar hands the
- * serve (`--catalog-release-origin`, the base the serve's catalog sync
- * fetches `catalog-release.json` and the family zips from). Dev builds
- * point at the vite dev server's own /dev-catalog (same origin the
- * classic page-side bootstrap used); a production build points at the
- * GitHub Releases tag the classic flow encoded here all along. The
- * Rust shell duplicates these two constants verbatim (gui/src-tauri/
- * src/lib.rs) — the shell spawns the sidecar before any webview code
- * can run, so they cannot be shared at runtime.
- */
-export const DEV_CATALOG_ORIGIN_PATH = "/dev-catalog";
-/** The vite dev server's port (`tauri dev` loads the webview from it). */
-export const DEV_SERVER_PORT = "5173";
-
-/** The dev-stack catalog origin (tag constant, dev-server flavored). */
-export function devCatalogOrigin(port: string = DEV_SERVER_PORT): string {
-  return `http://localhost:${port}${DEV_CATALOG_ORIGIN_PATH}`;
-}
-
-/** The production catalog origin: the GitHub Releases tag's directory. */
-export const CATALOG_RELEASE_ORIGIN = `https://github.com/${CATALOG_REPO}/releases/download/${CATALOG_TAG}`;
 
 /** The result of handing a built font to the platform saver. */
 export interface ArtifactSaveResult {
@@ -154,11 +109,6 @@ export type FontPathReader = (path: string) => Promise<FontPathRead>;
 
 export interface FontalloyConfig {
   /**
-   * Where `catalog-release.json` is fetched from on every launch. `null`
-   * disables the catalog entirely (plain-browser default).
-   */
-  catalogBootstrapUrl: string | null;
-  /**
    * The merge service address. `undefined` = not injected (the Tauri
    * shell resolves it); `null` = explicitly disabled.
    */
@@ -189,10 +139,6 @@ declare global {
   interface Window {
     __FONTALLOY_CONFIG__?: Partial<FontalloyConfig>;
   }
-}
-
-function githubBootstrapUrl(): string {
-  return `${CATALOG_RELEASE_ORIGIN}/catalog-release.json`;
 }
 
 export function isTauri(): boolean {
@@ -231,31 +177,7 @@ export function serveProbeAddress(): string {
 export function readConfig(): FontalloyConfig {
   const injected =
     typeof window !== "undefined" ? window.__FONTALLOY_CONFIG__ : undefined;
-  const devCatalog =
-    import.meta.env.DEV && import.meta.env.VITE_DEV_CATALOG !== "0";
-  const devDefault = devCatalog ? DEV_CATALOG_URL : null;
-  // The static WebApp build (web/) ships the same dev-catalog bootstrap:
-  // its vite config defines VITE_WEB_CATALOG=1 so `vite preview` of the
-  // built site boots the real catalog too. Other plain-browser builds
-  // (a gui dist opened outside Tauri) deliberately default to NONE.
-  const webStaticDefault =
-    import.meta.env.VITE_WEB_CATALOG === "1" ? DEV_CATALOG_URL : null;
-  const bootstrap =
-    injected?.catalogBootstrapUrl !== undefined
-      ? injected.catalogBootstrapUrl
-      : isTauri()
-        ? // `tauri dev` loads the frontend FROM the vite dev server, so
-          // the same-origin dev catalog is exactly what it sees — the
-          // app boots with the real 81-family catalog while the GitHub
-          // release tag it would otherwise await does not exist yet.
-          // A production Tauri build (vite build → frontendDist) is DEV
-          // false and keeps the real release flow unchanged.
-          (devCatalog
-            ? DEV_CATALOG_URL
-            : githubBootstrapUrl())
-        : (devDefault ?? webStaticDefault);
   return {
-    catalogBootstrapUrl: bootstrap ?? null,
     serveUrl: injected?.serveUrl,
     saveArtifact: injected?.saveArtifact,
     saveArtifactAs: injected?.saveArtifactAs,
