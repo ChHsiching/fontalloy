@@ -115,41 +115,149 @@ export interface LoadedFont {
   placeholderCodepoints?: number[];
 }
 
-/* ---------- catalog (issue #17: first-run download) ---------- */
+/* ---------- catalog (ticket #30: the serve-owned catalog) ---------- */
 
-export type CatalogFamilyStatus = "pending" | "downloading" | "verified" | "failed";
+/**
+ * The serve sync's per-family progress states (`GET /catalog/status`),
+ * verbatim from the state machine (issue #26): pending → downloading
+ * → extracting → verifying → done | failed.
+ */
+export type CatalogFamilySyncState =
+  | "pending"
+  | "downloading"
+  | "extracting"
+  | "verifying"
+  | "done"
+  | "failed";
 
-/** One catalog family as the UI sees it (metadata family + download state). */
-export interface CatalogFamilyEntry {
+/** One family's sync progress inside the status document. */
+export interface CatalogFamilyProgress {
   family: string;
-  status: CatalogFamilyStatus;
-  /** Human-readable failure reason (shown inline, never hover-only). */
-  error?: string;
+  state: CatalogFamilySyncState;
+  /** The serve's own failure reason (shown inline, never hover-only). */
+  error?: string | null;
+}
+
+/** The honest coverage summary one scanned face carries. */
+export interface CatalogFaceCoverage {
+  codepoints: number;
+  placeholders: number;
+  latin: boolean;
+  cjk: boolean;
+}
+
+/** One face of a cut, as the family document reports it (issue #38). */
+export interface CatalogFaceDoc {
+  file: string;
+  face_index: number;
+  sha256: string;
+  href: string;
+  family: string;
+  subfamily: string;
+  weight: number;
+  italic: boolean;
+  variable: boolean;
+  coverage: CatalogFaceCoverage;
+  placeholder: boolean;
+}
+
+/** One cut of a family document: variant, label, faces, readiness. */
+export interface CatalogCutDoc {
+  variant: string;
+  def: boolean;
+  /** The release artifact's own stem (shown until the scan lands). */
+  label: string;
+  file: string;
+  version: string | null;
+  sha256: string;
+  axes: Record<string, string>;
+  upstream_url: string | null;
+  /** The cut's own name-table name, once scanned. */
+  display_name: string | null;
+  representative: string | null;
+  faces: CatalogFaceDoc[];
+}
+
+/**
+ * One family's picker document (`GET /catalog/families`, issue #38):
+ * everything a row needs — display names from the REAL name tables,
+ * the cuts, per-family readiness — without the page touching font
+ * bytes.
+ */
+export interface CatalogFamilyDoc {
+  family: string;
+  /** The family's readiness: a sync state, or unsynced/absent. */
+  readiness: CatalogFamilySyncState | "unsynced" | "absent";
+  error: string | null;
+  scanned: boolean;
+  display_name: string | null;
+  display_names: string[];
+  /** The family's preview-subset URL (self-rendering rows). */
+  preview: string | null;
+  cuts: CatalogCutDoc[];
 }
 
 export type CatalogStatus =
-  /** No bootstrap configured (plain-browser builds and default tests). */
+  /** No serve catalog configured (no serve, or a serve without one). */
   | "none"
-  /** Fetching catalog-release.json. */
+  /** Waiting for the serve's first status answer. */
+  | "connecting"
+  /** The serve's sync is running (first run and repairs alike). */
   | "bootstrapping"
-  /** Downloading missing families behind the progress screen. */
+  /** The serve's sync finished; every family is complete. */
+  | "ready"
+  /** The serve's sync finished (or could not run) with an error. */
+  | "unavailable"
+  /**
+   * LEGACY values of the page-side downloader this ticket replaced —
+   * only the uncalled CatalogManager (gui/src/catalog/manager.ts,
+   * deleted by #33) still writes them.
+   */
   | "downloading"
-  /** Run finished; every metadata family is verified in storage. */
   | "settled-complete"
-  /** Run finished; some families failed and retry on the next launch. */
-  | "settled-partial"
-  /** Bootstrap failed (offline / bad metadata); local fonts unaffected. */
-  | "unavailable";
+  | "settled-partial";
 
 export interface CatalogState {
   status: CatalogStatus;
+  /**
+   * The catalog's failure reason. When the serve reports unavailable
+   * this is the serve's error string VERBATIM (the picker footer
+   * shows exactly it); for transport failures it is the fetch error.
+   */
+  error?: string;
+  /** LEGACY bootstrapError alias of the page-side downloader (#33). */
   bootstrapError?: string;
+  /**
+   * The serve status document's per-family progress (the first-run
+   * screen renders it). LEGACY `families` is the page-side downloader's
+   * shape (#33).
+   */
+  progress: CatalogFamilyProgress[];
+  /** LEGACY per-family entries of the page-side downloader (#33). */
   families: CatalogFamilyEntry[];
-  /** Metadata family -> cssFamily, once the family's face is registered. */
+  /** The serve's family documents (the picker's row source). */
+  documents: CatalogFamilyDoc[];
+  /** True while the serve is still scanning family documents. */
+  scanning: boolean;
+  /** LEGACY registered map of the page-side downloader (#33). */
   registered: Record<string, string>;
   /** First-run progress screen visible (dismissable; never blocks). */
   screen: boolean;
 }
+
+/** LEGACY: the page-side downloader's per-family entry shape (#33). */
+export interface CatalogFamilyEntry {
+  family: string;
+  status: CatalogFamilyStatus;
+  error?: string;
+}
+
+/** LEGACY: the page-side downloader's per-family statuses (#33). */
+export type CatalogFamilyStatus =
+  | "pending"
+  | "downloading"
+  | "verified"
+  | "failed";
 
 export interface AppState {
   /** All successfully loaded local fonts (the picker rows). */
@@ -261,7 +369,15 @@ export const store = createStore<AppState>({
   selectionAnchor: null,
   rules: bootRules(),
   settings: { ...DEFAULT_SETTINGS },
-  catalog: { status: "none", families: [], registered: {}, screen: false },
+  catalog: {
+    status: "none",
+    progress: [],
+    families: [],
+    documents: [],
+    scanning: false,
+    registered: {},
+    screen: false,
+  },
 });
 
 /** Distinct codepoints covered by the two selected fonts (union). */
