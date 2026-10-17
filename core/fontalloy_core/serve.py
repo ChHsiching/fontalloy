@@ -34,6 +34,8 @@ path           method  response
 ``/catalog/families/fam/preview`` GET  the family's preview subset
 ``/catalog/stars`` GET  launch-cached GitHub stars (offline-tolerant)
 ``/fonts``     GET     local font directories, scanned into families
+``/local-fonts`` POST  scan absolute font paths into family docs (31)
+``/local-fonts/face`` GET  one scanned local face's extracted bytes
 ``/builds``    GET     every retained build, newest last
 ``/builds``    POST    submit a merge (recipe-shaped JSON) -> 202 + id
 ``/builds/id`` GET     one build's status/stage/artifact document
@@ -96,6 +98,7 @@ from fontalloy_core.load import (
     aggregate_families,
     scan_families,
 )
+from fontalloy_core.local_fonts import FONT_SUFFIXES, LocalFonts, extract_face
 from fontalloy_core.precedence_api import resolve_document
 from fontalloy_core.recipe import Recipe, parse_recipe
 from fontalloy_core.stars import StarsCache
@@ -129,8 +132,10 @@ FONT_CONTENT_TYPES = {
     "woff2": "font/woff2",
 }
 
-#: Font file suffixes the local-font enumeration considers.
-_FONT_SUFFIXES = {".ttf", ".otf", ".ttc", ".woff2"}
+#: Font file suffixes the local-font enumeration considers (the
+#: local-fonts scan module owns the set; the /fonts enumeration shares
+#: it — one definition of "a font file").
+_FONT_SUFFIXES = FONT_SUFFIXES
 
 #: Disk artifacts stream in these chunks (a face is never buffered
 #: whole inside a handler — the renderer-side byte-pinning lesson,
@@ -327,6 +332,12 @@ class ServeState:
             self.catalog, self.catalog_sync, options.catalog_dir
         )
         self.stars = StarsCache(self.catalog)
+        # Issue #31: the on-demand local-font index behind POST
+        # /local-fonts (paths in, family documents with server-side TTC
+        # expansion out) and the GET /local-fonts/face byte source. The
+        # scan runs inside the POST, bounded per file and yielding
+        # between files; later scans of unchanged paths are cache reads.
+        self.local_fonts = LocalFonts()
 
     # -- startup -----------------------------------------------------------
 
@@ -905,6 +916,12 @@ class _ServeHandler(BaseHTTPRequestHandler):
         elif path == "/fonts":
             self._require_methods(method, ("GET",))
             self._send_json(state.fonts_document())
+        elif path == "/local-fonts":
+            self._require_methods(method, ("POST",))
+            self._local_scan()
+        elif path == "/local-fonts/face":
+            self._require_methods(method, ("GET",))
+            self._local_face()
         elif path == "/system-fonts":
             self._require_methods(method, ("GET",))
             self._send_json(state.system_fonts_document())
@@ -1034,6 +1051,83 @@ class _ServeHandler(BaseHTTPRequestHandler):
             return
         self._send_json(document)
 
+    def _local_scan(self) -> None:
+        """``POST /local-fonts`` (ticket #31): paths in, family documents
+        out — the same document shape as ``GET /catalog/families``, TTCs
+        expanded server-side, one face per (weight, style) slot, side-cut
+        drops stated. A malformed body or a rejected path (relative,
+        missing, not a font) is a synchronous 400 naming every offender;
+        a readable-but-invalid font file is never fatal — it rides the
+        response's ``skipped`` list while its siblings still scan."""
+        length = int(self.headers.get("Content-Length") or 0)
+        if length > MAX_BODY_BYTES:
+            self._send_error(413, "submission body exceeds the size limit")
+            return
+        raw = self.rfile.read(length) if length else b""
+        try:
+            data = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            self._send_error(400, f"submission is not valid JSON: {exc}")
+            return
+        try:
+            document = self.state.local_fonts.scan_document(data)
+        except FontAlloyError as exc:
+            self._send_error(400, str(exc))
+            return
+        self._send_json(document)
+
+    def _local_face(self) -> None:
+        """``GET /local-fonts/face?path=…&index=N`` (ticket #31): one
+        scanned local face's bytes by URL.
+
+        Only (path, face index) pairs a scan kept are servable, and only
+        while the file's (mtime, size) identity still matches the scan —
+        the same never-a-general-file-reader posture as the catalog and
+        system-font byte sources. A plain font streams its exact disk
+        bytes; a collection face serves its EXTRACTED standalone sfnt
+        (the server-side successor of the frontend's ttc.ts surgery),
+        so the page never receives the collection blob. The ETag is the
+        scan's own identity (mtime, size, face), so cache truth and
+        index truth are one string."""
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        target = query.get("path", [None])[0]
+        index = query.get("index", [None])[0]
+        if target is None or index is None:
+            self._send_error(400, "the face endpoint needs ?path= and ?index=")
+            return
+        try:
+            face_index = int(index)
+        except ValueError:
+            self._send_error(400, f"index must be an integer: {index!r}")
+            return
+        source = self.state.local_fonts.face_source(target, face_index)
+        if source is None:
+            self._send_error(
+                404, f"not a scanned local font face: {target}#{index}"
+            )
+            return
+        path, etag, face_count = source
+        if face_count == 1:
+            # A plain font file: the exact bytes off disk, streamed.
+            self._send_font_file(
+                path,
+                FONT_CONTENT_TYPES.get(
+                    path.suffix.lower().lstrip("."), "application/octet-stream"
+                ),
+                etag=etag,
+            )
+            return
+        # One face of a collection: the extracted standalone font. The
+        # extraction itself is bounded per face (fontTools re-serializes
+        # that face only), and the immutable+ETag discipline keeps the
+        # browser from asking twice.
+        try:
+            payload, content_type = extract_face(path, face_index)
+        except Exception:
+            self._send_error(404, f"face is no longer readable: {path.name}")
+            return
+        self._send_font_bytes(payload, content_type, etag=etag)
+
     def _build_detail(self, build_id: str) -> None:
         job = self._find_job(build_id)
         if job is None:
@@ -1153,6 +1247,24 @@ class _ServeHandler(BaseHTTPRequestHandler):
         with open(path, "rb") as stream:
             while chunk := stream.read(_STREAM_CHUNK):
                 self.wfile.write(chunk)
+
+    def _send_font_bytes(
+        self, payload: bytes, content_type: str, etag: str | None = None
+    ) -> None:
+        """Serve font bytes already in memory with the byte-source cache
+        discipline (an extracted collection face — the extraction had to
+        hold the face anyway; a disk-backed artifact uses
+        :meth:`_send_font_file` and streams)."""
+        headers = {"Cache-Control": "public, max-age=31536000, immutable"}
+        if etag is not None:
+            headers["ETag"] = f'"{etag}"'
+        if etag is not None and self.headers.get("If-None-Match") == f'"{etag}"':
+            self.send_response(304)
+            for name, value in {**self._cors_headers(), **headers}.items():
+                self.send_header(name, value)
+            self.end_headers()
+            return
+        self._send(200, payload, content_type, extra_headers=headers)
 
 
 def _health_document(state: ServeState) -> dict[str, Any]:

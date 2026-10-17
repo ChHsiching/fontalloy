@@ -69,6 +69,29 @@ export const CATALOG_REPO = "ChHsiching/fontalloy";
  */
 export const DEV_CATALOG_URL = "/dev-catalog/catalog-release.json";
 
+/**
+ * Ticket #30: the RELEASE-DOCUMENT ORIGINS the Tauri sidecar hands the
+ * serve (`--catalog-release-origin`, the base the serve's catalog sync
+ * fetches `catalog-release.json` and the family zips from). Dev builds
+ * point at the vite dev server's own /dev-catalog (same origin the
+ * classic page-side bootstrap used); a production build points at the
+ * GitHub Releases tag the classic flow encoded here all along. The
+ * Rust shell duplicates these two constants verbatim (gui/src-tauri/
+ * src/lib.rs) — the shell spawns the sidecar before any webview code
+ * can run, so they cannot be shared at runtime.
+ */
+export const DEV_CATALOG_ORIGIN_PATH = "/dev-catalog";
+/** The vite dev server's port (`tauri dev` loads the webview from it). */
+export const DEV_SERVER_PORT = "5173";
+
+/** The dev-stack catalog origin (tag constant, dev-server flavored). */
+export function devCatalogOrigin(port: string = DEV_SERVER_PORT): string {
+  return `http://localhost:${port}${DEV_CATALOG_ORIGIN_PATH}`;
+}
+
+/** The production catalog origin: the GitHub Releases tag's directory. */
+export const CATALOG_RELEASE_ORIGIN = `https://github.com/${CATALOG_REPO}/releases/download/${CATALOG_TAG}`;
+
 /** The result of handing a built font to the platform saver. */
 export interface ArtifactSaveResult {
   saved: boolean;
@@ -169,7 +192,7 @@ declare global {
 }
 
 function githubBootstrapUrl(): string {
-  return `https://github.com/${CATALOG_REPO}/releases/download/${CATALOG_TAG}/catalog-release.json`;
+  return `${CATALOG_RELEASE_ORIGIN}/catalog-release.json`;
 }
 
 export function isTauri(): boolean {

@@ -2,14 +2,18 @@
 ///
 /// The shell owns four native capabilities the webview cannot:
 ///
-/// 1. **The core sidecar** (issue #16): the bundled `fontalloy` binary is
-///    spawned as `fontalloy serve --port 0` with the app's catalog font
-///    directory (`appDataDir/catalog/families`) as `--font-dir` — the
-///    same on-disk layout the webview downloads into (issue #17) — and
-///    the webview origins on the CORS allowlist. The bound URL is read
-///    from the sidecar's stdout startup line and handed to the frontend
-///    through the `serve_url` command (and a `serve-ready` event); the
-///    child is killed on app exit so no orphaned service survives.
+/// 1. **The core sidecar** (issue #16; ticket #30 adds the catalog
+///    flags): the bundled `fontalloy` binary is spawned as `fontalloy
+///    serve --port 0` with the app's catalog directory
+///    (`appDataDir/catalog`) as BOTH `--font-dir` and `--catalog-dir`,
+///    plus `--catalog-release-origin` (the dev `/dev-catalog` origin
+///    under `tauri dev`, the production GitHub Releases tag in release
+///    builds) — the serve owns the catalog lifecycle and serves the
+///    synced faces by URL; the webview never downloads anything. The
+///    bound URL is read from the sidecar's stdout startup line and
+///    handed to the frontend through the `serve_url` command (and a
+///    `serve-ready` event); the child is killed on app exit so no
+///    orphaned service survives.
 /// 2. **Local font files with real paths**: the native open dialog
 ///    (`pick_font_files`) returns absolute paths, and `read_font_file`
 ///    streams the bytes back over the raw IPC pipe — recipes can name
@@ -55,6 +59,19 @@ const ALLOWED_ORIGINS: [&str; 3] = [
     "tauri://localhost",
     "http://localhost:5173",
 ];
+
+/// The catalog release-document origin handed to the sidecar's serve
+/// (`--catalog-release-origin`, ticket #30): dev builds point at the
+/// vite dev server's own /dev-catalog (the real dev catalog the classic
+/// page-side bootstrap fetched); release builds at the production
+/// GitHub Releases tag. Duplicated verbatim from gui/src/platform/
+/// config.ts (`devCatalogOrigin` / `CATALOG_RELEASE_ORIGIN`) — the
+/// shell spawns the sidecar before any webview code can run.
+#[cfg(debug_assertions)]
+const CATALOG_RELEASE_ORIGIN: &str = "http://localhost:5173/dev-catalog";
+#[cfg(not(debug_assertions))]
+const CATALOG_RELEASE_ORIGIN: &str =
+    "https://github.com/ChHsiching/fontalloy/releases/download/font-catalog-v1";
 
 /// Shared state between the spawn thread, the commands, and shutdown.
 #[derive(Default)]
@@ -381,11 +398,13 @@ async fn open_external(app: AppHandle, url: String) -> Result<(), String> {
 /// Spawn the `fontalloy serve` sidecar and watch its stdout.
 fn spawn_sidecar(handle: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let app_data = handle.path().app_data_dir()?;
-    let font_dir = app_data.join("catalog").join("families");
-    // The catalog may not have downloaded yet — serve treats a missing
-    // --font-dir as an empty listing, but create it so downloads land
-    // where the sidecar looks.
-    std::fs::create_dir_all(&font_dir)?;
+    // Ticket #30: the serve owns the catalog. It syncs the release
+    // document's families into the catalog cache directory (--catalog-dir,
+    // --catalog-release-origin) and serves the extracted faces from the
+    // SAME directory as --font-dir, so recipes resolve picked catalog
+    // faces by path against the /fonts listing exactly as before.
+    let catalog_dir = app_data.join("catalog");
+    std::fs::create_dir_all(&catalog_dir)?;
     // Round 25: the system-font scan caches its result here — a
     // steady-state launch stat-walks the system directories instead
     // of re-parsing every installed font.
@@ -398,7 +417,11 @@ fn spawn_sidecar(handle: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         "--port",
         "0",
         "--font-dir",
-        &font_dir.to_string_lossy(),
+        &catalog_dir.to_string_lossy(),
+        "--catalog-dir",
+        &catalog_dir.to_string_lossy(),
+        "--catalog-release-origin",
+        CATALOG_RELEASE_ORIGIN,
         "--system-cache-dir",
         &system_cache.to_string_lossy(),
     ]);

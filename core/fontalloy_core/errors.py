@@ -42,3 +42,7 @@ class ReleaseError(FontAlloyError):
 
 class PresetError(FontAlloyError):
     """The language-preset corpus is missing or unreadable (bad install)."""
+
+
+class LocalFontError(FontAlloyError):
+    """A local-font scan request is malformed (bad paths, bad body)."""

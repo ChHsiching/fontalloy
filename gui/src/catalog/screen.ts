@@ -1,24 +1,27 @@
-import { store, type CatalogFamilyStatus } from "../state";
-import { getDefaultManager } from "./manager";
+import { store, type CatalogFamilyProgress } from "../state";
+import { skipCatalogScreen } from "./serve";
 import { brandMark } from "../kit/topBar";
 import { sep } from "../kit/icons";
 
 /**
- * The first-run progress screen (issue #17, ADR-0005): a dismissable
- * overlay showing per-family download status while the full catalog
- * arrives. It never blocks the workspace — the workspace is mounted and
- * functional underneath, the 跳过 button dismisses at any time, and the
- * screen closes itself once the run settles (missing families retry on
- * the next launch and are shown as such in the pickers).
+ * The first-run progress screen (issue #17, ADR-0005; ticket #30):
+ * a dismissable overlay showing the SERVE's per-family sync progress
+ * while the full catalog arrives. It never blocks the workspace — the
+ * workspace is mounted and functional underneath, the 跳过 button
+ * dismisses at any time, and the screen closes itself once the serve's
+ * state machine settles (failures never block; missing families are
+ * repaired by later sync runs).
  *
  * The node is created once and appended to <body>; only the family rows
  * rebuild (the picker-popup discipline, ADR-0004).
  */
 
-const STATUS_TEXT: Record<CatalogFamilyStatus, string> = {
+const STATUS_TEXT: Record<CatalogFamilyProgress["state"], string> = {
   pending: "等待下载",
   downloading: "下载中",
-  verified: "已完成",
+  extracting: "解压中",
+  verifying: "校验中",
+  done: "已完成",
   failed: "下载失败",
 };
 
@@ -51,13 +54,13 @@ export function mountCatalogScreen(): void {
   const total = screen.querySelector<HTMLElement>("[data-stat='catalog-total']")!;
   const skip = screen.querySelector<HTMLButtonElement>(".catalog-skip")!;
 
-  skip.addEventListener("click", () => getDefaultManager()?.skip());
+  skip.addEventListener("click", () => skipCatalogScreen());
 
   const render = (): void => {
     const { catalog } = store.get();
     screen.hidden = !catalog.screen;
-    const families = catalog.families;
-    done.textContent = String(families.filter((f) => f.status === "verified").length);
+    const families = catalog.progress;
+    done.textContent = String(families.filter((f) => f.state === "done").length);
     total.textContent = String(families.length);
 
     const fragment = document.createDocumentFragment();
@@ -65,17 +68,17 @@ export function mountCatalogScreen(): void {
       const row = document.createElement("div");
       row.className = "catalog-family";
       row.dataset.family = family.family;
-      row.dataset.status = family.status;
+      row.dataset.status = family.state;
       const name = document.createElement("span");
       name.className = "catalog-family-name";
       name.textContent = family.family;
       const status = document.createElement("span");
       status.className = "catalog-family-status";
-      status.textContent = STATUS_TEXT[family.status];
+      status.textContent = STATUS_TEXT[family.state];
       row.append(name, status);
-      // Failures state their reason inline — nothing lives in hover-only
-      // tooltips (ADR-0004).
-      if (family.status === "failed" && family.error) {
+      // Failures state the serve's own reason inline — nothing lives in
+      // hover-only tooltips (ADR-0004).
+      if (family.state === "failed" && family.error) {
         const error = document.createElement("span");
         error.className = "catalog-family-error";
         error.textContent = family.error;

@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -323,15 +323,31 @@ function defaultServeBin(): string {
   );
 }
 
+/**
+ * A worktree-local scratch dir handed to every spawned serve as
+ * `--system-cache-dir` (the IO discipline: a test serve must never
+ * read or seed a cache under the user's real profile; the system-font
+ * scan is lazy, and when a spec does touch /system-fonts it must pass
+ * a fixture `--system-font-dir` instead — never the real one).
+ * Removed with the serve.
+ */
+async function systemCacheScratch(): Promise<string> {
+  const root = resolve(repoRoot, ".scratch", "serve-cache");
+  await mkdir(root, { recursive: true });
+  return mkdtemp(resolve(root, "sys-"));
+}
+
 /** Spawn a real `fontalloy serve` over `fontsDir` (ephemeral port). */
-export function spawnServeOverFonts(
+export async function spawnServeOverFonts(
   fontsDir: string,
   extraArgs: readonly string[] = [],
+  options: { env?: Record<string, string> } = {},
 ): Promise<{
   url: string;
   dispose: () => Promise<void>;
 }> {
   const bin = process.env.FONTALLOY_SERVE_BIN ?? defaultServeBin();
+  const systemCacheDir = await systemCacheScratch();
   const child: ChildProcess = spawn(
     bin,
     [
@@ -342,9 +358,17 @@ export function spawnServeOverFonts(
       devOrigin,
       "--font-dir",
       fontsDir,
+      "--system-cache-dir",
+      systemCacheDir,
       ...extraArgs,
     ],
-    { cwd: repoRoot, stdio: ["ignore", "pipe", "pipe"] },
+    {
+      cwd: repoRoot,
+      stdio: ["ignore", "pipe", "pipe"],
+      // Ticket #30: the serve-side catalog sync's test seams (the
+      // per-family delay that makes a first-run sync observably slow).
+      env: { ...process.env, ...options.env },
+    },
   );
   const url = new Promise<string>((resolvePromise, rejectPromise) => {
     let stdout = "";
@@ -403,6 +427,7 @@ export function spawnServeOverFonts(
           resolvePromise();
         });
       });
+      await rm(systemCacheDir, { recursive: true, force: true });
     },
   };
 }
@@ -420,6 +445,7 @@ export async function startServeFixture(
   const root = await mkdtemp(resolve(tmpdir(), "fontalloy-e2e-"));
   const fontsDir = resolve(root, "fonts");
   await generateFonts(fontsDir, fixture);
+  const systemCacheDir = await systemCacheScratch();
 
   const bin = process.env.FONTALLOY_SERVE_BIN ?? defaultServeBin();
   const child: ChildProcess = spawn(
@@ -434,6 +460,8 @@ export async function startServeFixture(
       fontsDir,
       "--work-dir",
       resolve(root, "work"),
+      "--system-cache-dir",
+      systemCacheDir,
     ],
     { cwd: repoRoot, stdio: ["ignore", "pipe", "pipe"] },
   );
@@ -501,6 +529,7 @@ export async function startServeFixture(
         });
       });
       await rm(root, { recursive: true, force: true });
+      await rm(systemCacheDir, { recursive: true, force: true });
     },
   };
 }

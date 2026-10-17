@@ -1,6 +1,6 @@
 import {
   store,
-  type CatalogFamilyEntry,
+  type CatalogFamilyDoc,
   type CatalogState,
   type LoadedFont,
 } from "../state";
@@ -10,14 +10,15 @@ import {
   type LocalFontFile,
 } from "../fonts/registry";
 import { sweepLocalFamily } from "../fonts/localFamily";
-import { getDefaultManager } from "../catalog/manager";
+import {
+  ensureCatalogRegistered,
+  previewCssFamily,
+} from "../catalog/serve";
 import { starsFor, subscribeStars } from "../catalog/stars";
 import { appMessages } from "./charmap";
 import {
   TOKEN_HELP_ROWS,
-  cutLabels,
   displayFamilies,
-  familyEntries,
   variantCuts,
   type CatalogEntryLike,
   type DisplayFamily,
@@ -135,24 +136,49 @@ function ensureFileInput(): HTMLInputElement {
  * intercepts drops; nobody listens).
  */
 
-/** Inline status tag for a catalog row that cannot be picked (yet). */
-function catalogTag(family: CatalogFamilyEntry): string | undefined {
-  // Icon-purge round: the status and its remedy are one sentence — a
-  // comma joins them (the interpunct was glyph-as-chrome).
-  if (family.status === "failed") return "未下载，下次启动自动重试";
-  if (family.status === "downloading") return "下载中…";
-  if (family.status === "pending") return "等待下载";
-  return undefined;
+/**
+ * A family's readiness (the serve document's own state) as an inline
+ * row/chip tag. `done` families carry no tag; everything else states
+ * itself — never a silent dead row.
+ */
+function readinessTag(doc: CatalogFamilyDoc | undefined): string | undefined {
+  if (doc === undefined) return "未收录";
+  switch (doc.readiness) {
+    case "done":
+      return undefined;
+    case "pending":
+      return "等待同步";
+    case "downloading":
+      return "下载中…";
+    case "extracting":
+      return "解压中…";
+    case "verifying":
+      return "校验中…";
+    case "failed":
+      return "同步失败，稍后启动自动重试";
+    case "unsynced":
+      return "未同步";
+    case "absent":
+      return "未收录";
+    default:
+      return undefined;
+  }
 }
 
 /** Catalog status line for the popup footer (visible text, never hover). */
 function catalogNote(catalog: CatalogState): string | null {
   if (catalog.status === "unavailable") {
-    return "目录不可用（离线）—— 本地字体不受影响。";
+    // The serve's own error string, VERBATIM (ticket #30 / spec #25
+    // story 3): the owner reads what the sync actually said.
+    return catalog.error && catalog.error.length > 0
+      ? catalog.error
+      : "目录不可用（离线）—— 本地字体不受影响。";
   }
-  if (catalog.status === "settled-partial") {
-    const missing = catalog.families.filter((f) => f.status !== "verified").length;
-    return `目录不完整：${missing} 个家族未下载，下次启动时自动重试。`;
+  if (catalog.status === "bootstrapping") {
+    const done = catalog.progress.filter((f) => f.state === "done").length;
+    return catalog.progress.length > 0
+      ? `内置目录同步中：${done}/${catalog.progress.length} 个家族已完成。`
+      : "内置目录同步中…";
   }
   return null;
 }
@@ -243,42 +269,45 @@ export function variantDisplayName(font: LoadedFont): string {
 }
 
 /**
- * The upstream release artifact's own name — the row a font that has
- * not been fetched falls back to (round 9, owner item 2): the stem of
- * the release document's face file, never a constructed string.
+ * The unscanned row's fallback name (round 9, owner item 2): the
+ * family document's own data label — the release artifact's stem, from
+ * the SERVE's cut structure — never a constructed string. Scanned
+ * families read `display_name` (the real name-table name).
  */
-function releaseArtifactName(family: string): string {
-  const meta = getDefaultManager()
-    ?.getRelease()
-    ?.families.find((f) => f.family === family);
-  const face = meta?.files[0]?.file ?? `${family}.ttf`;
-  return face.replace(/\.[^.]+$/, "");
+function documentRowName(doc: CatalogFamilyDoc | undefined, family: string): string {
+  if (doc === undefined) return family;
+  if (doc.display_name !== null) return doc.display_name;
+  const cut = doc.cuts.find((c) => c.def) ?? doc.cuts[0];
+  return cut !== undefined ? (cut.display_name ?? cut.label) : family;
 }
 
 /**
  * The variant chips of one display row: one chip per CUT — the distinct
- * releases the manifest pins, labeled with each cut's OWN name (round
- * 23, owner item 1: the registered cut's full name-table name, verbatim
- * — the default cut included; an unregistered cut falls back to the
- * release artifact's own stem). The default cut renders PLAIN; the
- * accent marks only the user's EXPLICIT pick. A cut whose member family
- * is not fetched renders disabled with the 未下载 tag. Every chip is a
- * real manifest entry, so impossible combinations never appear at all.
+ * releases the curated manifest mirror pins, labeled with each cut's
+ * OWN name (the serve document's scanned name-table display, verbatim;
+ * an unscanned cut keeps the release artifact's own stem). The default
+ * cut renders PLAIN; the accent marks only the user's EXPLICIT pick. A
+ * cut whose member family is not synced renders disabled with its
+ * readiness tag. Every chip is a real manifest entry, so impossible
+ * combinations never appear at all.
  */
 function rowChips(
   cuts: readonly VariantCut[],
   selectedCutId: string | null,
-  statusOf: (family: string) => CatalogFamilyEntry | undefined,
-  labels: ReadonlyMap<string, string>,
+  docOf: (family: string) => CatalogFamilyDoc | undefined,
 ): PickerChip[] {
   return cuts.map((cut) => {
-    const verified = statusOf(cut.entry.family)?.status === "verified";
+    const doc = docOf(cut.entry.family);
+    const synced = doc !== undefined && doc.readiness === "done";
+    const label =
+      doc?.cuts.find((docCut) => docCut.variant === cut.entry.variant)
+        ?.display_name ?? cut.label;
     return {
       id: cut.id,
-      label: labels.get(cut.id) ?? cut.label,
+      label,
       on: selectedCutId === cut.id,
-      disabled: !verified,
-      tag: verified ? undefined : "未下载",
+      disabled: !synced,
+      tag: synced ? undefined : (readinessTag(doc) ?? "未收录"),
     };
   });
 }
@@ -429,23 +458,26 @@ export function mountPicker(
 
   /**
    * Select a catalog entry for preview (round 7: an entry names the
-   * exact manifest family + VARIANT a row or chip resolved to): read
-   * the variant's face from local storage (sha256-verified at download
-   * time), register it through the same FontFace(arrayBuffer) path as
-   * local files, and load it so the anchor renders in it immediately.
+   * exact manifest family + VARIANT a row or chip resolved to; ticket
+   * #30): the serve serves the cut's representative face, registration
+   * goes through the SAME FontFace path local files take, and the load
+   * is awaited so the anchor renders in it immediately.
    */
   const selectCatalogEntry = async (
     entry: CatalogEntryLike,
   ): Promise<void> => {
-    const manager = getDefaultManager();
-    const release = manager?.getRelease();
-    const meta = release?.families.find((f) => f.family === entry.family);
-    if (!manager || !meta) return;
-    const cssKey = await manager.ensureRegistered(meta, {
-      variant: entry.variant,
-    });
+    error = null;
+    let cssKey: string | null;
+    try {
+      cssKey = await ensureCatalogRegistered(entry.family, entry.variant);
+    } catch (err) {
+      cssKey = null;
+      error = err instanceof Error ? err.message : String(err);
+    }
     if (!cssKey) {
-      error = `无法载入目录字体 ${entry.family}：存储的字体文件无法解析。`;
+      if (error === null) {
+        error = `无法载入目录字体 ${entry.family}：目录中尚无该字体的可用字面。`;
+      }
       rerender();
       return;
     }
@@ -487,18 +519,22 @@ export function mountPicker(
 
   /**
    * Plain pick of a release family the manifest mirror does not carry
-   * (the e2e fixtures' invented families, the dev extras): the release
-   * document's own variant rides the catalog identity.
+   * (the e2e fixtures' invented families, the dev extras): the serve
+   * document's own default cut rides the catalog identity.
    */
   const selectReleaseFamily = async (family: string): Promise<void> => {
-    const manager = getDefaultManager();
-    const meta = manager?.getRelease()?.families.find(
-      (f) => f.family === family,
-    );
-    if (!manager || !meta) return;
-    const cssKey = await manager.ensureRegistered(meta);
+    error = null;
+    let cssKey: string | null;
+    try {
+      cssKey = await ensureCatalogRegistered(family, null);
+    } catch (err) {
+      cssKey = null;
+      error = err instanceof Error ? err.message : String(err);
+    }
     if (!cssKey) {
-      error = `无法载入目录字体 ${family}：存储的字体文件无法解析。`;
+      if (error === null) {
+        error = `无法载入目录字体 ${family}：目录中尚无该字体的可用字面。`;
+      }
       rerender();
       return;
     }
@@ -533,125 +569,116 @@ export function mountPicker(
       (display) => !display.families.some((f) => EXCLUDED_FAMILIES.has(f)),
     );
     const covered = new Set(manifestDisplays.flatMap((d) => d.families));
-    const releaseExtras: DisplayFamily[] = catalog.families
+    /**
+     * The families the serve's catalog actually CARRIES: the families
+     * the status document's per-family progress names (populated the
+     * moment the release document loaded) plus every family whose
+     * readiness already says done. Manifest-only families (readiness
+     * `absent`) never list, and a catalog whose release document never
+     * loaded (progress empty, everything pending) carries nothing —
+     * the footer's verbatim error is the whole story then, exactly
+     * like the empty catalog of before.
+     */
+    const progressed = new Set(catalog.progress.map((entry) => entry.family));
+    const carried = new Set(
+      catalog.documents
+        .filter(
+          (doc) =>
+            progressed.has(doc.family) ||
+            doc.readiness === "done" ||
+            doc.readiness === "failed",
+        )
+        .map((doc) => doc.family),
+    );
+    const releaseExtras: DisplayFamily[] = catalog.documents
       .filter(
-        (f) => !covered.has(f.family) && !EXCLUDED_FAMILIES.has(f.family),
+        (doc) =>
+          carried.has(doc.family) &&
+          !covered.has(doc.family) &&
+          !EXCLUDED_FAMILIES.has(doc.family),
       )
-      .map((f) => ({ id: f.family, families: [f.family], entries: [] }));
-    const statusOf = (family: string): CatalogFamilyEntry | undefined =>
-      catalog.families.find((f) => f.family === family);
+      .map((doc) => ({ id: doc.family, families: [doc.family], entries: [] }));
+    /** The serve's family document of one manifest family. */
+    const docOf = (family: string): CatalogFamilyDoc | undefined =>
+      catalog.documents.find((doc) => doc.family === family);
     /**
      * The cssFamily a family's registered face lives under: the exact
-     * variant key first, then the bare family key, then ANY variant key
-     * of the family (the sweep registers the face the release document
-     * carries, under ITS variant — one face per dev family, every
-     * member family in production).
+     * catalog identity first (family + the pick's variant), then any
+     * registration of the family.
      */
     const registeredCss = (family: string, variant?: string): string | null => {
       if (variant !== undefined) {
-        const exact = catalog.registered[`${family}::${variant}`];
-        if (exact !== undefined) return exact;
+        const exact = fonts.find(
+          (f) =>
+            f.catalog?.family === family && f.catalog?.variant === variant,
+        );
+        if (exact !== undefined) return exact.cssFamily;
       }
-      const bare = catalog.registered[family];
-      if (bare !== undefined) return bare;
-      for (const key of Object.keys(catalog.registered)) {
-        if (key.startsWith(`${family}::`)) return catalog.registered[key]!;
-      }
-      return null;
+      const bare = fonts.find((f) => f.catalog?.family === family);
+      return bare !== undefined ? bare.cssFamily : null;
     };
     const displays = [...manifestDisplays, ...releaseExtras]
       .filter((display) => {
         const isCjk = display.families.some((f) => CJK_SLOT_FAMILIES.has(f));
         return options.role === "cjk" ? isCjk : !isCjk;
       })
-      // A row lists only when the release document actually carries one
-      // of its families (the dev catalog may serve a subset).
-      .filter((display) =>
-        display.families.some((f) => statusOf(f) !== undefined),
-      );
+      // A row lists only when the serve's catalog actually carries one
+      // of its families (a serve may serve a subset of the manifest).
+      .filter((display) => display.families.some((f) => carried.has(f)));
 
     const rowsByFamily = new Map(
       displays.map((display) => {
         const primaryFamily = display.families[0]!;
-        const memberStatus = display.families
-          .map((f) => statusOf(f))
-          .filter((s): s is CatalogFamilyEntry => s !== undefined);
-        const anyVerified = memberStatus.some((s) => s.status === "verified");
-        const rowNote = memberStatus.find((s) => s.status !== "verified");
+        const primaryDoc = docOf(primaryFamily);
+        const memberDocs = display.families
+          .map((f) => docOf(f))
+          .filter((doc): doc is CatalogFamilyDoc => doc !== undefined);
+        const anyDone = memberDocs.some((doc) => doc.readiness === "done");
+        const rowNoteDoc = memberDocs.find((doc) => doc.readiness !== "done");
         // The cuts (round 8): one chip per distinct release; the ACTIVE
-        // cut is the explicit selection, else the family default. The
-        // LIST row reads the family name; the row the user actually
-        // PICKED (the checked one — the picker card's selected state)
-        // carries the registered face's own name-table name.
+        // cut is the explicit selection, else the family default.
         const cuts = variantCuts(display);
         const selectedCutId = variantSelections.get(display.id) ?? null;
         const activeCut =
           cuts.find((cut) => cut.id === selectedCutId) ?? cuts[0] ?? null;
-        // Self-render + the checked state: the registration of the
-        // CURRENTLY active cut first (a chip pick registered the
-        // variant's own face), any registered member face as fallback.
+        // The checked state: the registration of the CURRENTLY active
+        // cut first (a chip pick registered the variant's own face),
+        // any registered member face as fallback.
         const cssKey =
           (activeCut !== null
             ? registeredCss(activeCut.entry.family, activeCut.entry.variant)
             : null) ?? registeredCss(primaryFamily) ?? null;
-        // Round 9 (owner item 2): the row name is the registered
-        // font's OWN name-table string; an unfetched row falls back to
-        // the upstream release artifact's own name — never a curated
-        // or constructed display name.
+        // Round 9 (owner item 2): the row name is the family's OWN
+        // name-table string from the serve document; a picked row reads
+        // the registered face's own display; an unscanned row falls
+        // back to the document's data label — never a curated or
+        // constructed display name.
         const activeFont =
           cssKey !== null
             ? (fonts.find((f) => f.cssFamily === cssKey) ?? null)
             : null;
+        const activeDoc = docOf(activeCut?.entry.family ?? primaryFamily);
         const rowName = activeFont
           ? fontDisplayName(activeFont)
-          : releaseArtifactName(activeCut?.entry.family ?? primaryFamily);
-        // The chip labels: each cut's own name-table name, falling
-        // back to the release artifact's own stem (round 23). The
-        // lookup is EXACT first (`family::variant`); the bare family
-        // key may stand in only for a member family whose manifest
-        // entries collapse to this ONE cut (a WenKai group member) —
-        // a multi-cut family's bare key belongs to whichever cut
-        // registered first, never this chip, so such a chip keeps its
-        // own stem instead of another cut's name.
-        const cutNameOf = (cut: VariantCut): string | undefined => {
-          const exact =
-            catalog.registered[`${cut.entry.family}::${cut.entry.variant}`];
-          const key =
-            exact ??
-            (variantCuts({
-              id: cut.entry.family,
-              families: [cut.entry.family],
-              entries: familyEntries(cut.entry.family),
-            }).length === 1
-              ? registeredCss(cut.entry.family)
-              : null);
-          if (key === null || key === undefined) return undefined;
-          return fonts.find((f) => f.cssFamily === key)?.names?.display;
-        };
-        const labels = cutLabels(cuts, display.id, cutNameOf);
-        const chips = rowChips(cuts, selectedCutId, statusOf, labels);
+          : documentRowName(activeDoc ?? primaryDoc, activeCut?.entry.family ?? primaryFamily);
+        const chips = rowChips(cuts, selectedCutId, docOf);
         /**
-         * Round 21 (owner item 1): the row's search index covers EVERY
-         * cut's own name — a registered cut's name-table display, else
-         * the cut's release artifact stem (the manifest entry's own
-         * file) — beside the family id and the manifest family ids, so
-         * "source" surfaces the NotoSansSC row through its
-         * "Source Han Sans HW SC" HW cut even though the row itself
-         * reads "Noto Sans SC".
-         *
-         * Round 22 (owner item 4): the index is UNIVERSAL — every cut
-         * of EVERY family contributes its manifest VARIANT WORD plus
-         * the artifact stem split into words (version noise stripped,
-         * camel humps split), so variants are findable BEFORE their
-         * faces are ever fetched. No per-family special cases; the
-         * live name-table words join once a cut is registered.
+         * Round 21/22: the row's search index covers EVERY cut's own
+         * name — the serve document's scanned name-table display, else
+         * the cut's release artifact stem — beside the family id and
+         * the manifest family ids, so "source" surfaces the NotoSansSC
+         * row through its "Source Han Sans HW SC" HW cut even though
+         * the row itself reads "Noto Sans SC", findable BEFORE the
+         * scan lands (variant word + artifact stem words, version
+         * noise stripped, camel humps split).
          */
         const cutName = (cut: VariantCut): string => {
-          // The same strict resolution the chip labels use (round 23):
-          // a search keyword must not claim another cut's registered
-          // name.
+          const doc = docOf(cut.entry.family);
           return (
-            cutNameOf(cut) ?? cut.entry.file.replace(/\.[^.]+$/, "")
+            doc?.cuts.find((docCut) => docCut.variant === cut.entry.variant)
+              ?.display_name ??
+            doc?.display_name ??
+            cut.entry.file.replace(/\.[^.]+$/, "")
           );
         };
         const cutTokens = (cut: VariantCut): string[] => {
@@ -664,21 +691,36 @@ export function mountPicker(
           return [cut.entry.variant ?? "", ...words].filter(Boolean);
         };
         const rowId = cssKey ?? `cat:${display.id}`;
+        // Self-rendering (ticket #30): the row renders in its OWN
+        // preview-subset family (the active cut's, else the primary
+        // member's) — a lazy URL FontFace, never a registered binary:
+        // listing the catalog holds no font bytes in the page.
+        const renderDoc = activeDoc ?? primaryDoc;
         return [
           display.id,
           {
             id: rowId,
             name: rowName,
-            family: cssKey ?? undefined,
+            family:
+              renderDoc !== undefined && renderDoc.preview !== null
+                ? previewCssFamily(renderDoc.family)
+                : undefined,
             meta: familyMeta(primaryFamily),
-            disabled: !anyVerified,
-            note: anyVerified ? undefined : (rowNote ? catalogTag(rowNote) : undefined),
+            disabled: !anyDone,
+            note: anyDone
+              ? undefined
+              : rowNoteDoc === undefined
+                ? undefined
+                : readinessTag(rowNoteDoc),
             chips: chips.length > 1 ? chips : undefined,
             keywords: [
               display.id,
               ...display.families,
               ...cuts.flatMap(cutTokens),
               ...cuts.map(cutName),
+              ...memberDocs.flatMap((doc) =>
+                doc.display_names.length > 0 ? doc.display_names : [],
+              ),
             ].join(" "),
           } satisfies PickerFont,
         ];
@@ -696,12 +738,15 @@ export function mountPicker(
         .map((display) => rowsByFamily.get(display.id)!),
     ];
     // Round 30 (owner report: the picker sat empty with no hint while
-    // the release document was fetched and every stored family
-    // verified — the bootstrapping window owns no rows of its own):
-    // a disabled loading row heads the list until the catalog settles.
-    // The first-run DOWNLOAD progress screen stays what it is — it
-    // shows only when something actually downloads.
-    if (catalog.status === "bootstrapping") {
+    // the catalog was fetched — the loading window owns no rows of its
+    // own): a disabled loading row heads the list until the serve's
+    // first status answer lands and the family documents arrive. The
+    // first-run DOWNLOAD progress screen stays what it is — it shows
+    // only when the serve actually syncs.
+    if (
+      catalog.status === "connecting" ||
+      (catalog.status === "bootstrapping" && catalog.documents.length === 0)
+    ) {
       rows.unshift({
         id: "catalog-loading",
         name: "内置目录准备中…",
