@@ -27,6 +27,8 @@ path           method  response
 =============  ======  ==================================================
 ``/health``    GET     service identity + the bound 127.0.0.1 address
 ``/catalog``   GET     the manifest's families (grouped per family)
+``/catalog/status`` GET  the catalog sync state machine (issue #26)
+``/catalog/sync``   POST re-run the catalog sync (re-check + repair)
 ``/fonts``     GET     local font directories, scanned into families
 ``/builds``    GET     every retained build, newest last
 ``/builds``    POST    submit a merge (recipe-shaped JSON) -> 202 + id
@@ -81,6 +83,7 @@ from typing import Any
 
 from fontalloy_core.build import build_recipe
 from fontalloy_core.catalog import Catalog, load_manifest
+from fontalloy_core.catalog_sync import CatalogSync
 from fontalloy_core.errors import BuildCancelled, FontAlloyError
 from fontalloy_core.load import (
     FaceInfo,
@@ -151,6 +154,16 @@ class ServeOptions:
     # cache; the scan re-runs per process). The GUI passes its app-data
     # directory so a steady-state launch stat-walks instead of parsing.
     system_cache_dir: Path | None = None
+    # Issue #26 (spec #25): the catalog lifecycle the serve owns. The
+    # release document's origin — the base URL serving
+    # catalog-release.json (the catalog release tag's download address
+    # in production, a file:// directory in the offline suite) — and
+    # the cache directory the families land in (the desktop appData
+    # font dir; a CLI-specified directory elsewhere). Both together
+    # activate the sync service behind /catalog/status; neither means a
+    # local-fonts-only serve with a quiescent catalog.
+    catalog_release_origin: str | None = None
+    catalog_dir: Path | None = None
 
 
 class _BuildAborted(Exception):
@@ -286,6 +299,13 @@ class ServeState:
         # scans the machine at all; spawning it at boot made every
         # fixture serve parse the real font directory.
         self._system_thread: threading.Thread | None = None
+        # Issue #26: the catalog sync service polled at /catalog/status.
+        # Unlike the system-fonts scan it starts EAGERLY at serve
+        # startup when configured — filling the catalog is the point of
+        # a launch — on its own daemon thread, never in a handler.
+        self.catalog_sync = CatalogSync(
+            options.catalog_release_origin, options.catalog_dir
+        )
 
     # -- startup -----------------------------------------------------------
 
@@ -827,6 +847,16 @@ class _ServeHandler(BaseHTTPRequestHandler):
         elif path == "/catalog":
             self._require_methods(method, ("GET",))
             self._send_json(state.catalog_document())
+        elif path == "/catalog/status":
+            self._require_methods(method, ("GET",))
+            self._send_json(state.catalog_sync.status_document())
+        elif path == "/catalog/sync":
+            self._require_methods(method, ("POST",))
+            # The handler only arms the sync thread; the run itself is
+            # polled through /catalog/status (a handler must never wait
+            # on catalog work — the round-25 starvation lesson).
+            state.catalog_sync.request_sync()
+            self._send_json(state.catalog_sync.status_document(), status=202)
         elif path == "/fonts":
             self._require_methods(method, ("GET",))
             self._send_json(state.fonts_document())
@@ -1054,6 +1084,11 @@ def run_serve(options: ServeOptions) -> None:
 
     worker.start()
     serve_thread.start()
+    # The catalog lifecycle starts with the service (issue #26): the
+    # sync runs on its own daemon thread, so the ready line below may
+    # print while families are still downloading — /catalog/status is
+    # the progress truth from the first moment.
+    state.catalog_sync.start()
     print(f"http://{BIND_ADDRESS}:{state.port}", flush=True)
     try:
         # A timed wait, not a plain block: on Windows an unbounded
