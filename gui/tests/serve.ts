@@ -264,6 +264,61 @@ export async function generateNamedFace(
 }
 
 /**
+ * Generate the round-29 style side-cut trio into `outdir` (no
+ * service): ONE umbrella family — Regular (upright), Italic (sheared,
+ * consistent italic signals), and Regular Oblique (sheared ink under
+ * UPRIGHT flag bits with a nonzero post angle — the publisher
+ * side-cut). Returns the face paths, named exactly like the release
+ * layout a family-cut pattern pools.
+ */
+export async function generateStyleCutFamily(
+  outdir: string,
+  family = "AnnotationMono",
+  stem = "AnnotationMonoNerdFont",
+): Promise<string[]> {
+  const python = process.env.FONTALLOY_PYTHON ?? "python";
+  await run(
+    python,
+    [
+      resolve(repoRoot, "gui/scripts/e2e_fonts.py"),
+      outdir,
+      "--style-cut",
+      family,
+      stem,
+    ],
+    repoRoot,
+  );
+  return ["Regular", "Italic", "RegularOblique"].map((style) =>
+    resolve(outdir, `${stem}-${style}.ttf`),
+  );
+}
+
+/**
+ * Generate the kai-lean CJK donor into `outdir` (no service): every
+ * glyph's bottom leans right (a measured canvas slant of about +6px
+ * at 100px), 汉 covered. The style-parity fixture's donor.
+ */
+export async function generateKaiDonor(
+  outdir: string,
+  family = "AlloyKai",
+  stem = "AlloyKai",
+): Promise<string> {
+  const python = process.env.FONTALLOY_PYTHON ?? "python";
+  await run(
+    python,
+    [
+      resolve(repoRoot, "gui/scripts/e2e_fonts.py"),
+      outdir,
+      "--kai-donor",
+      family,
+      stem,
+    ],
+    repoRoot,
+  );
+  return resolve(outdir, `${stem}-Regular.ttf`);
+}
+
+/**
  * Generate the round-21 async-load fixture into `outdir` (no service):
  * a real 16-face ONE-family collection (the weight × style matrix,
  * shared-table dedup) — the shape a synchronous registration loop
