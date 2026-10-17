@@ -1,7 +1,11 @@
 import { store, type AppState } from "../state";
 import { mountStatusBar, type StatusBar } from "../kit/statusBar";
-import { currentResolver, defaultResolver } from "../precedence/live";
-import { isAdjusted } from "../precedence/resolve";
+import {
+  liveDocument,
+  lookupEntry,
+  precedenceStore,
+  precedenceVersion,
+} from "../precedence/document";
 import { pickRefs, type PickRefs } from "../precedence/picks";
 import { missingCodepoints, BROWSE_UNIVERSE, isCjkRegionCodepoint } from "./missing";
 
@@ -27,15 +31,17 @@ import { missingCodepoints, BROWSE_UNIVERSE, isCjkRegionCodepoint } from "./miss
  *   英文 (round 19 counted it into 中文), and the two regions partition
  *   the universe, so the invariant below holds by construction. The
  *   stack semantics stand — either pick covers a codepoint, both
- *   missing = missing;
+ *   missing = missing (coverage-driven, no precedence involved);
  * - 缺失: the universe codepoints NO pick covers — the very cells the
  *   grid shows as dashed, visible the moment any pick exists and gaps
  *   remain, no preset involved;
  * - 已调整: codepoints a non-preset rule EFFECTIVELY moves away from
  *   their no-rule default supplier (round 8 — the same discipline as
- *   the grid's ov dot; see precedence/resolve.ts isAdjusted). A lone
- *   pick can never be adjusted: one font means no rule can move the
- *   supplier;
+ *   the grid's ov dot). Ticket #35: the count reads the landed
+ *   precedence document's per-run `adjusted` flags — the serve's own
+ *   verdict, clipped to the browsed universe by the walk itself. A
+ *   lone pick can never be adjusted: one font means no rule can move
+ *   the supplier (and without a document the counter reads 0);
  * - 覆盖: covered-by-either-font ÷ browsed-scope size — never "100%"
  *   while missing cells are on screen. Normal semantics (round 6,
  *   owner item 2): it counts the whole visible universe, so it carries
@@ -61,26 +67,19 @@ let statsMemo: { signature: string; stats: LiveStats } | null = null;
 /** The browsed universe's visible intervals as flat bounds. */
 const UNIVERSE_BOUNDS = BROWSE_UNIVERSE.map(([start, end]) => [start, end] as const);
 
-/** Walk the universe, calling `visit` for every codepoint in scope. */
-function forUniverseCodepoint(visit: (cp: number) => void): void {
-  for (const [start, end] of UNIVERSE_BOUNDS) {
-    for (let cp = start; cp <= end; cp++) visit(cp);
-  }
-}
-
 function computeStats(state: AppState, picks: PickRefs): LiveStats {
   const signature = `${state.fonts.length}:${state.selected.en ?? ""}:${state.selected.cjk ?? ""}:${state.fonts
     .map((font) => `${font.cssFamily}:${font.codepoints.length}`)
     .join("|")}:${state.rules
     .map((r) => `${r.id}:${JSON.stringify(r.target)}:${r.fonts.join(",")}`)
-    .join("|")}`;
+    .join("|")}:${precedenceVersion()}`;
   if (statsMemo && statsMemo.signature === signature) {
     return statsMemo.stats;
   }
 
   const hasPick = picks.base !== null || picks.donor !== null;
-  const resolver = currentResolver(picks);
-  const base = defaultResolver(picks);
+  const missing = hasPick ? missingCodepoints() : [];
+  const doc = hasPick ? liveDocument() : null;
 
   let en = 0;
   let cjk = 0;
@@ -92,22 +91,24 @@ function computeStats(state: AppState, picks: PickRefs): LiveStats {
     // up to it. Round 20 classifies by SCRIPT REGION: a covered
     // codepoint counts where it SITS (inside the 中日韩文字 region →
     // 中文, everywhere else of the universe → 英文), never by which
-    // pick supplies it. Resolution still walks every covered codepoint
-    // for the 已调整 verdict (adjusted stays 0 with a lone pick — one
-    // font means no rule can move a supplier).
-    forUniverseCodepoint((cp) => {
-      const entry = resolver ? resolver.resolve(cp) : null;
-      if (!entry) return;
-      if (isCjkRegionCodepoint(cp)) cjk++;
-      else en++;
-      const baseEntry = base ? base.resolve(cp) : null;
-      if (isAdjusted(entry, baseEntry)) adjusted++;
-    });
+    // pick supplies it. 已调整 reads the document's run flags (the
+    // walk clips them to the universe by construction).
+    let mi = 0;
+    for (const [start, end] of UNIVERSE_BOUNDS) {
+      while (mi < missing.length && missing[mi]! < start) mi++;
+      for (let cp = start; cp <= end; cp++) {
+        while (mi < missing.length && missing[mi]! < cp) mi++;
+        if (missing[mi] === cp) continue; // covered by no pick
+        if (isCjkRegionCodepoint(cp)) cjk++;
+        else en++;
+        const entry = doc !== null ? lookupEntry(doc, cp) : null;
+        if (entry !== null && entry.adjusted) adjusted++;
+      }
+    }
   }
-  const missing = hasPick ? missingCodepoints().length : 0;
-  const total = hasPick ? en + cjk + missing : 0;
+  const total = hasPick ? en + cjk + missing.length : 0;
   const pct = total > 0 ? ((100 * (en + cjk)) / total).toFixed(2) : "0.00";
-  const stats = { total, en, cjk, adjusted, missing, coveragePct: pct };
+  const stats = { total, en, cjk, adjusted, missing: missing.length, coveragePct: pct };
   statsMemo = { signature, stats };
   return stats;
 }
@@ -121,6 +122,7 @@ export function mountStatsbar(root: HTMLElement): StatusBar {
     bar.render(computeStats(store.get(), pickRefs()));
   };
   store.subscribe(render);
+  precedenceStore.subscribe(render);
   render();
   return bar;
 }
