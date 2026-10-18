@@ -343,6 +343,28 @@ def runs_of(points: frozenset[int]) -> tuple[tuple[int, int], ...]:
     return tuple(runs)
 
 
+#: Test-only seam (the memory-safety suite): when set, the scan of one
+#: file allocates and holds this many MiB for
+#: :data:`TEST_HOLD_ENV` seconds — the artificial "expensive face"
+#: standing in for a big CJK face's decompiled outlines without the
+#: fixture carrying one. Production never sets either variable.
+TEST_ALLOCATE_ENV = "FONTALLOY_TEST_SCAN_ALLOCATE_MB"
+TEST_HOLD_ENV = "FONTALLOY_TEST_SCAN_HOLD_SECONDS"
+
+
+def _test_allocation_hold() -> bytearray | None:
+    """The seam's payload: allocated, held, and returned to the caller
+    so its scope is the scan's scope."""
+    raw = os.environ.get(TEST_ALLOCATE_ENV)
+    if not raw:
+        return None
+    payload = bytearray(int(raw) * 1024 * 1024)
+    hold = os.environ.get(TEST_HOLD_ENV)
+    if hold:
+        time.sleep(float(hold))
+    return payload
+
+
 def scan_file_faces(path: Path) -> list[FaceScan]:
     """Scan every face of one font file: identity through the load
     machinery, coverage through the placeholder detection module.
@@ -350,14 +372,18 @@ def scan_file_faces(path: Path) -> list[FaceScan]:
     Raises :class:`~fontalloy_core.errors.BuildError` when the file is
     missing or unreadable (the caller treats it as a skipped face).
     """
-    return [
-        FaceScan(
-            info=face,
-            **_coverage_summary(path, face.face_index),
-        )
-        for family in scan_families([path])
-        for face in family.faces
-    ]
+    hold = _test_allocation_hold()  # the memory-safety seam (tests only)
+    try:
+        return [
+            FaceScan(
+                info=face,
+                **_coverage_summary(path, face.face_index),
+            )
+            for family in scan_families([path])
+            for face in family.faces
+        ]
+    finally:
+        del hold  # released with the scan (pyright: the seam's scope)
 
 
 def _coverage_summary(path: Path, face_index: int) -> dict[str, Any]:
