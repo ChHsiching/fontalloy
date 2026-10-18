@@ -36,8 +36,8 @@ import {
 } from "../history";
 import { cssFamily } from "../kit/pickerPopup";
 import { fontDisplayName } from "../fonts/registry";
-import type { LoadedFont } from "../state";
 import { isIconCodepoint } from "../unicode/universe";
+import { inIntervals, intersectIntervals, type CpIntervals } from "../unicode/intervalMath";
 import { mountCharPopup, type CharPopupFacts } from "../kit/charPopup";
 import { mountRangePopup } from "../kit/rangePopup";
 import { mountCategoryChips, type CategoryChips } from "../kit/categoryChips";
@@ -414,49 +414,27 @@ function blockAssignment(block: UnicodeBlock): FontSide | "" {
  */
 function sweepDefaultSide(
   block: UnicodeBlock,
-  base: readonly number[] | null,
-  donor: readonly number[] | null,
+  base: CpIntervals | null,
+  donor: CpIntervals | null,
 ): FontSide | "" | null {
   if (base === null && donor === null) return null;
-  // Two pointers over the sorted coverages, swept along the block's
-  // CURATED intervals (round 7): a disjoint block's hull overlaps
-  // neighboring icon sub-blocks, and their codepoints must not vote
-  // here.
-  let bi = 0;
-  let di = 0;
+  // Interval arithmetic over the picks' run-length coverage (ticket
+  // #36), intersected with the block's CURATED ranges (round 7): a
+  // disjoint block's hull overlaps neighboring icon sub-blocks, and
+  // their codepoints must not vote here.
   let side: FontSide | "" | null = null;
   for (const [blockStart, blockEnd] of blockRanges(block)) {
-    bi = lowerBound(base, blockStart);
-    di = lowerBound(donor, blockStart);
-    for (let cp = blockStart; cp <= blockEnd; cp++) {
-      if (bi >= (base?.length ?? 0) && di >= (donor?.length ?? 0)) break;
-      if (base) while (bi < base.length && base[bi]! < cp) bi++;
-      if (donor) while (di < donor.length && donor[di]! < cp) di++;
-      const hasBase = base !== null && base[bi] === cp;
-      const hasDonor = donor !== null && donor[di] === cp;
-      if (!hasBase && !hasDonor) continue;
-      const current: FontSide = hasBase ? "base" : "donor";
-      if (side === null) side = current;
-      else if (side !== current) return "";
-    }
+    const range: readonly [number, number] = [blockStart, blockEnd];
+    const hasBase =
+      base !== null && intersectIntervals([range], base).length > 0;
+    const hasDonor =
+      donor !== null && intersectIntervals([range], donor).length > 0;
+    if (!hasBase && !hasDonor) continue;
+    const current: FontSide = hasBase ? "base" : "donor";
+    if (side === null) side = current;
+    else if (side !== current) return "";
   }
   return side;
-}
-
-/** First index of `sorted` whose value is >= `cp` (binary search). */
-function lowerBound(
-  sorted: readonly number[] | null,
-  cp: number,
-): number {
-  if (sorted === null) return 0;
-  let lo = 0;
-  let hi = sorted.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if (sorted[mid]! < cp) lo = mid + 1;
-    else hi = mid;
-  }
-  return lo;
 }
 
 let defaultSidesMemo: {
@@ -470,8 +448,8 @@ function defaultSideMap(picks: PickRefs): Map<string, FontSide | "" | null> {
   if (defaultSidesMemo && defaultSidesMemo.key === key) {
     return defaultSidesMemo.sides;
   }
-  const base = picks.base?.codepoints ?? null;
-  const donor = picks.donor?.codepoints ?? null;
+  const base = picks.base?.intervals ?? null;
+  const donor = picks.donor?.intervals ?? null;
   const sides = new Map<string, FontSide | "" | null>();
   for (const block of ALL_BLOCKS) {
     sides.set(block.id, sweepDefaultSide(block, base, donor));
@@ -655,7 +633,7 @@ function charFacts(cp: number): CharPopupFacts {
   const showDonor =
     entry.winner !== "donor-0" && picks.refs.includes("donor-0");
   const sideCovers = (font: typeof picks.base): boolean =>
-    font !== null && font.codepoints.includes(cp);
+    font !== null && inIntervals(font.intervals, cp);
   const baseReason =
     showBase && !sideCovers(picks.base) ? "英文字体不含此码位" : undefined;
   const donorReason =
@@ -1023,6 +1001,12 @@ export function mountCharmap(root: HTMLElement): void {
       fonts,
       missing,
     );
+    // An OPEN popup refreshes with the re-render: its verdicts read
+    // the precedence document, which lands async — the popup must not
+    // keep the no-document facts a click-before-landing froze.
+    if (charPopup.isOpen() && selectedCodepoint !== null) {
+      charPopup.refresh(charFacts(selectedCodepoint));
+    }
   };
   store.subscribe(render);
   precedenceStore.subscribe(render);
@@ -1262,16 +1246,12 @@ export function mountCharmap(root: HTMLElement): void {
     // The picks' suspected-placeholder sets (round 20): a cell whose
     // codepoint a pick maps to a placeholder glyph keeps rendering that
     // font's own glyph under the missing style. Join order decides.
-    const placeholderSets = new Map<LoadedFont, Set<number>>();
     const placeholderFamilyOf = (cp: number): string | null => {
       for (const font of [picks.base, picks.donor]) {
         if (font === null) continue;
-        let set = placeholderSets.get(font);
-        if (set === undefined) {
-          set = new Set(font.placeholderCodepoints ?? []);
-          placeholderSets.set(font, set);
+        if (inIntervals(font.placeholderIntervals ?? [], cp)) {
+          return cssFamily(font.cssFamily);
         }
-        if (set.has(cp)) return cssFamily(font.cssFamily);
       }
       return null;
     };

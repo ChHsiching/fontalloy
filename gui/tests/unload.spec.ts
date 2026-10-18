@@ -1,15 +1,14 @@
 import { test, expect, type Page } from "@playwright/test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { parseFontMeta } from "../src/fonts/sfnt";
 import {
   assertNoJsErrors,
   collectJsErrors,
   pointerClick,
   waitForFontsReady,
 } from "./helpers";
-import { generateNamedFace, spawnServeOverFonts } from "./serve";
+import { generateNamedFace, scanMeta, spawnServeOverFonts } from "./serve";
 import {
   buildServeCatalogSite,
   type ServeCatalogSite,
@@ -45,18 +44,7 @@ import {
  * own rule, never a client-side mirror.
  */
 
-/** One generated face's parsed name-table strings (the row/pair identity). */
-const metaCache = new Map<string, ReturnType<typeof parseFontMeta>>();
-async function parsedMeta(path: string): Promise<ReturnType<typeof parseFontMeta>> {
-  const cached = metaCache.get(path);
-  if (cached) return cached;
-  const bytes = await readFile(path);
-  const meta = parseFontMeta(
-    bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
-  );
-  metaCache.set(path, meta);
-  return meta;
-}
+
 
 /** Suite-scoped serve/site disposers (one boot per test, torn down after). */
 const bootDisposers: Array<() => Promise<void>> = [];
@@ -148,13 +136,17 @@ async function bootWorkspace(page: Page): Promise<Fixture> {
     { timeout: 60_000 },
   );
   await waitForFontsReady(page);
-  const metaSans = await parsedMeta(sans);
-  const metaWenkai = await parsedMeta(wenkai);
-  const metaScreen = await parsedMeta(screen);
+  // The identity oracle is the serve's own scan (fontTools
+  // server-side) — the page's parse mirror is deleted (ticket #36).
+  const [metaSans, metaWenkai, metaScreen] = await Promise.all([
+    scanMeta(serveUrl, sans),
+    scanMeta(serveUrl, wenkai),
+    scanMeta(serveUrl, screen),
+  ]);
   return {
-    nameA: metaSans.names.display,
-    nameB: metaWenkai.names.display,
-    nameS: metaScreen.names.display,
+    nameA: metaSans.display,
+    nameB: metaWenkai.display,
+    nameS: metaScreen.display,
     cssB: "LXGWWenKai",
     sans,
     wenkai,
@@ -268,10 +260,11 @@ test.describe("repeat-click unload (round 18, owner item 3)", () => {
     // family id (the fixtures are single-face families).
     expect(await facesOf(page, "AlloySans")).toEqual(["400/normal"]);
     expect(await facesOf(page, fx.cssB)).toEqual(["400/normal"]);
-    // The counters (round 20's script regions) read the picks' cmaps —
-    // a URL pick carries none (the red line), so catalog picks count
-    // 0/0; the serve's resolve answers stay the coloring truth.
-    await expect(stat(page, "en")).toHaveText("0");
+    // The counters (round 20's script regions) read the picks'
+    // coverage intervals off the serve's scan (ticket #36): both
+    // fixtures cover A-Z, so en counts 26+26 = 26 (the union) and cjk
+    // stays 0 — real numbers, never a client-side cmap.
+    await expect(stat(page, "en")).toHaveText("26");
     await expect(stat(page, "cjk")).toHaveText("0");
     await expect(synthesize(page)).toHaveAttribute("aria-disabled", "false");
     // Ticket #35: the grid's coloring is the SERVE's resolve answer —
@@ -316,9 +309,10 @@ test.describe("repeat-click unload (round 18, owner item 3)", () => {
     expect(await cell.evaluate((el) => getComputedStyle(el).fontFamily)).toContain(
       fx.cssB,
     );
-    // The stats bar (round 20, script region): the URL picks carry no
-    // client-side cmap — every catalog pick counts 0/0 (see above).
-    await expect(stat(page, "en")).toHaveText("0");
+    // The stats bar (round 20, script region): the counters read the
+    // remaining pick's coverage intervals (ticket #36) — the WenKai
+    // fixture covers A-Z, so en counts 26 with cjk at 0.
+    await expect(stat(page, "en")).toHaveText("26");
     await expect(stat(page, "cjk")).toHaveText("0");
     // Synthesize is disabled under the SAME rule as the initial state.
     await expectDisabledNotice(

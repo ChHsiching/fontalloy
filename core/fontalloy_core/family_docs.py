@@ -300,6 +300,12 @@ class FaceScan:
     Placeholder mappings count as neither coverage nor the latin/cjk
     markers — a font faking a CJK plane off one box glyph is not a CJK
     font, which is the entire point of the detection.
+
+    Ticket #36: the coverage travels as COMPRESSED RUN-LENGTH
+    INTERVALS beside the counts — the frontend's counters and missing
+    view are view-model arithmetic over these runs, never a page-side
+    cmap parse (the compressed shape a full CJK face collapses into a
+    few hundred entries, the precedence document's own discipline).
     """
 
     info: FaceInfo
@@ -310,10 +316,31 @@ class FaceScan:
     #: Ticket #34: the face's glyph count (maxp numGlyphs) — the local
     #: load outcome's 字形 figure, summed over the registered faces.
     glyphs: int
+    #: Sorted, disjoint, maximal [start, end] runs of the honest
+    #: (placeholder-filtered) coverage.
+    intervals: tuple[tuple[int, int], ...] = ()
+    #: The suspected-placeholder codepoints, same run shape (the
+    #: grid's placeholder-styled cells — usually one run).
+    placeholder_intervals: tuple[tuple[int, int], ...] = ()
 
     @property
     def placeholder(self) -> bool:
         return self.placeholders > 0
+
+
+def runs_of(points: frozenset[int]) -> tuple[tuple[int, int], ...]:
+    """Sorted, disjoint, maximal runs of a codepoint set.
+
+    The compression every face document's coverage intervals use —
+    a 30,000-codepoint contiguous CJK plane is ONE entry.
+    """
+    runs: list[tuple[int, int]] = []
+    for codepoint in sorted(points):
+        if runs and codepoint == runs[-1][1] + 1:
+            runs[-1] = (runs[-1][0], codepoint)
+        else:
+            runs.append((codepoint, codepoint))
+    return tuple(runs)
 
 
 def scan_file_faces(path: Path) -> list[FaceScan]:
@@ -345,6 +372,8 @@ def _coverage_summary(path: Path, face_index: int) -> dict[str, Any]:
             "latin": any(marker in coverage.codepoints for marker in _LATIN_MARKERS),
             "cjk": any(marker in coverage.codepoints for marker in _CJK_MARKERS),
             "glyphs": int(maxp.numGlyphs) if maxp is not None else 0,
+            "intervals": runs_of(coverage.codepoints),
+            "placeholder_intervals": runs_of(coverage.placeholders),
         }
     finally:
         font.close()
@@ -730,6 +759,14 @@ class FamilyDocuments:
                                     "placeholders": scan.placeholders,
                                     "latin": scan.latin,
                                     "cjk": scan.cjk,
+                                    "intervals": [
+                                        [start, end]
+                                        for start, end in scan.intervals
+                                    ],
+                                    "placeholder_intervals": [
+                                        [start, end]
+                                        for start, end in scan.placeholder_intervals
+                                    ],
                                 },
                                 "placeholder": scan.placeholder,
                             }

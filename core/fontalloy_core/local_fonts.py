@@ -354,6 +354,14 @@ class LocalFonts:
                 "placeholders": scan.placeholders,
                 "latin": scan.latin,
                 "cjk": scan.cjk,
+                # Ticket #36: the counters' and missing view's data —
+                # run-length intervals, never a page-side cmap parse.
+                "intervals": [
+                    [start, end] for start, end in scan.intervals
+                ],
+                "placeholder_intervals": [
+                    [start, end] for start, end in scan.placeholder_intervals
+                ],
             },
             "placeholder": scan.placeholder,
             # Ticket #34: the face's own glyph count — the consumer's

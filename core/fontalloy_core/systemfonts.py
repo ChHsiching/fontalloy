@@ -68,8 +68,9 @@ SCAN_DELAY_ENV = "FONTALLOY_SYSTEM_SCAN_DELAY"
 _LATIN_MARKERS = (0x41, 0x61)
 _CJK_MARKERS = (0x4E2D,)
 
-#: The on-disk cache schema version — a bump invalidates old caches.
-CACHE_VERSION = 2
+#: The on-disk cache schema version — a bump invalidates old caches
+#: (v3: ticket #36 added the per-face coverage intervals).
+CACHE_VERSION = 3
 
 
 @dataclass(frozen=True)
@@ -85,6 +86,10 @@ class SystemFace:
     italic: bool
     latin: bool
     cjk: bool
+    #: Ticket #36: the honest (best-cmap, glyph-0-free) coverage as
+    #: run-length intervals — the counters' data, computed by the same
+    #: scan pass that already enumerates the cmap for the flags.
+    intervals: tuple[tuple[int, int], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -192,13 +197,26 @@ def _yield_between_files() -> None:
     time.sleep(float(delay) if delay else SCAN_YIELD_SECONDS)
 
 
+def _runs_of(points: set[int]) -> tuple[tuple[int, int], ...]:
+    """Sorted, disjoint, maximal runs of a codepoint set — the same
+    compressed shape every face document's coverage intervals carry
+    (ticket #36)."""
+    runs: list[tuple[int, int]] = []
+    for codepoint in sorted(points):
+        if runs and codepoint == runs[-1][1] + 1:
+            runs[-1] = (runs[-1][0], codepoint)
+        else:
+            runs.append((codepoint, codepoint))
+    return tuple(runs)
+
+
 def _name(font: TTFont, name_id: int) -> str:
     value = font["name"].getDebugName(name_id)
     return " ".join(value.split()) if value else ""
 
 
-def _face_document(font: TTFont) -> tuple[str, str, int, bool, bool, bool]:
-    """One open face's identity and coverage flags."""
+def _face_document(font: TTFont):
+    """One open face's identity, coverage flags, and coverage runs."""
     os2 = font.get("OS/2")
     cmap = font.getBestCmap()
     codepoints = set(cmap) if cmap else set()
@@ -213,6 +231,7 @@ def _face_document(font: TTFont) -> tuple[str, str, int, bool, bool, bool]:
         italic,
         latin,
         cjk,
+        _runs_of(codepoints),
     )
 
 
@@ -224,7 +243,7 @@ def _scan_file(path: Path) -> list[SystemFace]:
             count = int(getattr(reader, "numFonts", 1) or 1)
         except Exception:
             count = 1
-        documents: list[tuple[str, str, int, bool, bool, bool]] = []
+        documents: list[tuple[str, str, int, bool, bool, bool, tuple]] = []
         for index in range(count):
             font = first if index == 0 else TTFont(path, fontNumber=index, lazy=True)
             try:
@@ -246,10 +265,17 @@ def _scan_file(path: Path) -> list[SystemFace]:
             italic=italic,
             latin=latin,
             cjk=cjk,
+            intervals=intervals,
         )
-        for index, (family, subfamily, weight, italic, latin, cjk) in enumerate(
-            documents
-        )
+        for index, (
+            family,
+            subfamily,
+            weight,
+            italic,
+            latin,
+            cjk,
+            intervals,
+        ) in enumerate(documents)
     ]
 
 
@@ -304,6 +330,9 @@ def load_cache(cache_file: Path) -> ScanResult | None:
                 italic=face["italic"],
                 latin=face["latin"],
                 cjk=face["cjk"],
+                intervals=tuple(
+                    (int(run[0]), int(run[1])) for run in face["intervals"]
+                ),
             )
             for face in document["faces"]
         )
@@ -330,6 +359,9 @@ def save_cache(cache_file: Path, result: ScanResult) -> None:
                 "italic": face.italic,
                 "latin": face.latin,
                 "cjk": face.cjk,
+                "intervals": [
+                    [start, end] for start, end in face.intervals
+                ],
             }
             for face in result.faces
         ],

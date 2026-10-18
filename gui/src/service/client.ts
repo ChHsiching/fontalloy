@@ -68,7 +68,16 @@ export interface LocalFaceDoc {
   weight: number;
   italic: boolean;
   variable: boolean;
-  coverage: { codepoints: number; placeholders: number; latin: boolean; cjk: boolean };
+  coverage: {
+    codepoints: number;
+    placeholders: number;
+    latin: boolean;
+    cjk: boolean;
+    /** Ticket #36: run-length intervals of the honest coverage. */
+    intervals: number[][];
+    /** The suspected-placeholder codepoints, same run shape. */
+    placeholder_intervals: number[][];
+  };
   placeholder: boolean;
   /** The face's own glyph count (maxp numGlyphs) — the 字形 stat. */
   glyphs: number;
@@ -225,6 +234,30 @@ export interface ReportDocument {
   [key: string]: unknown;
 }
 
+/**
+ * Prefix the scan documents' serve-relative face ``href`` fields with
+ * the bound origin — the FontFace url() sources the page registers
+ * (one place, so both the path scan and the upload scan serve the same
+ * absolute URLs).
+ */
+function withAbsoluteHrefs(
+  baseUrl: string,
+): (document: LocalFontsDocument) => LocalFontsDocument {
+  return (document) => ({
+    ...document,
+    families: document.families.map((family) => ({
+      ...family,
+      cuts: family.cuts.map((cut) => ({
+        ...cut,
+        faces: cut.faces.map((face) => ({
+          ...face,
+          href: `${baseUrl}${face.href}`,
+        })),
+      })),
+    })),
+  });
+}
+
 export class ServeError extends Error {
   constructor(
     message: string,
@@ -362,6 +395,36 @@ export class ServeClient {
       "/local-fonts",
       { method: "POST", body: JSON.stringify({ paths }) },
       RESOLVE_TIMEOUT_MS,
+    ).then(withAbsoluteHrefs(this.baseUrl));
+  }
+
+  /**
+   * The browser fallback's font load (ticket #36): the File object
+   * itself is the fetch body — the browser STREAMS it, the page never
+   * constructs an ArrayBuffer — and the serve's upload endpoint scans
+   * it into the same family-document shape (faces serving by URL from
+   * the serve's scratch copy). A rejected upload is a 400 carrying
+   * the service's own message.
+   */
+  async localFontsUpload(file: File): Promise<LocalFontsDocument> {
+    let res: Response;
+    const path =
+      "/local-fonts/upload?filename=" + encodeURIComponent(file.name);
+    try {
+      res = await fetch(`${this.baseUrl}${path}`, {
+        method: "POST",
+        body: file,
+        ...(timeoutSignal(BYTES_TIMEOUT_MS) !== undefined
+          ? { signal: timeoutSignal(BYTES_TIMEOUT_MS) }
+          : {}),
+      });
+    } catch (err) {
+      if (isTimeout(err)) throw new ServeError(timeoutMessage(BYTES_TIMEOUT_MS), 0);
+      throw new ServeError("无法连接本地合成服务。", 0);
+    }
+    if (!res.ok) throw new ServeError(await parseError(res), res.status);
+    return withAbsoluteHrefs(this.baseUrl)(
+      (await res.json()) as LocalFontsDocument,
     );
   }
 

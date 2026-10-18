@@ -25,7 +25,7 @@ import {
   type FaceSlot,
 } from "../recipe/settings";
 import { applyRulesToDraft } from "../precedence/serialize";
-import { localFaceSet } from "../precedence/picks";
+import { localFaceSet, pickRefs } from "../precedence/picks";
 import { probeArtifact, saveArtifact, saveArtifactAs } from "../platform/artifacts";
 import { isTauri, readConfig, serveProbeAddress } from "../platform/config";
 import { ensureSystemFonts, systemFamilies } from "./systemfonts";
@@ -335,6 +335,10 @@ export function selectedPicks(): {
 export function buildWorkspaceDraft(
   slots: { en: FontSlot; cjk: FontSlot },
   faces: readonly FaceDocument[] = [],
+  recordFaces: { base: FaceSlot[]; donor: FaceSlot[] } = {
+    base: [],
+    donor: [],
+  },
 ): ReturnType<typeof defaultDraft> {
   const { rules, settings, outputFamily } = store.get();
   const draft = defaultDraft();
@@ -360,7 +364,23 @@ export function buildWorkspaceDraft(
   // setting wins — applySettingsToDraft runs AFTER this and
   // overwrites the format when the user chose one ("auto" leaves it,
   // so this resolution is the value that ships).
-  const baseFaces = slotFaces(slots.en);
+  // Ticket #36: the index cannot see an UPLOADED pick's files (its
+  // bytes live in the serve's scratch, which no --font-dir enumerates)
+  // — the pick's own scanned records carry its face slots, exactly
+  // what the weight-matrix tier needs. The index stays the source for
+  // every pick it CAN see (the --font-dir families, catalog cuts).
+  const indexed = (slot: FontSlot): FaceSlot[] => slotFaces(slot);
+  // A PATTERNED slot keeps the index's verdict even when it enumerates
+  // nothing (a catalog cut the index cannot see still packages as ttc,
+  // the round-12 assumption) — the record fallback is for PATTERN-LESS
+  // picks whose exact file the index cannot see (the upload scratch).
+  const fallback = (slot: FontSlot, records: FaceSlot[]): FaceSlot[] => {
+    const seen = indexed(slot);
+    if (seen.length > 0) return seen;
+    return slot.pattern === undefined ? records : seen;
+  };
+  const baseFaces = fallback(slots.en, recordFaces.base);
+  const donorFaces = fallback(slots.cjk, recordFaces.donor);
   if (draft.output.format === "auto") {
     draft.output.format =
       slots.en.pattern !== undefined && baseFaces.length !== 1 ? "ttc" : "ttf";
@@ -371,7 +391,7 @@ export function buildWorkspaceDraft(
   // The synthesis settings (issue #19): baseline / CJK width land in
   // the normalization block, the weight merge mode in the weights
   // selection, over the same face data the format tier counted.
-  applySettingsToDraft(draft, settings, baseFaces, slotFaces(slots.cjk));
+  applySettingsToDraft(draft, settings, baseFaces, donorFaces);
   return draft;
 }
 
@@ -639,7 +659,19 @@ export async function synthesize(): Promise<void> {
   const faces = synthStore.get().service.fontsIndex?.families.flatMap(
     (family) => family.faces,
   ) ?? [];
-  const draft = buildWorkspaceDraft({ en: enSlot, cjk: cjkSlot }, faces);
+  const picks = pickRefs();
+  const recordSlot = (font: LoadedFont | null): FaceSlot[] =>
+    font === null
+      ? []
+      : localFaceSet(store.get().fonts, font).map((record) => ({
+          weight: record.weight ?? 400,
+          italic: record.italic ?? false,
+        }));
+  const draft = buildWorkspaceDraft(
+    { en: enSlot, cjk: cjkSlot },
+    faces,
+    { base: recordSlot(picks.base), donor: recordSlot(picks.donor) },
+  );
   patchBuild(pendingRow.id, { family: draft.output.family });
 
   // The GATE: does a file already sit at the target this name resolves

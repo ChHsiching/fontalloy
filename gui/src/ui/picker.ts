@@ -4,15 +4,10 @@ import {
   type CatalogState,
   type LoadedFont,
 } from "../state";
+import { fontDisplayName, evictCssFamily } from "../fonts/registry";
 import {
   registerLocalFontFiles,
-  fontDisplayName,
-  evictCssFamily,
-  type LocalFontFile,
-} from "../fonts/registry";
-import {
   registerLocalFontPaths,
-  sweepLocalFamily,
 } from "../fonts/localFamily";
 import {
   ensureCatalogRegistered,
@@ -21,14 +16,6 @@ import {
   subscribeStars,
 } from "../catalog/serve";
 import { appMessages } from "./charmap";
-import {
-  TOKEN_HELP_ROWS,
-  displayFamilies,
-  variantCuts,
-  type CatalogEntryLike,
-  type DisplayFamily,
-  type VariantCut,
-} from "../catalog/variantAxes";
 import {
   canPickWithDialog,
   pickLocalFonts,
@@ -80,35 +67,22 @@ export interface FontPicker {
 
 /** The shared hidden file input (one local-load flow at a time). */
 let fileInput: HTMLInputElement | null = null;
-/** The bytes-level flow the input's change event runs (set by the
+/** The upload flow the input's change event runs (set by the
  *  footer action; tests and warm loads reach the input directly and
  *  land in the picker that opened last). */
-let pendingRegister: ((files: LocalFontFile[]) => Promise<void>) | null = null;
+let pendingRegister: ((files: File[]) => Promise<void>) | null = null;
 /** Per-picker local-load flows (round 20: bytes-level — every entry
  * point funnels here): the hidden input, the native dialog, and the
  * typed path all land in the picker that opened last. */
-const localFlows = new Map<
-  PickerRole,
-  (files: LocalFontFile[]) => Promise<void>
->();
+const localFlows = new Map<PickerRole, (files: File[]) => Promise<void>>();
 let lastOpenedRole: PickerRole | null = null;
 
 /** The local-load flow of the slot a load should land in. */
 function localFlowFor(
   role: PickerRole | null,
-): ((files: LocalFontFile[]) => Promise<void>) | null {
+): ((files: File[]) => Promise<void>) | null {
   const target = role ?? lastOpenedRole ?? "en";
   return localFlows.get(target) ?? null;
-}
-
-/** Browser File objects → the bytes-level flow payload. */
-async function filesToLocalFontFiles(files: File[]): Promise<LocalFontFile[]> {
-  return Promise.all(
-    files.map(async (file) => ({
-      buffer: await file.arrayBuffer(),
-      fileName: file.name,
-    })),
-  );
 }
 
 function ensureFileInput(): HTMLInputElement {
@@ -125,7 +99,7 @@ function ensureFileInput(): HTMLInputElement {
       if (files.length === 0) return;
       const flow = pendingRegister ?? localFlowFor(lastOpenedRole);
       if (pendingRegister !== null) pendingRegister = null; // one-shot
-      if (flow !== null) void filesToLocalFontFiles(files).then(flow);
+      if (flow !== null) void flow(files);
     });
     document.body.appendChild(input);
     fileInput = input;
@@ -231,8 +205,109 @@ const FAMILY_GROUPS: Record<string, string[]> = (
   curatedMeta as { groups?: Record<string, string[]> }
 ).groups ?? {};
 
-/** The manifest's display families (static data; computed once). */
-const ALL_DISPLAYS: readonly DisplayFamily[] = displayFamilies(FAMILY_GROUPS);
+/**
+ * One display row (round 7): one TYPEFACE — a single manifest family,
+ * or the member families of a curated group. Ticket #36: the CUT
+ * model itself is the serve's (each member family's document carries
+ * its cuts, collapsed and default-first, core-side) — the row only
+ * knows which families share it, which is curated design data.
+ */
+interface DisplayFamily {
+  /** The row id: the manifest family, or the group id for a group. */
+  id: string;
+  /** The manifest families the row spans (one for plain rows). */
+  families: string[];
+}
+
+/**
+ * The display rows: manifest families in manifest order minus grouped
+ * members, plus the curated groups whose members all exist.
+ */
+function displayRows(groups: Record<string, string[]>): DisplayFamily[] {
+  const grouped = new Set(Object.values(groups).flat());
+  const rows: DisplayFamily[] = [];
+  for (const family of MANIFEST_FAMILIES) {
+    if (grouped.has(family)) continue;
+    if (rows.at(-1)?.id === family) continue;
+    rows.push({ id: family, families: [family] });
+  }
+  for (const [id, members] of Object.entries(groups)) {
+    if (members.some((member) => !MANIFEST_FAMILIES.has(member))) continue;
+    rows.push({ id, families: members });
+  }
+  return rows;
+}
+
+/** One chip of a display row: a cut as the serve's family document
+ * carries it (ticket #36 — the document is the only cut truth). */
+interface DocCut {
+  /** Stable id: `${family}::${variant}` of the document cut. */
+  id: string;
+  /** The manifest family picking this cut resolves to. */
+  family: string;
+  /** The cut's variant word ("" = the plain cut). */
+  variant: string;
+  /** The release artifact's own stem (the label until scanned). */
+  label: string;
+  /** The canonical artifact name (search keywords). */
+  file: string;
+}
+
+/** The serve family documents of the moment (snapshot read). */
+function documentsOf(): CatalogFamilyDoc[] {
+  return store.get().catalog.documents;
+}
+
+/**
+ * A display row's cuts from the serve documents: every member
+ * family's own cuts, the primary member first, each family's default
+ * cut first inside it (the documents' own order — the collapsing and
+ * the defaults are computed core-side). A member whose document has
+ * not landed yet contributes nothing; a row whose families all lack
+ * documents has no chips at all.
+ */
+function docCuts(display: DisplayFamily): DocCut[] {
+  const documents = documentsOf();
+  const cuts: DocCut[] = [];
+  for (const family of display.families) {
+    const doc = documents.find((entry) => entry.family === family);
+    if (doc === undefined) continue;
+    for (const cut of doc.cuts) {
+      cuts.push({
+        id: `${family}::${cut.variant}`,
+        family,
+        variant: cut.variant,
+        label: cut.label,
+        file: cut.file,
+      });
+    }
+  }
+  return cuts;
+}
+
+/** The manifest mirror's families (static data; row bookkeeping). */
+const MANIFEST_FAMILIES = new Set(
+  (catalogManifest.families as Array<{ family: string }>).map(
+    (family) => family.family,
+  ),
+);
+
+/** The manifest's display rows (static data; computed once). */
+const ALL_DISPLAYS: readonly DisplayFamily[] = displayRows(FAMILY_GROUPS);
+
+/**
+ * The picker-level variant help (round 8 final form; round 23 words):
+ * what a variant IS, one sentence, plus one row per word that appears
+ * INSIDE the cuts' own names (UI copy — the cut model itself is the
+ * serve's since ticket #36).
+ */
+const TOKEN_HELP_ROWS: ReadonlyArray<readonly [string, string]> = [
+  ["NF / NL", "内置 Nerd Font 图标 / 无连字的版本"],
+  ["Mono / HW", "中文字符按等宽或半宽占位"],
+  ["SC / TC / JP", "收录简体、繁体或日文地区字形"],
+  ["Screen", "为屏幕显示优化的版本"],
+  ["GB / Lite", "收录字库的范围"],
+];
 
 /** The one family the prototype never lists (icon-only symbols build). */
 const EXCLUDED_FAMILIES = new Set(["NerdFontsSymbolsOnly"]);
@@ -302,15 +377,15 @@ function documentRowName(doc: CatalogFamilyDoc | undefined, family: string): str
  * combinations never appear at all.
  */
 function rowChips(
-  cuts: readonly VariantCut[],
+  cuts: readonly DocCut[],
   selectedCutId: string | null,
   docOf: (family: string) => CatalogFamilyDoc | undefined,
 ): PickerChip[] {
   return cuts.map((cut) => {
-    const doc = docOf(cut.entry.family);
+    const doc = docOf(cut.family);
     const synced = doc !== undefined && doc.readiness === "done";
     const label =
-      doc?.cuts.find((docCut) => docCut.variant === cut.entry.variant)
+      doc?.cuts.find((docCut) => docCut.variant === cut.variant)
         ?.display_name ?? cut.label;
     return {
       id: cut.id,
@@ -355,23 +430,32 @@ export function mountPicker(
     | null = null;
 
   /**
-   * The picker's bytes-level local-load flow — the PLAIN BROWSER
-   * fallback only (the hidden HTML file input has no paths to hand
-   * the serve, so its File bytes register page-side; ticket #34 keeps
-   * exactly this one byte flow alive for the no-shell environment).
-   * Every PATH-bearing entry point (the native dialog, the typed
-   * path) funnels into {@link registerPickedPaths} instead.
+   * The picker's browser-fallback local-load flow (ticket #36): the
+   * hidden HTML file input has no paths to hand the serve, so its
+   * File objects UPLOAD — the fetch body IS the File (the browser
+   * streams it; no ArrayBuffer is ever constructed) — and the serve's
+   * scan answers the same family documents the path flow gets. Every
+   * PATH-bearing entry point (the native dialog, the typed path)
+   * funnels into {@link registerPickedPaths} instead.
    */
-  const registerPicked = async (files: LocalFontFile[]): Promise<void> => {
+  const registerPicked = async (files: File[]): Promise<void> => {
     error = null;
-    loading = { loaded: 0, total: files.length };
+    loading = { loaded: 0, total: files.length, phase: "reading" };
     rerender();
-    const outcome = await registerLocalFontFiles(files, {
-      onProgress: (loaded, total, phase) => {
-        loading = { loaded, total, phase };
-        rerender();
-      },
-    });
+    let outcome;
+    try {
+      outcome = await registerLocalFontFiles(files, {
+        onProgress: (loaded, total, phase) => {
+          loading = { loaded, total, phase };
+          rerender();
+        },
+      });
+    } catch (err) {
+      loading = null;
+      error = err instanceof Error ? err.message : String(err);
+      rerender();
+      return;
+    }
     loading = null;
     if (outcome.representative !== null) {
       store.set({
@@ -380,10 +464,6 @@ export function mountPicker(
           [options.role]: outcome.representative.cssFamily,
         },
       });
-      // The browser fallback's residual sibling sweep (the service's
-      // /fonts index stands in for the directory listing). Never
-      // blocks the pick; a one-file family registers nothing.
-      void sweepLocalFamily(outcome.representative);
       appMessages().push({
         icon: outcome.failures.length > 0 ? "warn" : "check",
         title: "已加载本地字体",
@@ -536,26 +616,27 @@ export function mountPicker(
   };
 
   /**
-   * Select a catalog entry for preview (round 7: an entry names the
-   * exact manifest family + VARIANT a row or chip resolved to; ticket
+   * Select a catalog cut for preview (round 7: a pick names the exact
+   * manifest family + VARIANT a row or chip resolved to; ticket
    * #30/#32): the cut's slot winners register as lazy URL FontFaces
    * with their descriptors, and the family's default slot is loaded
    * so the anchor renders in it immediately.
    */
   const selectCatalogEntry = async (
-    entry: CatalogEntryLike,
+    family: string,
+    variant: string,
   ): Promise<void> => {
     error = null;
     let cssKey: string | null;
     try {
-      cssKey = await ensureCatalogRegistered(entry.family, entry.variant);
+      cssKey = await ensureCatalogRegistered(family, variant);
     } catch (err) {
       cssKey = null;
       error = err instanceof Error ? err.message : String(err);
     }
     if (!cssKey) {
       if (error === null) {
-        error = `无法载入目录字体 ${entry.family}：目录中尚无该字体的可用字面。`;
+        error = `无法载入目录字体 ${family}：目录中尚无该字体的可用字面。`;
       }
       rerender();
       return;
@@ -566,7 +647,7 @@ export function mountPicker(
     try {
       await document.fonts.load(`16px ${cssFamily(cssKey)}`);
     } catch (err) {
-      error = `无法载入目录字体 ${entry.family}：${
+      error = `无法载入目录字体 ${family}：${
         err instanceof Error ? err.message : String(err)
       }`;
       rerender();
@@ -708,7 +789,7 @@ export function mountPicker(
           !covered.has(doc.family) &&
           !EXCLUDED_FAMILIES.has(doc.family),
       )
-      .map((doc) => ({ id: doc.family, families: [doc.family], entries: [] }));
+      .map((doc) => ({ id: doc.family, families: [doc.family] }));
     /** The serve's family document of one manifest family. */
     const docOf = (family: string): CatalogFamilyDoc | undefined =>
       catalog.documents.find((doc) => doc.family === family);
@@ -746,9 +827,10 @@ export function mountPicker(
           .filter((doc): doc is CatalogFamilyDoc => doc !== undefined);
         const anyDone = memberDocs.some((doc) => doc.readiness === "done");
         const rowNoteDoc = memberDocs.find((doc) => doc.readiness !== "done");
-        // The cuts (round 8): one chip per distinct release; the ACTIVE
-        // cut is the explicit selection, else the family default.
-        const cuts = variantCuts(display);
+        // The cuts (round 8): one chip per distinct release — the
+        // SERVE documents' own cuts (ticket #36); the ACTIVE cut is
+        // the explicit selection, else the row's first.
+        const cuts = docCuts(display);
         const selectedCutId = variantSelections.get(display.id) ?? null;
         const activeCut =
           cuts.find((cut) => cut.id === selectedCutId) ?? cuts[0] ?? null;
@@ -757,7 +839,7 @@ export function mountPicker(
         // any registered member face as fallback.
         const cssKey =
           (activeCut !== null
-            ? registeredCss(activeCut.entry.family, activeCut.entry.variant)
+            ? registeredCss(activeCut.family, activeCut.variant)
             : null) ?? registeredCss(primaryFamily) ?? null;
         // Round 9 (owner item 2): the row name is the family's OWN
         // name-table string from the serve document; a picked row reads
@@ -768,10 +850,10 @@ export function mountPicker(
           cssKey !== null
             ? (fonts.find((f) => f.cssFamily === cssKey) ?? null)
             : null;
-        const activeDoc = docOf(activeCut?.entry.family ?? primaryFamily);
+        const activeDoc = docOf(activeCut?.family ?? primaryFamily);
         const rowName = activeFont
           ? fontDisplayName(activeFont)
-          : documentRowName(activeDoc ?? primaryDoc, activeCut?.entry.family ?? primaryFamily);
+          : documentRowName(activeDoc ?? primaryDoc, activeCut?.family ?? primaryFamily);
         const chips = rowChips(cuts, selectedCutId, docOf);
         /**
          * Round 21/22: the row's search index covers EVERY cut's own
@@ -783,23 +865,23 @@ export function mountPicker(
          * scan lands (variant word + artifact stem words, version
          * noise stripped, camel humps split).
          */
-        const cutName = (cut: VariantCut): string => {
-          const doc = docOf(cut.entry.family);
+        const cutName = (cut: DocCut): string => {
+          const doc = docOf(cut.family);
           return (
-            doc?.cuts.find((docCut) => docCut.variant === cut.entry.variant)
+            doc?.cuts.find((docCut) => docCut.variant === cut.variant)
               ?.display_name ??
             doc?.display_name ??
-            cut.entry.file.replace(/\.[^.]+$/, "")
+            cut.file.replace(/\.[^.]+$/, "")
           );
         };
-        const cutTokens = (cut: VariantCut): string[] => {
-          const stem = cut.entry.file.replace(/\.[^.]+$/, "");
+        const cutTokens = (cut: DocCut): string[] => {
+          const stem = cut.file.replace(/\.[^.]+$/, "");
           const words = stem
             .split(/[_\-\s]+/)
             .flatMap((word) => word.split(/(?<=[a-z])(?=[A-Z])/))
             .flatMap((word) => word.split(/(?<=[A-Z])(?=[A-Z][a-z])/))
             .filter((word) => !/^(v?\d+(\.\d+)*)$/i.test(word));
-          return [cut.entry.variant ?? "", ...words].filter(Boolean);
+          return [cut.variant ?? "", ...words].filter(Boolean);
         };
         const rowId = cssKey ?? `cat:${display.id}`;
         // Self-rendering (ticket #30): the row renders in its OWN
@@ -1002,17 +1084,22 @@ export function mountPicker(
         if (id.startsWith("cat:")) {
           const display = displays.find((d) => `cat:${d.id}` === id);
           if (!display) return;
-          // A release-only family (no manifest entries): plain pick.
-          if (display.entries.length === 0) {
+          // A release-only family (absent from the manifest mirror):
+          // plain pick.
+          if (
+            !display.families.some((family) =>
+              MANIFEST_FAMILIES.has(family),
+            )
+          ) {
             void selectReleaseFamily(display.id);
             return;
           }
           // The row's ACTIVE cut (explicit selection, else default).
-          const cuts = variantCuts(display);
+          const cuts = docCuts(display);
           const cut =
             cuts.find((c) => c.id === variantSelections.get(display.id)) ??
             cuts[0];
-          if (cut) void selectCatalogEntry(cut.entry);
+          if (cut) void selectCatalogEntry(cut.family, cut.variant);
           return;
         }
         // Round 24: an installed system family that nobody picked
@@ -1033,7 +1120,7 @@ export function mountPicker(
         const displayId = displayByRowId.get(rowId);
         const display = displays.find((d) => d.id === displayId);
         if (!display) return;
-        const cuts = variantCuts(display);
+        const cuts = docCuts(display);
         const cut = cuts.find((c) => c.id === chipId);
         if (!cut) return;
         // Round 18 (owner item 3): clicking the ACTIVE chip of the row
@@ -1062,10 +1149,10 @@ export function mountPicker(
         // Load whatever is now active — the picked cut, or the family
         // default the revert returns to.
         const active =
-          variantCuts(display).find(
+          docCuts(display).find(
             (c) => c.id === variantSelections.get(display.id),
-          ) ?? variantCuts(display)[0];
-        if (active) void selectCatalogEntry(active.entry);
+          ) ?? docCuts(display)[0];
+        if (active) void selectCatalogEntry(active.family, active.variant);
       },
     };
   };

@@ -44,38 +44,26 @@ const SOURCE_EXT = new Set([".ts", ".tsx", ".js", ".mjs", ".html"]);
 
 /**
  * Files whose banned-pattern content is SCHEDULED for deletion by a
- * later ticket of this migration. The exemption is pattern-scoped and
- * temporary by construction: when the ticket lands and deletes the
- * file, the stale entry here must go with it (a missing file makes the
- * exemption inert, and the guard's file-existence check below keeps
- * the table honest).
+ * later ticket of this migration. EMPTY since ticket #36 deleted the
+ * last two scheduled mirrors (the frontend sfnt reader and the TTC
+ * surgery): the table stays because the next scheduled deletion
+ * reuses it, and the guard's file-existence check below keeps it
+ * honest.
  */
 const SCHEDULED_DELETIONS: ReadonlyArray<{
   file: string;
   patterns: readonly string[];
   reason: string;
-}> = [
-  {
-    file: "gui/src/fonts/sfnt.ts",
-    patterns: ["sfnt-magic"],
-    reason: "the frontend sfnt reader — T9 of spec #25 deletes it",
-  },
-  {
-    file: "gui/src/fonts/ttc.ts",
-    patterns: ["sfnt-magic"],
-    reason: "the frontend TTC surgery — T9 of spec #25 deletes it",
-  },
-];
+}> = [];
 
 /**
  * REVIEWED non-URL FontFace sites, as a per-file BUDGET (an upper
- * bound, not a pin): the local/system pick byte path in the registry
- * is the one flow the MEMORY RED LINE (ticket #32) still allows to
- * hold font bytes in the page — a user-loaded file and an installed
- * system family register through FontFace(ArrayBuffer) until the
- * local/system byte path itself moves serve-side. Anything beyond the
- * budget is UNREVIEWED and fails the guard; dropping below it stays
- * green (progress never trips the alarm).
+ * bound, not a pin). ZERO everywhere since ticket #36 killed the last
+ * byte flow (the browser fallback uploads; local/system picks ride URL
+ * faces): every FontFace construction in the frontend must be a
+ * url(...) source. The registry entry stays at 0 — named, reviewed —
+ * so the first regression names its file; anything anywhere else is
+ * UNREVIEWED and fails the guard outright.
  */
 const NON_URL_FONTFACE_BUDGET: ReadonlyArray<{
   file: string;
@@ -84,12 +72,10 @@ const NON_URL_FONTFACE_BUDGET: ReadonlyArray<{
 }> = [
   {
     file: "gui/src/fonts/registry.ts",
-    budget: 3,
+    budget: 0,
     reason:
-      "the local/system pick byte path (ticket #32's carve-out; retired " +
-      "when that path moves serve-side): registerFontBytes' ternary pair " +
-      "(with/without descriptors) + the sibling-face add — two reviewed " +
-      "sites, three constructions",
+      "URL-only since ticket #36 (the byte fallback died with the upload " +
+      "endpoint): zero non-URL FontFace constructions are reviewed",
   },
 ];
 

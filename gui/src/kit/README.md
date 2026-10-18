@@ -178,7 +178,7 @@ instruction from the hands-on review, not a silent drift):
   top-bar pair tags, the char popup's 来自 line, the report's source
   names — reads the REGISTERED font's name table verbatim (nameID 16/1
   + 17/2, the en records; the zh-CN records ride along untranslated:
-  `fonts/sfnt.ts` `FontNames`). "LXGW WenKai Screen" stays "LXGW
+  `state.ts` `FontNames`, from the serve's own scan). "LXGW WenKai Screen" stays "LXGW
   WenKai Screen"; curated display names are GONE from
   `data/curated-meta.json` (stars/traits/slots stay). An unfetched row
   falls back to the upstream release artifact's own name (its stem),

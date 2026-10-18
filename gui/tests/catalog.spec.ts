@@ -1,8 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { parseFontMeta } from "../src/fonts/sfnt";
 import {
   assertNoJsErrors,
   collectJsErrors,
@@ -10,7 +9,7 @@ import {
   pointerClick,
   waitForFontsReady,
 } from "./helpers";
-import { generateNamedFace, spawnServeOverFonts } from "./serve";
+import { generateNamedFace, scanMeta, spawnServeOverFonts } from "./serve";
 import {
   buildServeCatalogSite,
   type ServeCatalogSite,
@@ -32,23 +31,13 @@ import {
 
 const [FONT_A, FONT_B] = fixtureFontPaths();
 
-/** The name-table identity of a host font (the registry's own parse). */
-const metaCache = new Map<string, ReturnType<typeof parseFontMeta>>();
-async function parsedFontMeta(path: string) {
-  const cached = metaCache.get(path);
-  if (cached) return cached;
-  const bytes = await readFile(path);
-  const meta = parseFontMeta(
-    bytes.buffer.slice(
-      bytes.byteOffset,
-      bytes.byteOffset + bytes.byteLength,
-    ) as ArrayBuffer,
-  );
-  metaCache.set(path, meta);
-  return meta;
-}
-const parsedDisplayName = async (path: string) =>
-  (await parsedFontMeta(path)).names.display;
+/**
+ * The name-table identity of a host font, read by the SERVE's own
+ * fontTools scan (the specs' independent oracle since the frontend
+ * parse mirror died — ticket #36).
+ */
+const parsedDisplayName = async (serve: string, path: string) =>
+  (await scanMeta(serve, path)).display;
 
 /** Three fake families over two host binaries. */
 const FAMILY_SPECS: SiteFamilySpec[] = [
@@ -179,9 +168,9 @@ test.describe("the serve-backed catalog", () => {
   }) => {
     const jsErrors: string[] = [];
     collectJsErrors(page, jsErrors);
-    const nameA = await parsedDisplayName(FONT_A);
-    const nameB = await parsedDisplayName(FONT_B);
     const { url, dispose } = await startCatalogServe(FAMILY_SPECS);
+    const nameA = await parsedDisplayName(url, FONT_A);
+    const nameB = await parsedDisplayName(url, FONT_B);
     try {
       await openOnServe(page, url);
       await sweepDone(page);
@@ -244,7 +233,9 @@ test.describe("the serve-backed catalog", () => {
       await openOnServe(page, url);
       await sweepDone(page);
       await pointerClick(page, page.locator('[data-role="picker-en"] .kit-hd'));
-      await expect(catalogRow(page, await parsedDisplayName(FONT_A)).first()).toBeVisible();
+      await expect(
+        catalogRow(page, await parsedDisplayName(url, FONT_A)).first(),
+      ).toBeVisible();
       await page.waitForTimeout(500); // let the preview subsets land
 
       const banned = requests.filter((requested) =>
@@ -265,8 +256,8 @@ test.describe("the serve-backed catalog", () => {
   }) => {
     const jsErrors: string[] = [];
     collectJsErrors(page, jsErrors);
-    const nameB = await parsedDisplayName(FONT_B);
     const { url, dispose } = await startCatalogServe(FAMILY_SPECS);
+    const nameB = await parsedDisplayName(url, FONT_B);
     try {
       await openOnServe(page, url);
       await sweepDone(page);
@@ -294,10 +285,10 @@ test.describe("the serve-backed catalog", () => {
       }));
       expect(loaded.face).toBe(true);
       expect(loaded.weight).toEqual(["400/normal"]);
-      // A URL pick carries no client-side cmap (the red line): the
-      // script-region counters read 0 — the serve's resolve answers
-      // stay the coloring truth (ticket #35).
-      await expect(page.locator("[data-stat='en']")).toHaveText("0");
+      // Ticket #36: the pick's coverage intervals ride the family
+      // document, so the script-region counters are REAL again (the
+      // serve's resolve answers stay the coloring truth — #35).
+      await expect(page.locator("[data-stat='en']")).not.toHaveText("0");
       assertNoJsErrors(jsErrors);
     } finally {
       await dispose();
@@ -334,7 +325,7 @@ test.describe("the serve-backed catalog", () => {
       await expect(mono.locator(".kit-fp-note")).toContainText("同步失败");
       const sans = enPopup(page)
         .locator(".kit-fp:not([aria-disabled='true'])")
-        .filter({ hasText: await parsedDisplayName(FONT_A) });
+        .filter({ hasText: await parsedDisplayName(url, FONT_A) });
       await expect(sans).toHaveCount(1);
       await expect(sans.locator(".kit-fp-note")).toHaveCount(0);
     } finally {
@@ -446,8 +437,8 @@ test.describe("the serve-backed catalog", () => {
       manifest: false,
     });
     try {
-      const nameA = await parsedDisplayName(FONT_A);
-      const nameB = await parsedDisplayName(FONT_B);
+      const nameA = await parsedDisplayName(url, FONT_A);
+      const nameB = await parsedDisplayName(url, FONT_B);
       await openOnServe(page, url);
       await sweepDone(page);
       await pointerClick(page, page.locator('[data-role="picker-en"] .kit-hd'));

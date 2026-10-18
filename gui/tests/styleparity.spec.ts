@@ -96,7 +96,13 @@ test("style parity: an oblique side-cut base merges one face per slot", async ({
   const artifact = resolve(dir, "styleparity.ttc");
   await writeFile(artifact, Buffer.from(await fontResponse.arrayBuffer()));
 
-  // The owner's flow: load the merged output through the picker.
+  // The owner's flow: load the merged output through the picker —
+  // against the same serve (ticket #36: the file input uploads).
+  await page.addInitScript((serve: string) => {
+    (window as { __FONTALLOY_CONFIG__?: unknown }).__FONTALLOY_CONFIG__ = {
+      serveUrl: serve,
+    };
+  }, serviceUrl);
   await page.goto("/");
   await waitForFontsReady(page);
   await pointerClick(page, page.locator('[data-role="picker-cjk"] .kit-hd'));

@@ -1,18 +1,53 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { resolve } from "node:path";
 import {
   assertNoJsErrors,
   collectJsErrors,
-  fixtureFontPaths,
   pointerClick,
   waitForFontsReady,
 } from "./helpers";
+import { generateNamedFace, spawnServeOverFonts } from "./serve";
 
 test.describe("picker popup behavior", () => {
   const jsErrors: string[] = [];
 
+  /** Suite-scoped serve over two generated families (ticket #36: the
+   * browser file-input loads ride the serve's upload endpoint now). */
+  let serveUrl = "";
+  let font1 = "";
+  let font2 = "";
+  let disposeServe: (() => Promise<void>) | null = null;
+
+  test.beforeAll(async () => {
+    const root = await mkdtemp(resolve(tmpdir(), "fontalloy-overlays-"));
+    const [alpha, beta] = await Promise.all([
+      generateNamedFace(root, "Alloy Overlay A", "AlloyOverlayA"),
+      generateNamedFace(root, "Alloy Overlay B", "AlloyOverlayB"),
+    ]);
+    font1 = alpha;
+    font2 = beta;
+    const spawned = await spawnServeOverFonts(root);
+    disposeServe = async () => {
+      await spawned.dispose();
+      await rm(root, { recursive: true, force: true });
+    };
+    serveUrl = await spawned.url;
+  });
+
+  test.afterAll(async () => {
+    await disposeServe?.();
+  });
+
   test.beforeEach(async ({ page }) => {
     jsErrors.length = 0;
     collectJsErrors(page, jsErrors);
+    await page.addInitScript((serve: string) => {
+      (window as { __FONTALLOY_CONFIG__?: unknown }).__FONTALLOY_CONFIG__ = {
+        serveUrl: serve,
+      };
+    }, serveUrl);
     await page.goto("/");
     await waitForFontsReady(page);
   });
@@ -76,7 +111,6 @@ test.describe("picker popup behavior", () => {
   }
 
   test("popup node survives row re-renders and stays open", async ({ page }) => {
-    const [font1, font2] = fixtureFontPaths();
     await pointerClick(page, page.locator('[data-role="picker-en"] .kit-hd'));
     const popup = page.locator('[data-picker-popup="en"]');
     await expect(popup).toBeVisible();

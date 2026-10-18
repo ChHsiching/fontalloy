@@ -1,8 +1,8 @@
 import { test, expect, type Page } from "@playwright/test";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { generateFonts } from "./serve";
+import { generateFonts, spawnServeOverFonts } from "./serve";
 import {
   assertNoJsErrors,
   collectJsErrors,
@@ -37,20 +37,53 @@ test.describe("script-region counters and classification", () => {
 
   test.afterEach(() => assertNoJsErrors(jsErrors));
 
-  /** The fixture pair, with the donor ALSO covering 10 ASCII letters. */
-  async function makeFixtures(): Promise<{ base: string; donor: string }> {
+  /** Fixture serves, disposed with the suite (one per generated pair). */
+  const serves: Array<() => Promise<void>> = [];
+  test.afterAll(async () => {
+    for (const dispose of serves.splice(0)) await dispose();
+  });
+
+  /**
+   * The fixture pair, with the donor ALSO covering 10 ASCII letters —
+   * over its own spawned serve (ticket #36: the browser file-input
+   * loads ride the serve's upload endpoint now).
+   */
+  async function makeFixtures(): Promise<{
+    base: string;
+    donor: string;
+    serveUrl: string;
+  }> {
     const dir = await mkdtemp(resolve(tmpdir(), "fontalloy-region-"));
-    return generateFonts(dir, { donorGlyphs: 64, donorAscii: 10 });
+    const fonts = await generateFonts(dir, { donorGlyphs: 64, donorAscii: 10 });
+    const spawned = await spawnServeOverFonts(dir);
+    serves.push(async () => {
+      await spawned.dispose();
+      await rm(dir, { recursive: true, force: true });
+    });
+    return { ...fonts, serveUrl: await spawned.url };
+  }
+
+  /** Point the page at a fixture serve before it opens. */
+  async function openOnServe(page: Page, serveUrl: string): Promise<void> {
+    await page.addInitScript((serve: string) => {
+      const config = window as unknown as {
+        __FONTALLOY_CONFIG__: Record<string, unknown>;
+      };
+      config.__FONTALLOY_CONFIG__ ??= {};
+      config.__FONTALLOY_CONFIG__.serveUrl = serve;
+    }, serveUrl);
+    await page.goto("/");
+    await waitForFontsReady(page);
   }
 
   async function openWithOneFont(
     page: Page,
     role: "en" | "cjk",
     path: string,
+    serveUrl: string,
   ): Promise<void> {
     collectJsErrors(page, jsErrors);
-    await page.goto("/");
-    await waitForFontsReady(page);
+    await openOnServe(page, serveUrl);
     await pointerClick(
       page,
       page.locator(`[data-role="picker-${role}"] .kit-hd`),
@@ -63,11 +96,10 @@ test.describe("script-region counters and classification", () => {
 
   async function openWithFonts(
     page: Page,
-    fonts: { base: string; donor: string },
+    fonts: { base: string; donor: string; serveUrl: string },
   ): Promise<void> {
     collectJsErrors(page, jsErrors);
-    await page.goto("/");
-    await waitForFontsReady(page);
+    await openOnServe(page, fonts.serveUrl);
     for (const [role, path] of [
       ["en", fonts.base],
       ["cjk", fonts.donor],
@@ -87,7 +119,7 @@ test.describe("script-region counters and classification", () => {
     page,
   }) => {
     const fonts = await makeFixtures();
-    await openWithOneFont(page, "cjk", fonts.donor);
+    await openWithOneFont(page, "cjk", fonts.donor, fonts.serveUrl);
 
     // The donor covers 64 hanzi (CJK region) AND 10 ASCII letters (EN
     // region). The round-19 winner-side split counted all 74 into 中文;

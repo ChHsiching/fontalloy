@@ -26,7 +26,7 @@ import { fileURLToPath } from "node:url";
 const BROWSER_NOISE: Array<{ pattern: RegExp; reason: string }> = [
   {
     pattern:
-      /Failed to load resource.*net::ERR_(CONNECTION_REFUSED|RESET|FAILED|ABORTED|TIMED_OUT)/,
+      /Failed to load resource.*net::ERR_(CONNECTION_REFUSED|CONNECTION_RESET|CONNECTION_ABORTED|CONNECTION_TIMED_OUT|ERR_FAILED)/,
     reason:
       "an intentional loopback probe was refused at network level " +
       "(RESET included: the threading serve's keep-alive reaper can close " +
@@ -122,7 +122,16 @@ export async function hitTestCenter(
     } catch (err) {
       lastError = err;
       const message = err instanceof Error ? err.message : String(err);
-      if (!message.includes("not attached")) throw err;
+      // The same re-render race can show up as a detached node ("not
+      // attached") or as a replaced node with no geometry yet ("has no
+      // bounding box" / "not visible") — retry both.
+      if (
+        !message.includes("not attached") &&
+        !message.includes("no bounding box") &&
+        !message.includes("is not visible")
+      ) {
+        throw err;
+      }
       await page.waitForTimeout(50);
     }
   }

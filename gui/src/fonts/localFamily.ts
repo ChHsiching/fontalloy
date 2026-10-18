@@ -1,30 +1,30 @@
 /**
- * Local families by scan (ticket #34): a LOCAL pick hands absolute
- * PATHS to the serve's local-font scan (`POST /local-fonts`); the
- * returned family documents — real name-table identity, weight/style,
+ * Local families by scan (ticket #34; ticket #36 closes the last byte
+ * flow): EVERY local-load entry point hands the serve's local-font
+ * scan something it can name — absolute PATHS (the native dialog, the
+ * typed path) or the file's own BYTES through the upload endpoint (the
+ * plain browser's file input, which has no paths). Both return the
+ * SAME family documents — real name-table identity, weight/style,
  * server-side TTC expansion, one face per (weight, style) slot with
- * the side-cut drops already applied — drive the SAME URL FontFace
- * registration the catalog pick path uses. The page never reads a
- * picked file's bytes: the scan is JSON in, documents out, and a face
- * streams from the serve only when something renders in its
- * weight/style slot.
+ * the side-cut drops already applied, run-length coverage intervals —
+ * and drive the SAME URL FontFace registration the catalog pick path
+ * uses. The page never reads a picked file's bytes: the scan is JSON
+ * or a streamed upload in, documents out, and a face streams from the
+ * serve only when something renders in its weight/style slot.
  *
- * The module's older role — same-directory sibling discovery
- * (round 13, owner item 7) — is subsumed by the scan: files submitted
+ * The module's older role — same-directory sibling discovery (round
+ * 13, owner item 7) — died with the byte fallback: files submitted
  * together pool into their shared family SERVER-SIDE, so a
- * multi-select dialog pick or a typed DIRECTORY path loads the whole
- * family without any page-side sweep. The browser fallback flow (the
- * hidden HTML file input, bytes-only, no paths) keeps a residual
- * index-driven sweep below — its discovery ran against the service's
- * /fonts listing all along and needs no shell command.
+ * multi-select dialog pick or a multi-file upload loads the whole
+ * family without any page-side sweep.
  */
 
-import { store, type LoadedFont } from "../state";
+import { store, type LoadedFont, type CpIntervals } from "../state";
 import { synthStore } from "../service/state";
-import { composeDisplay, type FontNames } from "./sfnt";
 import { registerCatalogUrlFaces } from "./registry";
 import { readConfig } from "../platform/config";
 import { cssFamily } from "../kit/pickerPopup";
+import type { LocalFontsDocument } from "../service/client";
 
 /** What a local load run registered (the picker's outcome card). */
 export interface LocalLoadOutcome {
@@ -37,7 +37,7 @@ export interface LocalLoadOutcome {
   failures: string[];
   /** FontFaces this run put on document.fonts. */
   faces: number;
-  /** Distinct name-table families the run's paths span. */
+  /** Distinct name-table families the run's files span. */
   families: number;
   /**
    * The faces' total glyph count (the scan's own maxp counts summed
@@ -46,13 +46,13 @@ export interface LocalLoadOutcome {
   glyphs: number;
 }
 
-/** Options for {@link registerLocalFontPaths}. */
+/** Options for the load entry points. */
 export interface LocalLoadOptions {
   /**
    * Per-face progress: called with the faces completed so far and the
    * run's planned face total, in the same two phases the picker's
    * footer renders — `reading` (the scan request is out; the count
-   * scale is the submitted paths) then `registering` (the returned
+   * scale is the submitted files) then `registering` (the returned
    * faces register onto document.fonts, one tick per face). The first
    * call of each phase is (0, total).
    */
@@ -73,19 +73,14 @@ interface FacePlan {
   weight: number;
   italic: boolean;
   glyphs: number;
+  intervals: CpIntervals;
+  placeholderIntervals: CpIntervals;
 }
 
 /** Basename of a path, Windows or POSIX separators. */
 function baseName(path: string): string {
   const parts = path.replace(/\\/g, "/").split("/");
   return parts[parts.length - 1]!.toLowerCase();
-}
-
-/** Dirname of a path (POSIX-normalized), "" for a bare name. */
-function dirName(path: string): string {
-  const parts = path.replace(/\\/g, "/").split("/");
-  parts.pop();
-  return parts.join("/");
 }
 
 /**
@@ -96,10 +91,7 @@ function dirName(path: string): string {
  * record (the 400-upright member when one exists, else the document's
  * first face) every surface reads, and data-only records for the
  * other faces (the sibling discipline: names only, no rows of their
- * own). The run yields to the event loop between faces — the
- * workspace stays interactive throughout; progress lands in
- * `onProgress` after every face, and the config's test seam slows
- * every yield deterministically.
+ * own).
  *
  * Idempotent per family: a re-load of the same paths reuses what is
  * already registered. Never throws for font-level trouble — every
@@ -116,6 +108,55 @@ export async function registerLocalFontPaths(
   if (client === null) {
     throw new Error("本地字体加载需要本地服务（未连接）。");
   }
+  if (paths.length > 0) options.onProgress?.(0, paths.length, "reading");
+  const document = await client.localFonts(paths);
+  return registerScannedFamilies(document, options);
+}
+
+/**
+ * The browser fallback's local loading (ticket #36): the picked File
+ * objects themselves stream to the serve's upload endpoint — the page
+ * NEVER constructs an ArrayBuffer (the fetch body IS the File; the
+ * browser streams it) — and the returned documents register exactly
+ * like a path pick. One upload per file, sequentially, so a
+ * multi-file pick pools its families server-side per request and the
+ * progress scale stays the picked file count.
+ */
+export async function registerLocalFontFiles(
+  files: readonly File[],
+  options: LocalLoadOptions = {},
+): Promise<LocalLoadOutcome> {
+  const client = synthStore.get().service.client;
+  if (client === null) {
+    throw new Error("本地字体加载需要本地服务（未连接）。");
+  }
+  const failures: string[] = [];
+  if (files.length > 0) options.onProgress?.(0, files.length, "reading");
+  let read = 0;
+  let merged: LocalFontsDocument = { families: [], skipped: [] };
+  for (const file of files) {
+    try {
+      const document = await client.localFontsUpload(file);
+      merged = {
+        families: [...merged.families, ...document.families],
+        skipped: [...merged.skipped, ...document.skipped],
+      };
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      failures.push(`无法加载 ${file.name}：${reason}`);
+    }
+    read++;
+    options.onProgress?.(read, files.length, "reading");
+  }
+  const outcome = await registerScannedFamilies(merged, options);
+  return { ...outcome, failures: [...failures, ...outcome.failures] };
+}
+
+/** The shared registration over one scan's family documents. */
+async function registerScannedFamilies(
+  scanDocument: LocalFontsDocument,
+  options: LocalLoadOptions = {},
+): Promise<LocalLoadOutcome> {
   const reason = (err: unknown): string =>
     err instanceof Error ? err.message : String(err);
   // One macrotask between faces — the event loop serves input between
@@ -124,12 +165,6 @@ export async function registerLocalFontPaths(
   const yieldBetweenFaces = (): Promise<void> =>
     new Promise((resolve) => setTimeout(resolve, delayMs));
   const failures: string[] = [];
-
-  // The reading phase: the scan request itself (the count scale is
-  // the submitted paths — the face total only exists once the
-  // documents come back).
-  if (paths.length > 0) options.onProgress?.(0, paths.length, "reading");
-  const scanDocument = await client.localFonts(paths);
   for (const skip of scanDocument.skipped) {
     failures.push(`无法加载 ${baseName(skip.path)}：${reason(skip.error)}`);
   }
@@ -149,7 +184,7 @@ export async function registerLocalFontPaths(
     for (const face of cut.faces) {
       const shared = perPath.get(face.path) ?? 1;
       group.push({
-        url: `${client.baseUrl}${face.href}`,
+        url: face.href,
         fileName: shared > 1 ? `${face.file}#${face.face_index + 1}` : face.file,
         path: face.path,
         family: face.family,
@@ -157,6 +192,8 @@ export async function registerLocalFontPaths(
         weight: face.weight,
         italic: face.italic,
         glyphs: face.glyphs,
+        intervals: face.coverage.intervals as unknown as CpIntervals,
+        placeholderIntervals: face.coverage.placeholder_intervals as unknown as CpIntervals,
       });
     }
     plans.set(family.family, group);
@@ -198,24 +235,22 @@ export async function registerLocalFontPaths(
             fileName: plan.fileName,
             origin: "local",
             path: plan.path,
-            codepoints: [],
+            intervals: plan.intervals,
+            placeholderIntervals: plan.placeholderIntervals,
+            weight: plan.weight,
+            italic: plan.italic,
           };
           store.set({ fonts: [...store.get().fonts, repRecord] });
         } else {
           siblings.push({
             cssFamily: family,
             family,
-            names: {
-              family: plan.family,
-              display: composeDisplay(
-                plan.family,
-                plan.subfamily || undefined,
-              ),
-            },
             fileName: plan.fileName,
             origin: "local",
             path: plan.path,
-            codepoints: [],
+            intervals: [],
+            weight: plan.weight,
+            italic: plan.italic,
           } satisfies LoadedFont);
         }
       }
@@ -252,143 +287,4 @@ export async function registerLocalFontPaths(
     }
   }
   return { representative, failures, faces, families: plans.size, glyphs };
-}
-
-/* ---------- the browser fallback's residual sibling sweep ---------- */
-
-/** One discovered sibling face: where it is, and its own names. */
-interface SiblingFace {
-  fileName: string;
-  /** The on-disk path (always known for a discovered sibling). */
-  path: string;
-  names: FontNames;
-}
-
-/** The event-loop yield between sibling parses (the sweep's pacemaker). */
-const yieldFrame = (): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, 0));
-
-/**
- * Wait (bounded) for a connecting service to settle: a font loaded in
- * the first moments of a page can outrun the boot probe, and the
- * browser discovery reads the index the probe fills. connectService
- * always settles; the cap is pure belt-and-braces so a stuck probe can
- * never pin a background sweep.
- */
-async function waitForServiceSettled(): Promise<void> {
-  if (synthStore.get().service.status !== "connecting") return;
-  await new Promise<void>((resolve) => {
-    const timer = setTimeout(() => done(), 5_000);
-    const done = (): void => {
-      clearTimeout(timer);
-      unsubscribe();
-      resolve();
-    };
-    const unsubscribe = synthStore.subscribe((state) => {
-      if (state.service.status !== "connecting") done();
-    });
-  });
-}
-
-/**
- * The browser discovery: the service's /fonts index stands in for the
- * directory listing (the plain browser has no directory access).
- * Faces of the representative's own name-table family, in the
- * representative's resolved directory, one record per distinct file
- * (a TTC contributes one sibling, not one per face).
- *
- * Round 19 note: a face extracted from a picked COLLECTION carries the
- * per-face name `file.ttc#N`, which matches no index basename — the
- * representative stays unresolved and the sweep degrades to nothing,
- * exactly right: the collection's faces already registered as faces
- * of their own through the load path, and re-reading them as
- * data-only siblings would duplicate them.
- *
- * Ticket #34: this residual sweep serves the BROWSER file-input
- * fallback only. Path-driven picks (the dialog, the typed path) pool
- * their files server-side — the scan replaced the sweep — and the
- * shell's directory lister is retired.
- */
-function indexSiblings(font: LoadedFont): SiblingFace[] {
-  const index = synthStore.get().service.fontsIndex;
-  if (index === null) return [];
-  const representative =
-    font.path !== undefined
-      ? font.path
-      : index.families
-          .flatMap((family) => family.faces)
-          .find((face) => baseName(face.path) === baseName(font.fileName))
-          ?.path;
-  if (representative === undefined) return [];
-  const directory = dirName(representative);
-  const byFile = new Map<string, SiblingFace>();
-  for (const family of index.families) {
-    for (const face of family.faces) {
-      if (face.family !== font.cssFamily) continue;
-      if (dirName(face.path) !== directory) continue;
-      if (baseName(face.path) === baseName(representative)) continue;
-      if (!byFile.has(face.path)) {
-        byFile.set(face.path, {
-          fileName: face.path.replace(/\\/g, "/").split("/").pop() ?? face.path,
-          path: face.path,
-          // The index's own strings ARE the name table (the core's
-          // scanner parsed them); the display name composes the same
-          // family + subfamily join every surface reads.
-          names: {
-            family: face.family,
-            ...(face.subfamily ? { subfamily: face.subfamily } : {}),
-            display: composeDisplay(face.family, face.subfamily || undefined),
-          },
-        });
-      }
-    }
-  }
-  return [...byFile.values()];
-}
-
-/** Sweeps in flight (one per representative file). */
-const sweeps = new Set<string>();
-
-/**
- * Discover and register a browser file-input pick's family faces —
- * fire-and-forget from that fallback load path. Idempotent per
- * representative file and per sibling: an earlier sweep's records, a
- * mid-flight sweep, and files that fail to resolve are all skipped.
- */
-export async function sweepLocalFamily(font: LoadedFont): Promise<void> {
-  if (font.origin !== "local") return;
-  const runKey = `${font.cssFamily}::${font.path ?? font.fileName}`;
-  if (sweeps.has(runKey)) return;
-  sweeps.add(runKey);
-  try {
-    // The index the browser discovery reads may still be mid-probe.
-    await waitForServiceSettled();
-    const siblings = indexSiblings(font);
-    const recorded = (sibling: SiblingFace): boolean =>
-      store.get().fonts.some(
-        (f) =>
-          f.origin === "local" &&
-          f.cssFamily === font.cssFamily &&
-          (f.path ?? f.fileName) === sibling.path,
-      );
-    const faces: LoadedFont[] = [];
-    for (const sibling of siblings) {
-      if (recorded(sibling)) continue;
-      faces.push({
-        cssFamily: font.cssFamily,
-        family: font.cssFamily,
-        names: sibling.names,
-        fileName: sibling.fileName,
-        origin: "local",
-        path: sibling.path,
-        codepoints: [],
-      });
-      await yieldFrame();
-    }
-    if (faces.length > 0) {
-      store.set({ fonts: [...store.get().fonts, ...faces] });
-    }
-  } finally {
-    sweeps.delete(runKey);
-  }
 }

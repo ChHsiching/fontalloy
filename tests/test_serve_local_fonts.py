@@ -28,7 +28,7 @@ from typing import Any
 import pytest
 from fontTools.ttLib import TTFont
 
-from conftest import synth_font, synth_ttc
+from conftest import synth_font, synth_placeholder_font, synth_ttc
 from test_cli_serve import running_service
 
 #: Test seam: stretches the scan's per-file yield so a scan observably
@@ -731,3 +731,207 @@ class TestEndpointHygiene:
     def test_the_ignored_endpoints_still_answer(self, service):
         assert service.get("/health").status == 200
         assert service.get("/catalog/families").status == 200
+
+
+class TestCoverageIntervals:
+    """Ticket #36: face documents carry compressed cmap intervals.
+
+    The counters and the missing view compute from run-length
+    intervals (view-model arithmetic over data), never from a page-side
+    parse — the serve is the one place the cmap is read. A face's
+    ``coverage.intervals`` are sorted, disjoint, maximal [start, end]
+    runs of the honest (placeholder-filtered) coverage.
+    """
+
+    def test_intervals_are_sorted_disjoint_runs_matching_the_count(
+        self, service, tmp_path
+    ):
+        fonts = tmp_path / "fonts"
+        fonts.mkdir()
+        synth_font(
+            fonts / "Runs.ttf",
+            family="LocalRuns",
+            codepoints=(0x41, 0x42, 0x80, 0x4E00, 0x4E01, 0x4E02, 0x4E05),
+        )
+        face = scan(service, [fonts / "Runs.ttf"]).json()["families"][0][
+            "cuts"
+        ][0]["faces"][0]
+        intervals = face["coverage"]["intervals"]
+        assert intervals == [
+            [0x41, 0x42],
+            [0x80, 0x80],
+            [0x4E00, 0x4E02],
+            [0x4E05, 0x4E05],
+        ]
+        counted = sum(end - start + 1 for start, end in intervals)
+        assert counted == face["coverage"]["codepoints"]
+
+    def test_placeholder_mappings_stay_out_of_the_intervals(
+        self, service, tmp_path
+    ):
+        fonts = tmp_path / "fonts"
+        fonts.mkdir()
+        donor = fonts / "Faking.ttf"
+        synth_placeholder_font(
+            donor,
+            family="LocalFaking",
+            codepoints=(0x41, 0x42),
+            placeholder_codepoints=tuple(range(0xE000, 0xE300)),
+        )
+        face = scan(service, [donor]).json()["families"][0]["cuts"][0][
+            "faces"
+        ][0]
+        assert face["coverage"]["intervals"] == [[0x41, 0x42]]
+        assert face["coverage"]["placeholders"] == 0x300
+        assert face["coverage"]["placeholder_intervals"] == [
+            [0xE000, 0xE2FF]
+        ]
+
+    def test_ttc_faces_each_carry_their_own_intervals(self, service, tmp_path):
+        fonts = tmp_path / "fonts"
+        fonts.mkdir()
+        collection = fonts / "Pair.ttc"
+        synth_ttc(
+            collection,
+            faces=[
+                {
+                    "family": "LocalPair",
+                    "codepoints": (0x41, 0x42),
+                    "subfamily": "Regular",
+                },
+                {
+                    "family": "LocalPair",
+                    "codepoints": (0x41, 0x430),
+                    "weight": 700,
+                    "subfamily": "Bold",
+                },
+            ],
+        )
+        faces = scan(service, [collection]).json()["families"][0]["cuts"][0][
+            "faces"
+        ]
+        by_weight = {face["weight"]: face for face in faces}
+        assert by_weight[400]["coverage"]["intervals"] == [[0x41, 0x42]]
+        assert by_weight[700]["coverage"]["intervals"] == [
+            [0x41, 0x41],
+            [0x430, 0x430],
+        ]
+
+
+class TestUpload:
+    """Ticket #36: POST /local-fonts/upload — the browser fallback.
+
+    The plain-browser file input has no paths to hand the scan, so the
+    page UPLOADS the file: raw body in (any content type), the
+    filename riding the query string, the bytes STREAMED to a
+    serve-owned scratch file (never buffered whole in the handler), the
+    same scan pipeline answering the same family-document shape — and
+    the faces serving by URL from that scratch file.
+    """
+
+    def test_upload_scans_and_serves_faces_by_url(self, service, tmp_path):
+        fonts = tmp_path / "fonts"
+        fonts.mkdir()
+        upload = fonts / "Uploaded.ttf"
+        synth_font(
+            upload,
+            family="UploadedFamily",
+            codepoints=_LATIN,
+        )
+        response = service.post_raw(
+            "/local-fonts/upload?filename=Uploaded.ttf",
+            upload.read_bytes(),
+            headers={"Content-Type": "application/octet-stream"},
+        )
+        assert response.status == 200
+        document = response.json()
+        assert [family["family"] for family in document["families"]] == [
+            "UploadedFamily"
+        ]
+        assert document["skipped"] == []
+        face = document["families"][0]["cuts"][0]["faces"][0]
+        # The face's bytes serve by URL from the serve-side scratch copy.
+        served = service.get(face_url(face))
+        assert served.status == 200
+        assert served.data == upload.read_bytes()
+        assert served.headers.get("Content-Type") == "font/ttf"
+
+    def test_uploaded_collections_expand_server_side(self, service, tmp_path):
+        fonts = tmp_path / "fonts"
+        fonts.mkdir()
+        collection = fonts / "Uploaded.ttc"
+        synth_ttc(
+            collection,
+            faces=[
+                {
+                    "family": "UploadedPair",
+                    "codepoints": (0x41,),
+                    "subfamily": "Regular",
+                },
+                {
+                    "family": "UploadedPair",
+                    "codepoints": (0x41,),
+                    "weight": 700,
+                    "subfamily": "Bold",
+                },
+            ],
+        )
+        response = service.post_raw(
+            "/local-fonts/upload?filename=Uploaded.ttc",
+            collection.read_bytes(),
+        )
+        assert response.status == 200
+        faces = response.json()["families"][0]["cuts"][0]["faces"]
+        assert [face["weight"] for face in faces] == [400, 700]
+        # A collection face serves its EXTRACTED standalone sfnt, never
+        # the collection blob.
+        bold = service.get(face_url(faces[1]))
+        assert bold.status == 200
+        assert bold.headers.get("Content-Type") == "font/ttf"
+        assert bold.data[:4] == b"\x00\x01\x00\x00"
+
+    def test_a_second_upload_of_the_same_bytes_scans_again(self, service, tmp_path):
+        fonts = tmp_path / "fonts"
+        fonts.mkdir()
+        upload = fonts / "Again.ttf"
+        synth_font(upload, family="AgainFamily", codepoints=_LATIN)
+        payload = upload.read_bytes()
+        first = service.post_raw(
+            "/local-fonts/upload?filename=Again.ttf", payload
+        ).json()
+        second = service.post_raw(
+            "/local-fonts/upload?filename=Again.ttf", payload
+        ).json()
+        # Two scratch files: both answer, both serve, independently.
+        assert first["families"][0]["family"] == "AgainFamily"
+        assert second["families"][0]["family"] == "AgainFamily"
+        first_path = first["families"][0]["cuts"][0]["faces"][0]["path"]
+        second_path = second["families"][0]["cuts"][0]["faces"][0]["path"]
+        assert first_path != second_path
+
+    def test_upload_without_a_filename_is_refused(self, service, tmp_path):
+        assert service.post_raw("/local-fonts/upload", b"\x00\x01\x00\x00").status == 400
+
+    def test_upload_rejects_non_font_and_separatored_filenames(self, service):
+        for raw in ("notes.txt", "C:" + chr(92) + "Windows" + chr(92) + "evil.ttf", "../evil.ttf", "a/b.ttf"):
+            query = urllib.parse.urlencode({"filename": raw})
+            response = service.post_raw(
+                f"/local-fonts/upload?{query}", b"\x00\x01\x00\x00"
+            )
+            assert response.status == 400, raw
+            assert "filename" in response.json()["error"] or "font" in response.json()["error"]
+
+    def test_upload_of_garbage_reports_skipped_not_500(self, service):
+        response = service.post_raw(
+            "/local-fonts/upload?filename=Broken.ttf", b"not a font at all"
+        )
+        assert response.status == 200
+        document = response.json()
+        assert document["families"] == []
+        assert len(document["skipped"]) == 1
+        assert "not a valid font" in document["skipped"][0]["error"]
+
+    def test_upload_get_is_refused(self, service):
+        assert (
+            service.get("/local-fonts/upload?filename=a.ttf").status == 405
+        )

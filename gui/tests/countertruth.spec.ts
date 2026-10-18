@@ -200,17 +200,24 @@ async function assertCounters(page: Page, truth: GroundTruth): Promise<void> {
     fmt(truth.total),
     landed,
   );
-  // Ticket #32's pick path is byte-free: the registry records carry no
-  // page-side cmap, so 英文/中文 read 0 and 缺失 is the whole browsed
-  // universe — restored by #36: serve-side coverage intervals.
-  await expect(page.locator("[data-stat='en']")).toHaveText("0", landed);
-  await expect(page.locator("[data-stat='cjk']")).toHaveText("0", landed);
+  // Ticket #36 restored the counters: the registry records carry the
+  // serve's run-length coverage intervals, so 英文/中文/缺失/覆盖率 are
+  // interval arithmetic over the scan data — proven against the same
+  // fontTools ground truth as before (the pick path stays byte-free).
+  await expect(page.locator("[data-stat='en']")).toHaveText(
+    fmt(truth.en),
+    landed,
+  );
+  await expect(page.locator("[data-stat='cjk']")).toHaveText(
+    fmt(truth.cjk),
+    landed,
+  );
   await expect(page.locator("[data-stat='missing']")).toHaveText(
-    fmt(truth.total),
+    fmt(truth.missing),
     landed,
   );
   await expect(page.locator("[data-stat='coverage']")).toHaveText(
-    "0.00",
+    truth.coverage,
     landed,
   );
   // No non-preset rule exists in any state here, so nothing can be

@@ -1,28 +1,75 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { resolve } from "node:path";
 import {
   assertNoJsErrors,
   collectJsErrors,
-  fixtureFontPaths,
   pointerClick,
   waitForFontsReady,
 } from "./helpers";
+import { generateNamedFace, spawnServeOverFonts } from "./serve";
 
-test.describe("local font loading", () => {
+/**
+ * Local font loading through the browser file-input fallback
+ * (ticket #36: the fallback is upload-driven). The hidden HTML input
+ * has no absolute paths to hand the serve's scan, so the page hands
+ * the serve the File objects themselves — the fetch body IS the File
+ * (the browser streams it; no ArrayBuffer is ever constructed) — and
+ * the serve's upload endpoint answers the same family documents the
+ * path flow gets, faces serving by URL from the serve's scratch copy.
+ *
+ * The suite rides a REAL spawned serve over worktree-local generated
+ * fonts (the IO discipline: fixture serves only, never the host's
+ * font directories). Assertions stay name-agnostic: the row's name is
+ * read from the DOM because the scan's name-table truth is the serve's.
+ */
+
+test.describe("local font loading (the upload fallback)", () => {
   const jsErrors: string[] = [];
 
-  test.beforeEach(async ({ page }) => {
-    jsErrors.length = 0;
-    collectJsErrors(page, jsErrors);
-    await page.goto("/");
-    await waitForFontsReady(page);
+  /** Suite-scoped serve over two generated single-face families. */
+  let serveUrl = "";
+  let font1 = "";
+  let font2 = "";
+  let disposeServe: (() => Promise<void>) | null = null;
+
+  test.beforeAll(async () => {
+    const root = await mkdtemp(resolve(tmpdir(), "fontalloy-fonts-"));
+    const [alpha, beta] = await Promise.all([
+      generateNamedFace(root, "Alloy Upload A", "AlloyUploadA"),
+      generateNamedFace(root, "Alloy Upload B", "AlloyUploadB"),
+    ]);
+    font1 = alpha;
+    font2 = beta;
+    const spawned = await spawnServeOverFonts(root);
+    disposeServe = async () => {
+      await spawned.dispose();
+      await rm(root, { recursive: true, force: true });
+    };
+    serveUrl = await spawned.url;
   });
 
-  test.afterEach(() => assertNoJsErrors(jsErrors));
+  test.afterAll(async () => {
+    await disposeServe?.();
+  });
 
-  test("a local font file loads via FontFace(arrayBuffer) into a self-rendered picker row", async ({
+  async function openWorkspace(page: Page): Promise<void> {
+    jsErrors.length = 0;
+    collectJsErrors(page, jsErrors);
+    await page.addInitScript((serve: string) => {
+      (window as { __FONTALLOY_CONFIG__?: unknown }).__FONTALLOY_CONFIG__ = {
+        serveUrl: serve,
+      };
+    }, serveUrl);
+    await page.goto("/");
+    await waitForFontsReady(page);
+  }
+
+  test("an uploaded font file loads into a self-rendered picker row", async ({
     page,
   }) => {
-    const [font1] = fixtureFontPaths();
+    await openWorkspace(page);
 
     await pointerClick(
       page,
@@ -80,7 +127,7 @@ test.describe("local font loading", () => {
   test("selecting fonts updates the anchor, pair tags, grid preview and coverage", async ({
     page,
   }) => {
-    const [font1, font2] = fixtureFontPaths();
+    await openWorkspace(page);
 
     // Load both files at once through the EN picker (the registry is shared).
     await pointerClick(
@@ -111,6 +158,7 @@ test.describe("local font loading", () => {
 
     // EN keeps family1 (auto-selected); CJK picks family2 explicitly.
     await page.keyboard.press("Escape");
+    await expect(popup).toBeHidden();
     await pointerClick(
       page,
       page.locator('[data-role="picker-cjk"] .kit-hd'),
@@ -130,26 +178,33 @@ test.describe("local font loading", () => {
     ).toHaveText(family2);
 
     // Font-pair tags carry the pair in plain text.
-    await expect(page.locator("[data-role='font-pair'] [data-pair='base']")).toHaveText(
-      family1,
-    );
-    await expect(page.locator("[data-role='font-pair'] [data-pair='donor']")).toHaveText(
-      family2,
-    );
+    await expect(
+      page.locator("[data-role='font-pair'] [data-pair='base']"),
+    ).toHaveText(family1);
+    await expect(
+      page.locator("[data-role='font-pair'] [data-pair='donor']"),
+    ).toHaveText(family2);
 
-    // The preview grid renders U+0041 in the base's own face (the winner).
-    const cellFont = await page
-      .locator(".charmap-grid .kit-cell[data-cp='U+0041']")
-      .evaluate((el) => getComputedStyle(el).fontFamily);
-    expect(cellFont).toContain(family1);
+    // The preview grid renders U+0041 in the base's own face (the
+    // winner) — the serve's resolve document lands async, so poll for
+    // the cell's stack rather than reading it once.
+    await expect
+      .poll(() =>
+        page
+          .locator(".charmap-grid .kit-cell[data-cp='U+0041']")
+          .evaluate((el) => getComputedStyle(el).fontFamily),
+      )
+      .toContain(family1);
 
-    // Coverage of the selected pair is visible and non-zero (英文 winners).
+    // Coverage of the selected pair is visible and non-zero (英文
+    // winners — the counters read the scan's interval data, ticket #36).
     await expect(page.locator("[data-stat='en']")).not.toHaveText("0");
   });
 
   test("an invalid font file reports an inline error instead of failing silently", async ({
     page,
   }) => {
+    await openWorkspace(page);
     await pointerClick(
       page,
       page.locator('[data-role="picker-en"] .kit-hd'),
@@ -165,4 +220,6 @@ test.describe("local font loading", () => {
     expect((await error.textContent()) ?? "").toContain("broken.ttf");
     await expect(popup.locator(".kit-fp")).toHaveCount(0);
   });
+
+  test.afterEach(() => assertNoJsErrors(jsErrors));
 });

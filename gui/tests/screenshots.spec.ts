@@ -1,22 +1,35 @@
-import { test, expect } from "@playwright/test";
-import { statSync } from "node:fs";
-import { mkdirSync } from "node:fs";
+import { test, expect, type Page } from "@playwright/test";
+import { statSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { resolve } from "node:path";
 import {
   assertNoJsErrors,
   collectJsErrors,
-  fixtureFontPaths,
   pointerClick,
   waitForFontsReady,
 } from "./helpers";
-import { SimCatalog, injectCatalogConfig } from "./catalog-fixtures";
-import { readFile } from "node:fs/promises";
-import { parseFontMeta } from "../src/fonts/sfnt";
+import { generateNamedFace, scanMeta, spawnServeOverFonts } from "./serve";
+import { buildServeCatalogSite } from "./catalog-serve-site";
+
+/** Suite-scoped serve over two generated families (ticket #36: the
+ * browser file-input loads ride the serve's upload endpoint now). */
+let serveUrl = "";
+let font1 = "";
+let font2 = "";
+let disposeServe: (() => Promise<void>) | null = null;
 
 /** Two catalog families are enough for the screenshot states. */
 const SHOT_FAMILY_SPECS = (fontA: string, fontB: string) => [
-  { family: "Alloy Sans", file: "AlloySans-Regular.ttf", fontPath: fontA, deflate: true },
-  { family: "Alloy Serif", file: "AlloySerif-Regular.ttf", fontPath: fontB },
+  {
+    family: "Alloy Sans",
+    faces: [{ file: "AlloySans-Regular.ttf", fontPath: fontA, deflate: true }],
+  },
+  {
+    family: "Alloy Serif",
+    faces: [{ file: "AlloySerif-Regular.ttf", fontPath: fontB }],
+  },
 ];
 
 /**
@@ -26,11 +39,46 @@ const SHOT_FAMILY_SPECS = (fontA: string, fontB: string) => [
 test.describe("screenshots with open overlays", () => {
   const jsErrors: string[] = [];
 
+  /** This describe's serve over two generated families. */
+  let serveUrl = "";
+  let font1 = "";
+  let font2 = "";
+  let disposeServe: (() => Promise<void>) | null = null;
+
+  test.beforeAll(async () => {
+    const root = await mkdtemp(resolve(tmpdir(), "fontalloy-shots-"));
+    const [alpha, beta] = await Promise.all([
+      generateNamedFace(root, "Alloy Shot A", "AlloyShotA"),
+      generateNamedFace(root, "Alloy Shot B", "AlloyShotB"),
+    ]);
+    font1 = alpha;
+    font2 = beta;
+    const spawned = await spawnServeOverFonts(root);
+    disposeServe = async () => {
+      await spawned.dispose();
+      await rm(root, { recursive: true, force: true });
+    };
+    serveUrl = await spawned.url;
+  });
+
+  test.afterAll(async () => {
+    await disposeServe?.();
+  });
+
+  async function openWorkspace(page: Page): Promise<void> {
+    await page.addInitScript((serve: string) => {
+      (window as { __FONTALLOY_CONFIG__?: unknown }).__FONTALLOY_CONFIG__ = {
+        serveUrl: serve,
+      };
+    }, serveUrl);
+    await page.goto("/");
+    await waitForFontsReady(page);
+  }
+
   test.beforeEach(async ({ page }) => {
     jsErrors.length = 0;
     collectJsErrors(page, jsErrors);
-    await page.goto("/");
-    await waitForFontsReady(page);
+    await openWorkspace(page);
   });
 
   test.afterEach(() => assertNoJsErrors(jsErrors));
@@ -38,7 +86,6 @@ test.describe("screenshots with open overlays", () => {
   test("workspace with fonts loaded and a picker popup open", async ({
     page,
   }) => {
-    const [font1, font2] = fixtureFontPaths();
 
     // Load two local fonts and select them for the pair.
     await pointerClick(page, page.locator('[data-role="picker-en"] .kit-hd'));
@@ -78,6 +125,28 @@ test.describe("screenshots with open overlays", () => {
 test.describe("screenshots of the catalog overlays", () => {
   const jsErrors: string[] = [];
 
+  /** This describe's own fixture pair (generated per describe). */
+  let font1 = "";
+  let font2 = "";
+  let scratchRoot = "";
+
+  test.beforeAll(async () => {
+    const root = await mkdtemp(resolve(tmpdir(), "fontalloy-shots2-"));
+    scratchRoot = root;
+    const [alpha, beta] = await Promise.all([
+      generateNamedFace(root, "Alloy Shot A", "AlloyShotA"),
+      generateNamedFace(root, "Alloy Shot B", "AlloyShotB"),
+    ]);
+    font1 = alpha;
+    font2 = beta;
+  });
+
+  test.afterAll(async () => {
+    if (scratchRoot !== "") {
+      await rm(scratchRoot, { recursive: true, force: true });
+    }
+  });
+
   test.beforeEach(async ({ page }) => {
     jsErrors.length = 0;
     collectJsErrors(page, jsErrors);
@@ -94,59 +163,77 @@ test.describe("screenshots of the catalog overlays", () => {
 
   test.afterEach(() => assertNoJsErrors(jsErrors));
 
-  test("first-run download screen mid-download, then the picker over catalog rows", async ({
+  test("first-run sync screen mid-sync, then the picker over catalog rows", async ({
     page,
   }) => {
-    const [font1, font2] = fixtureFontPaths();
-    const sim = await SimCatalog.create(SHOT_FAMILY_SPECS(font1, font2));
-    let openGate!: () => void;
-    const gate = new Promise<void>((resolve) => {
-      openGate = resolve;
+    // Ticket #30's boot: the first-run screen is the SERVE's sync
+    // progress. A per-family delay seam holds the run mid-sync for the
+    // capture; the picker then lists the serve's family documents.
+    const site = await buildServeCatalogSite(SHOT_FAMILY_SPECS(font1, font2), {
+      manifest: true,
     });
-    sim.gates["Alloy Serif"] = () => gate; // hold the run mid-download
-    await sim.install(page);
-    await injectCatalogConfig(page);
-    await page.goto("/");
+    const spawned = await spawnServeOverFonts(
+      site.catalogDir,
+      [
+        "--catalog-release-origin",
+        site.originUri,
+        "--catalog-dir",
+        site.catalogDir,
+        "--manifest",
+        site.manifestPath!,
+      ],
+      { env: { FONTALLOY_CATALOG_SYNC_DELAY: "4" } },
+    );
+    try {
+      await page.addInitScript((serve: string) => {
+        (window as { __FONTALLOY_CONFIG__?: unknown }).__FONTALLOY_CONFIG__ =
+          { serveUrl: serve };
+      }, await spawned.url);
+      await page.goto("/");
 
-    const screen = page.locator(".catalog-screen");
-    await expect(screen).toBeVisible();
-    await expect(
-      screen.locator(".catalog-family[data-family='Alloy Serif'] .catalog-family-status"),
-    ).toHaveText("下载中");
-    await page.waitForTimeout(250); // let the panel settle visually
+      const screen = page.locator(".catalog-screen");
+      await expect(screen).toBeVisible();
+      await expect(
+        screen.locator("[data-stat='catalog-done']"),
+      ).not.toHaveText("2", { timeout: 10_000 });
+      await page.waitForTimeout(250); // let the panel settle visually
 
-    const dir = join(process.cwd(), "test-results", "screenshots");
-    mkdirSync(dir, { recursive: true });
-    const firstRunPath = join(dir, "catalog-first-run-progress.png");
-    await page.screenshot({ path: firstRunPath });
-    expect(statSync(firstRunPath).size).toBeGreaterThan(10_000);
+      const dir = join(process.cwd(), "test-results", "screenshots");
+      mkdirSync(dir, { recursive: true });
+      const firstRunPath = join(dir, "catalog-first-run-progress.png");
+      await page.screenshot({ path: firstRunPath });
+      expect(statSync(firstRunPath).size).toBeGreaterThan(10_000);
 
-    openGate();
-    await expect(screen).toBeHidden();
-    await expect(
-      screen.locator("[data-stat='catalog-done']"),
-    ).toHaveText("2");
+      await expect(screen).toBeHidden({ timeout: 60_000 });
+      await expect(
+        screen.locator("[data-stat='catalog-done']"),
+      ).toHaveText("2", { timeout: 30_000 });
 
-    // Second overlay state: the picker listing catalog families, open
-    // (the registered row reads the host font's own name — round 9).
-    const font1Bytes = await readFile(font1);
-    const font1Name = parseFontMeta(
-      font1Bytes.buffer.slice(
-        font1Bytes.byteOffset,
-        font1Bytes.byteOffset + font1Bytes.byteLength,
-      ) as ArrayBuffer,
-    ).names.display;
-    await pointerClick(page, page.locator('[data-role="picker-en"] .kit-hd'));
-    const row = page
-      .locator('[data-picker-popup="en"]')
-      .locator(".kit-fp", { hasText: font1Name });
-    await expect(row).toBeVisible();
-    await expect
-      .poll(() => row.evaluate((el) => getComputedStyle(el).fontFamily))
-      .not.toBe("");
-    await page.waitForTimeout(250); // open transition settled
-    const pickerPath = join(dir, "catalog-picker-open.png");
-    await page.screenshot({ path: pickerPath });
-    expect(statSync(pickerPath).size).toBeGreaterThan(10_000);
+      // Second overlay state: the picker listing catalog families, open
+      // (the row reads the font's own scanned name — round 9; the
+      // serve's scan is the name oracle since the parse mirror died).
+      const font1Name = (await scanMeta(await spawned.url, font1)).display;
+      await page.waitForFunction(
+        () => document.documentElement.dataset.catalogSweep === "done",
+        undefined,
+        { timeout: 60_000 },
+      );
+      await pointerClick(page, page.locator('[data-role="picker-en"] .kit-hd'));
+      const row = page
+        .locator('[data-picker-popup="en"]')
+        .locator(".kit-fp", { hasText: font1Name });
+      await expect(row).toBeVisible();
+      await expect
+        .poll(() => row.evaluate((el) => getComputedStyle(el).fontFamily))
+        .not.toBe("");
+      await page.waitForTimeout(250); // open transition settled
+      const pickerPath = join(dir, "catalog-picker-open.png");
+      await page.screenshot({ path: pickerPath });
+      expect(statSync(pickerPath).size).toBeGreaterThan(10_000);
+    } finally {
+      await spawned.dispose();
+      const { rm } = await import("node:fs/promises");
+      await rm(site.root, { recursive: true, force: true });
+    }
   });
 });

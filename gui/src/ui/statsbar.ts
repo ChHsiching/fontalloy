@@ -7,7 +7,13 @@ import {
   precedenceVersion,
 } from "../precedence/document";
 import { pickRefs, type PickRefs } from "../precedence/picks";
-import { missingCodepoints, BROWSE_UNIVERSE, isCjkRegionCodepoint } from "./missing";
+import { missingCodepoints } from "./missing";
+import { BROWSE_UNIVERSE, CJK_UNIVERSE } from "../unicode/universe";
+import {
+  countIntervals,
+  intersectIntervals,
+  unionIntervals,
+} from "../unicode/intervalMath";
 
 /**
  * Persistent bottom stats bar (ADR-0004), on the kit's StatusBar: the
@@ -64,12 +70,9 @@ interface LiveStats {
 /** The computed six counters, memoized on their inputs. */
 let statsMemo: { signature: string; stats: LiveStats } | null = null;
 
-/** The browsed universe's visible intervals as flat bounds. */
-const UNIVERSE_BOUNDS = BROWSE_UNIVERSE.map(([start, end]) => [start, end] as const);
-
 function computeStats(state: AppState, picks: PickRefs): LiveStats {
   const signature = `${state.fonts.length}:${state.selected.en ?? ""}:${state.selected.cjk ?? ""}:${state.fonts
-    .map((font) => `${font.cssFamily}:${font.codepoints.length}`)
+    .map((font) => `${font.cssFamily}:${font.intervals.length}`)
     .join("|")}:${state.rules
     .map((r) => `${r.id}:${JSON.stringify(r.target)}:${r.fonts.join(",")}`)
     .join("|")}:${precedenceVersion()}`;
@@ -85,24 +88,28 @@ function computeStats(state: AppState, picks: PickRefs): LiveStats {
   let cjk = 0;
   let adjusted = 0;
   if (hasPick) {
-    // The prototype readout under every pick state (round 19): one or
-    // two picks, everything counts inside the browsed universe, so
-    // 字符 is the constant universe size and en + cjk + 缺失 always add
-    // up to it. Round 20 classifies by SCRIPT REGION: a covered
-    // codepoint counts where it SITS (inside the 中日韩文字 region →
-    // 中文, everywhere else of the universe → 英文), never by which
-    // pick supplies it. 已调整 reads the document's run flags (the
-    // walk clips them to the universe by construction).
-    let mi = 0;
-    for (const [start, end] of UNIVERSE_BOUNDS) {
-      while (mi < missing.length && missing[mi]! < start) mi++;
-      for (let cp = start; cp <= end; cp++) {
-        while (mi < missing.length && missing[mi]! < cp) mi++;
-        if (missing[mi] === cp) continue; // covered by no pick
-        if (isCjkRegionCodepoint(cp)) cjk++;
-        else en++;
-        const entry = doc !== null ? lookupEntry(doc, cp) : null;
-        if (entry !== null && entry.adjusted) adjusted++;
+    // Ticket #36: the counters read the picks' run-length coverage
+    // intervals (the serve's scan data) — interval arithmetic over the
+    // browsed universe, classified by SCRIPT REGION (round 20: a
+    // covered codepoint counts where it SITS, inside the 中日韩文字
+    // region → 中文, everywhere else of the universe → 英文). 已调整
+    // reads the document's run flags (the walk clips them to the
+    // universe by construction).
+    let covered: ReturnType<typeof unionIntervals> = [];
+    for (const pick of [picks.base, picks.donor]) {
+      if (pick !== null) covered = unionIntervals(covered, pick.intervals);
+    }
+    const universe = intersectIntervals(covered, BROWSE_UNIVERSE);
+    cjk = countIntervals(intersectIntervals(universe, CJK_UNIVERSE));
+    en = countIntervals(universe) - cjk;
+    if (doc !== null) {
+      for (const [start, end] of universe) {
+        let entry = lookupEntry(doc, start);
+        for (let cp = start; cp <= end; cp++) {
+          const next = lookupEntry(doc, cp);
+          if (next !== entry) entry = next;
+          if (entry !== null && entry.adjusted) adjusted++;
+        }
       }
     }
   }

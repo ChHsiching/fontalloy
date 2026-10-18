@@ -35,6 +35,7 @@ path           method  response
 ``/catalog/stars`` GET  launch-cached GitHub stars (offline-tolerant)
 ``/fonts``     GET     local font directories, scanned into families
 ``/local-fonts`` POST  scan absolute font paths into family docs (31)
+``/local-fonts/upload`` POST  one uploaded font file, scanned (36)
 ``/local-fonts/face`` GET  one scanned local face's extracted bytes
 ``/builds``    GET     every retained build, newest last
 ``/builds``    POST    submit a merge (recipe-shaped JSON) -> 202 + id
@@ -126,6 +127,12 @@ STDIN_WATCH_ENV = "FONTALLOY_SERVE_STDIN_WATCH"
 
 #: Recipe submissions are small (paths and rules, never font bytes).
 MAX_BODY_BYTES = 10 * 1024 * 1024
+
+#: Ticket #36: the upload ceiling — one font FILE, never a font
+#: COLLECTION of collections. A real worst-case family face is a few
+#: hundred MB; 1 GiB covers every legitimate single upload while
+#: keeping a runaway body from filling the disk.
+MAX_UPLOAD_BYTES = 1024 * 1024 * 1024
 
 #: Output-format content types for artifact downloads.
 FONT_CONTENT_TYPES = {
@@ -341,6 +348,21 @@ class ServeState:
         # scan runs inside the POST, bounded per file and yielding
         # between files; later scans of unchanged paths are cache reads.
         self.local_fonts = LocalFonts()
+        # Ticket #36: the serve-owned scratch dir uploaded font FILES
+        # land in (POST /local-fonts/upload — the browser fallback's
+        # byte-free flow). Created lazily; removed with every other
+        # scratch directory at shutdown.
+        self._upload_dir: Path | None = None
+
+    def upload_scratch(self) -> Path:
+        """The scratch directory uploads stream into (created once)."""
+        with self.lock:
+            if self._upload_dir is None:
+                directory = self.build_root / "uploads"
+                directory.mkdir(parents=True, exist_ok=True)
+                self._created_dirs.add(directory)
+                self._upload_dir = directory
+            return self._upload_dir
 
     # -- startup -----------------------------------------------------------
 
@@ -629,6 +651,11 @@ class ServeState:
                 "italic": face.italic,
                 "latin": face.latin,
                 "cjk": face.cjk,
+                # Ticket #36: the counters' data, same compressed shape
+                # as the family-document faces' coverage intervals.
+                "intervals": [
+                    [start, end] for start, end in face.intervals
+                ],
                 "href": face_href(face.path, face.face),
             }
 
@@ -952,6 +979,9 @@ class _ServeHandler(BaseHTTPRequestHandler):
         elif path == "/local-fonts":
             self._require_methods(method, ("POST",))
             self._local_scan()
+        elif path == "/local-fonts/upload":
+            self._require_methods(method, ("POST",))
+            self._local_upload()
         elif path == "/local-fonts/face":
             self._require_methods(method, ("GET",))
             self._local_face()
@@ -1136,6 +1166,81 @@ class _ServeHandler(BaseHTTPRequestHandler):
             self._send_error(400, str(exc))
             return
         self._send_json(document)
+
+    def _local_upload(self) -> None:
+        """``POST /local-fonts/upload?filename=…`` (ticket #36): the
+        browser fallback's byte-free font load.
+
+        The plain-browser file input has no absolute paths to hand the
+        path-based scan, so the page UPLOADS the File object itself:
+        the raw request body (any content type) streams into a
+        serve-owned scratch file in bounded chunks — never buffered
+        whole in the handler — and the SAME scan pipeline that serves
+        ``POST /local-fonts`` answers with family documents whose face
+        ``href`` points at the scratch copy. The filename rides the
+        query string and must be a bare font-suffixed name (no path
+        separators — the scratch directory decides where the bytes
+        land, never the client).
+        """
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        raw_name = query.get("filename", [None])[0]
+        if raw_name is None or not raw_name.strip():
+            self._send_error(
+                400, "the upload endpoint needs a non-empty ?filename="
+            )
+            return
+        name = raw_name.strip()
+        if "/" in name or "\\" in name or name in (".", ".."):
+            self._send_error(
+                400,
+                f"the upload filename must be a bare file name: {raw_name!r}",
+            )
+            return
+        if Path(name).suffix.lower() not in _FONT_SUFFIXES:
+            self._send_error(
+                400,
+                f"the upload filename is not a font file (expected one of "
+                f"{', '.join(sorted(_FONT_SUFFIXES))}): {name}",
+            )
+            return
+        length = int(self.headers.get("Content-Length") or 0)
+        if length <= 0:
+            self._send_error(400, "the upload body is empty")
+            return
+        if length > MAX_UPLOAD_BYTES:
+            self._send_error(413, "the uploaded file exceeds the size limit")
+            return
+        target = self.state.upload_scratch() / f"{uuid.uuid4().hex}-{name}"
+        try:
+            with open(target, "wb") as stream:
+                remaining = length
+                while remaining > 0:
+                    chunk = self.rfile.read(min(_STREAM_CHUNK, remaining))
+                    if not chunk:
+                        break  # a truncated body: the scan below reports it
+                    stream.write(chunk)
+                    remaining -= len(chunk)
+        except OSError as exc:
+            self._remove_quietly(target)
+            self._send_error(500, f"the upload could not be stored: {exc}")
+            return
+        try:
+            document = self.state.local_fonts.scan_document(
+                {"paths": [str(target)]}
+            )
+        except FontAlloyError as exc:
+            self._remove_quietly(target)
+            self._send_error(400, str(exc))
+            return
+        self._send_json(document)
+
+    @staticmethod
+    def _remove_quietly(path: Path) -> None:
+        """Best-effort scratch cleanup on a rejected upload."""
+        try:
+            path.unlink()
+        except OSError:
+            pass
 
     def _local_face(self) -> None:
         """``GET /local-fonts/face?path=…&index=N`` (ticket #31): one
