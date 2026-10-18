@@ -9,7 +9,7 @@ import {
   pointerClick,
   waitForFontsReady,
 } from "./helpers";
-import { generateNamedFace, scanMeta, spawnServeOverFonts } from "./serve";
+import { generateNamedFace, generateWeightedFace, scanMeta, spawnServeOverFonts } from "./serve";
 import {
   buildServeCatalogSite,
   type ServeCatalogSite,
@@ -117,6 +117,19 @@ const sweepDone = (page: Page) =>
     undefined,
     { timeout: 60_000 },
   );
+
+/** The FontFace descriptors one css family carries, sorted. */
+const faceInventory = (page: Page, cssFamily: string): Promise<string[]> =>
+  page.evaluate((family) => {
+    const normalize = (name: string): string =>
+      name.length > 1 && name.startsWith('"') && name.endsWith('"')
+        ? name.slice(1, -1)
+        : name;
+    return [...document.fonts]
+      .filter((face) => normalize(face.family) === family)
+      .map((face) => `${face.weight}/${face.style}`)
+      .sort();
+  }, cssFamily);
 
 /** The serve-side per-family delay: an observably slow first sync. */
 const SLOW_SYNC = { env: { FONTALLOY_CATALOG_SYNC_DELAY: "4" } };
@@ -424,6 +437,95 @@ test.describe("the serve-backed catalog", () => {
       await expect(
         page.locator("[data-role='font-pair'] [data-pair='donor']"),
       ).toHaveText("UDEV Plain");
+    } finally {
+      await disposeServe?.();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("switching cuts evicts the prior cut's FontFaces under the family", async ({
+    page,
+  }) => {
+    // Spec #25 review P2-4: every cut of a family registers under the
+    // SAME css family. Switching cuts replaces the registry record but
+    // left the prior cut's FontFaces on document.fonts — both cuts'
+    // slots stayed live under one family, so the browser kept matching
+    // the stale cut. After a switch the face inventory must be EXACTLY
+    // the new cut's slot winners.
+    const root = await mkdtemp(resolve(tmpdir(), "fontalloy-cutswitch-"));
+    let disposeServe: (() => Promise<void>) | null = null;
+    try {
+      const plain = await generateWeightedFace(
+        root,
+        "Cut Switch Plain",
+        "CutSwitch",
+        400,
+      );
+      const nf = await generateWeightedFace(
+        root,
+        "Cut Switch NF",
+        "CutSwitchNF",
+        700,
+        "Bold",
+      );
+      const site = await buildServeCatalogSite(
+        [
+          {
+            family: "CutSwitch",
+            faces: [
+              { file: "CutSwitch-Regular.ttf", fontPath: plain },
+              { file: "CutSwitchNF-Bold.ttf", fontPath: nf },
+            ],
+            manifestEntries: [
+              { variant: "Standard", file: "CutSwitch.zip" },
+              { variant: "NF", file: "CutSwitch_NF.zip", axes: { icons: "nf" } },
+            ],
+          },
+        ],
+        { manifest: true },
+      );
+      const spawned = await spawnServeOverFonts(
+        site.catalogDir,
+        [
+          "--catalog-release-origin",
+          site.originUri,
+          "--catalog-dir",
+          site.catalogDir,
+          "--manifest",
+          site.manifestPath!,
+        ],
+      );
+      disposeServe = async () => {
+        await spawned.dispose();
+        await rm(site.root, { recursive: true, force: true });
+      };
+      await openOnServe(page, await spawned.url);
+      await sweepDone(page);
+
+      await pointerClick(page, page.locator('[data-role="picker-en"] .kit-hd'));
+      const row = enPopup(page)
+        .locator(".kit-fp")
+        .filter({
+          has: page.locator(".kit-vchip[data-chip='CutSwitch::NF']"),
+        });
+      await expect(row).toHaveCount(1);
+
+      // Cut A (Standard): one 400/normal face under the family.
+      await pointerClick(
+        page,
+        row.locator(".kit-vchip[data-chip='CutSwitch::Standard']"),
+      );
+      await waitForFontsReady(page);
+      expect(await faceInventory(page, "CutSwitch")).toEqual(["400/normal"]);
+
+      // Cut B (NF): exactly B's inventory — the 700/normal Bold, with
+      // A's 400/normal face evicted, not piled on top of.
+      await pointerClick(
+        page,
+        row.locator(".kit-vchip[data-chip='CutSwitch::NF']"),
+      );
+      await waitForFontsReady(page);
+      expect(await faceInventory(page, "CutSwitch")).toEqual(["700/normal"]);
     } finally {
       await disposeServe?.();
       await rm(root, { recursive: true, force: true });

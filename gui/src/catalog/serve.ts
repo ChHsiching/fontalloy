@@ -50,7 +50,7 @@ import {
   type CatalogState,
   type LoadedFont,
 } from "../state";
-import { registerCatalogUrlFaces } from "../fonts/registry";
+import { evictCssFamily, registerCatalogUrlFaces } from "../fonts/registry";
 import type { CpIntervals } from "../state";
 import { synthStore } from "../service/state";
 
@@ -350,6 +350,18 @@ export function ensureCatalogRegistered(
   if (existing !== undefined) return existing.cssFamily;
   const winners = slotWinners(cut.faces);
   if (winners.length === 0) return null;
+  // A DIFFERENT cut's pick replaces the family's registration
+  // wholesale: the prior cut's FontFaces must come off document.fonts
+  // before the new cut's register, or both cuts' slot faces stay live
+  // under the one css family and the browser keeps matching the stale
+  // cut (spec #25 review P2-4). The record replacement below already
+  // handles the store's side; this is the FontFace side of the same
+  // move. (The record filter is by catalog family, so a same-named
+  // LOCAL registration colliding with the id evicts with it — the
+  // documented acceptable edge, re-loadable from either side.)
+  if (store.get().fonts.some((font) => font.catalog?.family === family)) {
+    evictCssFamily(family);
+  }
   // The coverage the counters read (ticket #36): the representative
   // face's scanned run-length intervals — the same face the record's
   // fileName names, falling back to the first slot winner (a dropped

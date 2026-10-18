@@ -342,6 +342,65 @@ export async function generateBigTtc(
   return resolve(outdir, `${family.replace(/\s+/g, "")}.ttc`);
 }
 
+/**
+ * Generate ONE static face with a chosen name-table family AND OS/2
+ * weight (the cut-switch fixture: two cuts of one family whose slot
+ * inventories are distinguishable by descriptor). Covers A–Z so the
+ * row lists in the EN picker.
+ */
+export async function generateWeightedFace(
+  outdir: string,
+  family: string,
+  stem: string,
+  weight: number,
+  subfamily = "Regular",
+): Promise<string> {
+  const script = `import sys
+from pathlib import Path
+from fontTools.fontBuilder import FontBuilder
+from fontTools.pens.ttGlyphPen import TTGlyphPen
+
+def box(x0, y0, x1, y1):
+    pen = TTGlyphPen(None)
+    pen.moveTo((x0, y0)); pen.lineTo((x1, y0)); pen.lineTo((x1, y1)); pen.lineTo((x0, y1)); pen.closePath()
+    return pen.glyph()
+
+out = Path(sys.argv[1])
+family, stem, weight, subfamily = sys.argv[2], sys.argv[3], int(sys.argv[4]), sys.argv[5]
+codepoints = list(range(0x41, 0x5B))
+glyphs = {".notdef": box(0, 0, 500, 700)}
+metrics = {".notdef": (600, 40)}
+for cp in codepoints:
+    name = "uni%04X" % cp
+    glyphs[name] = box(40, 0, 560, 700)
+    metrics[name] = (600, 40)
+b = FontBuilder(unitsPerEm=1000, isTTF=True)
+b.setupGlyphOrder(list(glyphs))
+b.setupCharacterMap({cp: "uni%04X" % cp for cp in codepoints})
+b.setupGlyf(glyphs)
+b.setupHorizontalMetrics(metrics)
+b.setupHorizontalHeader(ascent=800, descent=-200)
+b.setupOS2(sTypoAscender=800, sTypoDescender=-200, usWinAscent=900, usWinDescent=300, usWeightClass=weight)
+b.setupNameTable({"familyName": family, "styleName": subfamily})
+b.setupPost()
+b.setupHead()
+path = out / ("%s-%s.ttf" % (stem, subfamily))
+b.font.save(path)
+print("generated", path)
+`;
+  const { writeFile, mkdir } = await import("node:fs/promises");
+  await mkdir(outdir, { recursive: true });
+  const scriptPath = resolve(outdir, "_gen_weighted.py");
+  await writeFile(scriptPath, script, "utf8");
+  const python = process.env.FONTALLOY_PYTHON ?? "python";
+  await run(
+    python,
+    [scriptPath, outdir, family, stem, String(weight), subfamily],
+    repoRoot,
+  );
+  return resolve(outdir, `${stem}-${subfamily}.ttf`);
+}
+
 /** Run a command to completion, failing loudly with its output. */
 function run(
   command: string,
