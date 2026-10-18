@@ -214,6 +214,17 @@ def serve(
             "nothing). No disk cache when omitted.",
         ),
     ] = None,
+    fonts_cache_dir: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--fonts-cache-dir",
+            help="Directory the /fonts directory scan caches its result "
+            "in (spec #25 review P1-1: same contract as "
+            "--system-cache-dir — a steady-state launch stat-walks the "
+            "font directories and parses nothing). No disk cache when "
+            "omitted.",
+        ),
+    ] = None,
     catalog_release_origin: Annotated[
         Optional[str],
         typer.Option(
@@ -262,6 +273,7 @@ def serve(
             tuple(system_font_dir) if system_font_dir is not None else None
         ),
         system_cache_dir=system_cache_dir,
+        fonts_cache_dir=fonts_cache_dir,
         catalog_release_origin=catalog_release_origin,
         catalog_dir=catalog_dir,
     )

@@ -34,6 +34,8 @@ path           method  response
 ``/catalog/families/fam/preview`` GET  the family's preview subset
 ``/catalog/stars`` GET  launch-cached GitHub stars (offline-tolerant)
 ``/fonts``     GET     local font directories, scanned into families
+                      (a cached snapshot with a ``ready`` flag; see
+                      :mod:`fontalloy_core.fonts_scan`)
 ``/local-fonts`` POST  scan absolute font paths into family docs (31)
 ``/local-fonts/upload`` POST  one uploaded font file, scanned (36)
 ``/local-fonts/face`` GET  one scanned local face's extracted bytes
@@ -94,11 +96,13 @@ from fontalloy_core.catalog import Catalog, load_manifest
 from fontalloy_core.catalog_sync import CatalogSync
 from fontalloy_core.errors import BuildCancelled, FontAlloyError
 from fontalloy_core.family_docs import FamilyDocuments
-from fontalloy_core.load import (
-    FaceInfo,
-    aggregate_families,
-    scan_families,
+from fontalloy_core.fonts_scan import (
+    FontsScanResult,
+    fingerprints_of,
+    load_cache as load_fonts_cache,
+    scan_font_dirs,
 )
+from fontalloy_core.load import aggregate_families
 from fontalloy_core.local_fonts import FONT_SUFFIXES, LocalFonts, extract_face
 from fontalloy_core.precedence_api import resolve_document
 from fontalloy_core.recipe import Recipe, parse_recipe
@@ -182,6 +186,10 @@ class ServeOptions:
     # cache; the scan re-runs per process). The GUI passes its app-data
     # directory so a steady-state launch stat-walks instead of parsing.
     system_cache_dir: Path | None = None
+    # Spec #25 review P1-1: where the /fonts scan persists its result
+    # (same contract as system_cache_dir — a steady-state launch
+    # stat-walks the font directories and parses nothing).
+    fonts_cache_dir: Path | None = None
     # Issue #26 (spec #25): the catalog lifecycle the serve owns. The
     # release document's origin — the base URL serving
     # catalog-release.json (the catalog release tag's download address
@@ -327,6 +335,24 @@ class ServeState:
         # scans the machine at all; spawning it at boot made every
         # fixture serve parse the real font directory.
         self._system_thread: threading.Thread | None = None
+        # Spec #25 review P1-1: the /fonts enumeration gets the same
+        # treatment — a background scan thread (started LAZILY at the
+        # first /fonts touch, exactly like the system-font scan: a
+        # serve nobody asks never scans), a disk-backed fingerprint
+        # cache, and a ready flag. Handlers serve the snapshot and
+        # never run fontTools inline; a cheap per-request stat walk
+        # arms a rescan when the directories drift (a downloader added
+        # fonts). No configured directories means nothing to scan: the
+        # enumeration is trivially ready and empty.
+        self._fonts_result: FontsScanResult | None = None
+        self._fonts_ready = not options.font_dirs
+        self._fonts_thread: threading.Thread | None = None
+        self._fonts_wake: threading.Event | None = None
+        self._fonts_cache_file = (
+            options.fonts_cache_dir / "fonts-scan-cache.json"
+            if options.fonts_cache_dir is not None
+            else None
+        )
         # Issue #26: the catalog sync service polled at /catalog/status.
         # Unlike the system-fonts scan it starts EAGERLY at serve
         # startup when configured — filling the catalog is the point of
@@ -709,13 +735,56 @@ class ServeState:
             return None
         return wanted, face_etag(fingerprint, face_index), len(indices)
 
+    def _ensure_fonts_scan_started(self) -> None:
+        """Start the scan thread at most once, at the first touch."""
+        if self._fonts_thread is None and self.options.font_dirs:
+            self._fonts_wake = threading.Event()
+            self._fonts_wake.set()  # the first scan runs immediately
+            self._fonts_thread = threading.Thread(
+                target=self._fonts_scan_loop, name="fonts-scan", daemon=True
+            )
+            self._fonts_thread.start()
+
+    def _fonts_scan_loop(self) -> None:
+        """Scan, then park until drift or shutdown wakes the thread."""
+        while not self.stop.is_set():
+            if self._fonts_wake is not None:
+                self._fonts_wake.clear()
+            self._scan_fonts_once()
+            while not self.stop.wait(0.2):
+                if self._fonts_wake is not None and self._fonts_wake.is_set():
+                    break
+
+    def _scan_fonts_once(self) -> None:
+        """One incremental pass (daemon thread; loads the disk cache)."""
+        previous = (
+            load_fonts_cache(self._fonts_cache_file)
+            if self._fonts_cache_file is not None
+            else None
+        )
+        result = scan_font_dirs(
+            self.options.font_dirs,
+            previous=previous,
+            cache_file=self._fonts_cache_file,
+        )
+        with self.lock:
+            self._fonts_result = result
+            self._fonts_ready = True
+
     def fonts_document(self) -> dict[str, Any]:
         """The configured local directories, scanned into families.
 
-        Scanned per request (a downloader may add fonts while the
-        service runs). Files fontTools cannot read are skipped and
-        reported, not fatal: a stray file in a user directory must not
-        take the enumeration down.
+        Snapshot-only (spec #25 review P1-1): the scan runs on the
+        background thread this starts at the first touch, backed by the
+        disk fingerprint cache, and a request serves the last landed
+        result — ``ready`` false with empty families until the first
+        scan lands. The handler itself never parses: all it does
+        beyond reading the snapshot is a stat walk of the directories
+        that arms a background rescan when the fingerprints drift, so a
+        downloader adding fonts while the service runs lands on a
+        subsequent request. Files fontTools cannot read are skipped
+        and reported, not fatal: a stray file in a user directory must
+        not take the enumeration down.
 
         The scan descends ONE level into subdirectories (round 14): the
         layouts a real consumer points ``--font-dir`` at nest their font
@@ -727,25 +796,22 @@ class ServeState:
         descent is bounded at one level exactly like the dev catalog's
         scan of the same layouts; deeper trees are not wandered.
         """
-        skipped: list[str] = []
-        faces: list[FaceInfo] = []
-        for directory in self.options.font_dirs:
-            # Depth-1 entries plus the FILES one level deeper (the two
-            # globs cannot overlap: "*/*" is exactly depth 2).
-            entries = [
-                *sorted(Path(directory).glob("*")),
-                *sorted(Path(directory).glob("*/*")),
-            ]
-            for path in entries:
-                if not path.is_file() or path.suffix.lower() not in _FONT_SUFFIXES:
-                    continue
-                try:
-                    for family in scan_families([path]):
-                        faces.extend(family.faces)
-                except FontAlloyError:
-                    skipped.append(path.name)
+        self._ensure_fonts_scan_started()
+        with self.lock:
+            ready = self._fonts_ready
+            result = self._fonts_result
+        if result is not None and fingerprints_of(self.options.font_dirs) != (
+            result.fingerprints
+        ):
+            # Drift: the directories changed since the scan — wake the
+            # background thread (never parse here).
+            if self._fonts_wake is not None:
+                self._fonts_wake.set()
+        faces = result.faces if result is not None else ()
+        skipped = result.skipped if result is not None else ()
         return {
             "directories": [str(path) for path in self.options.font_dirs],
+            "ready": ready,
             "families": [
                 {
                     "name": family.name,
@@ -753,7 +819,7 @@ class ServeState:
                 }
                 for family in aggregate_families(faces)
             ],
-            "skipped": skipped,
+            "skipped": [path.name for path in skipped],
         }
 
 
@@ -767,6 +833,20 @@ def _face_document(face: Any) -> dict[str, Any]:
         "italic": face.italic,
         "variable": face.variable,
     }
+
+
+def _path_segment(raw: str) -> str:
+    """One decoded path-segment capture.
+
+    ``urlparse().path`` keeps the request's percent-encoding, and the
+    route regexes match that still-encoded text — a family or file name
+    with a space or any non-ASCII byte arrives as ``%20``/``%XX`` and
+    would miss the release lookup (a silent 404). Decoding happens AFTER
+    the segment boundary match, and the decoded strings only ever
+    compare against the release document's own names (never join a
+    path), so encoded traversal shapes gain nothing.
+    """
+    return urllib.parse.unquote(raw)
 
 
 class _BuildWorker(threading.Thread):
@@ -1014,10 +1094,12 @@ class _ServeHandler(BaseHTTPRequestHandler):
             artifact = re.fullmatch(r"/builds/([^/]+)/(font|report)", path)
             if preview is not None:
                 self._require_methods(method, ("GET",))
-                self._catalog_preview(preview.group(1))
+                self._catalog_preview(_path_segment(preview.group(1)))
             elif face is not None:
                 self._require_methods(method, ("GET",))
-                self._catalog_face(face.group(1), face.group(2))
+                self._catalog_face(
+                    _path_segment(face.group(1)), _path_segment(face.group(2))
+                )
             elif detail is not None:
                 self._require_methods(method, ("GET",))
                 self._build_detail(detail.group(1))
@@ -1039,6 +1121,35 @@ class _ServeHandler(BaseHTTPRequestHandler):
                 extra_headers={"Allow": ", ".join(allowed)},
             )
 
+    def _content_length(self) -> int | None:
+        """The request's Content-Length, or None when it is not a length.
+
+        Spec #25 review P2-5: ``int(header)`` on a garbage value used to
+        raise inside the handler (a crashed thread, a connection closed
+        without a response). The helper treats a missing header as 0 and
+        anything non-numeric or negative as None — the caller answers a
+        400 in the JSON error shape, never reads the body, and closes
+        the connection (the stream cannot be resynced against a bogus
+        length).
+        """
+        raw = self.headers.get("Content-Length")
+        if raw is None:
+            return 0
+        try:
+            length = int(raw.strip())
+        except ValueError:
+            return None
+        return length if length >= 0 else None
+
+    def _reject_malformed_length(self) -> None:
+        """The 400 for a Content-Length that is not a number."""
+        self._send_error(
+            400,
+            "the Content-Length header is not a valid length: "
+            f"{self.headers.get('Content-Length')!r}",
+            extra_headers={"Connection": "close"},
+        )
+
     def _jobs(self) -> list[BuildJob]:
         with self.state.lock:
             return list(self.state.jobs.values())
@@ -1048,7 +1159,10 @@ class _ServeHandler(BaseHTTPRequestHandler):
             return self.state.jobs.get(build_id)
 
     def _submit_build(self) -> None:
-        length = int(self.headers.get("Content-Length") or 0)
+        length = self._content_length()
+        if length is None:
+            self._reject_malformed_length()
+            return
         if length > MAX_BODY_BYTES:
             self._send_error(413, "submission body exceeds the size limit")
             return
@@ -1077,7 +1191,10 @@ class _ServeHandler(BaseHTTPRequestHandler):
         reference is a synchronous 400 — the resolve never queues, so
         there is nothing to poll and no partial state to clean up.
         """
-        length = int(self.headers.get("Content-Length") or 0)
+        length = self._content_length()
+        if length is None:
+            self._reject_malformed_length()
+            return
         if length > MAX_BODY_BYTES:
             self._send_error(413, "submission body exceeds the size limit")
             return
@@ -1150,7 +1267,10 @@ class _ServeHandler(BaseHTTPRequestHandler):
         missing, not a font) is a synchronous 400 naming every offender;
         a readable-but-invalid font file is never fatal — it rides the
         response's ``skipped`` list while its siblings still scan."""
-        length = int(self.headers.get("Content-Length") or 0)
+        length = self._content_length()
+        if length is None:
+            self._reject_malformed_length()
+            return
         if length > MAX_BODY_BYTES:
             self._send_error(413, "submission body exceeds the size limit")
             return
@@ -1203,7 +1323,10 @@ class _ServeHandler(BaseHTTPRequestHandler):
                 f"{', '.join(sorted(_FONT_SUFFIXES))}): {name}",
             )
             return
-        length = int(self.headers.get("Content-Length") or 0)
+        length = self._content_length()
+        if length is None:
+            self._reject_malformed_length()
+            return
         if length <= 0:
             self._send_error(400, "the upload body is empty")
             return
@@ -1327,11 +1450,6 @@ class _ServeHandler(BaseHTTPRequestHandler):
             return
         path = job.font_path if kind == "font" else job.report_path
         assert path is not None  # a done job always has scratch paths
-        try:
-            payload = path.read_bytes()
-        except OSError:
-            self._send_error(404, f"artifact is no longer available: {path.name}")
-            return
         if kind == "font":
             content_type = FONT_CONTENT_TYPES.get(job.format, "application/octet-stream")
             extra = {
@@ -1340,7 +1458,10 @@ class _ServeHandler(BaseHTTPRequestHandler):
         else:
             content_type = "application/json; charset=utf-8"
             extra = {}
-        self._send(200, payload, content_type, extra_headers=extra)
+        # Spec #25 review P2-6: the artifact streams off disk in bounded
+        # chunks — never read_bytes() whole inside the handler, exactly
+        # like every other disk artifact the serve emits.
+        self._write_streamed(path, content_type, extra)
 
     def _catalog_face(self, family: str, file: str) -> None:
         """``GET /catalog/faces/{family}/{file}``: one release-listed
@@ -1389,11 +1510,6 @@ class _ServeHandler(BaseHTTPRequestHandler):
         cache keys pin them) and the ETag itself, so a matching
         ``If-None-Match`` revalidates to a 304 without reading the file.
         """
-        try:
-            size = path.stat().st_size
-        except OSError:
-            self._send_error(404, f"artifact is no longer available: {path.name}")
-            return
         headers = {"Cache-Control": "public, max-age=31536000, immutable"}
         if etag is not None:
             headers["ETag"] = f'"{etag}"'
@@ -1404,8 +1520,28 @@ class _ServeHandler(BaseHTTPRequestHandler):
                 self.send_header(name, value)
             self.end_headers()
             return
+        self._write_streamed(path, content_type, headers)
+
+    def _write_streamed(
+        self,
+        path: Path,
+        content_type: str,
+        extra_headers: dict[str, str] | None = None,
+    ) -> None:
+        """200 + one disk file streamed in :data:`_STREAM_CHUNK` pieces.
+
+        The shared tail every disk artifact download uses (a serve's own
+        byte discipline: whatever its size, the handler holds one chunk
+        at a time). A file that no longer stats is the endpoint's usual
+        "no longer available" 404.
+        """
+        try:
+            size = path.stat().st_size
+        except OSError:
+            self._send_error(404, f"artifact is no longer available: {path.name}")
+            return
         self.send_response(200)
-        for name, value in {**self._cors_headers(), **headers}.items():
+        for name, value in {**self._cors_headers(), **(extra_headers or {})}.items():
             self.send_header(name, value)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(size))

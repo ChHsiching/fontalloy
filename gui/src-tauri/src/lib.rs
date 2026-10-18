@@ -129,13 +129,16 @@ async fn serve_url(state: State<'_, ShellState>) -> Result<Option<String>, Strin
 
 /// Native multi-select font dialog; `null` when it could not open.
 /// Returns absolute PATHS — the serve's local-font scan reads the
-/// files; no bytes ride IPC (ticket #34).
+/// files; no bytes ride IPC (ticket #34). The filter is the core's
+/// scan set verbatim (ttf/otf/ttc/woff2 — the local_fonts suffixes):
+/// woff was never loadable by the pipeline, and a picked file the scan
+/// rejects is a dead pick (spec #25 review P2-7).
 #[tauri::command]
 async fn pick_font_files(app: AppHandle) -> Result<Option<Vec<String>>, String> {
     let picked = app
         .dialog()
         .file()
-        .add_filter("字体文件", &["ttf", "otf", "ttc", "woff2", "woff"])
+        .add_filter("字体文件", &["ttf", "otf", "ttc", "woff2"])
         .blocking_pick_files();
     match picked {
         None => Ok(None),
@@ -155,8 +158,9 @@ async fn pick_font_files(app: AppHandle) -> Result<Option<Vec<String>>, String> 
 }
 
 /// The font file extensions the typed-path sweep considers — the same
-/// set the pick dialog filters on.
-const FONT_EXTENSIONS: [&str; 5] = ["ttf", "otf", "ttc", "woff2", "woff"];
+/// set the pick dialog filters on, which is the core's scan set
+/// (local_fonts' suffixes: woff2 yes, woff never).
+const FONT_EXTENSIONS: [&str; 4] = ["ttf", "otf", "ttc", "woff2"];
 
 /// What a typed/pasted path resolved to (round 20, owner item 3): the
 /// font files it names — a FILE is itself; a DIRECTORY is the font
@@ -358,9 +362,14 @@ fn spawn_sidecar(handle: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     std::fs::create_dir_all(&catalog_dir)?;
     // Round 25: the system-font scan caches its result here — a
     // steady-state launch stat-walks the system directories instead
-    // of re-parsing every installed font.
+    // of re-parsing every installed font. Spec #25 review P1-1: the
+    // /fonts scan (over the FULL catalog directory below) caches the
+    // same way, so reconnecting to the synced catalog never re-parses
+    // every face.
     let system_cache = app_data.join("system-fonts");
     std::fs::create_dir_all(&system_cache)?;
+    let fonts_cache = app_data.join("fonts-scan");
+    std::fs::create_dir_all(&fonts_cache)?;
 
     let mut command = handle.shell().sidecar("fontalloy")?;
     command = command.args([
@@ -375,6 +384,8 @@ fn spawn_sidecar(handle: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         CATALOG_RELEASE_ORIGIN,
         "--system-cache-dir",
         &system_cache.to_string_lossy(),
+        "--fonts-cache-dir",
+        &fonts_cache.to_string_lossy(),
     ]);
     for origin in ALLOWED_ORIGINS {
         command = command.args(["--allow-origin", origin]);
