@@ -51,6 +51,7 @@ import {
   type LoadedFont,
 } from "../state";
 import { registerCatalogUrlFaces } from "../fonts/registry";
+import type { CpIntervals } from "../state";
 import { synthStore } from "../service/state";
 
 /** The GET /catalog/status document (issue #26's state machine). */
@@ -349,6 +350,12 @@ export function ensureCatalogRegistered(
   if (existing !== undefined) return existing.cssFamily;
   const winners = slotWinners(cut.faces);
   if (winners.length === 0) return null;
+  // The coverage the counters read (ticket #36): the representative
+  // face's scanned run-length intervals — the same face the record's
+  // fileName names, falling back to the first slot winner (a dropped
+  // side-cut is never the representative in practice).
+  const coverageFace =
+    winners.find((face) => face.file === cut.representative) ?? winners[0]!;
   registerCatalogUrlFaces(
     family,
     winners.map((face) => ({
@@ -358,10 +365,10 @@ export function ensureCatalogRegistered(
     })),
   );
   // The registry record: document-driven metadata only. `names` rides
-  // the serve's own name-table scan (display_name); `codepoints` stay
-  // empty — the red line trades the page-side cmap enumeration for the
-  // serve's resolve answers, and the stats/counters read 0 until the
-  // coverage moves core-side.
+  // the serve's own name-table scan (display_name); the coverage is
+  // the representative face's run-length intervals from the same scan
+  // (ticket #36 — the counters and the missing view compute over
+  // them, never a page-side cmap parse).
   // The picked cut's OWN display name wins: a non-default cut (e.g. the
   // NF cut) must not be shadowed by the family-level display_name — the
   // pre-merge pick path parsed the picked binary's own name table, and
@@ -375,7 +382,9 @@ export function ensureCatalogRegistered(
     fileName: cut.representative ?? winners[0]!.file,
     origin: "catalog",
     catalog: identity,
-    codepoints: [],
+    intervals: coverageFace.coverage.intervals as unknown as CpIntervals,
+    placeholderIntervals: coverageFace.coverage
+      .placeholder_intervals as unknown as CpIntervals,
   };
   // One record per catalog family: a prior pick of another variant is
   // the stale identity — every label surface resolves by css family

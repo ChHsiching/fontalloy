@@ -67,6 +67,16 @@ const RENDERER_BUDGET_MB = 320;
  * sharp eviction guard is the mechanism assertion (document.fonts
  * carries none of the family after unload); this is the coarse
  * regression net — observed healthy returns land ≤ +11 MB.
+ *
+ * Ticket #36 recalibration: the baseline is the SAME RUN's greatest
+ * pre-pick sample (boot and post-scroll, `baselineMb` below) — never
+ * the boot sample alone. The cold boot is bimodal on this machine
+ * (~227 vs ~247 MB after #33's lighter boot): a low-mode boot makes a
+ * fixed boot-anchored tolerance trip on healthy troughs (~250-258)
+ * that merely reflect the working set the page ACTUALLY settled at.
+ * The post-scroll sample is that settled pre-pick state; taking the
+ * greater of the two keeps the check honest in both modes while the
+ * absolute budget above stays the hard ceiling.
  */
 const RETURN_TOLERANCE_MB = 20;
 /**
@@ -417,6 +427,11 @@ test.describe("renderer memory (ticket #32: the MEMORY RED LINE)", () => {
     await page.keyboard.press("Escape");
     await expect(page.locator('[data-picker-popup="en"]')).toBeHidden();
 
+    // Ticket #36: the pre-pick baseline is the greater of the two
+    // pre-pick samples — see RETURN_TOLERANCE_MB above.
+    const baselineMb = Math.max(bootMb, scrollMb);
+    console.log(`[memory] baseline=${baselineMb.toFixed(1)}`);
+
     /* --- phase 3: worst-case multi-face pick --- */
     await pickHeavyRow(page);
     // MECHANISM: the pick registered every (weight, style) slot winner
@@ -480,10 +495,10 @@ test.describe("renderer memory (ticket #32: the MEMORY RED LINE)", () => {
       );
     }
     // (b) Unload returns to the pre-pick baseline within tolerance.
-    expect(unloadMb).toBeLessThanOrEqual(bootMb + RETURN_TOLERANCE_MB);
+    expect(unloadMb).toBeLessThanOrEqual(baselineMb + RETURN_TOLERANCE_MB);
     for (const trough of troughs) {
-      expect(trough, "cycle trough vs boot baseline").toBeLessThanOrEqual(
-        bootMb + RETURN_TOLERANCE_MB,
+      expect(trough, "cycle trough vs pre-pick baseline").toBeLessThanOrEqual(
+        baselineMb + RETURN_TOLERANCE_MB,
       );
     }
     // (c) No monotone growth across the cycles.

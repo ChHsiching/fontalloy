@@ -8,10 +8,46 @@
 
 import type { EditorRule } from "./precedence/model";
 import { newRule } from "./precedence/model";
-import type { FontNames } from "./fonts/sfnt";
+import type { CpInterval, CpIntervals } from "./unicode/intervalMath";
+
+export type { CpInterval, CpIntervals };
+import { unionIntervals } from "./unicode/intervalMath";
 import presetsData from "./data/presets.json";
 
 export type ContentMode = "charmap" | "scene";
+
+/* ---------- name-table identity (document-derived, ticket #36) ---------- */
+
+/**
+ * The name-table strings one registered font carries. Since the
+ * mirrors died, these strings arrive from the SERVE's own name-table
+ * scan (the family/local/system documents' identity fields) — the
+ * record keeps the shape every display surface already reads.
+ */
+export interface FontNames {
+  /** The name-table family (the document's scanned family/display). */
+  family: string;
+  /** The name-table subfamily, when the document carried one. */
+  subfamily?: string;
+  /** The composed display name (family + distinguishing subfamily). */
+  display: string;
+}
+
+/**
+ * The user-facing display name of a family + subfamily pair: the
+ * author's own full name, with nothing appended when the subfamily is
+ * the everyday member (Regular / 标准) or already part of the family
+ * string.
+ */
+export function composeDisplay(
+  family: string,
+  subfamily: string | undefined,
+): string {
+  if (subfamily === undefined || /^(regular|标准)$/i.test(subfamily)) {
+    return family;
+  }
+  return family.includes(subfamily) ? family : `${family} ${subfamily}`;
+}
 
 /* ---------- synthesis settings (issue #19) ---------- */
 
@@ -81,39 +117,42 @@ export interface FontCatalogIdentity {
   variant: string | null;
 }
 
-/** One font face registered through the FontFace(arrayBuffer) path. */
+/** One font face registered through a URL FontFace path. */
 export interface LoadedFont {
   /** CSS font-family key the face is registered under (the parsed family). */
   cssFamily: string;
   /**
-   * The metadata family: the parsed name-table family for local files,
-   * the catalog manifest family for downloaded fonts (pickers are
-   * metadata-driven). NOT the display name — every display surface
-   * reads `names.display` (round 9, owner item 2).
+   * The metadata family: the scanned name-table family for local and
+   * system fonts, the catalog manifest family for catalog picks.
+   * NOT the display name — every display surface reads `names.display`
+   * (round 9, owner item 2).
    */
   family: string;
-  /** The name table's own strings, verbatim (round 9, owner item 2). */
+  /** The name-table strings the serve's own scan read (round 9). */
   names?: FontNames;
   fileName: string;
   origin: FontOrigin;
   /**
    * The on-disk path when the platform knows one (the Tauri file
-   * dialog, the typed-path seam). Undefined in the plain browser — the
-   * synthesize flow then resolves the path against the service's font
-   * listing.
+   * dialog; the serve's scan path for local and uploaded picks —
+   * recipes reference it verbatim against the serve).
    */
   path?: string;
   /** The catalog identity (manifest family + variant), for catalog picks. */
   catalog?: FontCatalogIdentity;
-  /** Sorted covered codepoints from the cmap table. */
-  codepoints: number[];
   /**
-   * Sorted codepoints the placeholder rules suspect (round 20): the
-   * mappings excluded from `codepoints`. The grid's missing cells for
-   * these codepoints keep rendering the font's own glyph under the
-   * missing style. Absent for the data-only sibling records.
+   * The face's honest (placeholder-filtered) coverage as sorted,
+   * disjoint run-length intervals from the serve's scan (ticket #36)
+   * — the counters and the missing view compute over these; the
+   * representative record carries them, data-only siblings do not.
    */
-  placeholderCodepoints?: number[];
+  intervals: CpIntervals;
+  /**
+   * The suspected-placeholder codepoints, same run shape: the grid
+   * keeps rendering the font's own glyph under the missing style for
+   * these (round 20). Absent for the data-only sibling records.
+   */
+  placeholderIntervals?: CpIntervals;
 }
 
 /* ---------- catalog (ticket #30: the serve-owned catalog) ---------- */
@@ -139,12 +178,23 @@ export interface CatalogFamilyProgress {
   error?: string | null;
 }
 
-/** The honest coverage summary one scanned face carries. */
+/** One interval of the run-length coverage documents carry. */
+export type FaceInterval = CpInterval;
+
+/**
+ * The honest coverage summary one scanned face carries — ticket #36
+ * adds the run-length `intervals` (and `placeholder_intervals`): the
+ * counters' and missing view's data, compressed like the precedence
+ * document so a full CJK face costs a few hundred entries, never a
+ * page-side cmap parse.
+ */
 export interface CatalogFaceCoverage {
   codepoints: number;
   placeholders: number;
   latin: boolean;
   cjk: boolean;
+  intervals: number[][];
+  placeholder_intervals: number[][];
 }
 
 /** One face of a cut, as the family document reports it (issue #38). */
@@ -350,13 +400,18 @@ export const store = createStore<AppState>({
   },
 });
 
-/** Distinct codepoints covered by the two selected fonts (union). */
-export function selectedCoverage(state: AppState): number[] {
+/**
+ * The union of the two selected fonts' coverage intervals (the picks'
+ * run-length data merged — view-model arithmetic, ticket #36).
+ */
+export function selectedCoverageIntervals(state: AppState): CpIntervals {
   const picks = [state.selected.en, state.selected.cjk]
     .map((key) => state.fonts.find((f) => f.cssFamily === key))
     .filter((f): f is LoadedFont => f !== undefined);
   if (picks.length === 0) return [];
-  const out = new Set<number>();
-  for (const f of picks) for (const cp of f.codepoints) out.add(cp);
-  return [...out].sort((a, b) => a - b);
+  let union: CpIntervals = picks[0]!.intervals;
+  for (let i = 1; i < picks.length; i++) {
+    union = unionIntervals(union, picks[i]!.intervals);
+  }
+  return union;
 }

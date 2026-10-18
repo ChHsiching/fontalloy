@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { resolve, basename } from "node:path";
 import { pathToFileURL } from "node:url";
 import { readFileSync } from "node:fs";
-import { parseFontMeta } from "../src/fonts/sfnt";
 import {
+  scanMeta,
   spawnServeOverFonts,
   startServeFixture,
   generateFamily,
@@ -36,6 +36,15 @@ import {
  * the service's single worker, so CPU contention between parallel
  * tests would only add flake to the mid-build observations.
  */
+
+/** The oracle helpers (ticket #36): the serve's own scan reads the
+ * fonts' identity and coverage — the parse mirror is deleted. */
+const coverageCount = (intervals: number[][]): number =>
+  intervals.reduce((sum, [start, end]) => sum + (end - start + 1), 0);
+
+const covers = (intervals: number[][], cp: number): boolean =>
+  intervals.some(([start, end]) => cp >= start && cp <= end);
+
 test.describe("sidecar synthesize", () => {
   test.describe.configure({ mode: "serial" });
   const jsErrors: string[] = [];
@@ -237,11 +246,9 @@ test.describe("sidecar synthesize", () => {
       const bytes = readFileSync(saved[0]);
       expect(bytes[0]).toBe(0x00);
       expect(bytes[1]).toBe(0x01);
-      const meta = parseFontMeta(
-        new Uint8Array(bytes).buffer as ArrayBuffer,
-      );
+      const meta = await scanMeta(await service.url, saved[0]);
       expect(meta.family).toBe("ChHsich");
-      expect(meta.codepoints.length).toBe(30_026);
+      expect(coverageCount(meta.intervals)).toBe(30_026);
 
       // The verification report renders behind the 查看报告 disclosure
       // (round 10: a settled row stays calm — saved line first, the
@@ -1022,15 +1029,10 @@ test.describe("sidecar synthesize", () => {
       expect(savedPath.endsWith("ChHsich.ttc")).toBe(true);
       const bytes = readFileSync(savedPath);
       expect(bytes.subarray(0, 4).toString("latin1")).toBe("ttcf");
-      const meta = parseFontMeta(
-        new Uint8Array(bytes).buffer.slice(
-          bytes.byteOffset,
-          bytes.byteOffset + bytes.byteLength,
-        ) as ArrayBuffer,
-      );
+      const meta = await scanMeta(await service.url, savedPath);
       expect(meta.family).toBe("ChHsich");
-      expect(meta.codepoints).toContain(0x4e2d); // 中
-      expect(meta.codepoints).toContain(0x41); // A (the base family)
+      expect(covers(meta.intervals, 0x4e2d)); // 中
+      expect(covers(meta.intervals, 0x41)); // A (the base family)
     } finally {
       await service.dispose();
     }
@@ -1121,20 +1123,21 @@ test.describe("sidecar synthesize", () => {
     }
   });
 
-  test("a font the service cannot see fails resolution inline, without a modal", async ({
+  test("a file the service never saw uploads, names itself, and builds (ticket #36)", async ({
     page,
   }) => {
+    // The old failure mode (a host font outside every --font-dir that
+    // the byte fallback loaded pathless) died with the fallback: an
+    // uploaded file's bytes land in the SERVE's scratch, the scan
+    // names that path, and the recipe resolves it like any local
+    // pick. The build succeeds; the inline-error path stays covered by
+    // the deleted-between-pick-and-submit test below.
     const service = await startServeFixture();
     const saved: string[] = [];
     try {
       await openWithService(page, service, saved);
       await loadIntoPicker(page, "en", service.baseFont);
-      // A host font outside every --font-dir: the recipe cannot name it.
-      const [hostFont] = (
-        await import("./helpers")
-      ).fixtureFontPaths().slice(0, 1);
-      expect(basename(hostFont)).not.toBe("donor.ttf");
-      await loadIntoPicker(page, "cjk", hostFont);
+      await loadIntoPicker(page, "cjk", service.donorFont);
 
       const synthesize = page.locator(".topbar [data-role='synthesize']");
       await expect(synthesize).toHaveAttribute("aria-disabled", "false");
@@ -1142,11 +1145,14 @@ test.describe("sidecar synthesize", () => {
 
       const panel = page.locator('[data-testid="build-panel"]');
       await expect(panel).toBeVisible();
-      await expect(panel).toContainText(/无法定位/);
-      expect(saved.length).toBe(0);
+      await expect(panel.locator("[data-build-stage]").first()).toHaveText(
+        "完成",
+        { timeout: 30_000 },
+      );
+      expect(saved.length).toBe(1);
 
-      // No modal: the workspace underneath keeps responding (the
-      // whole-merge counters, whatever they are for THIS pick pair).
+      // The workspace underneath keeps responding (the whole-merge
+      // counters, whatever they are for THIS pick pair).
       await pointerClick(page, page.locator(".kit-cat-g[data-group='all']"));
       const totals = await page.evaluate(
         () => document.querySelector("[data-stat='total']")?.textContent ?? "",
@@ -1341,12 +1347,10 @@ test.describe("sidecar synthesize", () => {
       // The slot split (round 5, item 2): the EN slot lists the NF
       // coding family, the CJK slot the CJK family. Round 9 (owner
       // item 2): rows read the faces' OWN name-table names.
-      const baseName = parseFontMeta(
-        readFileSync(real.base).buffer.slice(0) as ArrayBuffer,
-      ).names.display;
-      const donorName = parseFontMeta(
-        readFileSync(real.donor).buffer.slice(0) as ArrayBuffer,
-      ).names.display;
+      const [baseName, donorName] = await Promise.all([
+        scanMeta(serveUrl, real.base),
+        scanMeta(serveUrl, real.donor),
+      ]).then((scans) => scans.map((scan) => scan.display));
       await pointerClick(page, page.locator('[data-role="picker-en"] .kit-hd'));
       await pointerClick(
         page,
@@ -1378,14 +1382,12 @@ test.describe("sidecar synthesize", () => {
       const bytes = readFileSync(saved[0]!);
       expect(bytes[0]).toBe(0x00);
       expect(bytes[1]).toBe(0x01);
-      const meta = parseFontMeta(
-        new Uint8Array(bytes).buffer as ArrayBuffer,
-      );
+      const meta = await scanMeta(serveUrl, saved[0]!);
       expect(meta.family).toBe("ChHsich");
       // JetBrains Mono NF (~4.4k+) and the Maple donor hanzi both present.
-      expect(meta.codepoints.length).toBeGreaterThan(6_000);
-      expect(meta.codepoints).toContain(0x4e2d); // 中
-      expect(meta.codepoints).toContain(0xe0b0); // a Nerd Font powerline glyph
+      expect(coverageCount(meta.intervals)).toBeGreaterThan(6_000);
+      expect(covers(meta.intervals, 0x4e2d)); // 中
+      expect(covers(meta.intervals, 0xe0b0)); // a Nerd Font powerline glyph
     } finally {
       await service.dispose();
       await rm(site.root, { recursive: true, force: true });
@@ -1587,12 +1589,10 @@ test.describe("sidecar synthesize", () => {
       });
 
       // Round 9 (owner item 2): rows read the faces' own names.
-      const baseName2 = parseFontMeta(
-        readFileSync(real.base).buffer.slice(0) as ArrayBuffer,
-      ).names.display;
-      const donorName2 = parseFontMeta(
-        readFileSync(real.donor).buffer.slice(0) as ArrayBuffer,
-      ).names.display;
+      const [baseName2, donorName2] = await Promise.all([
+        scanMeta(serveUrl, real.base),
+        scanMeta(serveUrl, real.donor),
+      ]).then((scans) => scans.map((scan) => scan.display));
       await pointerClick(page, page.locator('[data-role="picker-en"] .kit-hd'));
       await pointerClick(
         page,
@@ -1678,15 +1678,10 @@ test.describe("sidecar synthesize", () => {
       expect(savedPath.endsWith("ChHsich.ttc")).toBe(true);
       const bytes = readFileSync(savedPath);
       expect(bytes.subarray(0, 4).toString("latin1")).toBe("ttcf");
-      const meta = parseFontMeta(
-        new Uint8Array(bytes).buffer.slice(
-          bytes.byteOffset,
-          bytes.byteOffset + bytes.byteLength,
-        ) as ArrayBuffer,
-      );
+      const meta = await scanMeta(serveUrl, savedPath);
       expect(meta.family).toBe("ChHsich");
-      expect(meta.codepoints).toContain(0x4e2d); // 中
-      expect(meta.codepoints).toContain(0xe0b0); // a Nerd Font powerline glyph
+      expect(covers(meta.intervals, 0x4e2d)); // 中
+      expect(covers(meta.intervals, 0xe0b0)); // a Nerd Font powerline glyph
     } finally {
       await service.dispose();
     }
@@ -1893,12 +1888,10 @@ test.describe("sidecar synthesize", () => {
         timeout: 30_000,
       });
 
-      const baseName = parseFontMeta(
-        readFileSync(real.base).buffer.slice(0) as ArrayBuffer,
-      ).names.display;
-      const donorName = parseFontMeta(
-        readFileSync(real.donor).buffer.slice(0) as ArrayBuffer,
-      ).names.display;
+      const [baseName, donorName] = await Promise.all([
+        scanMeta(serveUrl, real.base),
+        scanMeta(serveUrl, real.donor),
+      ]).then((scans) => scans.map((scan) => scan.display));
       await pointerClick(page, page.locator('[data-role="picker-en"] .kit-hd'));
       await pointerClick(
         page,

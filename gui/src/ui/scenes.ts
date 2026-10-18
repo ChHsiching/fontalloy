@@ -1,4 +1,5 @@
 import { store } from "../state";
+import { inIntervals } from "../unicode/intervalMath";
 import {
   liveDocument,
   lookupEntry,
@@ -129,7 +130,7 @@ function contentProps(): SceneContentProps {
         ? [picks.donor, picks.base]
         : [picks.base, picks.donor];
       for (const font of candidates) {
-        if (font && font.codepoints.includes(cp)) {
+        if (font && inIntervals(font.intervals, cp)) {
           return `${cssFamily(font.cssFamily)},${isCjkChar(ch) ? SANS_TAIL : MONO_TAIL}`;
         }
       }

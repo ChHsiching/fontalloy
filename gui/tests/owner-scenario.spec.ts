@@ -106,10 +106,10 @@ test("the owner's window: EN 71 rows / CJK 25, self-rendered, no page-side bytes
     await expect(
       page.locator("[data-role='font-pair'] [data-pair='base']"),
     ).not.toHaveText("");
-    // The red line's honest counter: a URL pick carries no client-side
-    // cmap, so the script-region counters read 0 (the serve's resolve
-    // answers stay the coloring truth).
-    await expect(page.locator("[data-stat='en']")).toHaveText("0");
+    // Ticket #36: the pick's coverage intervals ride the family
+    // document, so the script-region counters are real again (the
+    // serve's resolve answers stay the coloring truth).
+    await expect(page.locator("[data-stat='en']")).not.toHaveText("0");
 
     // Observability hook 3: the error capture — zero JS errors across
     // the whole scenario.

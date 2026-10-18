@@ -2,11 +2,10 @@ import { test, expect, type Page } from "@playwright/test";
 import { writeFile, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { readFileSync } from "node:fs";
-import { parseFontMeta } from "../src/fonts/sfnt";
 import { browseUniverseSize } from "../src/unicode/universe";
 import {
   generateFonts,
+  scanMeta,
   spawnServeOverFonts,
   startServeFixture,
   type ServeFixture,
@@ -26,11 +25,11 @@ import {
  * conventions alone — glyph-0 mappings are absent, and a mapped glyph
  * whose OUTLINE is the font's own .notdef outline is a suspected
  * placeholder (the box drawn under another name); concentration counts
- * for nothing. The same rules run at BOTH seams — the GUI's
- * parseFontMeta (live grid and status bar) and the core pipeline
- * (report and graft) — so this suite proves the two agree on fixtures
- * that fake coverage with a .notdef-outline glyph: the parse drops the
- * run, the report states it, the built font's cmap never contains it.
+ * for nothing. Ticket #36: the detector's unit assertions live
+ * CORE-side (tests/test_placeholder.py) with the parse mirror's
+ * deletion; the page-side coverage here proves the SERVE-carried
+ * verdicts render: the scan's interval data drives the grid's missing
+ * style and the counters, and the report states what the build drops.
  */
 
 /** The faked block: 300 private-use codepoints on ONE box glyph. */
@@ -49,71 +48,6 @@ test.describe("placeholder coverage", () => {
 
   test.afterEach(() => assertNoJsErrors(jsErrors));
 
-  test("parseFontMeta reads a faked block as missing, not coverage", async () => {
-    const dir = await mkdtemp(resolve(tmpdir(), "fontalloy-ph-"));
-    const { base, donor } = await generateFonts(dir, {
-      donorGlyphs: 64,
-      placeholderDonor: PLACEHOLDER_COUNT,
-    });
-
-    // The faking donor: the run is suspected, the real coverage keeps
-    // its own 64 codepoints (glyph-0-free cmap, disjoint sets).
-    const donorMeta = parseFontMeta(
-      new Uint8Array(readFileSync(donor)).buffer as ArrayBuffer,
-    );
-    expect(donorMeta.placeholderCodepoints).toEqual(PLACEHOLDER_RUN);
-    expect(donorMeta.codepoints).toHaveLength(64);
-    expect(
-      donorMeta.codepoints.filter((cp) => cp >= 0xe000 && cp < 0xf900),
-    ).toEqual([]);
-
-    // The clean base: no suspects at all.
-    const baseMeta = parseFontMeta(
-      new Uint8Array(readFileSync(base)).buffer as ArrayBuffer,
-    );
-    expect(baseMeta.placeholderCodepoints).toEqual([]);
-    expect(baseMeta.codepoints).toHaveLength(26);
-  });
-
-  test("a THREE-codepoint notdef-outline run reads as a placeholder (no thresholds)", async () => {
-    const dir = await mkdtemp(resolve(tmpdir(), "fontalloy-ph3-"));
-    const { donor } = await generateFonts(dir, {
-      donorGlyphs: 64,
-      placeholderDonor: 3,
-    });
-
-    // Round 19: the outline rule has no count arm — three codepoints on
-    // a glyph that draws .notdef's box (not glyph 0, not named .notdef)
-    // still read as missing, never as coverage.
-    const meta = parseFontMeta(
-      new Uint8Array(readFileSync(donor)).buffer as ArrayBuffer,
-    );
-    expect(meta.placeholderCodepoints).toEqual([0xe000, 0xe001, 0xe002]);
-    expect(meta.codepoints).toHaveLength(64);
-  });
-
-  test("a shared glyph below the mass-duplication threshold is plain coverage", async () => {
-    const dir = await mkdtemp(resolve(tmpdir(), "fontalloy-shared-"));
-    const { donor } = await generateFonts(dir, {
-      donorGlyphs: 64,
-      sharedGlyphDonor: 8,
-    });
-
-    // Round 20 keeps round 19's negative BELOW the threshold: real
-    // shared glyphs (space, the big-parenthesis pieces — the shipped
-    // 213-face survey's worst case was 5 codepoints on one name) keep
-    // counting as coverage however they share one glyph of their own
-    // outline.
-    const meta = parseFontMeta(
-      new Uint8Array(readFileSync(donor)).buffer as ArrayBuffer,
-    );
-    expect(meta.placeholderCodepoints).toEqual([]);
-    expect(meta.codepoints).toHaveLength(64 + 8);
-    expect(
-      meta.codepoints.filter((cp) => cp >= 0xe000 && cp < 0xf900),
-    ).toEqual([0xe000, 0xe001, 0xe002, 0xe003, 0xe004, 0xe005, 0xe006, 0xe007]);
-  });
-
   test("a mass-duplicated glyph counts as missing while its glyph still renders", async ({
     page,
   }) => {
@@ -126,19 +60,21 @@ test.describe("placeholder coverage", () => {
     // Round 20, rule 3 (owner-ratified): one glyph absorbing >= 64
     // mapped codepoints is a suspected MASS-DUPLICATED placeholder
     // whatever its outline — the parse drops the run from coverage.
-    const meta = parseFontMeta(
-      new Uint8Array(readFileSync(donor)).buffer as ArrayBuffer,
-    );
-    expect(meta.placeholderCodepoints).toEqual(
-      Array.from({ length: 80 }, (_, i) => 0xe000 + i),
-    );
-    expect(meta.codepoints).toHaveLength(64);
-
     // Ticket #35: the grid's per-cell missing verdict is the serve's
     // answer, so the page rides a serve over the fixture directory and
     // BOTH fonts are picked (a lone CJK pick has no request — the
     // resolve body's picks.base is mandatory).
     const service = await spawnServeOverFonts(dir);
+    const serveUrl = await service.url;
+    // The oracle is the serve's own scan (fontTools core-side): the
+    // mass-duplicated run reads as placeholders, so it never rides the
+    // honest coverage intervals.
+    const donorScan = await scanMeta(serveUrl, donor);
+    expect(
+      donorScan.intervals.filter(
+        ([start, end]) => start >= 0xe000 && end < 0xf900,
+      ),
+    ).toEqual([]);
     try {
       collectJsErrors(page, jsErrors);
       await page.addInitScript((url: string) => {
@@ -192,26 +128,6 @@ test.describe("placeholder coverage", () => {
     }
   });
 
-  test("a CFF face flags its .notdef-outline glyph the same way", async () => {
-    const dir = await mkdtemp(resolve(tmpdir(), "fontalloy-cff-"));
-    const { donor } = await generateFonts(dir, {
-      donorGlyphs: 8,
-      placeholderDonor: 5,
-      cffDonor: true,
-    });
-
-    // The CFF parse path (charstring INDEX compare): the .notdef-
-    // outline glyph's codepoints read as missing on OTF faces too,
-    // and the real coverage is untouched.
-    const meta = parseFontMeta(
-      new Uint8Array(readFileSync(donor)).buffer as ArrayBuffer,
-    );
-    expect(meta.placeholderCodepoints).toEqual([
-      0xe000, 0xe001, 0xe002, 0xe003, 0xe004,
-    ]);
-    expect(meta.codepoints).toHaveLength(8);
-  });
-
   test("the report states the faked block and the build drops it", async ({
     page,
   }) => {
@@ -219,6 +135,7 @@ test.describe("placeholder coverage", () => {
       donorGlyphs: 2000,
       placeholderDonor: PLACEHOLDER_COUNT,
     });
+    const serveBaseUrl = await service.url;
     const saved: string[] = [];
     try {
       await openWithService(page, service, saved);
@@ -265,12 +182,14 @@ test.describe("placeholder coverage", () => {
 
       // The built font's own cmap never learned the faked block — the
       // placeholder was never grafted, from either side.
-      const meta = parseFontMeta(
-        new Uint8Array(readFileSync(saved[0])).buffer as ArrayBuffer,
-      );
-      expect(meta.placeholderCodepoints).toEqual([]);
+      // The built font's own cmap never learned the faked block (the
+      // serve's scan of the saved artifact is the oracle): the
+      // placeholder was never grafted, from either side.
+      const builtScan = await scanMeta(serveBaseUrl, saved[0]);
       expect(
-        meta.codepoints.filter((cp) => cp >= 0xe000 && cp < 0xf900),
+        builtScan.intervals.filter(
+          ([start, end]) => start >= 0xe000 && end < 0xf900,
+        ),
       ).toEqual([]);
     } finally {
       await service.dispose();

@@ -362,6 +362,58 @@ function run(
   });
 }
 
+/**
+ * The serve-scan oracle (ticket #36): one font file's name-table
+ * identity and coverage, read by the SERVE's own fontTools scan
+ * (`POST /local-fonts`) — the independent source the specs assert
+ * against now that the frontend's parse mirror is deleted. Purely a
+ * test-side reader: the page never sees this call.
+ */
+export interface ScannedMeta {
+  /** The name-table family (the document's scanned family). */
+  family: string;
+  /** The composed display name the document reports. */
+  display: string;
+  /** Run-length intervals of the honest coverage. */
+  intervals: number[][];
+}
+
+export async function scanMeta(
+  serveUrl: string,
+  path: string,
+): Promise<ScannedMeta> {
+  const response = await fetch(`${serveUrl}/local-fonts`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ paths: [path] }),
+  });
+  if (!response.ok) {
+    throw new Error(
+      `scanMeta: POST /local-fonts failed (${response.status}) for ${path}`,
+    );
+  }
+  const document = (await response.json()) as {
+    families: Array<{
+      family: string;
+      display_name: string | null;
+      cuts: Array<{ faces: Array<{ coverage: { intervals: number[][] } }> }>;
+    }>;
+    skipped: Array<{ path: string; error: string }>;
+  };
+  if (document.skipped.length > 0) {
+    throw new Error(`scanMeta: ${path} skipped: ${document.skipped[0]!.error}`);
+  }
+  const family = document.families[0];
+  if (family === undefined) {
+    throw new Error(`scanMeta: no family document for ${path}`);
+  }
+  return {
+    family: family.family,
+    display: family.display_name ?? family.family,
+    intervals: family.cuts[0]?.faces[0]?.coverage.intervals ?? [],
+  };
+}
+
 /** The `fontalloy` console script of the worktree's uv environment. */
 function defaultServeBin(): string {
   const candidates =

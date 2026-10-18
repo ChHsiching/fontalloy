@@ -1,25 +1,65 @@
-import { test, expect } from "@playwright/test";
-import { readFile } from "node:fs/promises";
-import { parseFontMeta } from "../src/fonts/sfnt";
+import { test, expect, type Page } from "@playwright/test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { resolve } from "node:path";
 import {
   assertNoJsErrors,
   collectJsErrors,
-  fixtureFontPaths,
   pointerClick,
   waitForFontsReady,
 } from "./helpers";
+import {
+  generateNamedFace,
+  scanMeta,
+  spawnServeOverFonts,
+} from "./serve";
 
 test.describe("cell details (the char popup at the cell)", () => {
   const jsErrors: string[] = [];
 
+  /** Suite-scoped serve over two generated families (ticket #36: the
+   * browser file-input loads ride the serve's upload endpoint now). */
+  let serveUrl = "";
+  let font1 = "";
+  let font2 = "";
+  let disposeServe: (() => Promise<void>) | null = null;
+
+  test.beforeAll(async () => {
+    const root = await mkdtemp(resolve(tmpdir(), "fontalloy-inter-"));
+    const [alpha, beta] = await Promise.all([
+      generateNamedFace(root, "Alloy Inter A", "AlloyInterA"),
+      generateNamedFace(root, "Alloy Inter B", "AlloyInterB"),
+    ]);
+    font1 = alpha;
+    font2 = beta;
+    const spawned = await spawnServeOverFonts(root);
+    disposeServe = async () => {
+      await spawned.dispose();
+      await rm(root, { recursive: true, force: true });
+    };
+    serveUrl = await spawned.url;
+  });
+
+  test.afterAll(async () => {
+    await disposeServe?.();
+  });
+
+  async function openWorkspace(page: Page): Promise<void> {
+    await page.addInitScript((serve: string) => {
+      (window as { __FONTALLOY_CONFIG__?: unknown }).__FONTALLOY_CONFIG__ = {
+        serveUrl: serve,
+      };
+    }, serveUrl);
+    await page.goto("/");
+    await waitForFontsReady(page);
+  }
+
   test.beforeEach(async ({ page }) => {
     jsErrors.length = 0;
     collectJsErrors(page, jsErrors);
-    await page.goto("/");
-    await waitForFontsReady(page);
+    await openWorkspace(page);
 
     // Load one font and let it auto-select for the EN picker.
-    const [font1] = fixtureFontPaths();
     await pointerClick(page, page.locator('[data-role="picker-en"] .kit-hd'));
     await page.locator("input[data-role='font-file']").setInputFiles(font1);
     await waitForFontsReady(page);
@@ -64,7 +104,6 @@ test.describe("cell details (the char popup at the cell)", () => {
   test("an uncovered cell states so in plain text (full pick pair)", async ({ page }) => {
     // A full pair makes the effective preview honest: an uncovered cell
     // reads 两个字体均不含该字形 in the popup.
-    const [, font2] = fixtureFontPaths();
     await pointerClick(page, page.locator('[data-role="picker-cjk"] .kit-hd'));
     await page.locator("input[data-role='font-file']").setInputFiles(font2);
     await waitForFontsReady(page);
@@ -75,18 +114,14 @@ test.describe("cell details (the char popup at the cell)", () => {
       page,
       page.locator(".kit-cat-s[data-block='misc-symbols']"),
     );
-    // The uncovered example must be derived from the fixture's real cmap —
-    // host fonts differ per platform (DejaVu Sans covers U+2603; the Windows
-    // fixtures do not), so a hardcoded codepoint would not be portable.
-    const [font1] = fixtureFontPaths();
-    const bytes = await readFile(font1);
-    const meta = parseFontMeta(
-      bytes.buffer.slice(
-        bytes.byteOffset,
-        bytes.byteOffset + bytes.byteLength,
-      ) as ArrayBuffer,
-    );
-    const covered = new Set(meta.codepoints);
+    // The uncovered example must be derived from the fixture's real
+    // coverage — the SERVE's scan is the oracle (the fixture covers
+    // A-Z, so any codepoint outside it on the visible page qualifies).
+    const meta = await scanMeta(serveUrl, font1);
+    const covered = new Set<number>();
+    for (const [start, end] of meta.intervals) {
+      for (let cp = start; cp <= end; cp++) covered.add(cp);
+    }
     const cells = page.locator(".charmap-grid .kit-cell");
     const cellCount = await cells.count();
     let target: string | null = null;
@@ -117,7 +152,6 @@ test.describe("cell details (the char popup at the cell)", () => {
   });
 
   test("the popup's code accent follows the theme tokens", async ({ page }) => {
-    const [, font2] = fixtureFontPaths();
     await pointerClick(page, page.locator('[data-role="picker-cjk"] .kit-hd'));
     await page.locator("input[data-role='font-file']").setInputFiles(font2);
     await waitForFontsReady(page);

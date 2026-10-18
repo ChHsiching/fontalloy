@@ -19,7 +19,7 @@
  */
 
 import { registerCatalogUrlFaces } from "../fonts/registry";
-import { store, type LoadedFont } from "../state";
+import { store, type CpIntervals, type LoadedFont } from "../state";
 import { patchService, synthStore } from "./state";
 import type { ServeClient } from "./client";
 
@@ -34,6 +34,11 @@ export interface SystemFaceDoc {
   italic: boolean;
   latin: boolean;
   cjk: boolean;
+  /**
+   * The face's coverage as run-length intervals (ticket #36 — the
+   * counters' data, computed by the scan that already reads the cmap).
+   */
+  intervals: number[][];
   /** The serve-relative byte URL (`GET /system-fonts/file?path=&index=`). */
   href: string;
 }
@@ -174,7 +179,7 @@ export function registerSystemFamily(
     fileName: faceFileName(rep, facesPerPath),
     origin: "system",
     path: rep.path,
-    codepoints: [],
+    intervals: rep.intervals as unknown as CpIntervals,
   };
   const siblings: LoadedFont[] = kept
     .filter((face) => face !== rep)
@@ -191,7 +196,7 @@ export function registerSystemFamily(
       fileName: faceFileName(face, facesPerPath),
       origin: "system" as const,
       path: face.path,
-      codepoints: [],
+      intervals: [],
     }));
   store.set({ fonts: [...store.get().fonts, record, ...siblings] });
   return family.family;
