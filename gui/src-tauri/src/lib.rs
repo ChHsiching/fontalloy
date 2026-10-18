@@ -362,9 +362,14 @@ fn spawn_sidecar(handle: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     std::fs::create_dir_all(&catalog_dir)?;
     // Round 25: the system-font scan caches its result here — a
     // steady-state launch stat-walks the system directories instead
-    // of re-parsing every installed font.
+    // of re-parsing every installed font. Spec #25 review P1-1: the
+    // /fonts scan (over the FULL catalog directory below) caches the
+    // same way, so reconnecting to the synced catalog never re-parses
+    // every face.
     let system_cache = app_data.join("system-fonts");
     std::fs::create_dir_all(&system_cache)?;
+    let fonts_cache = app_data.join("fonts-scan");
+    std::fs::create_dir_all(&fonts_cache)?;
 
     let mut command = handle.shell().sidecar("fontalloy")?;
     command = command.args([
@@ -379,6 +384,8 @@ fn spawn_sidecar(handle: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         CATALOG_RELEASE_ORIGIN,
         "--system-cache-dir",
         &system_cache.to_string_lossy(),
+        "--fonts-cache-dir",
+        &fonts_cache.to_string_lossy(),
     ]);
     for origin in ALLOWED_ORIGINS {
         command = command.args(["--allow-origin", origin]);

@@ -35,6 +35,12 @@ export interface FaceDocument {
 /** `GET /fonts` — the directories the service scans, as families. */
 export interface FontsDocument {
   directories: string[];
+  /**
+   * False until the serve's background directory scan lands (spec #25
+   * review P1-1 — the handler serves a cached snapshot, never parses);
+   * the families list is empty while false.
+   */
+  ready: boolean;
   families: Array<{ name: string; faces: FaceDocument[] }>;
   skipped: string[];
 }

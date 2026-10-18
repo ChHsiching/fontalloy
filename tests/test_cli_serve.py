@@ -505,7 +505,7 @@ class TestCatalog:
 
 class TestLocalFonts:
     def test_enumerates_local_directories_by_family(self, serve_service):
-        doc = serve_service.get("/fonts").json()
+        doc = _wait_fonts_ready(serve_service)
         families = {family["name"]: family for family in doc["families"]}
         assert set(families) == {"ServeAlpha", "ServeBeta", "ServeGamma"}
 
@@ -568,9 +568,10 @@ class TestLocalFonts:
             ],
             cwd=tmp_path,
         ) as (client, _process):
+            doc = _wait_fonts_ready(client)
             families = {
                 family["name"]: family
-                for family in client.get("/fonts").json()["families"]
+                for family in doc["families"]
             }
             assert set(families) == {"JetBrainsMono Nerd Font"}
             weights = sorted(
@@ -940,6 +941,188 @@ class TestRetention:
         assert serve_service.get(f"/builds/{ids[-1]}/font").status == 200
         listing = serve_service.get("/builds").json()["builds"]
         assert len(listing) <= 10
+
+
+def _wait_fonts_ready(client: ServeClient, timeout: float = 10.0) -> dict:
+    """Poll /fonts until the background scan answers ready."""
+    deadline = time.monotonic() + timeout
+    doc = None
+    while time.monotonic() < deadline:
+        doc = client.get("/fonts").json()
+        if doc["ready"]:
+            return doc
+        time.sleep(0.05)
+    raise AssertionError(f"the /fonts scan never answered ready: {doc}")
+
+
+def _serve_thread(server):  # type: ignore[no-untyped-def]
+    import threading
+
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return thread
+
+
+class TestFontsScan:
+    """Spec #25 review P1-1: /fonts gets the system-fonts treatment —
+    a background scan thread, a disk-backed fingerprint cache, a ready
+    flag, and handlers that never run fontTools inline."""
+
+    def test_the_disk_cache_round_trips_and_scans_incrementally(
+        self, tmp_path: Path
+    ):
+        from fontalloy_core.fonts_scan import (
+            FONTS_SCAN_DELAY_ENV,
+            load_cache as load_fonts_cache,
+            scan_font_dirs,
+        )
+
+        synth_font(
+            tmp_path / "Alpha.ttf", family="ScanAlpha", codepoints=(0x41,)
+        )
+        (tmp_path / "stray.ttf").write_bytes(b"not a font")
+        cache_file = tmp_path / "cache" / "fonts-scan-cache.json"
+
+        first = scan_font_dirs((tmp_path,), cache_file=cache_file)
+        assert [face.family for face in first.faces] == ["ScanAlpha"]
+        assert [path.name for path in first.skipped] == ["stray.ttf"]
+        assert cache_file.is_file()
+
+        # The persisted cache reloads intact (skip verdict included).
+        loaded = load_fonts_cache(cache_file)
+        assert loaded is not None
+        assert [face.family for face in loaded.faces] == ["ScanAlpha"]
+        assert [path.name for path in loaded.skipped] == ["stray.ttf"]
+
+        # A steady-state re-scan keeps the cached verdicts — and with
+        # the delay seam stretched, proves nothing re-parsed (a parse
+        # would sleep; the cached pass cannot reach one).
+        os.environ[FONTS_SCAN_DELAY_ENV] = "0.4"
+        try:
+            started = time.monotonic()
+            again = scan_font_dirs(
+                (tmp_path,), previous=loaded, cache_file=cache_file
+            )
+            elapsed = time.monotonic() - started
+        finally:
+            os.environ.pop(FONTS_SCAN_DELAY_ENV, None)
+        assert elapsed < 0.4, f"a cached file re-parsed ({elapsed:.2f}s)"
+        assert again.faces == first.faces
+        assert [path.name for path in again.skipped] == ["stray.ttf"]
+
+        # A new file joins incrementally.
+        synth_font(
+            tmp_path / "Beta.ttf", family="ScanBeta", codepoints=(0x42,)
+        )
+        third = scan_font_dirs((tmp_path,), previous=again, cache_file=cache_file)
+        assert sorted(face.family for face in third.faces) == [
+            "ScanAlpha",
+            "ScanBeta",
+        ]
+
+        # A stale cache version is ignored wholesale.
+        document = json.loads(cache_file.read_text(encoding="utf-8"))
+        document["version"] = 0
+        cache_file.write_text(json.dumps(document), encoding="utf-8")
+        assert load_fonts_cache(cache_file) is None
+
+    def test_serve_stays_responsive_while_the_scan_runs(
+        self, tmp_path: Path
+    ):
+        """The review-P1-1 regression: /health answers mid-scan, /fonts
+        reports not-ready until the background scan lands — the handler
+        itself never parses (the old code re-parsed the whole directory
+        synchronously per request)."""
+        from fontalloy_core.serve import ServeOptions, make_serve_server
+        from fontalloy_core.fonts_scan import FONTS_SCAN_DELAY_ENV
+
+        for index in range(6):
+            synth_font(
+                tmp_path / f"Scan{index}-Regular.ttf",
+                family=f"Scan{index}",
+                codepoints=(0x41,),
+            )
+        os.environ[FONTS_SCAN_DELAY_ENV] = "0.4"  # 6 files ≈ 2.4s scanning
+        server = None
+        thread = None
+        try:
+            server = make_serve_server(
+                ServeOptions(port=0, font_dirs=(tmp_path,))
+            )
+            port = server.server_address[1]
+            thread = _serve_thread(server)
+            # The scan is in flight: health answers fast.
+            started = time.monotonic()
+            client = ServeClient(port)
+            health = client.get("/health").json()
+            elapsed = time.monotonic() - started
+            assert health["service"] == "fontalloy"
+            assert elapsed < 1.0, f"/health took {elapsed:.2f}s mid-scan"
+
+            # The snapshot contract: not ready (empty families) while
+            # the scan runs, then the six families once it lands.
+            early = client.get("/fonts").json()
+            assert early["ready"] is False
+            assert early["families"] == []
+            doc = _wait_fonts_ready(client)
+            assert sorted(family["name"] for family in doc["families"]) == [
+                f"Scan{index}" for index in range(6)
+            ]
+        finally:
+            os.environ.pop(FONTS_SCAN_DELAY_ENV, None)
+            if server is not None:
+                server.shutdown()
+            if thread is not None:
+                thread.join(timeout=5)
+
+    def test_drift_arms_a_rescan_and_downloader_additions_land(
+        self, tmp_path: Path
+    ):
+        """A downloader adding fonts while the service runs is still
+        seen: each request stat-walks the directories, and drift wakes
+        the background thread to rescan (unchanged files never
+        re-parse)."""
+        from fontalloy_core.serve import ServeOptions, make_serve_server
+
+        synth_font(
+            tmp_path / "Alpha.ttf", family="DriftAlpha", codepoints=(0x41,)
+        )
+        server = None
+        thread = None
+        try:
+            server = make_serve_server(
+                ServeOptions(port=0, font_dirs=(tmp_path,))
+            )
+            client = ServeClient(server.server_address[1])
+            thread = _serve_thread(server)
+            doc = _wait_fonts_ready(client)
+            assert [family["name"] for family in doc["families"]] == [
+                "DriftAlpha"
+            ]
+
+            synth_font(
+                tmp_path / "Beta.ttf",
+                family="DriftBeta",
+                codepoints=(0x42,),
+            )
+            deadline = time.monotonic() + 10.0
+            names = None
+            while time.monotonic() < deadline:
+                names = sorted(
+                    family["name"]
+                    for family in client.get("/fonts").json()["families"]
+                )
+                if names == ["DriftAlpha", "DriftBeta"]:
+                    break
+                time.sleep(0.05)
+            assert names == ["DriftAlpha", "DriftBeta"], (
+                f"the drift rescan never landed: {names}"
+            )
+        finally:
+            if server is not None:
+                server.shutdown()
+            if thread is not None:
+                thread.join(timeout=5)
 
 
 class TestMalformedContentLength:

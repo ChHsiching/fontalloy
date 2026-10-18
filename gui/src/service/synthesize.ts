@@ -31,7 +31,7 @@ import { isTauri, readConfig, serveProbeAddress } from "../platform/config";
 import { ensureSystemFonts, systemFamilies } from "./systemfonts";
 import { flashFontNameInput } from "../kit/topBar";
 import { appMessages } from "../ui/charmap";
-import { ServeClient, type CatalogDocument, type FaceDocument, type ReportDocument } from "./client";
+import { ServeClient, type CatalogDocument, type FaceDocument, type FontsDocument, type ReportDocument } from "./client";
 import {
   addBuild,
   patchBuild,
@@ -137,6 +137,13 @@ export async function connectService(): Promise<void> {
     catalogIndex,
     error: undefined,
   });
+  // Spec #25 review P1-1: the serve scans the font directories on a
+  // background thread and answers ready:false until it lands — the
+  // same quiet-poll discipline the system-font enumeration uses
+  // (nothing holds a request open; the index refreshes when it does).
+  if (fontsIndex !== null && !fontsIndex.ready) {
+    void pollFontsUntilReady(client);
+  }
   // Round 24 (owner item 3): the installed system fonts enumerate in
   // the background — the scan walks the platform's font directories
   // and may take seconds on a full install; the rows land when it
@@ -238,17 +245,45 @@ export function resolveFontPath(font: LoadedFont): string | null {
   return null;
 }
 
-/** Refresh the /fonts index once (a downloader may have added fonts). */
+/**
+ * Refresh the /fonts index once (a downloader may have added fonts);
+ * when the serve's background scan has not landed (or is rescanning
+ * after drift), keep polling quietly until it answers ready.
+ */
 async function refreshFontsIndex(): Promise<void> {
   const { client } = synthStore.get().service;
   if (client === null) return;
   try {
+    const doc = await client.fonts();
     patchService({
-      fontsIndex: await client.fonts(),
+      fontsIndex: doc,
       fontsIndexAt: Date.now(),
     });
+    if (!doc.ready) void pollFontsUntilReady(client);
   } catch {
     // Stale index stands; a missed lookup reports its own error.
+  }
+}
+
+/**
+ * Poll /fonts until the serve's background scan answers ready
+ * (bounded — a scan that never lands leaves the last snapshot
+ * standing rather than promising forever). Fire-and-forget: callers
+ * never wait on this; the store's index simply refreshes in place.
+ */
+async function pollFontsUntilReady(client: ServeClient): Promise<void> {
+  for (let attempt = 0; attempt < 120; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    let doc: FontsDocument;
+    try {
+      doc = await client.fonts();
+    } catch {
+      return; // transport gone: the stale index stands
+    }
+    if (doc.ready) {
+      patchService({ fontsIndex: doc, fontsIndexAt: Date.now() });
+      return;
+    }
   }
 }
 
