@@ -1,11 +1,44 @@
 name: GUI seam-3 (Playwright)
 
+# Wiring (ticket #37, spec #25). This job is the CI half of the GUI
+# seam; the core half is ci.yml (`uv run pytest` on every branch push
+# and every PR — no path filter). Together they run, on every push to
+# the integration-relevant branches and every PR touching the seam's
+# surfaces:
+#
+#   - the full component-style Playwright suite (gui/playwright.config.ts,
+#     `npm run test:e2e`): every spec in gui/tests EXCEPT the journey
+#     project — which includes the architecture-conformance guard
+#     (gui/tests/conformance.spec.ts, seam 3: the banned-pattern scan
+#     over gui/src and web). Specs that need real machine fonts skip
+#     themselves when their env dir is absent.
+#   - the TypeScript compile: `npm run build` is `tsc -b && vite
+#     build` — the production-compile gate doubles as the tsc gate.
+#
+# Deliberately NOT run here: the journey project
+# (playwright.journey.config.ts) needs the real dev catalog and the
+# owner's serve layout (FONTALLOY_RUN_ASSETS), which do not exist on a
+# hosted runner — it stays a local, one-suite-per-turn run; and the
+# WebApp suite, which has its own workflow (webapp.yml).
+#
+# Integration-relevant branches: main, the spec branch behind the
+# round's PR (spec/v1, PR #24), and fix/pick-pattern (the branch the
+# round's cu/* work merges into). The PR paths cover every surface
+# this seam consumes: the frontend (gui, web), the serve it drives
+# (core, cli), and the workspace lock that builds them — a serve-side
+# change can break the GUI seam without touching gui/.
+
 on:
   push:
-    branches: [main, "spec/*"]
+    branches: [main, "spec/*", fix/pick-pattern]
   pull_request:
     paths:
       - "gui/**"
+      - "web/**"
+      - "core/**"
+      - "cli/**"
+      - "pyproject.toml"
+      - "uv.lock"
       - ".github/workflows/gui-e2e.yml"
 
 defaults:

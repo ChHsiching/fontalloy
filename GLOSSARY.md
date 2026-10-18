@@ -16,6 +16,10 @@ _Avoid_: source font, patch font
 A Unicode scalar value; the cmap table maps codepoints to glyphs.
 _Avoid_: encoding index, character number
 
+**Coverage intervals**:
+The codepoint ranges a face's glyph coverage is summarized as — the one form that counts, grouping, and missing-glyph detection all read, instead of a per-codepoint list.
+_Avoid_: coverage map, character set dump
+
 **Fill**:
 Placing a donor glyph where the base font has no glyph. The default behavior of a merge — it needs no explicit rule. The user-facing Chinese term is 补字 (report copy, settings help, popup notes).
 _Avoid_: backfill, patching
@@ -98,6 +102,14 @@ _Avoid_: font bundle, CDN
 **Origin list**:
 The ordered download sources carried in catalog-release metadata; the downloader tries origins in list order, so adding a mirror is a data change, never a code change.
 _Avoid_: mirror config, fallback list
+
+**Catalog sync**:
+The background lifecycle that brings the local catalog cache to the catalog release's state — download, verify, extract, and repair — usable while it runs and self-healing on a later launch after a partial or corrupt download.
+_Avoid_: catalog download, update job
+
+**Preview subset**:
+A tiny face containing just the glyphs a family's own name needs, used where loading the real family would be too heavy — rows still show each family in its own font.
+_Avoid_: sample font, thumbnail
 
 **Reserved Font Name (RFN)**:
 A name an upstream font author reserves under its license; a modified version — every built font is one — must not carry it. The catalog records an `rfn` flag per family, and the default output name is the fixed brand default, never derived from source font names.
