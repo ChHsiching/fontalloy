@@ -45,7 +45,11 @@ const REPORT_PATH = path.join(NOTES_DIR, "journey-report-web.json");
 /**
  * The owner's real serve layout (see the GUI twin for the rationale):
  * the fetched catalog directory + its own manifest, so the catalog
- * picks resolve as catalog-family references.
+ * picks resolve as catalog-family references. When the layout's
+ * manifest drifts behind the repo's (spec #25's final batch: a
+ * pre-typed-axes layout collapsed MapleMono's cuts), refresh it with
+ * scripts/refresh_run_assets.py and point this env at the new
+ * directory — never write into the source layout.
  */
 const RUN_ASSETS =
   process.env.FONTALLOY_RUN_ASSETS ??
