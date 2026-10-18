@@ -1384,11 +1384,6 @@ class _ServeHandler(BaseHTTPRequestHandler):
             return
         path = job.font_path if kind == "font" else job.report_path
         assert path is not None  # a done job always has scratch paths
-        try:
-            payload = path.read_bytes()
-        except OSError:
-            self._send_error(404, f"artifact is no longer available: {path.name}")
-            return
         if kind == "font":
             content_type = FONT_CONTENT_TYPES.get(job.format, "application/octet-stream")
             extra = {
@@ -1397,7 +1392,10 @@ class _ServeHandler(BaseHTTPRequestHandler):
         else:
             content_type = "application/json; charset=utf-8"
             extra = {}
-        self._send(200, payload, content_type, extra_headers=extra)
+        # Spec #25 review P2-6: the artifact streams off disk in bounded
+        # chunks — never read_bytes() whole inside the handler, exactly
+        # like every other disk artifact the serve emits.
+        self._write_streamed(path, content_type, extra)
 
     def _catalog_face(self, family: str, file: str) -> None:
         """``GET /catalog/faces/{family}/{file}``: one release-listed
@@ -1446,11 +1444,6 @@ class _ServeHandler(BaseHTTPRequestHandler):
         cache keys pin them) and the ETag itself, so a matching
         ``If-None-Match`` revalidates to a 304 without reading the file.
         """
-        try:
-            size = path.stat().st_size
-        except OSError:
-            self._send_error(404, f"artifact is no longer available: {path.name}")
-            return
         headers = {"Cache-Control": "public, max-age=31536000, immutable"}
         if etag is not None:
             headers["ETag"] = f'"{etag}"'
@@ -1461,8 +1454,28 @@ class _ServeHandler(BaseHTTPRequestHandler):
                 self.send_header(name, value)
             self.end_headers()
             return
+        self._write_streamed(path, content_type, headers)
+
+    def _write_streamed(
+        self,
+        path: Path,
+        content_type: str,
+        extra_headers: dict[str, str] | None = None,
+    ) -> None:
+        """200 + one disk file streamed in :data:`_STREAM_CHUNK` pieces.
+
+        The shared tail every disk artifact download uses (a serve's own
+        byte discipline: whatever its size, the handler holds one chunk
+        at a time). A file that no longer stats is the endpoint's usual
+        "no longer available" 404.
+        """
+        try:
+            size = path.stat().st_size
+        except OSError:
+            self._send_error(404, f"artifact is no longer available: {path.name}")
+            return
         self.send_response(200)
-        for name, value in {**self._cors_headers(), **headers}.items():
+        for name, value in {**self._cors_headers(), **(extra_headers or {})}.items():
             self.send_header(name, value)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(size))
