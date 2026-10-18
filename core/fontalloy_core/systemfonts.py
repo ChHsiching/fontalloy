@@ -27,6 +27,11 @@ now:
   until the first scan lands, and the byte endpoint serves only files
   the scan itself recorded.
 
+Ticket #34: the FAMILY GROUPING is the serve's too —
+:func:`group_system_families` pools the flat scan into per-family
+documents (representative first, flags riding actual coverage), so the
+frontend consumes groups and never re-derives the semantics page-side.
+
 The HTTP surface lives in ``serve.py``; this module is the pure scan.
 """
 
@@ -36,6 +41,7 @@ import json
 import os
 import sys
 import time
+import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -79,6 +85,74 @@ class SystemFace:
     italic: bool
     latin: bool
     cjk: bool
+
+
+@dataclass(frozen=True)
+class SystemFamily:
+    """One installed family: its faces grouped, with the row's flags.
+
+    Ticket #34: the grouping semantics the frontend used to compute
+    page-side now live here — faces pool by their own name-table family,
+    the representative (400-upright preferred, else the scan's first
+    face) leads ``faces``, and the family's latin/cjk flags ride its
+    faces' ACTUAL coverage (any face covering a side marks the family —
+    the owner's 微软雅黑 ruling: a family whose Chinese is a legitimate
+    standalone CJK pick lists in both pickers).
+    """
+
+    family: str
+    faces: tuple[SystemFace, ...]
+    representative: SystemFace
+    latin: bool
+    cjk: bool
+
+
+def group_system_families(
+    faces: tuple[SystemFace, ...] | list[SystemFace],
+) -> list[SystemFamily]:
+    """Group the flat scan into families (representative first)."""
+    groups: dict[str, list[SystemFace]] = {}
+    for face in faces:
+        groups.setdefault(face.family, []).append(face)
+    families: list[SystemFamily] = []
+    for family, group in groups.items():
+        rep = next(
+            (face for face in group if face.weight == 400 and not face.italic),
+            group[0],
+        )
+        families.append(
+            SystemFamily(
+                family=family,
+                faces=(rep, *(face for face in group if face is not rep)),
+                representative=rep,
+                latin=any(face.latin for face in group),
+                cjk=any(face.cjk for face in group),
+            )
+        )
+    return families
+
+
+#: The face byte endpoint every grouped face's ``href`` points at.
+_FACE_ENDPOINT = "/system-fonts/file"
+
+
+def face_href(path: Path, face_index: int) -> str:
+    """The URL one scanned system face's bytes serve at."""
+    return (
+        f"{_FACE_ENDPOINT}?"
+        + urllib.parse.urlencode({"path": str(path), "index": face_index})
+    )
+
+
+def face_etag(fingerprint: tuple[int, int], face_index: int) -> str:
+    """The cache identity of one served system face.
+
+    The scan's own per-file fingerprint (size, mtime_ns) plus the face
+    index — the same string that invalidated the scan, so a changed
+    file can never serve stale bytes behind an old ETag.
+    """
+    size, mtime_ns = fingerprint
+    return f"{mtime_ns:x}-{size:x}-{face_index}"
 
 
 def system_font_dirs() -> tuple[Path, ...]:

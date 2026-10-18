@@ -11,7 +11,7 @@
  * them — state only, per the seam-3 zero-JS-errors policy).
  */
 
-import type { SystemFaceDoc } from "./systemfonts";
+import type { SystemFaceDoc, SystemFontFamilyDoc } from "./systemfonts";
 
 /** `GET /health` — the connection probe. */
 export interface HealthDocument {
@@ -50,6 +50,44 @@ export interface CatalogVariantDocument {
 export interface CatalogDocument {
   manifest?: string;
   families: Array<{ family: string; variants: CatalogVariantDocument[] }>;
+}
+
+/* ---------- the local-font scan (ticket #31/#34: paths in, docs out) ---------- */
+
+/** One face of a scanned local family document (the catalog doc shape). */
+export interface LocalFaceDoc {
+  file: string;
+  /** The absolute on-disk path (recipes name it verbatim). */
+  path: string;
+  face_index: number;
+  sha256: string | null;
+  /** The serve-relative byte URL (`GET /local-fonts/face?path=&index=`). */
+  href: string;
+  family: string;
+  subfamily: string;
+  weight: number;
+  italic: boolean;
+  variable: boolean;
+  coverage: { codepoints: number; placeholders: number; latin: boolean; cjk: boolean };
+  placeholder: boolean;
+  /** The face's own glyph count (maxp numGlyphs) — the 字形 stat. */
+  glyphs: number;
+}
+
+/** `POST /local-fonts` — family documents in the catalog shape. */
+export interface LocalFontsDocument {
+  families: Array<{
+    family: string;
+    display_name: string | null;
+    cuts: Array<{
+      variant: string;
+      def: boolean;
+      display_name: string | null;
+      representative: string | null;
+      faces: LocalFaceDoc[];
+    }>;
+  }>;
+  skipped: Array<{ path: string; error: string }>;
 }
 
 /** `GET /builds/{id}` — the job document, the progress endpoint. */
@@ -303,33 +341,28 @@ export class ServeClient {
     return this.getJson<CatalogDocument>("/catalog");
   }
 
-  /** The installed system fonts (`/system-fonts`, round 24+25). */
+  /** The installed system fonts (`/system-fonts`, grouped: #34). */
   systemFonts(): Promise<{
     dirs: string[];
     ready: boolean;
     faces: SystemFaceDoc[];
+    families: SystemFontFamilyDoc[];
   }> {
     return this.getJson("/system-fonts");
   }
 
-  /** One scanned system font file's bytes (round 24). */
-  async systemFontBytes(path: string): Promise<ArrayBuffer> {
-    let res: Response;
-    try {
-      res = await fetch(
-        `${this.baseUrl}/system-fonts/file?path=${encodeURIComponent(path)}`,
-        {
-          ...(timeoutSignal(BYTES_TIMEOUT_MS) !== undefined
-            ? { signal: timeoutSignal(BYTES_TIMEOUT_MS) }
-            : {}),
-        },
-      );
-    } catch (err) {
-      if (isTimeout(err)) throw new ServeError(timeoutMessage(BYTES_TIMEOUT_MS), 0);
-      throw new ServeError("无法读取系统字体文件。", 0);
-    }
-    if (!res.ok) throw new ServeError(await parseError(res), res.status);
-    return res.arrayBuffer();
+  /**
+   * The local-font scan (ticket #31, consumed by #34): absolute paths
+   * in — files, or anything the shell resolved a typed path to — and
+   * family documents out, TTCs expanded server-side. A rejected path
+   * (relative, missing, not a font) is a 400 naming every offender.
+   */
+  localFonts(paths: readonly string[]): Promise<LocalFontsDocument> {
+    return this.requestJson<LocalFontsDocument>(
+      "/local-fonts",
+      { method: "POST", body: JSON.stringify({ paths }) },
+      RESOLVE_TIMEOUT_MS,
+    );
   }
 
   build(id: string): Promise<BuildDocument> {

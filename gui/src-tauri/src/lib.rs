@@ -14,15 +14,15 @@
 ///    handed to the frontend through the `serve_url` command (and a
 ///    `serve-ready` event); the child is killed on app exit so no
 ///    orphaned service survives.
-/// 2. **Local font files with real paths**: the native open dialog
-///    (`pick_font_files`) returns absolute paths, and `read_font_file`
-///    streams the bytes back over the raw IPC pipe — recipes can name
-///    the file, and no fs-scope widening beyond the catalog is needed.
-///    `list_font_dir` (round 13) lists the font files beside a picked
-///    file so one pick registers the family sitting next to it, and
-///    `read_font_path` (round 20) resolves a TYPED absolute path —
-///    file or directory — for environments without a file manager
-///    (the dialog stays primary).
+/// 2. **Local font files with real paths** (ticket #34: paths only,
+///    never bytes over IPC): the native open dialog (`pick_font_files`)
+///    returns absolute paths, and `read_font_path` (round 20) resolves
+///    a TYPED absolute path — file or directory — for environments
+///    without a file manager (the dialog stays primary). Both hand the
+///    PATHS to the serve's local-font scan; the font bytes stream from
+///    the serve by URL. The retired raw byte pipe (`read_font_file`)
+///    and the sibling directory lister (`list_font_dir`) are gone —
+///    files submitted together pool into their family server-side.
 /// 3. **The artifact save** (round 12): synthesis writes each built
 ///    font straight into the configured output directory — `park_save_path`
 ///    joins and parks `<output dir>/<name>` (no dialog), and
@@ -128,6 +128,8 @@ async fn serve_url(state: State<'_, ShellState>) -> Result<Option<String>, Strin
 }
 
 /// Native multi-select font dialog; `null` when it could not open.
+/// Returns absolute PATHS — the serve's local-font scan reads the
+/// files; no bytes ride IPC (ticket #34).
 #[tauri::command]
 async fn pick_font_files(app: AppHandle) -> Result<Option<Vec<String>>, String> {
     let picked = app
@@ -152,66 +154,15 @@ async fn pick_font_files(app: AppHandle) -> Result<Option<Vec<String>>, String> 
     }
 }
 
-/// Read one font file as raw bytes (the zero-JSON binary pipe).
-///
-/// Round 25 (owner item 1, the 未响应 freeze): this was a SYNC
-/// command, and Tauri runs sync commands on the MAIN thread — reading
-/// a 428MB collection blocked the window's message pump for the whole
-/// read (the white not-responding overlay). The read now runs on the
-/// blocking pool; the main thread never waits on file IO.
-#[tauri::command]
-async fn read_font_file(path: String) -> Result<tauri::ipc::Response, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let bytes = std::fs::read(&path).map_err(|err| format!("无法读取 {path}: {err}"))?;
-        Ok(tauri::ipc::Response::new(bytes))
-    })
-    .await
-    .map_err(|err| err.to_string())?
-}
-
-/// The font file extensions the sibling scan considers — the same set
-/// the pick dialog filters on.
+/// The font file extensions the typed-path sweep considers — the same
+/// set the pick dialog filters on.
 const FONT_EXTENSIONS: [&str; 5] = ["ttf", "otf", "ttc", "woff2", "woff"];
-
-/// List the font files beside a picked file (round 13, owner item 7).
-///
-/// The frontend's local family discovery scans the PARENT directory of
-/// a file the user explicitly picked through the dialog — never an
-/// arbitrary path — so one pick can register the whole family's faces
-/// sitting next to it. Entries are filtered to the font suffixes and
-/// returned sorted, as full paths.
-#[tauri::command]
-fn list_font_dir(path: String) -> Result<Vec<String>, String> {
-    let picked = std::path::Path::new(&path);
-    let directory = picked
-        .parent()
-        .ok_or_else(|| "所拾文件没有父目录".to_string())?;
-    let entries = std::fs::read_dir(directory)
-        .map_err(|err| format!("无法列出 {}: {err}", directory.display()))?;
-    let mut fonts = Vec::new();
-    for entry in entries {
-        let entry = entry.map_err(|err| err.to_string())?;
-        let candidate = entry.path();
-        let is_font = candidate.is_file()
-            && candidate
-                .extension()
-                .and_then(|ext| ext.to_str())
-                .map(|ext| FONT_EXTENSIONS.contains(&ext.to_ascii_lowercase().as_str()))
-                .unwrap_or(false);
-        if is_font {
-            fonts.push(candidate.to_string_lossy().into_owned());
-        }
-    }
-    fonts.sort();
-    Ok(fonts)
-}
 
 /// What a typed/pasted path resolved to (round 20, owner item 3): the
 /// font files it names — a FILE is itself; a DIRECTORY is the font
-/// files it holds (the same suffix sweep `list_font_dir` uses). The
-/// bytes then travel the raw pipe through `read_font_file`, exactly
-/// like dialog picks; the frontend funnels them into the same
-/// register+select flow.
+/// files it holds (the same suffix sweep the dialog filters on). The
+/// resolution carries PATHS ONLY (ticket #34): the frontend hands them
+/// to the serve's local-font scan and the bytes stream back by URL.
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct FontPathResolution {
@@ -483,8 +434,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             serve_url,
             pick_font_files,
-            read_font_file,
-            list_font_dir,
             read_font_path,
             prepare_save,
             save_artifact,

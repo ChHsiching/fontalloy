@@ -75,6 +75,9 @@ FACE_KEYS = {
     "variable",
     "coverage",
     "placeholder",
+    # Ticket #34: the face's own glyph count — the consumer's load
+    # outcome 字形 figure.
+    "glyphs",
 }
 
 _LATIN = (0x41, 0x42)
@@ -164,6 +167,7 @@ class TestScanHappyPath:
         assert face["coverage"]["placeholders"] == 0
         assert face["coverage"]["latin"] is True
         assert face["coverage"]["cjk"] is False
+        assert face["glyphs"] >= 1
         assert face["href"].startswith("/local-fonts/face?")
 
         # The sibling weight pools into ONE family (the aggregation the

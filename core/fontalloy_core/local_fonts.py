@@ -356,6 +356,9 @@ class LocalFonts:
                 "cjk": scan.cjk,
             },
             "placeholder": scan.placeholder,
+            # Ticket #34: the face's own glyph count — the consumer's
+            # load-outcome 字形 figure, summed over the faces served.
+            "glyphs": scan.glyphs,
         }
 
     @staticmethod

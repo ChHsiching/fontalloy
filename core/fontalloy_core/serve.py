@@ -104,6 +104,9 @@ from fontalloy_core.recipe import Recipe, parse_recipe
 from fontalloy_core.stars import StarsCache
 from fontalloy_core.systemfonts import (
     ScanResult,
+    face_etag,
+    face_href,
+    group_system_families,
     load_cache,
     scan_system_fonts,
     system_font_dirs,
@@ -604,50 +607,80 @@ class ServeState:
 
         Never scans, never blocks on the scanning thread — an
         in-flight scan means ``{"ready": false, faces: []}`` and the
-        GUI retries.
+        GUI retries. Ticket #34: the document GROUPS the scan
+        (``families``, representative first, flags riding actual
+        coverage — the semantics the frontend used to compute
+        page-side) and every face carries its byte-source ``href``.
         """
         self._ensure_system_scan_started()
         with self.lock:
             ready = self._system_ready
-            faces = self._system_result.faces if self._system_result else ()
+            result = self._system_result
+        faces = result.faces if result else ()
+
+        def _face_doc(face: Any) -> dict[str, Any]:
+            return {
+                "path": str(face.path),
+                "file": face.file,
+                "face": face.face,
+                "family": face.family,
+                "subfamily": face.subfamily,
+                "weight": face.weight,
+                "italic": face.italic,
+                "latin": face.latin,
+                "cjk": face.cjk,
+                "href": face_href(face.path, face.face),
+            }
+
         return {
             "dirs": [str(directory) for directory in self._system_dirs],
             "ready": ready,
-            "faces": [
+            "faces": [_face_doc(face) for face in faces],
+            "families": [
                 {
-                    "path": str(face.path),
-                    "file": face.file,
-                    "face": face.face,
-                    "family": face.family,
-                    "subfamily": face.subfamily,
-                    "weight": face.weight,
-                    "italic": face.italic,
-                    "latin": face.latin,
-                    "cjk": face.cjk,
+                    "family": family.family,
+                    "latin": family.latin,
+                    "cjk": family.cjk,
+                    "representative": _face_doc(family.representative),
+                    "faces": [_face_doc(face) for face in family.faces],
                 }
-                for face in faces
+                for family in group_system_families(faces)
             ],
         }
 
-    def system_font_bytes(self, path: str) -> bytes | None:
-        """One scanned system font FILE's bytes (collections whole).
+    def system_face_source(
+        self, raw_path: object, face_index: object
+    ) -> tuple[Path, str, int] | None:
+        """One scanned system face's (path, ETag, file face count).
 
-        Only paths the scan itself recorded are served — the endpoint
-        is a byte source for faces the GUI picked, never a general
-        file reader. The lookup reads the snapshot under the lock and
-        does its file IO outside it.
+        Ticket #34's byte-source gate: the path must be one the scan
+        itself recorded and the index one of that file's faces — the
+        endpoint is a byte source for faces the enumeration showed,
+        never a general file reader. The ETag is the scan's own
+        fingerprint of the file plus the face index, so cache truth
+        and scan truth are one string.
         """
-        wanted = Path(path)
+        if not isinstance(raw_path, str):
+            return None
+        if isinstance(face_index, bool) or not isinstance(face_index, int):
+            return None
+        if face_index < 0 or not Path(raw_path).is_absolute():
+            return None
+        wanted = Path(raw_path)
         with self.lock:
-            known = self._system_result is not None and any(
-                face.path == wanted for face in self._system_result.faces
-            )
-        if not known:
+            if self._system_result is None:
+                return None
+            indices = [
+                face.face
+                for face in self._system_result.faces
+                if face.path == wanted
+            ]
+            fingerprint = self._system_result.fingerprints.get(str(wanted))
+        if not indices or face_index not in indices:
             return None
-        try:
-            return wanted.read_bytes()
-        except OSError:
+        if fingerprint is None:
             return None
+        return wanted, face_etag(fingerprint, face_index), len(indices)
 
     def fonts_document(self) -> dict[str, Any]:
         """The configured local directories, scanned into families.
@@ -927,27 +960,7 @@ class _ServeHandler(BaseHTTPRequestHandler):
             self._send_json(state.system_fonts_document())
         elif path == "/system-fonts/file":
             self._require_methods(method, ("GET",))
-            target = (
-                urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
-                .get("path", [None])[0]
-            )
-            if target is None:
-                self._send_error(400, "the file endpoint needs ?path=")
-                return
-            payload = self.state.system_font_bytes(target)
-            if payload is None:
-                self._send_error(404, f"not a scanned system font: {target}")
-                return
-            self._send(
-                200,
-                payload,
-                "application/octet-stream",
-                extra_headers={
-                    "Content-Disposition": 'attachment; filename="'
-                    + Path(target).name.replace('"', "")
-                    + '"'
-                },
-            )
+            self._system_face()
         elif path == "/precedence-resolve":
             self._require_methods(method, ("POST",))
             self._precedence_resolve()
@@ -1050,6 +1063,54 @@ class _ServeHandler(BaseHTTPRequestHandler):
             self._send_error(400, str(exc))
             return
         self._send_json(document)
+
+    def _system_face(self) -> None:
+        """``GET /system-fonts/file?path=…&index=N`` (ticket #34): one
+        scanned system face's bytes by URL — the byte source the
+        enumeration's own ``href`` fields point at.
+
+        A plain font streams its exact disk bytes; a collection face
+        serves its EXTRACTED standalone sfnt (the same server-side
+        surgery the local-font face endpoint performs), so the page
+        never receives the collection blob. Only (path, index) pairs
+        the scan recorded are servable; the index is required.
+        """
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        target = query.get("path", [None])[0]
+        index = query.get("index", [None])[0]
+        if target is None or index is None:
+            self._send_error(400, "the file endpoint needs ?path= and ?index=")
+            return
+        try:
+            face_index = int(index)
+        except ValueError:
+            self._send_error(400, f"index must be an integer: {index!r}")
+            return
+        source = self.state.system_face_source(target, face_index)
+        if source is None:
+            self._send_error(
+                404, f"not a scanned system font face: {target}#{index}"
+            )
+            return
+        font_path, etag, face_count = source
+        if face_count == 1:
+            # A plain font file: the exact bytes off disk, streamed.
+            self._send_font_file(
+                font_path,
+                FONT_CONTENT_TYPES.get(
+                    font_path.suffix.lower().lstrip("."),
+                    "application/octet-stream",
+                ),
+                etag=etag,
+            )
+            return
+        # One face of a collection: the extracted standalone font.
+        try:
+            payload, content_type = extract_face(font_path, face_index)
+        except Exception:
+            self._send_error(404, f"face is no longer readable: {font_path.name}")
+            return
+        self._send_font_bytes(payload, content_type, etag=etag)
 
     def _local_scan(self) -> None:
         """``POST /local-fonts`` (ticket #31): paths in, family documents
