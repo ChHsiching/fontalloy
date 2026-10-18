@@ -1,5 +1,11 @@
 name: CI
 
+# The core half of the CI wiring (ticket #37, spec #25): `uv run
+# pytest` — the core suite incl. the serve contract tests — on every
+# branch push and every PR, no path filter. The GUI seam half (the
+# Playwright suite with the conformance guard, plus the tsc build
+# gate) is gui-e2e.yml.
+
 on:
   push:
     branches: ["**"]
