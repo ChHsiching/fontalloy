@@ -19,8 +19,8 @@ This module is wiring, not reimplementation. The heavy lifting is the
 existing assets machinery, unchanged: family archives come through
 :func:`fontalloy_core.origins.fetch_from_origins` (streaming temp-file
 download with chunked sha256 verification and atomic replace, trying
-the document's ordered origin list), extraction — zip and 7z alike,
-with per-face parse validation — is :func:`fontalloy_core.assets.extract_font_faces`,
+the document's ordered origin list) and extraction — zip and 7z
+alike, HASH-ONLY — is :func:`fontalloy_core.assets.extract_font_faces`,
 and the release document itself goes through the strict loader. The
 service adds only the lifecycle around them.
 
@@ -32,12 +32,16 @@ directory; a CLI-specified directory elsewhere):
 - ``<family>/``               the extracted, validated faces
 - ``<archive>.complete``      the complete marker
 
-The marker is written ONLY after the archive's sha256, every listed
-face's sha256, and every face's parse have all been verified, so a run
-killed mid-download leaves at worst a ``.part`` temp file — never a
-falsely-complete family. The marker records the release tag plus the
+The marker is written ONLY after the archive's sha256 and every
+listed face's sha256 have been verified, so a run killed mid-download
+leaves at worst a ``.part`` temp file — never a falsely-complete
+family. The marker records the release tag plus the
 byte sizes that verification pinned (the archive's and every listed
-face's), which is all a relaunch needs to trust the family.
+face's), which is all a relaunch needs to trust the family. The
+install path opens no face with fontTools (the P0 memory rule): the
+pinned checksums ARE the verification — an unparsable-but-hash-valid
+face is a release-builder defect, caught at packaging by
+:func:`fontalloy_core.assets.validate_face_parses`.
 
 Launch checks are STAT-ONLY (the ticket #26 follow-up: re-hashing a
 ~10 GB catalog at every GUI launch was a full-disk-read storm on the
@@ -387,9 +391,8 @@ class CatalogSync:
         and every listed face against the document instead. Anything
         short of a passing check runs the full repair: fetch the
         archive through the ordered origin list (skipped when the local
-        archive still verifies), re-extract from scratch with per-face
-        parse validation, verify every listed face's checksum, and
-        write the marker last.
+        archive still verifies), re-extract from scratch, verify every
+        listed face's checksum, and write the marker last.
         """
         archive = self._dir / family.zip
         extracted = self._dir / Path(family.zip).stem

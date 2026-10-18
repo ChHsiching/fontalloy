@@ -46,3 +46,21 @@ class PresetError(FontAlloyError):
 
 class LocalFontError(FontAlloyError):
     """A local-font scan request is malformed (bad paths, bad body)."""
+
+
+class WorkerError(FontAlloyError):
+    """A quota'd worker subprocess failed (crashed, timed out, or died
+    past its memory quota). The message names the work unit and the
+    outcome; the serve surfaces it per unit, never as a process-wide
+    abort."""
+
+
+class QuotaBreachError(WorkerError):
+    """A worker subprocess exceeded its hard memory quota.
+
+    The owner's absolute rule (spec #25 aftermath): no process may
+    saturate this machine. The quota caps the worker's commitment at
+    the OS level, so a face whose parse would decompile gigabytes of
+    outlines dies inside the child — this error is the honest report
+    of exactly that containment, never a memory incident.
+    """

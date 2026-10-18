@@ -9,13 +9,15 @@ whole-catalog fontTools pass holding the GIL. The scan now gets the
 treatment the system-font enumeration got (round 25):
 
 - it runs on a BACKGROUND daemon thread the serve starts at the first
-  ``/fonts`` touch, sleeping :data:`YIELD_SECONDS` between parsed
-  files so request handlers keep getting GIL slots (``/health``
-  answers while a scan is in flight);
+  ``/fonts`` touch, and the parse itself runs in the quota'd worker
+  child (the P0 memory rule): the serve parent never opens a face,
+  so ``/health`` answers while a scan is in flight and a runaway
+  face dies inside the child's OS-enforced memory quota, never in
+  the serve;
 - its result is cached on disk keyed by per-file fingerprints
   ``(path, size, mtime_ns)``: a steady-state launch stat-walks the
   directories and parses NOTHING — only new or changed files pay the
-  fontTools parse, the same incremental contract
+  worker parse, the same incremental contract
   :func:`fontalloy_core.systemfonts.scan_system_fonts` carries;
 - ``/fonts`` answers the cached snapshot with a ``ready`` flag (false,
   families empty, until the first scan lands) and never runs fontTools
@@ -35,13 +37,13 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from fontalloy_core.errors import FontAlloyError
-from fontalloy_core.load import FaceInfo, scan_families
+from fontalloy_core.load import FaceInfo
 from fontalloy_core.local_fonts import FONT_SUFFIXES
 
 #: How long the scan thread sleeps between parsed files — the GIL slot
@@ -129,10 +131,14 @@ def scan_font_dirs(
     Files whose (size, mtime_ns) fingerprint ``previous`` already
     carries keep their cached verdict — faces AND skip decisions:
     unchanged fonts are never re-parsed, and an unchanged unreadable
-    stray stays a cached skip. New and changed files parse once.
-    The caller's cache file (when given) is updated with the merged
-    result. Yields the GIL between parsed files so a concurrent
-    request handler stays live.
+    stray stays a cached skip. New and changed files parse ONCE, in
+    the quota'd worker child (the P0 memory rule: the serve parent
+    never opens a face — the child pays the parse under its OS-enforced
+    quota and hands back per-file verdicts). A child that dies on its
+    quota degrades to skip verdicts for the files it owed, exactly
+    like an unreadable file — the enumeration never goes down. The
+    caller's cache file (when given) is updated with the merged
+    result.
     """
     previous_faces: dict[str, list[FaceInfo]] = {}
     previous_skipped: set[str] = set()
@@ -143,6 +149,7 @@ def scan_font_dirs(
     prints = fingerprints_of(dirs)
     faces: list[FaceInfo] = []
     skipped: list[Path] = []
+    to_parse: list[str] = []
     for path_str, fingerprint in prints.items():
         cached_faces = previous_faces.get(path_str)
         was_skipped = path_str in previous_skipped
@@ -158,19 +165,67 @@ def scan_font_dirs(
                 assert cached_faces is not None
                 faces.extend(cached_faces)
             continue
-        path = Path(path_str)
-        try:
-            for family in scan_families([path]):
-                faces.extend(family.faces)
-        except FontAlloyError:
-            skipped.append(path)
-        _yield_between_files()
+        to_parse.append(path_str)
+
+    if to_parse:
+        for path_str, rows in _parse_files(to_parse).items():
+            if rows is None:  # the worker could not deliver a verdict
+                skipped.append(Path(path_str))
+                continue
+            for row in rows:
+                faces.append(
+                    FaceInfo(
+                        path=Path(path_str),
+                        face_index=int(row[0]),
+                        family=row[1],
+                        subfamily=row[2],
+                        weight=int(row[3]),
+                        italic=bool(row[4]),
+                        variable=bool(row[5]),
+                        style_consistent=bool(row[6]),
+                    )
+                )
+
     result = FontsScanResult(
         faces=tuple(faces), skipped=tuple(skipped), fingerprints=prints
     )
     if cache_file is not None:
         save_cache(cache_file, result)
     return result
+
+
+def _parse_files(path_strs: list[str]) -> dict[str, list[list[Any]] | None]:
+    """Parse files in the quota'd worker; per file its face rows, or
+    None when no verdict could be produced (a skip)."""
+    from fontalloy_core.errors import FontAlloyError
+    from fontalloy_core.quota import run_worker
+
+    handle = tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        suffix=".json",
+        prefix="fontalloy-fonts-scan-",
+        delete=False,
+    )
+    out = Path(handle.name)
+    handle.close()
+    job = {"command": "scan-font-dirs", "paths": path_strs, "out": str(out)}
+    try:
+        run_worker(job)
+        document = json.loads(out.read_text(encoding="utf-8"))
+    except (FontAlloyError, OSError, ValueError):
+        return {path: None for path in path_strs}
+    finally:
+        out.unlink(missing_ok=True)
+    files = document.get("files", {})
+    verdicts: dict[str, list[list[Any]] | None] = {}
+    for path in path_strs:
+        entry = files.get(path)
+        if isinstance(entry, dict) and entry.get("error") is False:
+            verdicts[path] = list(entry.get("faces", []))
+        else:
+            verdicts[path] = None
+    return verdicts
 
 
 def load_cache(cache_file: Path) -> FontsScanResult | None:

@@ -9,21 +9,44 @@ upload-to-Release step is CI-side and cannot run here.
 
 from __future__ import annotations
 
+import io
 import json
+import tempfile
 import zipfile
 from pathlib import Path
 
-from conftest import fontalloy_exe, run_cli  # noqa: F401
+import pytest
+from fontTools.ttLib import TTFont
+
+from conftest import fontalloy_exe, run_cli, synth_font  # noqa: F401
 from fontalloy_core import load_catalog_release
+from fontalloy_core.catalog_release import Origin
+from fontalloy_core.release import package_catalog_release
 from test_cli_assets import FAKE_OFL, entry, sha256_of, write_manifest
 
 #: Fixed zip member timestamp (2026-01-01, matching the fixture fonts):
 #: packaging carries no wall clock, so it is byte-reproducible.
 FIXED_ZIP_TIMESTAMP = (2026, 1, 1, 0, 0, 0)
 
-LIGHT_FACE = b"fake lxgw light ttf bytes"
-REGULAR_FACE = b"fake lxgw regular ttf bytes"
-NF_FACE = b"fake nerd font ttf bytes"
+
+def _synth_face_bytes(name: str, **kwargs: object) -> bytes:
+    """One deterministic synthetic face's bytes (built once per run;
+    the pinned head timestamps make them byte-stable)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / name
+        synth_font(path, **kwargs)  # type: ignore[arg-type]
+        return path.read_bytes()
+
+
+LIGHT_FACE = _synth_face_bytes(
+    "LXGWTest-Light.ttf", family="LXGW Test", codepoints=(0x41,), weight=300
+)
+REGULAR_FACE = _synth_face_bytes(
+    "LXGWTest-Regular.ttf", family="LXGW Test", codepoints=(0x42,)
+)
+NF_FACE = _synth_face_bytes(
+    "FakeCodeNerdFont-Regular.ttf", family="FakeCode Nerd Font", codepoints=(0x43,)
+)
 
 
 def make_catalog(tmp_path: Path) -> Path:
@@ -222,3 +245,54 @@ def sha256_of_bytes(payload: bytes) -> str:
     import hashlib
 
     return hashlib.sha256(payload).hexdigest()
+
+
+class TestPackagingParseGate:
+    """The P0 memory rule's release-builder half (spec #25 aftermath).
+
+    The client install path verifies by sha256 alone — the serve never
+    opens a face — so the "hash-valid but unparsable" defect this gate
+    exists to catch lives HERE, at packaging, on the release machine:
+    every staged face must open its name table before any client can
+    ever be asked to trust its checksum."""
+
+    def test_a_hash_valid_but_unparsable_face_fails_the_release(
+        self, tmp_path
+    ):
+        manifest = make_catalog(tmp_path)
+        from fontalloy_core.assets import fetch_catalog
+
+        fetch_catalog(manifest, tmp_path / "fonts")
+        # Corrupt one fetched face to garbage AND re-pin the manifest's
+        # checksum: hash verification will pass everywhere downstream,
+        # so only the parse gate can catch it. (LXGWTest ships as bare
+        # TTF artifacts, so the fetched face IS the artifact file.)
+        garbage = b"hash-valid but not a font at all" * 8
+        face = tmp_path / "fonts" / "LXGWTest-Regular.ttf"
+        face.write_bytes(garbage)
+        document = json.loads(manifest.read_text(encoding="utf-8"))
+        for item in document["families"]:
+            if item["file"] == "LXGWTest-Regular.ttf":
+                item["sha256"] = sha256_of_bytes(garbage)
+        manifest.write_text(json.dumps(document), encoding="utf-8")
+
+        with pytest.raises(Exception, match="does not parse"):
+            package_catalog_release(
+                manifest,
+                tmp_path / "fonts",
+                tmp_path / "dist",
+                tag="font-catalog-v1",
+                origins=[Origin(id="t", base_url="https://example.com/t1")],
+            )
+        # nothing staged: the release never shipped the face
+        assert not (tmp_path / "dist" / "LXGWTest.zip").exists()
+
+    def test_every_staged_face_parses(self, fontalloy_exe, tmp_path):
+        fetch_and_package(fontalloy_exe, tmp_path)
+        with zipfile.ZipFile(tmp_path / "dist" / "LXGWTest.zip") as zf:
+            face = zf.read("LXGWTest-Regular.ttf")
+        font = TTFont(io.BytesIO(face))
+        try:
+            assert font["name"].getDebugName(1) == "LXGW Test"
+        finally:
+            font.close()
