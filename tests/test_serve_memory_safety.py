@@ -383,6 +383,48 @@ def _serve_rss_target(process: Any, port: int) -> int:
     return listeners[0]
 
 
+class TestScanPathsNeverParseInServe:
+    """Invariant D: the /local-fonts scan, the /fonts enumeration, and
+    the /system-fonts scan also parse exclusively in the worker."""
+
+    def test_the_local_fonts_scan_never_parses_in_the_caller(
+        self, tmp_path, parse_counter
+    ):
+        from fontalloy_core.local_fonts import LocalFonts
+
+        font = synth_font(
+            tmp_path / "Local.ttf",
+            family="MemLocal",
+            codepoints=(0x41, 0x4E2D),
+        )
+        document = LocalFonts().scan_document({"paths": [str(font)]})
+        assert len(document["families"]) == 1
+        assert document["families"][0]["family"] == "MemLocal"
+        assert parse_counter == []
+
+    def test_the_fonts_directory_scan_never_parses_in_the_caller(
+        self, tmp_path, parse_counter
+    ):
+        from fontalloy_core.fonts_scan import scan_font_dirs
+
+        synth_font(tmp_path / "Dir.ttf", family="MemDir", codepoints=(0x41,))
+        (tmp_path / "stray.ttf").write_bytes(b"not a font")
+        result = scan_font_dirs((tmp_path,))
+        assert [face.family for face in result.faces] == ["MemDir"]
+        assert [path.name for path in result.skipped] == ["stray.ttf"]
+        assert parse_counter == []
+
+    def test_the_system_font_scan_never_parses_in_the_caller(
+        self, tmp_path, parse_counter
+    ):
+        from fontalloy_core.systemfonts import scan_system_fonts_sync
+
+        synth_font(tmp_path / "Sys.ttf", family="MemSys", codepoints=(0x41,))
+        faces = scan_system_fonts_sync((tmp_path,))
+        assert [face.family for face in faces] == ["MemSys"]
+        assert parse_counter == []
+
+
 class TestPeakRss:
     """Invariant C: the parent stays flat; the child obeys its quota."""
 

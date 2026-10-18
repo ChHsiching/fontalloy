@@ -16,13 +16,16 @@ starved every other request (the GIL) for minutes on a real install,
 wedged the service, and re-scanned the disk on every launch. The scan
 now:
 
-- runs on a BACKGROUND THREAD the serve starts at boot, sleeping
-  :data:`SCAN_YIELD_SECONDS` between files so request handlers keep
-  getting GIL slots (``/health`` answers while a scan is in flight);
+- runs on a BACKGROUND THREAD the serve starts lazily, with every
+  fontTools parse inside the QUOTA'D WORKER CHILD (the P0 memory
+  rule, spec #25 aftermath): the serve parent never opens a face, so
+  request handlers stay live while a scan is in flight and a runaway
+  face dies inside the child's OS-enforced memory quota, never in
+  the serve;
 - caches its result on disk keyed by per-file fingerprints
   (path, size, mtime_ns): a steady-state launch stat-walks the
   directories and parses NOTHING — only new or changed files pay the
-  fontTools parse;
+  worker parse;
 - answers ``/system-fonts`` with ``{"ready": false, faces: []}``
   until the first scan lands, and the byte endpoint serves only files
   the scan itself recorded.
@@ -44,6 +47,7 @@ import time
 import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from fontTools.ttLib import TTFont
 
@@ -54,10 +58,10 @@ from fontalloy_core.placeholder import face_coverage
 #: scan stays with the installable formats).
 FONT_SUFFIXES = frozenset({".ttf", ".otf", ".ttc", ".otc"})
 
-#: How long the scan thread sleeps between files — the GIL slot every
-#: in-flight request handler needs while a real machine's font
-#: directory is being parsed. Tests stretch this via
-#: :data:`SCAN_DELAY_ENV` to make a scan observably slow.
+#: How long the WORKER child sleeps between files — the delay seam the
+#: responsiveness tests stretch (a scan observably spans seconds while
+#: the serve parent stays idle). Tests stretch it via
+#: :data:`SCAN_DELAY_ENV`.
 SCAN_YIELD_SECONDS = 0.002
 
 #: Test seam: when set, every per-file sleep lasts this many seconds
@@ -402,9 +406,13 @@ def scan_system_fonts(
 
     Files whose (size, mtime_ns) fingerprint ``previous`` already
     carries keep their cached faces — unchanged fonts are never
-    re-parsed. New and changed files parse once. The caller's cache
-    file (when given) is updated with the merged result. Yields the
-    GIL between files so a concurrent request handler stays live.
+    re-parsed. New and changed files parse ONCE, in the quota'd
+    worker child (the P0 memory rule: the serve parent never opens a
+    face; the child's OS-enforced memory quota contains a runaway
+    parse, and files it could not deliver degrade to empty verdicts
+    exactly like unreadable ones — the enumeration never goes down).
+    The caller's cache file (when given) is updated with the merged
+    result.
     """
     previous_faces: dict[str, list[SystemFace]] = {}
     if previous is not None:
@@ -412,6 +420,7 @@ def scan_system_fonts(
             previous_faces.setdefault(str(face.path), []).append(face)
     prints = _fingerprints(dirs)
     faces: list[SystemFace] = []
+    to_parse: list[str] = []
     for path_str, fingerprint in prints.items():
         cached = previous_faces.get(path_str)
         if (
@@ -422,12 +431,63 @@ def scan_system_fonts(
         ):
             faces.extend(cached)
             continue
-        faces.extend(_scan_file(Path(path_str)))
-        _yield_between_files()
+        to_parse.append(path_str)
+
+    if to_parse:
+        for path_str, rows in _parse_files(to_parse).items():
+            for row in rows or ():
+                faces.append(
+                    SystemFace(
+                        path=Path(path_str),
+                        file=row["file"],
+                        face=row["face"],
+                        family=row["family"],
+                        subfamily=row["subfamily"],
+                        weight=row["weight"],
+                        italic=row["italic"],
+                        latin=row["latin"],
+                        cjk=row["cjk"],
+                        intervals=tuple(
+                            (int(a), int(b)) for a, b in row["intervals"]
+                        ),
+                    )
+                )
+
     result = ScanResult(faces=tuple(faces), fingerprints=prints)
     if cache_file is not None:
         save_cache(cache_file, result)
     return result
+
+
+def _parse_files(path_strs: list[str]) -> dict[str, list[dict[str, Any]]]:
+    """Parse files in the quota'd worker; per file its face rows ([]s
+    for files that produced nothing, whatever the reason)."""
+    import tempfile
+
+    from fontalloy_core.errors import FontAlloyError
+    from fontalloy_core.quota import run_worker
+
+    handle = tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        suffix=".json",
+        prefix="fontalloy-system-scan-",
+        delete=False,
+    )
+    out = Path(handle.name)
+    handle.close()
+    job = {"command": "scan-system-files", "paths": path_strs, "out": str(out)}
+    try:
+        run_worker(job)
+        document = json.loads(out.read_text(encoding="utf-8"))
+    except (FontAlloyError, OSError, ValueError):
+        return {path: [] for path in path_strs}
+    finally:
+        out.unlink(missing_ok=True)
+    files = document.get("files", {})
+    return {
+        path: list(files.get(path, [])) for path in path_strs
+    }
 
 
 def scan_system_fonts_sync(dirs: tuple[Path, ...]) -> list[SystemFace]:

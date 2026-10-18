@@ -17,16 +17,24 @@ replaces.
 
 Scanning is on-demand per POST and cached in-process per resolved path
 keyed by (mtime_ns, size): a re-scan of an unchanged collection is a
-dictionary read, a touched or resized file re-parses. Only (path,
-face_index) pairs a scan kept are byte-servable, and only while the
-file's identity still matches the scan — the endpoint is a byte source
-for faces the picker was shown, never a general file reader.
+dictionary read, a touched or resized file re-parses. The parse itself
+runs in the quota'd worker child (the P0 memory rule, spec #25
+aftermath): the serve parent never opens a face — the child scans the
+request's uncached files as ONE batch under its OS-enforced memory
+quota and hands back the verdicts, so a user's 400 MB collection is
+bounded memory in a disposable process, never in the long-lived serve.
+Only (path, face_index) pairs a scan kept are byte-servable, and only
+while the file's identity still matches the scan — the endpoint is a
+byte source for faces the picker was shown, never a general file
+reader.
 """
 
 from __future__ import annotations
 
 import io
+import json
 import os
+import tempfile
 import threading
 import time
 import urllib.parse
@@ -40,6 +48,7 @@ from fontalloy_core.errors import LocalFontError
 from fontalloy_core.family_docs import (
     FaceScan,
     YIELD_SECONDS,
+    face_scan_from_json,
     pick_variant_representative,
     scan_file_faces,
 )
@@ -49,9 +58,18 @@ from fontalloy_core.load import aggregate_families, resolve_slot_faces
 #: ``/fonts`` directory enumeration considers).
 FONT_SUFFIXES = {".ttf", ".otf", ".ttc", ".woff2"}
 
-#: Test seam: when set, the per-file sleep lasts this many seconds
-#: instead (deterministic slow scans for the responsiveness tests).
+#: Test seam: when set, the WORKER child's per-file sleep lasts this
+#: many seconds instead (deterministic slow scans for the
+#: responsiveness tests).
 SCAN_DELAY_ENV = "FONTALLOY_LOCAL_FONTS_DELAY"
+
+
+def yield_between_files() -> None:
+    """The per-file pause the WORKER child takes between two scanned
+    files (the delay seam's home: the parse runs in the child, so the
+    seam must live there too)."""
+    delay = os.environ.get(SCAN_DELAY_ENV)
+    time.sleep(float(delay) if delay else YIELD_SECONDS)
 
 #: The face byte endpoint every scanned face's ``href`` points at.
 FACE_ENDPOINT = "/local-fonts/face"
@@ -135,17 +153,16 @@ def face_etag(identity: tuple[int, int], face_index: int) -> str:
 class LocalFonts:
     """The on-demand local-font index behind ``POST /local-fonts``.
 
-    One instance per serve. The scan itself is bounded work per file
-    (identity + coverage through the family-docs machinery) and yields
-    the GIL between files, so the threaded server's every other
-    endpoint stays live while a big collection parses; results live in
-    an in-process cache keyed per resolved path, so re-scans of
-    unchanged files are snapshot reads.
+    One instance per serve. The scan runs in the quota'd worker child
+    (the P0 memory rule): uncached files travel to the child as ONE
+    batch, the child pays every parse under its OS-enforced memory
+    quota and hands back per-file verdicts, and results live in an
+    in-process cache keyed per resolved path, so re-scans of unchanged
+    files are snapshot reads.
     """
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._build_locks: dict[str, threading.Lock] = {}
         self._indexed: dict[str, _Indexed | str] = {}
 
     # -- the scan ----------------------------------------------------------
@@ -181,18 +198,123 @@ class LocalFonts:
 
         scans: list[FaceScan] = []
         skipped: list[dict[str, Any]] = []
+        owed: list[Path] = []
         for path in deduped:
-            indexed = self._file_index(path)
+            indexed = self._cached_index(path)
             if isinstance(indexed, str):  # a cached unreadable verdict
                 skipped.append({"path": str(path), "error": indexed})
                 continue
-            scans.extend(indexed.scans)
-            self._yield_between_files()
+            if indexed is None:
+                owed.append(path)  # paid by the ONE batch below
+            else:
+                scans.extend(indexed.scans)
+
+        if owed:
+            batch = self._scan_via_worker(owed)
+            for path in owed:
+                verdict = batch.get(str(path))
+                if verdict is None:
+                    skipped.append(
+                        {"path": str(path), "error": f"no scan verdict for {path}"}
+                    )
+                elif isinstance(verdict, str):
+                    skipped.append({"path": str(path), "error": verdict})
+                else:
+                    scans.extend(verdict)
 
         return {
             "families": self._family_documents(scans),
             "skipped": skipped,
         }
+
+    def _scan_via_worker(self, paths: list[Path]) -> dict[str, list[FaceScan] | str]:
+        """Scan uncached files in the quota'd worker (one batch); per
+        path its scans or its error verdict, cached on arrival."""
+        from fontalloy_core.quota import run_worker
+
+        handle = tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            suffix=".json",
+            prefix="fontalloy-local-scan-",
+            delete=False,
+        )
+        out = Path(handle.name)
+        handle.close()
+        job = {
+            "command": "scan-local-files",
+            "paths": [str(path) for path in paths],
+            "out": str(out),
+        }
+        try:
+            run_worker(job)
+            document = json.loads(out.read_text(encoding="utf-8"))
+        except FontAlloyError as exc:
+            document = {
+                "files": {str(path): {"error": str(exc), "scans": []} for path in paths}
+            }
+        except (OSError, ValueError):
+            document = {
+                "files": {
+                    str(path): {
+                        "error": f"file is not a valid font: {path} (the scan worker failed)",
+                        "scans": [],
+                    }
+                    for path in paths
+                }
+            }
+        finally:
+            out.unlink(missing_ok=True)
+        results: dict[str, list[FaceScan] | str] = {}
+        for path in paths:
+            entry = document.get("files", {}).get(str(path))
+            if not isinstance(entry, dict):
+                results[str(path)] = (
+                    f"file is not a valid font: {path} (no scan verdict)"
+                )
+            elif isinstance(entry.get("error"), str):
+                results[str(path)] = entry["error"]
+            else:
+                results[str(path)] = [
+                    face_scan_from_json(row) for row in entry.get("scans", [])
+                ]
+        self._record(paths, results)
+        return results
+
+    def _record(
+        self, paths: list[Path], results: dict[str, list[FaceScan] | str]
+    ) -> None:
+        """Cache the batch's verdicts whose file identity still holds."""
+        with self._lock:
+            for path in paths:
+                verdict = results.get(str(path))
+                if verdict is None:
+                    continue
+                identity = _stamp_of(path)
+                if identity is None:
+                    continue
+                if isinstance(verdict, str):
+                    self._indexed[str(path)] = verdict
+                else:
+                    self._indexed[str(path)] = _Indexed(
+                        identity=identity,
+                        scans=tuple(verdict),
+                        servable=frozenset(),
+                    )
+
+    def _cached_index(self, path: Path) -> _Indexed | str | None:
+        """One file's cached verdict, or None when a scan is owed
+        (missing cache, or the file's identity changed)."""
+        identity = _stamp_of(path)
+        if identity is None:
+            return f"file is no longer readable: {path}"
+        with self._lock:
+            cached = self._indexed.get(str(path))
+        if isinstance(cached, _Indexed) and cached.identity == identity:
+            return cached
+        if isinstance(cached, str) and _stamp_of(path) == identity:
+            return cached  # an unchanged unreadable file stays unreadable
+        return None
 
     # -- the byte source ---------------------------------------------------
 
@@ -239,33 +361,6 @@ class LocalFonts:
                     )
 
     # -- internals -----------------------------------------------------------
-
-    def _file_index(self, path: Path) -> _Indexed | str:
-        """One file's cached scan, built on first sight (locked per
-        path; the winner re-checks the cache under the lock)."""
-        with self._lock:
-            lock = self._build_locks.setdefault(str(path), threading.Lock())
-        with lock:
-            identity = _stamp_of(path)
-            if identity is None:
-                return f"file is no longer readable: {path}"
-            with self._lock:
-                cached = self._indexed.get(str(path))
-            if isinstance(cached, _Indexed) and cached.identity == identity:
-                return cached
-            if isinstance(cached, str) and _stamp_of(path) == identity:
-                return cached  # an unchanged unreadable file stays unreadable
-            try:
-                scans = tuple(scan_file_faces(path))
-            except Exception as exc:  # unreadable: reported, never fatal
-                verdict = f"file is not a valid font: {path} ({exc})"
-                with self._lock:
-                    self._indexed[str(path)] = verdict
-                return verdict
-            indexed = _Indexed(identity=identity, scans=scans, servable=frozenset())
-            with self._lock:
-                self._indexed[str(path)] = indexed
-            return indexed
 
     def _family_documents(self, scans: list[FaceScan]) -> list[dict[str, Any]]:
         """The picker-facing documents, one per name-table family.
@@ -368,12 +463,6 @@ class LocalFonts:
             # load-outcome 字形 figure, summed over the faces served.
             "glyphs": scan.glyphs,
         }
-
-    @staticmethod
-    def _yield_between_files() -> None:
-        """Hand the GIL to request handlers between two files."""
-        delay = os.environ.get(SCAN_DELAY_ENV)
-        time.sleep(float(delay) if delay else YIELD_SECONDS)
 
 
 def _stamp_of(path: Path) -> tuple[int, int] | None:
