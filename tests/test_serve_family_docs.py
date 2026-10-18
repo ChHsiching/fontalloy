@@ -660,6 +660,58 @@ class TestFaceBytes:
             assert client.get("/catalog/faces/FakeCode/release.json").status == 404
             assert client.get("/catalog/faces/../../etc/passwd").status == 404
 
+    def test_percent_encoded_family_and_file_segments_resolve(
+        self, fontalloy_exe, catalog_dir, work_dir, tmp_path
+    ):
+        """Spec #25 review P2-3: a family or file name with a space (the
+        browser always percent-encodes it in the path) must resolve — the
+        route matches the still-ENCODED path, so the captured groups need
+        unquoting before the release lookup, or such faces 404 silently."""
+        spaced = build_picker_site(
+            tmp_path / "spaced",
+            families=[
+                FamilySpec(
+                    family="Fake Spaced",
+                    cuts=[
+                        CutSpec(
+                            variant="",
+                            faces=[
+                                FaceSpec(
+                                    file="Fake Spaced-Regular.ttf",
+                                    family="Fake Spaced",
+                                )
+                            ],
+                        )
+                    ],
+                )
+            ],
+        )
+        spaced_manifest = write_site_manifest(
+            tmp_path / "spaced-manifest", spaced
+        )
+        with running_service(
+            fontalloy_exe,
+            picker_args(
+                spaced.release_origin, catalog_dir, work_dir, spaced_manifest
+            ),
+            cwd=tmp_path,
+        ) as (client, _):
+            assert wait_for_terminal(client)["state"] == "ready"
+            wait_for_scanned(client, "Fake Spaced")
+            # The percent-encoded forms a browser actually sends.
+            face_url = (
+                "/catalog/faces/Fake%20Spaced/Fake%20Spaced-Regular.ttf"
+            )
+            response = client.get(face_url)
+            assert response.status == 200
+            payload = spaced.faces["Fake Spaced"]["Fake Spaced-Regular.ttf"]
+            assert response.data == payload
+            assert response.headers.get("ETag") == f'"{_sha256_bytes(payload)}"'
+            # The preview route takes the same encoded family segment.
+            preview = client.get("/catalog/families/Fake%20Spaced/preview")
+            assert preview.status == 200
+            assert preview.headers.get("Content-Type") == "font/ttf"
+
 
 class TestPreviewSubset:
     """GET /catalog/families/{family}/preview — self-rendering picker rows."""

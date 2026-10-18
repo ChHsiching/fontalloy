@@ -769,6 +769,20 @@ def _face_document(face: Any) -> dict[str, Any]:
     }
 
 
+def _path_segment(raw: str) -> str:
+    """One decoded path-segment capture.
+
+    ``urlparse().path`` keeps the request's percent-encoding, and the
+    route regexes match that still-encoded text — a family or file name
+    with a space or any non-ASCII byte arrives as ``%20``/``%XX`` and
+    would miss the release lookup (a silent 404). Decoding happens AFTER
+    the segment boundary match, and the decoded strings only ever
+    compare against the release document's own names (never join a
+    path), so encoded traversal shapes gain nothing.
+    """
+    return urllib.parse.unquote(raw)
+
+
 class _BuildWorker(threading.Thread):
     """Runs the queued builds, one at a time, until stopped."""
 
@@ -1014,10 +1028,12 @@ class _ServeHandler(BaseHTTPRequestHandler):
             artifact = re.fullmatch(r"/builds/([^/]+)/(font|report)", path)
             if preview is not None:
                 self._require_methods(method, ("GET",))
-                self._catalog_preview(preview.group(1))
+                self._catalog_preview(_path_segment(preview.group(1)))
             elif face is not None:
                 self._require_methods(method, ("GET",))
-                self._catalog_face(face.group(1), face.group(2))
+                self._catalog_face(
+                    _path_segment(face.group(1)), _path_segment(face.group(2))
+                )
             elif detail is not None:
                 self._require_methods(method, ("GET",))
                 self._build_detail(detail.group(1))
