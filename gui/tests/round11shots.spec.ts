@@ -2,7 +2,6 @@ import { test, expect, type Locator } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { dirname } from "node:path";
 import {
   pointerClick,
   realCatalogFontPaths,
@@ -98,11 +97,18 @@ test.describe("round-11 char-popup reason visibility shots", () => {
     await page
       .locator("input[data-role='font-file']")
       .setInputFiles(base);
+    // The upload flow closes the picker on success (the async signal).
+    await expect(page.locator('[data-picker-popup="en"]')).toBeHidden({
+      timeout: 30_000,
+    });
     await waitForFontsReady(page);
     await pointerClick(page, page.locator('[data-role="picker-cjk"] .kit-hd'));
     await page
       .locator("input[data-role='font-file']")
       .setInputFiles(donor);
+    await expect(page.locator('[data-picker-popup="cjk"]')).toBeHidden({
+      timeout: 60_000,
+    });
     await waitForFontsReady(page);
     await expect(
       page.locator("[data-role='font-pair'] [data-pair='donor']"),
@@ -121,7 +127,9 @@ test.describe("round-11 char-popup reason visibility shots", () => {
     const popup = page.locator("[data-char-popup]");
     await expect(popup).toBeVisible();
     const baseBtn = popup.locator("[data-role='char-base']");
-    await expect(baseBtn).toBeVisible();
+    // The pair's first resolve is fontTools-cold inside the serve —
+    // anchor generously (the side buttons render from its runs).
+    await expect(baseBtn).toBeVisible({ timeout: 30_000 });
     await expect(baseBtn).toBeDisabled();
     const reason = popup.locator("[data-role='char-base-reason']");
     await expect(reason).toHaveText("英文字体不含此码位");

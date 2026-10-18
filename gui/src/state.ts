@@ -153,6 +153,15 @@ export interface LoadedFont {
    * these (round 20). Absent for the data-only sibling records.
    */
   placeholderIntervals?: CpIntervals;
+  /**
+   * The face's own slot as the scan reported it (ticket #36): the
+   * recipe's weight-matrix tier reads the pick's faces from these
+   * records when the serve's /fonts index cannot see the pick's files
+   * (an uploaded pick's bytes live in the serve's scratch, which no
+   * --font-dir enumerates).
+   */
+  weight?: number;
+  italic?: boolean;
 }
 
 /* ---------- catalog (ticket #30: the serve-owned catalog) ---------- */

@@ -22,8 +22,14 @@ let disposeServe: (() => Promise<void>) | null = null;
 
 /** Two catalog families are enough for the screenshot states. */
 const SHOT_FAMILY_SPECS = (fontA: string, fontB: string) => [
-  { family: "Alloy Sans", file: "AlloySans-Regular.ttf", fontPath: fontA, deflate: true },
-  { family: "Alloy Serif", file: "AlloySerif-Regular.ttf", fontPath: fontB },
+  {
+    family: "Alloy Sans",
+    faces: [{ file: "AlloySans-Regular.ttf", fontPath: fontA, deflate: true }],
+  },
+  {
+    family: "Alloy Serif",
+    faces: [{ file: "AlloySerif-Regular.ttf", fontPath: fontB }],
+  },
 ];
 
 /**
@@ -32,6 +38,12 @@ const SHOT_FAMILY_SPECS = (fontA: string, fontB: string) => [
  */
 test.describe("screenshots with open overlays", () => {
   const jsErrors: string[] = [];
+
+  /** This describe's serve over two generated families. */
+  let serveUrl = "";
+  let font1 = "";
+  let font2 = "";
+  let disposeServe: (() => Promise<void>) | null = null;
 
   test.beforeAll(async () => {
     const root = await mkdtemp(resolve(tmpdir(), "fontalloy-shots-"));
@@ -112,6 +124,28 @@ test.describe("screenshots with open overlays", () => {
 
 test.describe("screenshots of the catalog overlays", () => {
   const jsErrors: string[] = [];
+
+  /** This describe's own fixture pair (generated per describe). */
+  let font1 = "";
+  let font2 = "";
+  let scratchRoot = "";
+
+  test.beforeAll(async () => {
+    const root = await mkdtemp(resolve(tmpdir(), "fontalloy-shots2-"));
+    scratchRoot = root;
+    const [alpha, beta] = await Promise.all([
+      generateNamedFace(root, "Alloy Shot A", "AlloyShotA"),
+      generateNamedFace(root, "Alloy Shot B", "AlloyShotB"),
+    ]);
+    font1 = alpha;
+    font2 = beta;
+  });
+
+  test.afterAll(async () => {
+    if (scratchRoot !== "") {
+      await rm(scratchRoot, { recursive: true, force: true });
+    }
+  });
 
   test.beforeEach(async ({ page }) => {
     jsErrors.length = 0;

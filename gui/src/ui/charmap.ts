@@ -1001,6 +1001,12 @@ export function mountCharmap(root: HTMLElement): void {
       fonts,
       missing,
     );
+    // An OPEN popup refreshes with the re-render: its verdicts read
+    // the precedence document, which lands async — the popup must not
+    // keep the no-document facts a click-before-landing froze.
+    if (charPopup.isOpen() && selectedCodepoint !== null) {
+      charPopup.refresh(charFacts(selectedCodepoint));
+    }
   };
   store.subscribe(render);
   precedenceStore.subscribe(render);

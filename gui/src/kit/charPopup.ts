@@ -79,6 +79,14 @@ export interface CharPopupFacts {
 
 export interface CharPopup {
   openAt(cell: HTMLElement, facts: CharPopupFacts): void;
+  /**
+   * Re-render the OPEN popup's facts in place (same anchor): the
+   * verdicts ride the serve's resolve document, which lands ASYNC —
+   * a popup opened before the document settled must not keep showing
+   * the no-document placeholder facts forever.
+   */
+  refresh(facts: CharPopupFacts): void;
+  isOpen(): boolean;
   close(): void;
 }
 
@@ -205,6 +213,12 @@ export function mountCharPopup(): CharPopup {
     fitPopup(popup, cell.getBoundingClientRect());
   };
 
+  const refresh = (next: CharPopupFacts): void => {
+    if (facts === null) return; // nothing open to refresh
+    facts = next;
+    render(next);
+  };
+
   baseBtn.addEventListener("click", () => {
     facts?.onBase?.();
     close();
@@ -242,5 +256,5 @@ export function mountCharPopup(): CharPopup {
     }
   });
 
-  return { openAt, close };
+  return { openAt, refresh, isOpen: () => facts !== null, close };
 }

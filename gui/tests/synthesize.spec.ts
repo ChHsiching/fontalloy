@@ -45,6 +45,61 @@ const coverageCount = (intervals: number[][]): number =>
 const covers = (intervals: number[][], cp: number): boolean =>
   intervals.some(([start, end]) => cp >= start && cp <= end);
 
+/** The typed-path seam (localload.spec's shape): the config stand-in
+ * for the shell's `read_font_path`, resolving files and directories
+ * into font file PATHS — installed before the page opens. */
+async function installPathSeam(page: Page): Promise<void> {
+  const { readdir, stat } = await import("node:fs/promises");
+  await page.exposeFunction(
+    "__fontalloyTestReadFontPath",
+    async (path: string): Promise<{ isDirectory: boolean; paths: string[] }> => {
+      const info = await stat(path);
+      if (info.isFile()) return { isDirectory: false, paths: [path] };
+      if (info.isDirectory()) {
+        const names = (await readdir(path)).filter((name) =>
+          /\.(ttf|otf|ttc|woff2)$/i.test(name),
+        );
+        names.sort();
+        return { isDirectory: true, paths: names.map((n) => resolve(path, n)) };
+      }
+      throw new Error("no such file or directory");
+    },
+  );
+  await page.addInitScript(() => {
+    const config = window as unknown as {
+      __FONTALLOY_CONFIG__: Record<string, unknown>;
+    };
+    config.__FONTALLOY_CONFIG__ ??= {};
+    config.__FONTALLOY_CONFIG__.readFontPath = async (
+      path: string,
+    ): Promise<{ isDirectory: boolean; paths: string[] }> =>
+      (
+        window as unknown as {
+          __fontalloyTestReadFontPath: (
+            p: string,
+          ) => Promise<{ isDirectory: boolean; paths: string[] }>;
+        }
+      ).__fontalloyTestReadFontPath(path);
+  });
+}
+
+/** Commit one absolute path through the picker's typed-path field. */
+async function commitPath(
+  page: Page,
+  role: "en" | "cjk",
+  path: string,
+): Promise<void> {
+  await pointerClick(page, page.locator(`[data-role="picker-${role}"] .kit-hd`));
+  const input = page.locator(
+    `[data-picker-popup="${role}"] input[data-role='font-path']`,
+  );
+  await input.fill(path);
+  await input.press("Enter");
+  await expect(page.locator(`[data-picker-popup="${role}"]`)).toBeHidden({
+    timeout: 30_000,
+  });
+}
+
 test.describe("sidecar synthesize", () => {
   test.describe.configure({ mode: "serial" });
   const jsErrors: string[] = [];
@@ -94,7 +149,10 @@ test.describe("sidecar synthesize", () => {
       const config = window as unknown as {
         __FONTALLOY_CONFIG__: Record<string, unknown>;
       };
-      config.__FONTALLOY_CONFIG__ = {
+      // MERGE, never assign: a seam an earlier init script seeded
+      // (the typed-path reader) must survive this bootstrap.
+      config.__FONTALLOY_CONFIG__ ??= {};
+      Object.assign(config.__FONTALLOY_CONFIG__, {
         saveArtifact: async (
           name: string,
           bytes: Uint8Array,
@@ -105,7 +163,7 @@ test.describe("sidecar synthesize", () => {
           const path = await window.__fontalloyTestSave(name, b64);
           return path === null ? { saved: false, path: null } : { saved: true, path };
         },
-      };
+      });
     });
     await page.addInitScript((url: string) => {
       const config = window as unknown as {
@@ -929,10 +987,16 @@ test.describe("sidecar synthesize", () => {
         config.__FONTALLOY_CONFIG__.serveUrl = url;
       }, serveUrl);
       collectJsErrors(page, jsErrors);
+      // The family loads by TYPED PATH (the flow that pools the
+      // same-dir faces server-side): the typed-path seam stands in for
+      // the shell's `read_font_path`, exactly like localload.spec.
+      await installPathSeam(page);
       await page.goto("/");
       await waitForFontsReady(page);
 
-      await loadIntoPicker(page, "en", familyFaces[0]!); // AlloyFamily-Regular
+      // The DIRECTORY pools the family's three faces server-side (the
+      // round-13 semantics: the pick is the family, not the one file).
+      await commitPath(page, "en", fontsDir);
       await loadIntoPicker(page, "cjk", donor);
 
       // UX parity (unchanged): the pair tag and the picker card read
@@ -942,9 +1006,9 @@ test.describe("sidecar synthesize", () => {
         page.locator("[data-role='font-pair'] [data-pair='base']"),
       ).toHaveText("Alloy Family");
 
-      // The data-only discipline: exactly ONE FontFace of the family
-      // is on document.fonts (the representative; siblings would
-      // collide under the shared css family).
+      // The URL-face discipline (ticket #34): one FontFace per
+      // (weight, style) slot of the pooled family — three faces, one
+      // css family, no byte ever in the page.
       await page.waitForTimeout(600);
       const faceCount = await page.evaluate(
         () =>
@@ -952,7 +1016,7 @@ test.describe("sidecar synthesize", () => {
             (face) => face.family.replace(/["']/g, "") === "Alloy Family",
           ).length,
       );
-      expect(faceCount).toBe(1);
+      expect(faceCount).toBe(3);
 
       // The picker lists ONE local row for the family — the sweep's
       // data-only siblings never surface as ghost rows.
@@ -1169,13 +1233,15 @@ test.describe("sidecar synthesize", () => {
     const service = await startServeFixture();
     const saved: string[] = [];
     try {
+      await installPathSeam(page);
       await openWithService(page, service, saved);
       await loadIntoPicker(page, "en", service.baseFont);
-      await loadIntoPicker(page, "cjk", service.donorFont);
+      // The donor picks by TYPED PATH: an uploaded pick's bytes live in
+      // the serve's scratch (immune to source deletion), but a PATH
+      // pick names the real file — deleting it between pick and submit
+      // fails the pipeline at the loading stage, the inline-error path.
+      await commitPath(page, "cjk", service.donorFont);
 
-      // The donor vanished between selection and submission: resolution
-      // uses the index captured at connect time, so the build is really
-      // submitted and the pipeline itself fails at the loading stage.
       const { rm } = await import("node:fs/promises");
       await rm(service.donorFont);
 

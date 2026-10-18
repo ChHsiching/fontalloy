@@ -285,6 +285,13 @@ function docCuts(display: DisplayFamily): DocCut[] {
   return cuts;
 }
 
+/** The manifest mirror's families (static data; row bookkeeping). */
+const MANIFEST_FAMILIES = new Set(
+  (catalogManifest.families as Array<{ family: string }>).map(
+    (family) => family.family,
+  ),
+);
+
 /** The manifest's display rows (static data; computed once). */
 const ALL_DISPLAYS: readonly DisplayFamily[] = displayRows(FAMILY_GROUPS);
 
@@ -304,13 +311,6 @@ const TOKEN_HELP_ROWS: ReadonlyArray<readonly [string, string]> = [
 
 /** The one family the prototype never lists (icon-only symbols build). */
 const EXCLUDED_FAMILIES = new Set(["NerdFontsSymbolsOnly"]);
-
-/** The manifest mirror's families (static data; row bookkeeping). */
-const MANIFEST_FAMILIES = new Set(
-  (catalogManifest.families as Array<{ family: string }>).map(
-    (family) => family.family,
-  ),
-);
 
 const MANIFEST_META = new Map<string, FontMeta>(
   catalogManifest.families.map((family) => {

@@ -185,11 +185,16 @@ test.describe("local font loading (the upload fallback)", () => {
       page.locator("[data-role='font-pair'] [data-pair='donor']"),
     ).toHaveText(family2);
 
-    // The preview grid renders U+0041 in the base's own face (the winner).
-    const cellFont = await page
-      .locator(".charmap-grid .kit-cell[data-cp='U+0041']")
-      .evaluate((el) => getComputedStyle(el).fontFamily);
-    expect(cellFont).toContain(family1);
+    // The preview grid renders U+0041 in the base's own face (the
+    // winner) — the serve's resolve document lands async, so poll for
+    // the cell's stack rather than reading it once.
+    await expect
+      .poll(() =>
+        page
+          .locator(".charmap-grid .kit-cell[data-cp='U+0041']")
+          .evaluate((el) => getComputedStyle(el).fontFamily),
+      )
+      .toContain(family1);
 
     // Coverage of the selected pair is visible and non-zero (英文
     // winners — the counters read the scan's interval data, ticket #36).

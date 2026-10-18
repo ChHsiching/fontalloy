@@ -237,6 +237,8 @@ async function registerScannedFamilies(
             path: plan.path,
             intervals: plan.intervals,
             placeholderIntervals: plan.placeholderIntervals,
+            weight: plan.weight,
+            italic: plan.italic,
           };
           store.set({ fonts: [...store.get().fonts, repRecord] });
         } else {
@@ -247,6 +249,8 @@ async function registerScannedFamilies(
             origin: "local",
             path: plan.path,
             intervals: [],
+            weight: plan.weight,
+            italic: plan.italic,
           } satisfies LoadedFont);
         }
       }
