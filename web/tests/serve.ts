@@ -33,6 +33,12 @@ export const OTHER_ORIGIN = "http://allowlist.example";
 export interface ServeHandle {
   baseUrl: string;
   port: number;
+  /**
+   * The serve's work directory (uploads land under `uploads/`): the
+   * upload-era tests' seam for making a picked file vanish from where
+   * the BUILD reads it (the scratch copy, not the picked-from file).
+   */
+  workDir: string;
   /** Kill the service and await its exit (best effort, never throws). */
   stop(): Promise<void>;
 }
@@ -185,5 +191,5 @@ export async function startServe(opts: {
     }
   };
 
-  return { baseUrl: `http://127.0.0.1:${port}`, port, stop };
+  return { baseUrl: `http://127.0.0.1:${port}`, port, workDir, stop };
 }

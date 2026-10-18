@@ -1,5 +1,5 @@
 import { expect, test, type Page, type Request } from "@playwright/test";
-import { readFile, unlink } from "node:fs/promises";
+import { readdir, readFile, unlink } from "node:fs/promises";
 import path from "node:path";
 import {
   allowProbeRefusal,
@@ -32,6 +32,14 @@ import {
  *
  * The service is spawned exactly the way a consumer sees it: subprocess,
  * OS-assigned ephemeral port, the ready URL read from stdout.
+ *
+ * The local picks ride the upload flow (ticket #36): the browser file
+ * input has no absolute paths, so each picked File STREAMS to the
+ * serve's upload endpoint and the recipe names the serve's own
+ * content-addressed scratch copy (`uploads/<id>-<name>`) — never the
+ * fixture path the file came from. The submitted body is pinned
+ * against that contract: the scan documents' own face paths, plus a
+ * servable byte href for each pick.
  */
 
 test.setTimeout(120_000);
@@ -58,16 +66,67 @@ async function loadPicks(
   await loadLocalFont(page, "cjk", path.join(fontsDir, donor));
 }
 
-/** Absolute, forward-slash fixture paths (serve wants absolute paths). */
-function fixturePath(fontsDir: string, name: string): string {
-  return path.join(fontsDir, name).split(path.sep).join("/");
+/** One face the upload scan reported (the servable-href contract). */
+interface UploadedFace {
+  file: string;
+  path: string;
+  href: string;
 }
 
-/** The exact POST /builds body the workspace must submit for the pair. */
-function expectedBody(base: string, donors: string[]): Record<string, unknown> {
+/**
+ * Tap the upload scan documents while picks load: every
+ * `POST /local-fonts/upload` response is intercepted, forwarded to the
+ * serve unchanged (the page still gets the real answer), and its family
+ * document recorded — the faces carry the serve-side `path` (what a
+ * recipe names) and `href` (the byte source). A route-level tap is the
+ * reliable read: response bodies go missing from the page-event
+ * inspector cache once later navigation evicts them.
+ */
+async function tapUploadedFaces(
+  page: Page,
+  faces: UploadedFace[],
+): Promise<void> {
+  await page.route("**/local-fonts/upload**", async (route) => {
+    const response = await route.fetch();
+    const document = (await response.json()) as {
+      families: Array<{
+        cuts: Array<{
+          faces: Array<{ file: string; path: string; href: string }>;
+        }>;
+      }>;
+    };
+    for (const family of document.families) {
+      for (const cut of family.cuts) {
+        for (const face of cut.faces) {
+          faces.push({
+            file: face.file,
+            path: face.path,
+            href: face.href,
+          });
+        }
+      }
+    }
+    await route.fulfill({ response });
+  });
+}
+
+/**
+ * The uploaded face document a picked file resolved to. The upload
+ * endpoint's scratch copies are named `<upload id>-<original name>`,
+ * so the document's `file` is matched on that suffix (the original
+ * name is the part the picker picked; the id prefix is the serve's).
+ */
+function uploadedFace(faces: UploadedFace[], file: string): UploadedFace {
+  const face = faces.find(
+    (f) => f.file === file || f.file.endsWith(`-${file}`),
+  );
+  expect(face, `the upload scan carried ${file}`).toBeDefined();
+  return face!;
+}
+
+/** The exact POST /builds recipe skeleton for the pair (paths aside). */
+function expectedRecipe(): Record<string, unknown> {
   return {
-    base,
-    donors,
     // The boot-seeded zh_cn preset rule (文字范围 ships it; see
     // gui/src/state.ts) rides along in every fresh-state recipe.
     rules: [{ set: "zh_cn", fonts: ["base", "donor-0"] }],
@@ -103,8 +162,9 @@ test("detects the service, merges live with journal and report, downloads the fo
 
     // Base + the SLOW donor: the wide CJK block keeps the build in
     // flight for seconds, so polled progress is assertable, not racy.
-    const base = fixturePath(fontsDir, "Alpha.ttf");
-    const slow = fixturePath(fontsDir, "Slow.ttf");
+    // The upload-flow scan documents land while the picks load.
+    const uploadedFaces: UploadedFace[] = [];
+    await tapUploadedFaces(page, uploadedFaces);
     await loadPicks(page, fontsDir, "Alpha.ttf", "Slow.ttf");
     await expect(synthesize).toHaveAttribute("aria-disabled", "false");
 
@@ -114,18 +174,41 @@ test("detects the service, merges live with journal and report, downloads the fo
     const downloadPromise = page.waitForEvent("download");
     await pointerClick(page, synthesize);
 
-    // The submitted body IS the serve recipe contract, pinned verbatim
-    // (paths exactly as the service's own /fonts index reported them —
-    // native separators on Windows, normalized here for the pin).
+    // The submitted body IS the serve recipe contract, pinned against
+    // the upload flow's own truth: the picks name the SERVE's
+    // content-addressed scratch copies (uploads/<id>-<name>, exactly
+    // the scan documents' face paths) — never the fixture paths the
+    // files were picked from.
     const body = (await bodyPromise) as {
       base: string;
       donors: string[];
+      rules: unknown;
+      output: unknown;
     };
-    expect({
-      ...body,
-      base: body.base.replaceAll("\\", "/"),
-      donors: body.donors.map((d) => d.replaceAll("\\", "/")),
-    }).toEqual(expectedBody(base, [slow]));
+    await expect
+      .poll(() => uploadedFaces.length)
+      .toBeGreaterThanOrEqual(2);
+    const alphaFace = uploadedFace(uploadedFaces, "Alpha.ttf");
+    const slowFace = uploadedFace(uploadedFaces, "Slow.ttf");
+    expect(body.base).toBe(alphaFace.path);
+    expect(body.donors).toEqual([slowFace.path]);
+    expect({ rules: body.rules, output: body.output }).toEqual(
+      expectedRecipe(),
+    );
+
+    // The servable-href half of the contract: each scanned face's byte
+    // URL answers with real font bytes (sfnt magic), so the pick the
+    // recipe names is the pick the serve can still stream.
+    for (const face of [alphaFace, slowFace]) {
+      const res = await fetch(`${serve.baseUrl}${face.href}`);
+      expect(res.status, `GET ${face.href}`).toBe(200);
+      const bytes = Buffer.from(await res.arrayBuffer());
+      expect(bytes.length).toBeGreaterThan(0);
+      expect(
+        bytes.subarray(0, 4).equals(Buffer.from([0x00, 0x01, 0x00, 0x00])),
+        `${face.file} serves sfnt bytes`,
+      ).toBe(true);
+    }
 
     // The build panel (the workspace's live-merge surface): the head
     // status term carries the live state (round 10: the vertical
@@ -227,15 +310,27 @@ test("a failing build surfaces its error inline", async ({ page }) => {
   try {
     await loadApp(page, serve.baseUrl);
 
-    // Both picks load from real bytes; then the donor FILE vanishes
-    // from the service's font directory. The connect-time /fonts index
-    // still names it, so the submission goes through and the BUILD
-    // itself fails — the row surfaces the service's own error inline.
+    // Both picks load through the real upload flow. Wait for the arm
+    // FIRST — the pick registers asynchronously (upload → scan →
+    // select) and the armed button is its completion signal; only then
+    // may the donor's SERVE-SIDE scratch copy vanish (the upload-era
+    // truth: the pick names the serve's uploads/<id>-Slow.ttf copy, so
+    // the picked-from fixture file is no longer what the build reads).
+    // The landed scan document still names it, so the submission goes
+    // through and the BUILD itself fails — the row surfaces the
+    // service's own error inline, naming the vanished file.
     await loadPicks(page, fontsDir, "Alpha.ttf", "Slow.ttf");
-    await unlink(path.join(fontsDir, "Slow.ttf"));
-
     const synthesize = synthesizeButton(page);
     await expect(synthesize).toHaveAttribute("aria-disabled", "false");
+    const uploadsDir = path.join(serve.workDir, "uploads");
+    const scratchDonors = (await readdir(uploadsDir)).filter((name) =>
+      name.endsWith("-Slow.ttf"),
+    );
+    expect(scratchDonors.length).toBeGreaterThanOrEqual(1);
+    for (const name of scratchDonors) {
+      await unlink(path.join(uploadsDir, name));
+    }
+
     await pointerClick(page, synthesize);
 
     const panel = page.locator('[data-testid="build-panel"]');
