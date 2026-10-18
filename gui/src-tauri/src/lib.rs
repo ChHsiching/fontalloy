@@ -129,13 +129,16 @@ async fn serve_url(state: State<'_, ShellState>) -> Result<Option<String>, Strin
 
 /// Native multi-select font dialog; `null` when it could not open.
 /// Returns absolute PATHS — the serve's local-font scan reads the
-/// files; no bytes ride IPC (ticket #34).
+/// files; no bytes ride IPC (ticket #34). The filter is the core's
+/// scan set verbatim (ttf/otf/ttc/woff2 — the local_fonts suffixes):
+/// woff was never loadable by the pipeline, and a picked file the scan
+/// rejects is a dead pick (spec #25 review P2-7).
 #[tauri::command]
 async fn pick_font_files(app: AppHandle) -> Result<Option<Vec<String>>, String> {
     let picked = app
         .dialog()
         .file()
-        .add_filter("字体文件", &["ttf", "otf", "ttc", "woff2", "woff"])
+        .add_filter("字体文件", &["ttf", "otf", "ttc", "woff2"])
         .blocking_pick_files();
     match picked {
         None => Ok(None),
@@ -155,8 +158,9 @@ async fn pick_font_files(app: AppHandle) -> Result<Option<Vec<String>>, String> 
 }
 
 /// The font file extensions the typed-path sweep considers — the same
-/// set the pick dialog filters on.
-const FONT_EXTENSIONS: [&str; 5] = ["ttf", "otf", "ttc", "woff2", "woff"];
+/// set the pick dialog filters on, which is the core's scan set
+/// (local_fonts' suffixes: woff2 yes, woff never).
+const FONT_EXTENSIONS: [&str; 4] = ["ttf", "otf", "ttc", "woff2"];
 
 /// What a typed/pasted path resolved to (round 20, owner item 3): the
 /// font files it names — a FILE is itself; a DIRECTORY is the font
