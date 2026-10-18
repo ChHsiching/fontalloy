@@ -487,6 +487,12 @@ class TestFamiliesDocument:
             assert regular["coverage"]["placeholders"] == 0
             assert regular["coverage"]["latin"] is True
             assert regular["coverage"]["cjk"] is False
+            # Ticket #36: the counters' data — run-length intervals of
+            # the honest coverage (the fixture's Latin run is ONE run).
+            assert regular["coverage"]["intervals"] == [
+                [min(_LATIN), max(_LATIN)]
+            ]
+            assert regular["coverage"]["placeholder_intervals"] == []
             # The face sha is the release document's pinned checksum.
             assert regular["sha256"] == _sha256_bytes(
                 site.faces["FakeCode"]["FakeCodeNerdFont-Regular.ttf"]

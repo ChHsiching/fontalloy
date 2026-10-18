@@ -119,6 +119,7 @@ class ServeClient:
         path: str,
         *,
         body: Any = None,
+        raw: bytes | None = None,
         headers: dict[str, str] | None = None,
         timeout: float = 30.0,
     ) -> Response:
@@ -127,6 +128,8 @@ class ServeClient:
         if body is not None:
             data = json.dumps(body).encode("utf-8")
             request_headers.setdefault("Content-Type", "application/json")
+        elif raw is not None:
+            data = raw  # the upload contract: exact bytes, no JSON layer
         if self.origin is not None:
             request_headers.setdefault("Origin", self.origin)
         request = urllib.request.Request(
@@ -145,6 +148,18 @@ class ServeClient:
 
     def post(self, path: str, body: Any, **kwargs: Any) -> Response:
         return self.request("POST", path, body=body, **kwargs)
+
+    def post_raw(
+        self,
+        path: str,
+        payload: bytes,
+        headers: dict[str, str] | None = None,
+        **kwargs: Any,
+    ) -> Response:
+        """POST raw bytes (the file-upload contract — never JSON)."""
+        return self.request(
+            "POST", path, raw=payload, headers=headers, **kwargs
+        )
 
     def preflight(self, path: str, origin: str) -> Response:
         return self.request(

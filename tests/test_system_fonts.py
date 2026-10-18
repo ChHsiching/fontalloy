@@ -223,11 +223,22 @@ def test_families_group_in_the_enumeration_document(tmp_path: Path):
             "AlloySoloEN-Regular.ttf"
         ]
 
-        # Every face carries its byte-source href.
+        # Every face carries its byte-source href (and, ticket #36,
+        # its coverage as run-length intervals — the counters' data).
         for family in doc["families"]:
             for face in family["faces"]:
                 assert face["href"].startswith("/system-fonts/file?path=")
                 assert "index=" in face["href"]
+        assert families["AlloyGroup"]["faces"][0]["intervals"] == [
+            [0x4E2D, 0x4E2D]
+        ]
+        assert families["AlloyGroup"]["faces"][1]["intervals"] == [
+            [0x41, 0x41]
+        ]
+        assert families["AlloySoloEN"]["faces"][0]["intervals"] == [
+            [0x41, 0x41],
+            [0x61, 0x61],
+        ]
     finally:
         server.shutdown()
         if thread is not None:
