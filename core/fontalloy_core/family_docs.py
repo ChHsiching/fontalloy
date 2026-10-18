@@ -29,20 +29,30 @@ Face metadata comes from the synced faces on disk — identity through
 :func:`fontalloy_core.load.scan_families`, coverage and the placeholder
 flag through :func:`fontalloy_core.placeholder.face_coverage` (honest
 codepoints only; placeholder mappings are neither coverage nor the
-latin/cjk markers). Scanning a family means opening its faces, so it
-never rides a whole-catalog request: a daemon thread builds documents
-after the catalog sync lands each family (yielding between families,
-the round-25 starvation lesson), an in-process cache keyed by the
-release document's own checksums makes every later request a snapshot
-read, and a single family may build lazily on demand.
+latin/cjk markers).
+
+The P0 memory rule (spec #25 aftermath, the 8 GB incident): the SERVE
+NEVER PARSES. Every scan — the document computation itself, and the
+preview derivation — runs in the quota'd worker child
+(:mod:`fontalloy_core.quota`), ONCE per family, as the sync lands it.
+The child writes the family's document as a small JSON file under
+``<catalog dir>/docs/`` keyed by the release tag plus the family's
+face checksums; the serve parent only ever READS that cache (JSON,
+never font bytes), and a request handler never triggers a parse at
+all — not even lazily. A family whose computation breaches the
+worker's memory quota gets a clear per-family error in the served
+document and stays uncached until the serve restarts or the release
+changes; the machine is never dragged.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import threading
 import time
+import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -55,6 +65,7 @@ from fontalloy_core.errors import FontAlloyError
 from fontalloy_core.load import FaceInfo, scan_families
 from fontalloy_core.placeholder import face_coverage
 from fontalloy_core.preview import ensure_preview, preview_cache_dir
+from fontalloy_core.quota import classify, run_worker
 from fontalloy_core.release import METADATA_NAME
 from fontalloy_core.systemfonts import _CJK_MARKERS, _LATIN_MARKERS
 
@@ -411,14 +422,312 @@ def _yield_between_families() -> None:
     time.sleep(float(delay) if delay else YIELD_SECONDS)
 
 
+
+
+# --- the document computation (the worker child's side) -----------------------
+
+#: The on-disk document cache's schema version — a bump invalidates
+#: every cached document wholesale.
+DOCS_CACHE_SCHEMA = 1
+
+#: The directory under the catalog cache directory where per-family
+#: documents land (one small JSON per family, written by the worker).
+DOCS_DIR_NAME = "docs"
+
+
+def docs_cache_path(docs_dir: Path, family: str) -> Path:
+    """One family's document-cache file (the family name, quoted into
+    a bare filename — family names carry spaces and non-ASCII)."""
+    return docs_dir / (urllib.parse.quote(family, safe="") + ".json")
+
+
+def docs_key(tag: str, entry: Any) -> dict[str, Any]:
+    """The release-side identity a cached document is keyed by: the
+    release tag plus the family's archive and face checksums. Bytes
+    pinned by a different tag or checksum are a different document."""
+    return {
+        "tag": tag,
+        "zip": entry.zip,
+        "sha256": entry.sha256,
+        "faces": [[listed.file, listed.sha256] for listed in entry.files],
+    }
+
+
+def stub_document(
+    family: str,
+    entries: list[CatalogEntry],
+    release_zip: str,
+    release_sha: str | None,
+    files: list[str],
+) -> dict[str, Any]:
+    """The unscanned shape: full cut structure, no face metadata."""
+    cuts: list[dict[str, Any]] = []
+    if entries:
+        for cut in variant_cuts(entries):
+            cuts.append(
+                {
+                    "variant": cut.entry.variant,
+                    "def": cut.default,
+                    "label": data_cut_label(cut.entry.file, cut.entry.variant),
+                    "file": cut.entry.file,
+                    "version": cut.entry.version,
+                    "sha256": cut.entry.sha256,
+                    "axes": dict(cut.entry.axes),
+                    "upstream_url": cut.entry.upstream_url,
+                    "display_name": None,
+                    "representative": pick_variant_representative(
+                        files, cut.entry.variant, family
+                    ),
+                    "faces": [],
+                }
+            )
+    else:
+        cuts.append(
+            {
+                "variant": "",
+                "def": True,
+                "label": data_cut_label(release_zip, ""),
+                "file": release_zip,
+                "version": None,
+                "sha256": release_sha,
+                "axes": {},
+                "upstream_url": None,
+                "display_name": None,
+                "representative": pick_variant_representative(files, "", family),
+                "faces": [],
+            }
+        )
+    return {
+        "family": family,
+        "readiness": "pending",
+        "error": None,
+        "scanned": False,
+        "display_name": None,
+        "display_names": [],
+        "preview": None,
+        "cuts": cuts,
+    }
+
+
+def _manifest_entries(
+    manifest_path: str | Path | None, family: str
+) -> list[CatalogEntry]:
+    """The manifest's entries of one family ([] when there is no
+    manifest — a release-only serve renders one default cut)."""
+    if manifest_path is None:
+        return []
+    from fontalloy_core.catalog import load_manifest
+
+    return [
+        entry
+        for entry in load_manifest(manifest_path).entries
+        if entry.family == family
+    ]
+
+
+def build_family_document(
+    *,
+    spec: dict[str, Any],
+    tag: str,
+    manifest_path: str | None,
+    preview_dir: str | None,
+) -> dict[str, Any]:
+    """Compute one release family's picker document — the WORKER side.
+
+    Everything fontTools-related in a family document happens here, in
+    the quota'd child: the face scans (identity, coverage intervals,
+    placeholder flags), the cut assembly, and the preview subset. The
+    result is the family's document-cache body (schema, key, document,
+    preview); the serve parent serves it without ever parsing a face.
+
+    ``MemoryError`` — the OS refusing an allocation past the worker's
+    quota — propagates: the worker converts it into the family's error
+    entry, and no partial document is ever cached. Unreadable faces
+    keep the old honest behavior: skipped and stated in the document.
+    """
+    family = spec["family"]
+    faces_dir = Path(spec["faces_dir"])
+    files = [name for name, _sha in spec["files"]]
+    shas = {name: sha for name, sha in spec["files"]}
+    entries = _manifest_entries(manifest_path, family)
+
+    scans: dict[str, list[FaceScan]] = {}
+    skipped: list[str] = []
+    for name in files:
+        try:
+            faces = scan_file_faces(faces_dir / name)
+        except MemoryError:
+            raise  # the quota breach is the family's error, never a skip
+        except Exception:  # unreadable face: skipped, stated, never fatal
+            skipped.append(name)
+            continue
+        if faces:
+            scans[name] = faces
+        else:
+            skipped.append(name)
+
+    document = stub_document(family, entries, spec["zip"], spec["sha256"], files)
+    document["scanned"] = True
+    document["skipped"] = skipped
+    cut_names: list[str] = []
+    for cut in document["cuts"]:
+        variant = cut["variant"]
+        for file in variant_face_files(files, variant, family):
+            for scan in scans.get(file, ()):
+                cut["faces"].append(_face_entry(family, file, shas[file], scan))
+        representative = cut["representative"]
+        if representative is not None:
+            faces = scans.get(representative, [])
+            if faces and faces[0].info.family:
+                cut["display_name"] = faces[0].info.family
+                cut_names.append(faces[0].info.family)
+    names = sorted(set(cut_names))
+    document["display_names"] = names
+    default_cut = next((c for c in document["cuts"] if c["def"]), None)
+    document["display_name"] = default_cut["display_name"] if default_cut else None
+
+    preview: dict[str, Any] | None = None
+    if preview_dir is not None:
+        preview = _derive_preview(
+            document, family, faces_dir, shas, Path(preview_dir)
+        )
+    return {
+        "schema": DOCS_CACHE_SCHEMA,
+        "key": spec["key"],
+        "document": document,
+        "preview": preview,
+    }
+
+
+def _face_entry(family: str, file: str, sha256: str, scan: FaceScan) -> dict[str, Any]:
+    """One face's document entry (the served shape, verbatim)."""
+    return {
+        "file": file,
+        "face_index": scan.info.face_index,
+        "sha256": sha256,
+        "href": f"/catalog/faces/{family}/{file}",
+        "family": scan.info.family,
+        "subfamily": scan.info.subfamily,
+        "weight": scan.info.weight,
+        "italic": scan.info.italic,
+        "variable": scan.info.variable,
+        "coverage": {
+            "codepoints": scan.codepoints,
+            "placeholders": scan.placeholders,
+            "latin": scan.latin,
+            "cjk": scan.cjk,
+            "intervals": [[start, end] for start, end in scan.intervals],
+            "placeholder_intervals": [
+                [start, end] for start, end in scan.placeholder_intervals
+            ],
+        },
+        "placeholder": scan.placeholder,
+    }
+
+
+def _derive_preview(
+    document: dict[str, Any],
+    family: str,
+    faces_dir: Path,
+    shas: dict[str, str],
+    preview_dir: Path,
+) -> dict[str, Any] | None:
+    """Derive the family's preview subset after a scan (best-effort:
+    a subsetting failure leaves the document intact, preview-less)."""
+    names = document["display_names"]
+    if not names:
+        return None
+    representative = next(
+        (
+            cut["representative"]
+            for cut in document["cuts"]
+            if cut["def"] and cut["representative"]
+        ),
+        None,
+    )
+    if representative is None:
+        representative = next(
+            (
+                cut["representative"]
+                for cut in document["cuts"]
+                if cut["representative"]
+            ),
+            None,
+        )
+    if representative is None or representative not in shas:
+        return None
+    source = faces_dir / representative
+    if not source.is_file():
+        return None
+    try:
+        path, etag = ensure_preview(source, shas[representative], names, preview_dir)
+    except Exception:
+        return None  # a failed derivation costs a missing preview, never an error
+    document["preview"] = f"/catalog/families/{family}/preview"
+    return {"path": str(path), "etag": etag}
+
+
+# --- FaceScan JSON (the local-font worker bridge) ------------------------------
+
+
+def face_scan_to_json(scan: FaceScan) -> dict[str, Any]:
+    """One face's scan as JSON (the local-font worker command's wire
+    shape — the serve parent reconstructs :class:`FaceScan` objects
+    from these rows without ever opening the file)."""
+    return {
+        "path": str(scan.info.path),
+        "face_index": scan.info.face_index,
+        "family": scan.info.family,
+        "subfamily": scan.info.subfamily,
+        "weight": scan.info.weight,
+        "italic": scan.info.italic,
+        "variable": scan.info.variable,
+        "style_consistent": scan.info.style_consistent,
+        "codepoints": scan.codepoints,
+        "placeholders": scan.placeholders,
+        "latin": scan.latin,
+        "cjk": scan.cjk,
+        "glyphs": scan.glyphs,
+        "intervals": [[start, end] for start, end in scan.intervals],
+        "placeholder_intervals": [
+            [start, end] for start, end in scan.placeholder_intervals
+        ],
+    }
+
+
+def face_scan_from_json(row: dict[str, Any]) -> FaceScan:
+    """The reconstruction side of :func:`face_scan_to_json`."""
+    return FaceScan(
+        info=FaceInfo(
+            path=Path(row["path"]),
+            face_index=int(row["face_index"]),
+            family=row["family"],
+            subfamily=row["subfamily"],
+            weight=int(row["weight"]),
+            italic=bool(row["italic"]),
+            variable=bool(row["variable"]),
+            style_consistent=bool(row["style_consistent"]),
+        ),
+        codepoints=int(row["codepoints"]),
+        placeholders=int(row["placeholders"]),
+        latin=bool(row["latin"]),
+        cjk=bool(row["cjk"]),
+        glyphs=int(row["glyphs"]),
+        intervals=tuple((int(a), int(b)) for a, b in row["intervals"]),
+        placeholder_intervals=tuple(
+            (int(a), int(b)) for a, b in row["placeholder_intervals"]
+        ),
+    )
+
+
 # --- the family-document service ----------------------------------------------
 
 
 @dataclass
 class _Built:
-    """One family's scanned document plus its cache key and preview."""
+    """One family's cached document plus its cache key and preview."""
 
-    key: tuple  # the release-side identity the scan was built against
+    key: dict[str, Any]  # the release-side identity (JSON-shaped)
     document: dict[str, Any]
     preview_path: Path | None = None
     preview_etag: str | None = None
@@ -431,9 +740,12 @@ class FamilyDocuments:
     serve reports an empty list, a manifest-only serve renders the cut
     structure with :data:`UNSYNCED` readiness and nothing to scan — and
     started once at serve startup when a catalog directory exists. The
-    builder thread polls the sync's status (never the other way around),
-    scans each family the sync has landed, and leaves the results in an
-    in-process cache; :meth:`documents` is always a snapshot read.
+    builder thread polls the sync's status (never the other way
+    around), and for every family the sync has landed it ensures the
+    family's document cache: a hit is a JSON read, a miss is ONE
+    quota'd worker child computing the batch's documents and writing
+    them to disk. :meth:`documents` is always a snapshot read; the
+    serve process never parses a font face.
     """
 
     def __init__(self, catalog: Catalog | None, sync: Any, catalog_dir: Path | None):
@@ -441,8 +753,12 @@ class FamilyDocuments:
         self._sync = sync
         self._dir = catalog_dir
         self._lock = threading.Lock()
-        self._build_locks: dict[str, threading.Lock] = {}
         self._built: dict[str, _Built] = {}
+        #: Sticky per-family computation errors (quota breaches, worker
+        #: deaths): surfaced in the served documents, never retried
+        #: inside this serve lifetime — an endless spawn loop over a
+        #: deterministic breach is its own incident.
+        self._errors: dict[str, str] = {}
         self._release: CatalogRelease | None = None
         self._release_stamp: tuple[int, int] | None = None
         self._thread: threading.Thread | None = None
@@ -477,46 +793,159 @@ class FamilyDocuments:
     def _pass(self) -> bool:
         """One sweep over the release's synced-but-unbuilt families.
 
-        Returns True when any family was built (so the loop re-sweeps
-        immediately while families remain); a family whose faces are
-        unreadable is skipped and retried next pass — the sync heals
-        the disk, the pass after it rebuilds the document.
+        Returns True when any family was settled (built, errored, or
+        cache-loaded — so the loop re-sweeps immediately while families
+        remain). Families with sticky errors are skipped; a family
+        whose cached preview artifact vanished is recomputed (the
+        child regenerates it), and a computation that cannot derive a
+        preview settles preview-less instead of looping.
         """
         release = self._release_document()
         if release is None:
             return False
         progress = self._progress()
-        advanced = False
+        pending: list[tuple[Any, dict[str, Any]]] = []
+        settled = False
         for family in release.families:
             state = progress.get(family.family)
             if state is None or state.get("state") != "done":
                 continue
             with self._lock:
+                if family.family in self._errors:
+                    continue
                 built = self._built.get(family.family)
-            if built is not None and self._current_key(family.family, release) == built.key:
+            key = self._current_key(family.family, release)
+            if key is None:
                 continue
-            self._build_family(family.family)
-            advanced = True
-            if self._stop.is_set():
-                return advanced
+            if built is not None and built.key == key and self._preview_intact(built):
+                continue
+            if self._load_cached(family.family, key):
+                settled = True
+                continue
+            pending.append((family, key))
+        if pending:
+            self._compute(release, pending)
+            settled = True
+        if settled:
             _yield_between_families()
-        return advanced
+        return settled
+
+    @staticmethod
+    def _preview_intact(built: _Built) -> bool:
+        """Whether a built entry's preview claim still holds on disk."""
+        return built.preview_path is None or built.preview_path.is_file()
+
+    def _load_cached(self, family: str, key: dict[str, Any]) -> bool:
+        """Load one family's disk-cached document, or record its cached
+        error, when the cache answers for exactly this key. Returns
+        True when the family is settled either way."""
+        if self._dir is None:
+            return False
+        try:
+            body = json.loads(
+                docs_cache_path(self._dir / DOCS_DIR_NAME, family).read_text(
+                    encoding="utf-8"
+                )
+            )
+        except (OSError, ValueError):
+            return False
+        if not isinstance(body, dict) or body.get("schema") != DOCS_CACHE_SCHEMA:
+            return False
+        if body.get("key") != key:
+            return False
+        error = body.get("error")
+        if isinstance(error, str):
+            with self._lock:
+                self._errors[family] = error
+            return True
+        document = body.get("document")
+        if not isinstance(document, dict):
+            return False
+        preview = body.get("preview")
+        built = _Built(
+            key=key,
+            document=document,
+            preview_path=Path(preview["path"]) if preview else None,
+            preview_etag=preview.get("etag") if preview else None,
+        )
+        with self._lock:
+            self._built[family] = built
+            self._errors.pop(family, None)
+        return True
+
+    def _compute(
+        self, release: CatalogRelease, pending: list[tuple[Any, dict[str, Any]]]
+    ) -> None:
+        """Compute the pending families' documents in ONE quota'd
+        worker child, then settle every family from what the child
+        wrote (documents, or per-family errors)."""
+        assert self._dir is not None
+        job = {
+            "command": "family-documents",
+            "tag": release.tag,
+            "manifest": (
+                str(self._catalog.manifest_path)
+                if self._catalog is not None
+                else None
+            ),
+            "preview_dir": str(preview_cache_dir(self._dir)),
+            "docs_dir": str(self._dir / DOCS_DIR_NAME),
+            "families": [
+                {
+                    "family": family.family,
+                    "zip": family.zip,
+                    "sha256": family.sha256,
+                    "faces_dir": str(self._dir / Path(family.zip).stem),
+                    "files": [[listed.file, listed.sha256] for listed in family.files],
+                    "key": key,
+                }
+                for family, key in pending
+            ],
+        }
+        try:
+            outcome = run_worker(job)
+        except FontAlloyError as exc:
+            outcome = None
+            spawn_error = str(exc)
+        missing = [
+            (family, key)
+            for family, key in pending
+            if not self._load_cached(family.family, key)
+        ]
+        if not missing:
+            return
+        # The child died before finishing the batch. Attribute the
+        # failure to the first unsettled family (the one in flight);
+        # the rest retry on the next pass, the offender sticks.
+        first = missing[0][0]
+        error = spawn_error if outcome is None else (
+            str(classify(outcome, f"family {first.family!r} document"))
+            or (
+                f"family {first.family!r}: the worker produced no "
+                "document cache entry"
+            )
+        )
+        with self._lock:
+            self._errors[first.family] = error
 
     # -- the polled surface ----------------------------------------------------
 
     def documents(self) -> dict[str, Any]:
         """The whole-catalog snapshot ``GET /catalog/families`` serves.
 
-        Never scans, never blocks on the builder: families still being
-        built render their cut structure with empty face lists, and
-        ``scanning`` says a build is in flight (the system-fonts
-        ready-flag pattern — the frontend polls).
+        Never scans, never blocks on the builder, never parses: the
+        documents come from the in-process cache the builder filled
+        from the on-disk JSON; families still being computed render
+        their cut structure with empty face lists, and ``scanning``
+        says a computation is in flight (the system-fonts ready-flag
+        pattern — the frontend polls).
         """
         release = self._release_document()
         progress = self._progress()
         sync_configured = self._sync.status_document()["configured"]
         with self._lock:
             built = dict(self._built)
+            errors = dict(self._errors)
         families: list[dict[str, Any]] = []
         scanning = False
         for family in self._family_order(release):
@@ -533,10 +962,14 @@ class FamilyDocuments:
             entry = built.get(family)
             if entry is not None and self._current_key(family, release) == entry.key:
                 document = entry.document
-            elif state is not None and state.get("state") == "done":
+            elif (
+                state is not None
+                and state.get("state") == "done"
+                and family not in errors
+            ):
                 scanning = True
             document["readiness"] = readiness
-            document["error"] = error
+            document["error"] = errors.get(family) or error
             families.append(document)
         return {"scanning": scanning, "families": families}
 
@@ -565,12 +998,15 @@ class FamilyDocuments:
         return None
 
     def preview_source(self, family: str) -> tuple[Path, str] | None:
-        """The family's preview subset (path + ETag), or None when the
-        family has no scanned faces to derive a name from.
+        """The family's preview subset (path + ETag), or None.
 
-        Builds that one family on demand when the background builder has
-        not reached it yet — exactly one family, never the catalog. A
-        cached artifact that vanished is regenerated the same way.
+        READ-ONLY by the P0 memory rule: the preview was derived in
+        the quota'd child when the family's document was computed; a
+        request may load the cached JSON, never trigger a parse. A
+        family the builder has not settled yet, or whose cached
+        artifact vanished (the entry is dropped and regenerated by the
+        next builder pass), answers None — the endpoint's usual miss,
+        never a lazy computation.
         """
         release = self._release_document()
         if release is None or not self._in_release(release, family):
@@ -578,19 +1014,24 @@ class FamilyDocuments:
         state = self._progress().get(family)
         if state is None or state.get("state") != "done":
             return None
-        built = self._build_family(family)  # cache hit, or one lazy build
+        key = self._current_key(family, release)
+        if key is None:
+            return None
+        with self._lock:
+            built = self._built.get(family)
+        if built is None or built.key != key:
+            self._load_cached(family, key)  # a JSON read, never a parse
+            with self._lock:
+                built = self._built.get(family)
         if built is None or built.preview_path is None:
             return None
         if not built.preview_path.is_file():
-            # The cached artifact went away (a wiped catalog directory):
-            # rebuild regenerates it from the scanned names.
-            built = self._build_family(family, force_preview=True)
-            if built is None or built.preview_path is None:
-                return None
+            with self._lock:
+                self._built.pop(family, None)  # the next pass regenerates
+            return None
         return built.preview_path, built.preview_etag or ""
 
     # -- internals ----------------------------------------------------------------
-
 
     def _progress(self) -> dict[str, dict[str, Any]]:
         """The sync's per-family progress, snapshotted."""
@@ -627,7 +1068,9 @@ class FamilyDocuments:
             self._release, self._release_stamp = release, stamp
             return release
 
-    def _release_entry(self, release: CatalogRelease | None, family: str) -> Any | None:
+    def _release_entry(
+        self, release: CatalogRelease | None, family: str
+    ) -> Any | None:
         if release is None:
             return None
         for entry in release.families:
@@ -652,16 +1095,15 @@ class FamilyDocuments:
             )
         return families
 
-    def _current_key(self, family: str, release: CatalogRelease | None) -> tuple | None:
-        """The release-side identity a scan of ``family`` must match."""
+    def _current_key(
+        self, family: str, release: CatalogRelease | None
+    ) -> dict[str, Any] | None:
+        """The release-side identity a document of ``family`` must
+        match (JSON-shaped, comparable against the disk cache's key)."""
         entry = self._release_entry(release, family)
-        if entry is None:
+        if entry is None or release is None:
             return None
-        return (
-            entry.zip,
-            entry.sha256,
-            tuple((f.file, f.sha256) for f in entry.files),
-        )
+        return docs_key(release.tag, entry)
 
     def _release_files(self, release: CatalogRelease | None, family: str) -> list[str]:
         entry = self._release_entry(release, family)
@@ -673,191 +1115,11 @@ class FamilyDocuments:
         self, family: str, release: CatalogRelease | None
     ) -> dict[str, Any]:
         """The unscanned shape: full cut structure, no face metadata."""
-        cuts: list[dict[str, Any]] = []
-        entries = self._manifest_families.get(family, [])
-        files = self._release_files(release, family)
-        if entries:
-            for cut in variant_cuts(entries):
-                cuts.append(
-                    {
-                        "variant": cut.entry.variant,
-                        "def": cut.default,
-                        "label": data_cut_label(cut.entry.file, cut.entry.variant),
-                        "file": cut.entry.file,
-                        "version": cut.entry.version,
-                        "sha256": cut.entry.sha256,
-                        "axes": dict(cut.entry.axes),
-                        "upstream_url": cut.entry.upstream_url,
-                        "display_name": None,
-                        "representative": pick_variant_representative(
-                            files, cut.entry.variant, family
-                        ),
-                        "faces": [],
-                    }
-                )
-        else:
-            entry = self._release_entry(release, family)
-            if entry is not None:
-                cuts.append(
-                    {
-                        "variant": "",
-                        "def": True,
-                        "label": data_cut_label(entry.zip, ""),
-                        "file": entry.zip,
-                        "version": None,
-                        "sha256": entry.sha256,
-                        "axes": {},
-                        "upstream_url": None,
-                        "display_name": None,
-                        "representative": pick_variant_representative(files, "", family),
-                        "faces": [],
-                    }
-                )
-        return {
-            "family": family,
-            "readiness": "pending",
-            "error": None,
-            "scanned": False,
-            "display_name": None,
-            "display_names": [],
-            "preview": None,
-            "cuts": cuts,
-        }
-
-    def _build_family(self, family: str, *, force_preview: bool = False) -> _Built | None:
-        """Scan one family's faces into a cached document (locked per
-        family; the winner re-checks the cache under the lock)."""
-        with self._lock:
-            lock = self._build_locks.setdefault(family, threading.Lock())
-        with lock:
-            release = self._release_document()
-            key = self._current_key(family, release)
-            if key is None:
-                return None
-            with self._lock:
-                cached = self._built.get(family)
-            if cached is not None and cached.key == key:
-                if force_preview or (
-                    cached.preview_path is not None and not cached.preview_path.is_file()
-                ):
-                    self._finish_preview(cached, family, release)
-                return cached
-            entry = self._release_entry(release, family)
-            assert entry is not None and self._dir is not None
-            faces_dir = self._dir / Path(entry.zip).stem
-
-            scans: dict[str, list[FaceScan]] = {}
-            skipped: list[str] = []
-            for listed in entry.files:
-                try:
-                    faces = scan_file_faces(faces_dir / listed.file)
-                except Exception:  # unreadable face: skipped, retried next pass
-                    skipped.append(listed.file)
-                    continue
-                if faces:
-                    scans[listed.file] = faces
-                else:
-                    skipped.append(listed.file)
-
-            files = [listed.file for listed in entry.files]
-            shas = {listed.file: listed.sha256 for listed in entry.files}
-            document = self._stub_document(family, release)
-            document["scanned"] = True
-            document["skipped"] = skipped
-            cut_names: list[str] = []
-            for cut in document["cuts"]:
-                variant = cut["variant"]
-                for file in variant_face_files(files, variant, family):
-                    for scan in scans.get(file, ()):
-                        cut["faces"].append(
-                            {
-                                "file": file,
-                                "face_index": scan.info.face_index,
-                                "sha256": shas[file],
-                                "href": f"/catalog/faces/{family}/{file}",
-                                "family": scan.info.family,
-                                "subfamily": scan.info.subfamily,
-                                "weight": scan.info.weight,
-                                "italic": scan.info.italic,
-                                "variable": scan.info.variable,
-                                "coverage": {
-                                    "codepoints": scan.codepoints,
-                                    "placeholders": scan.placeholders,
-                                    "latin": scan.latin,
-                                    "cjk": scan.cjk,
-                                    "intervals": [
-                                        [start, end]
-                                        for start, end in scan.intervals
-                                    ],
-                                    "placeholder_intervals": [
-                                        [start, end]
-                                        for start, end in scan.placeholder_intervals
-                                    ],
-                                },
-                                "placeholder": scan.placeholder,
-                            }
-                        )
-                representative = cut["representative"]
-                if representative is not None:
-                    faces = scans.get(representative, [])
-                    if faces and faces[0].info.family:
-                        cut["display_name"] = faces[0].info.family
-                        cut_names.append(faces[0].info.family)
-            names = sorted(set(cut_names))
-            document["display_names"] = names
-            default_cut = next((c for c in document["cuts"] if c["def"]), None)
-            document["display_name"] = (
-                default_cut["display_name"] if default_cut else None
-            )
-
-            built = _Built(key=key, document=document)
-            self._finish_preview(built, family, release)
-            with self._lock:
-                self._built[family] = built
-            return built
-
-    def _finish_preview(
-        self, built: _Built, family: str, release: CatalogRelease
-    ) -> None:
-        """Derive the family's preview subset after a scan (best-effort:
-        a subsetting failure leaves the document intact, preview-less)."""
-        names = built.document["display_names"]
-        if not names or self._dir is None:
-            return
         entry = self._release_entry(release, family)
-        if entry is None:
-            return
-        representative = next(
-            (
-                cut["representative"]
-                for cut in built.document["cuts"]
-                if cut["def"] and cut["representative"]
-            ),
-            None,
+        return stub_document(
+            family,
+            self._manifest_families.get(family, []),
+            entry.zip if entry is not None else "",
+            entry.sha256 if entry is not None else None,
+            self._release_files(release, family),
         )
-        if representative is None:
-            representative = next(
-                (
-                    cut["representative"]
-                    for cut in built.document["cuts"]
-                    if cut["representative"]
-                ),
-                None,
-            )
-        if representative is None:
-            return
-        listed = next((f for f in entry.files if f.file == representative), None)
-        if listed is None:
-            return
-        source = self._dir / Path(entry.zip).stem / representative
-        if not source.is_file():
-            return
-        try:
-            path, etag = ensure_preview(
-                source, listed.sha256, names, preview_cache_dir(self._dir)
-            )
-        except Exception:
-            return  # a failed derivation costs a missing preview, never an error
-        built.preview_path = path
-        built.preview_etag = etag
-        built.document["preview"] = f"/catalog/families/{family}/preview"
