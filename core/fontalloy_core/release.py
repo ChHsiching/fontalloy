@@ -24,7 +24,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from fontalloy_core.assets import sha256_of
+from fontalloy_core.assets import sha256_of, validate_face_parses
 from fontalloy_core.catalog import CatalogEntry, font_suffixes, load_manifest
 from fontalloy_core.catalog_release import SCHEMA, Origin
 from fontalloy_core.errors import ReleaseError
@@ -93,6 +93,19 @@ def package_catalog_release(
     for family in sorted(grouped):
         zip_name = f"{family}.zip"
         faces = _family_faces(family, grouped[family], fetched)
+        # The P0 memory rule's release-builder half: a client install
+        # verifies bytes by checksum alone (a serve must never parse),
+        # so "hash-valid but unparsable" must die HERE, at packaging —
+        # a lazy name-table open per face, on the release machine.
+        for face in faces:
+            try:
+                validate_face_parses(face)
+            except Exception as exc:
+                raise ReleaseError(
+                    f"{family} ({face.name}): the face does not parse "
+                    f"({exc!r}); a release cannot ship a face no client "
+                    "will ever open"
+                ) from None
         licenses = _family_licenses(grouped[family])
         _write_family_zip(out / zip_name, faces, licenses, family)
         checksums[zip_name] = sha256_of(out / zip_name)

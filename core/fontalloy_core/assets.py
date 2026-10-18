@@ -203,30 +203,32 @@ def extract_font_faces(artifact: Path, into: Path) -> int:
     ``fontalloy assets fetch`` runs. Raises on an unreadable archive;
     returns 0 when the archive carries no font file.
 
-    Round 27 (the corrupt-face heal): every extracted face must PARSE
-    (its name table opens) before the caller may treat the layout as
-    good — a face written partially (an interrupted extraction) is
-    deleted with the whole target and raised loudly, so a stale marker
-    can never canonize corrupt bytes into a sha-verified download.
+    The P0 memory rule (spec #25 aftermath): extraction is HASH-ONLY.
+    A client that just verified the archive's pinned sha256 holds
+    authenticated bytes; every face the release document lists is
+    pinned by its own checksum, so "hash-valid but unparsable" can
+    only mean a release-builder defect — and that is checked at
+    PACKAGING time (:func:`validate_face_parses`, run by
+    :func:`fontalloy_core.release.package_catalog_release`), on the
+    release machine. The long-lived serve must never open a face here:
+    a full parse of a big CJK family is gigabytes of Python objects,
+    and the install path runs inside the serve.
     """
     kind = _archive_kind(artifact)
     if kind is None:
         raise ValueError(f"not a zip or 7z archive: {artifact.name}")
-    extracted = _extract_faces(artifact, into, kind)
-    try:
-        names = [
-            p for p in into.iterdir() if _wanted_face_name(p.name) is not None
-        ]
-        for face in sorted(names):
-            _validate_face_parses(face)
-    except Exception:
-        shutil.rmtree(into, ignore_errors=True)
-        raise
-    return extracted
+    return _extract_faces(artifact, into, kind)
 
 
-def _validate_face_parses(face: Path) -> None:
-    """A face is good only if fontTools can read its name table."""
+def validate_face_parses(face: Path) -> None:
+    """A face is good only if fontTools can read its name table.
+
+    The release-builder side of the round-27 corrupt-face heal: the
+    packaging pass runs this over every face it stages (a bounded,
+    lazy name-table open on the release machine), so a face that
+    downloaded-and-hash-verified but cannot parse fails the RELEASE,
+    loudly, before it can ever reach a client.
+    """
     from fontTools.ttLib import TTFont
 
     font = TTFont(face, fontNumber=0, lazy=True)
