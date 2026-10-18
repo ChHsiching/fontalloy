@@ -99,6 +99,14 @@ export async function startServe(opts: {
    * fetched-catalog layout manifest instead).
    */
   manifest?: string;
+  /**
+   * The serve-side catalog lifecycle (ticket #37 / spec #25, finding
+   * 1): the release-document origin + the cache directory. The journey
+   * suite passes the shared, persistent journey scratch dir so the
+   * whole run syncs the catalog ONCE.
+   */
+  catalogReleaseOrigin?: string;
+  catalogDir?: string;
 }): Promise<ServeHandle> {
   const workDir = mkdtempSync(path.join(tmpdir(), "fontalloy-web-serve-"));
   const args = [
@@ -118,6 +126,12 @@ export async function startServe(opts: {
   }
   if (opts.manifest !== undefined) {
     args.push("--manifest", opts.manifest);
+  }
+  if (opts.catalogReleaseOrigin !== undefined) {
+    args.push("--catalog-release-origin", opts.catalogReleaseOrigin);
+  }
+  if (opts.catalogDir !== undefined) {
+    args.push("--catalog-dir", opts.catalogDir);
   }
 
   const child: ChildProcess = spawn("uv", args, {

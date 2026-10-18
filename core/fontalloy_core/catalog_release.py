@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import re
+import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -97,6 +98,30 @@ def load_catalog_release(path: Path | str) -> CatalogRelease:
     )
 
 
+#: The loopback hostnames the dev carve-out below accepts.
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+
+
+def _is_loopback_http(base_url: str) -> bool:
+    """The dev carve-out: a plain-http origin on a loopback host.
+
+    The vite dev/preview servers serve the REAL dev catalog's origin at
+    ``http://127.0.0.1:<port>/dev-catalog/origins/dev`` (gui/scripts/
+    dev-catalog.mjs) — by construction loopback, and the documented way
+    a local ``fontalloy serve`` consumes the dev catalog (the harness's
+    journey suites, spec #25). The deleted frontend loader carried the
+    same carve-out (gui/src/catalog/release.ts); the strict loader
+    keeps it for loopback ONLY — anything else plain-http stays a
+    load-time error, so a production catalog can never silently
+    downgrade off https.
+    """
+    try:
+        parsed = urllib.parse.urlsplit(base_url)
+    except ValueError:
+        return False
+    return parsed.scheme == "http" and parsed.hostname in _LOOPBACK_HOSTS
+
+
 def _load_origins(raw: Any) -> tuple[Origin, ...]:
     if not isinstance(raw, list) or not raw:
         raise ReleaseError(
@@ -111,7 +136,9 @@ def _load_origins(raw: Any) -> tuple[Origin, ...]:
             raise ReleaseError(f"{where} must be a JSON object")
         origin_id = _string(item.get("id"), f"{where} field 'id'")
         base_url = _string(item.get("base_url"), f"{where} field 'base_url'")
-        if not base_url.startswith(("https://", "file://")):
+        if not base_url.startswith(("https://", "file://")) and not _is_loopback_http(
+            base_url
+        ):
             raise ReleaseError(
                 f"{where} ({origin_id}): base_url must be an https:// or "
                 f"file:// URL, got {base_url!r}"

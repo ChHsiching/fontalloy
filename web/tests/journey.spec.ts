@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -49,6 +49,27 @@ const REPORT_PATH = path.join(NOTES_DIR, "journey-report-web.json");
 const RUN_ASSETS =
   process.env.FONTALLOY_RUN_ASSETS ??
   "C:/Users/Administrator/Git/fontalloy-run/assets";
+
+/**
+ * The journey run's ONE serve catalog directory (ticket #37 / spec #25,
+ * finding 1) and the release origin J11's serve syncs it from — the
+ * preview server's own /dev-catalog (the same real catalog the gui dev
+ * server serves). The stable gitignored scratch path is SHARED with the
+ * gui journeys (both resolve `<repoRoot>/.scratch/journey-catalog`):
+ * whichever suite runs first pays the sync; J11 boots warm.
+ * FONTALLOY_JOURNEY_CATALOG_ORIGIN overrides the origin outright.
+ */
+function journeyCatalogDir(): Promise<string> {
+  return (async () => {
+    const dir = path.join(REPO_ROOT, ".scratch", "journey-catalog");
+    await mkdir(dir, { recursive: true });
+    return dir;
+  })();
+}
+
+function journeyCatalogOrigin(): string {
+  return `${PREVIEW_ORIGIN}/dev-catalog`;
+}
 
 /* ------------------------------------------------------------------ */
 /* Step tracking + the JSON report                                      */
@@ -280,6 +301,12 @@ test("J11 Web 目标 — detection, picks, preset, live merge, report, download,
     allowOrigin: PREVIEW_ORIGIN,
     fontDir: path.join(RUN_ASSETS, "fonts"),
     manifest: path.join(RUN_ASSETS, "fonts.manifest.json"),
+    // The shared journey catalog (ticket #37, finding 1): ONE stable
+    // scratch dir for the whole run — the first sync lands here, every
+    // later serve (J11's own relaunch included) starts warm.
+    catalogReleaseOrigin:
+      process.env.FONTALLOY_JOURNEY_CATALOG_ORIGIN ?? journeyCatalogOrigin(),
+    catalogDir: await journeyCatalogDir(),
   });
   try {
     console.log("\n=== J11 Web 目标 ===");

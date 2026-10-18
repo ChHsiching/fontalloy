@@ -13,6 +13,7 @@ import {
   waitForFontsReady,
 } from "./helpers";
 import { spawnServeOverFonts } from "./serve";
+import { journeyCatalogFlags } from "./journey-catalog";
 
 /**
  * USER-JOURNEY e2e — one real user walks the whole app, quantified.
@@ -665,11 +666,25 @@ async function parseBuiltFont(path: string): Promise<{
  */
 let coloringServeUrl: string | null = null;
 
+/**
+ * The release origin the journey serves sync their catalog from: the
+ * vite dev server's REAL dev catalog (the journey config boots it with
+ * VITE_DEV_CATALOG=1). FONTALLOY_JOURNEY_CATALOG_ORIGIN overrides it
+ * (see ./journey-catalog.ts).
+ */
+function journeyCatalogOrigin(): string {
+  return `${JOURNEY_ORIGIN}/dev-catalog`;
+}
+
 test.describe("user journey", () => {
   test.beforeAll(async () => {
+    // Ticket #37 / spec #25 (finding 1): the serve catalog is the
+    // whole run's ONE shared, persistent scratch dir — the first
+    // journey pays the sync, every later journey boots warm.
     const service = await spawnServeOverFonts(RUN_FONTS, [
       "--manifest",
       RUN_MANIFEST,
+      ...(await journeyCatalogFlags(journeyCatalogOrigin())),
     ]);
     // A failed spawn (assets absent, port trouble) must NOT take the
     // whole file down: J1/J2/J8/J10 need no serve, and the coloring
@@ -2288,10 +2303,14 @@ test.describe("user journey", () => {
     // references — the production build path. (spawnServeOverFonts's
     // `url` field is the startup-line PROMISE — unlike the fixture
     // helper, it does not await it internally — so await it here or
-    // encodeURIComponent would stringify the promise object.)
+    // encodeURIComponent would stringify the promise object.) The
+    // catalog rides the run's ONE shared persistent dir (ticket #37,
+    // finding 1): J9's spawn settles warm, never re-syncing what the
+    // coloring serve already landed.
     const service = await spawnServeOverFonts(RUN_FONTS, [
       "--manifest",
       RUN_MANIFEST,
+      ...(await journeyCatalogFlags(journeyCatalogOrigin())),
     ]);
     const serviceUrl = await service.url;
     // Verification economy (owner, round 13): the app really submits the
