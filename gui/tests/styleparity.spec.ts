@@ -8,20 +8,26 @@
 // sheared ink, and the browser's slot match handed normal text the
 // slanted face.
 //
-// Real bytes throughout: AnnotationMNerdFont's Regular/Italic/
-// RegularOblique (the side-cut layout) + Xiaolai as the CJK donor,
-// built by a real serve, loaded through the real picker file-input
-// path, asserted on document.fonts + canvas ink (canvas ignores CSS
-// font-synthesis — it draws the font's own glyphs, so a sheared
-// upright slot shows up as measured slant).
+// Fixtures are GENERATED worktree-local (ticket #33's IO discipline —
+// the spec used to copy the real appData catalog): the side-cut trio
+// (Regular upright / Italic sheared with consistent signals / Regular
+// Oblique with sheared ink under UPRIGHT flags and a nonzero post
+// angle) plus a kai-lean CJK donor, built by e2e_fonts.py's
+// --style-cut/--kai-donor modes with the same shapes the real release
+// carries. Built by a real serve, loaded through the real picker
+// file-input path, asserted on document.fonts + canvas ink (canvas
+// ignores CSS font-synthesis — it draws the font's own glyphs, so a
+// sheared upright slot shows up as measured slant).
 import { test, expect } from "@playwright/test";
-import { cp, mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { pointerClick, waitForFontsReady } from "./helpers";
-import { spawnServeOverFonts } from "./serve";
-
-const APP = String.raw`C:\Users\Administrator\AppData\Roaming\io.github.chhsiching.fontalloy\catalog\families`;
+import {
+  generateKaiDonor,
+  generateStyleCutFamily,
+  spawnServeOverFonts,
+} from "./serve";
 
 test.setTimeout(420_000);
 
@@ -31,20 +37,8 @@ test("style parity: an oblique side-cut base merges one face per slot", async ({
   const dir = await mkdtemp(resolve(tmpdir(), "fontalloy-style-"));
   const cut = resolve(dir, "AnnotationMono");
   await mkdir(cut, { recursive: true });
-  await cp(
-    resolve(APP, "AnnotationMono", "AnnotationMNerdFont-Regular.ttf"),
-    resolve(cut, "AnnotationMNerdFont-Regular.ttf"),
-  );
-  await cp(
-    resolve(APP, "AnnotationMono", "AnnotationMNerdFont-Italic.ttf"),
-    resolve(cut, "AnnotationMNerdFont-Italic.ttf"),
-  );
-  await cp(
-    resolve(APP, "AnnotationMono", "AnnotationMNerdFont-RegularOblique.ttf"),
-    resolve(cut, "AnnotationMNerdFont-RegularOblique.ttf"),
-  );
-  const donor = resolve(dir, "Xiaolai-Regular.ttf");
-  await cp(resolve(APP, "Xiaolai", "Xiaolai-Regular.ttf"), donor);
+  const [regular] = await generateStyleCutFamily(cut);
+  const donor = await generateKaiDonor(dir);
   const service = await spawnServeOverFonts(dir);
   const serviceUrl = await service.url;
 
@@ -55,8 +49,8 @@ test("style parity: an oblique side-cut base merges one face per slot", async ({
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       base: {
-        path: resolve(cut, "AnnotationMNerdFont-Regular.ttf"),
-        pattern: "AnnotationMNerdFont-*.ttf",
+        path: regular,
+        pattern: "AnnotationMonoNerdFont-*.ttf",
       },
       donors: [{ path: donor }],
       output: { family: "styleparity", format: "ttc" },

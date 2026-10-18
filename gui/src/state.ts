@@ -97,9 +97,10 @@ export interface LoadedFont {
   fileName: string;
   origin: FontOrigin;
   /**
-   * The on-disk path when the platform knows one (catalog storage, the
-   * Tauri file dialog). Undefined in the plain browser — the synthesize
-   * flow then resolves the path against the service's font listing.
+   * The on-disk path when the platform knows one (the Tauri file
+   * dialog, the typed-path seam). Undefined in the plain browser — the
+   * synthesize flow then resolves the path against the service's font
+   * listing.
    */
   path?: string;
   /** The catalog identity (manifest family + variant), for catalog picks. */
@@ -207,15 +208,7 @@ export type CatalogStatus =
   /** The serve's sync finished; every family is complete. */
   | "ready"
   /** The serve's sync finished (or could not run) with an error. */
-  | "unavailable"
-  /**
-   * LEGACY values of the page-side downloader this ticket replaced —
-   * only the uncalled CatalogManager (gui/src/catalog/manager.ts,
-   * deleted by #33) still writes them.
-   */
-  | "downloading"
-  | "settled-complete"
-  | "settled-partial";
+  | "unavailable";
 
 export interface CatalogState {
   status: CatalogStatus;
@@ -225,39 +218,18 @@ export interface CatalogState {
    * shows exactly it); for transport failures it is the fetch error.
    */
   error?: string;
-  /** LEGACY bootstrapError alias of the page-side downloader (#33). */
-  bootstrapError?: string;
   /**
    * The serve status document's per-family progress (the first-run
-   * screen renders it). LEGACY `families` is the page-side downloader's
-   * shape (#33).
+   * screen renders it).
    */
   progress: CatalogFamilyProgress[];
-  /** LEGACY per-family entries of the page-side downloader (#33). */
-  families: CatalogFamilyEntry[];
   /** The serve's family documents (the picker's row source). */
   documents: CatalogFamilyDoc[];
   /** True while the serve is still scanning family documents. */
   scanning: boolean;
-  /** LEGACY registered map of the page-side downloader (#33). */
-  registered: Record<string, string>;
   /** First-run progress screen visible (dismissable; never blocks). */
   screen: boolean;
 }
-
-/** LEGACY: the page-side downloader's per-family entry shape (#33). */
-export interface CatalogFamilyEntry {
-  family: string;
-  status: CatalogFamilyStatus;
-  error?: string;
-}
-
-/** LEGACY: the page-side downloader's per-family statuses (#33). */
-export type CatalogFamilyStatus =
-  | "pending"
-  | "downloading"
-  | "verified"
-  | "failed";
 
 export interface AppState {
   /** All successfully loaded local fonts (the picker rows). */
@@ -372,10 +344,8 @@ export const store = createStore<AppState>({
   catalog: {
     status: "none",
     progress: [],
-    families: [],
     documents: [],
     scanning: false,
-    registered: {},
     screen: false,
   },
 });

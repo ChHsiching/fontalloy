@@ -16,7 +16,13 @@
  *   readiness. The picker's rows render from these;
  * - `GET /catalog/families/{family}/preview` — the name-glyph subset
  *   each row registers as its OWN lazy URL FontFace (`fa-cat-<family>`),
- *   so rows self-render without the page ever holding font bytes.
+ *   so rows self-render without the page ever holding font bytes;
+ * - `GET /catalog/stars` — the launch-cached GitHub star counts (user
+ *   story 25): the SERVE runs the once-per-launch repo sweep and this
+ *   module merely polls it while it fetches, overlaying whatever
+ *   landed onto the picker meta lines (the deleted frontend stars
+ *   fetcher's curated seed in data/curated-meta.json stays the
+ *   offline fallback).
  *
  * Picking a family (ticket #32, the MEMORY RED LINE) registers the
  * cut's faces as URL FontFaces straight from the family document —
@@ -129,6 +135,60 @@ function registerPreviewFonts(documents: readonly CatalogFamilyDoc[], base: stri
   }
 }
 
+/* ---------- the stars overlay (the serve's own launch sweep) ---------- */
+
+/** The GET /catalog/stars document (always a snapshot, never an error). */
+interface CatalogStarsDoc {
+  state: "fetching" | "done" | "disabled";
+  stars: Record<string, number>;
+}
+
+const serveStars = new Map<string, number>();
+const starListeners = new Set<() => void>();
+
+/**
+ * The serve-side star count a picker row shows (undefined when the
+ * launch sweep has not landed one — the curated seed decides then).
+ */
+export function starsFor(family: string): number | undefined {
+  return serveStars.get(family);
+}
+
+/** Subscribe to serve star-count updates (the pickers re-render). */
+export function subscribeStars(fn: () => void): () => void {
+  starListeners.add(fn);
+  return () => starListeners.delete(fn);
+}
+
+/**
+ * Poll the serve's launch-cached stars while its sweep runs: the
+ * successor of the deleted frontend fetcher (catalog/stars.ts — one
+ * bounded GitHub sweep per SERVE launch now, spec #25 story 25). The
+ * page's only job is to pick up whatever landed; a transport failure
+ * ends the poll (offline is a state, not an error — the curated seed
+ * in the picker's display data stands).
+ */
+async function pollStars(base: string): Promise<void> {
+  for (;;) {
+    let doc: CatalogStarsDoc;
+    try {
+      doc = await getJson<CatalogStarsDoc>(`${base}/catalog/stars`);
+    } catch {
+      return;
+    }
+    let changed = false;
+    for (const [family, count] of Object.entries(doc.stars)) {
+      if (serveStars.get(family) !== count) {
+        serveStars.set(family, count);
+        changed = true;
+      }
+    }
+    if (changed) for (const fn of [...starListeners]) fn();
+    if (doc.state !== "fetching") return;
+    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+  }
+}
+
 /* ---------- the boot poller ---------- */
 
 let started = false;
@@ -138,21 +198,27 @@ let started = false;
  * may delay the workspace. Waits for the service connection (the
  * synthesize flow's own probe), then polls the status machine until it
  * settles, refreshing the family documents (and their preview faces)
- * along the way.
+ * along the way. The stars poller rides along — independent on
+ * purpose: the sweep-attribute settle signal is the catalog status's
+ * own truth and never waits on the stars sweep.
  */
 export function startCatalogServe(): void {
   if (started) return;
   started = true;
+  const begin = (base: string): void => {
+    void runCatalogPoll(base);
+    void pollStars(base);
+  };
   const unsubscribe = synthStore.subscribe(() => {
     const client = synthStore.get().service.client;
     if (client !== null) {
       unsubscribe();
-      void runCatalogPoll(client.baseUrl);
+      begin(client.baseUrl);
     }
   });
   if (synthStore.get().service.client !== null) {
     unsubscribe();
-    void runCatalogPoll(synthStore.get().service.client!.baseUrl);
+    begin(synthStore.get().service.client!.baseUrl);
   }
 }
 

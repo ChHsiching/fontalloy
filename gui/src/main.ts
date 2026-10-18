@@ -8,9 +8,7 @@ import { mountStatsbar } from "./ui/statsbar";
 import { mountBuildPanel } from "./ui/buildpanel";
 import { mountCatalogScreen } from "./catalog/screen";
 import { startCatalogServe } from "./catalog/serve";
-import { readConfig } from "./platform/config";
 import { connectService } from "./service/synthesize";
-import { refreshStars } from "./catalog/stars";
 import { installUndoShortcuts } from "./history";
 import { mountContextMenu } from "./kit/contextMenu";
 
@@ -93,17 +91,12 @@ mountCatalogScreen();
 
 // The catalog boot (ticket #30, spec #25): the SERVE owns the catalog —
 // the page polls its status machine and family documents and lists its
-// rows from them. The old page-side downloader (release document, zips,
-// font bytes into storage — catalog/manager.ts) is no longer called
-// from the boot path; ticket #33 deletes the module. Fire-and-forget
-// like every boot task: nothing here may delay the workspace, and a
-// failing catalog leaves a fully usable app with the serve's reason as
-// the picker footer's text.
+// rows from them, and the same poller picks up the serve's
+// launch-cached GitHub stars (ticket #33 deleted the page's own fetch:
+// the frontend has no network dependency left but the serve). The old
+// page-side downloader (release document, zips, font bytes into
+// storage) is DELETED, not bypassed. Fire-and-forget like every boot
+// task: nothing here may delay the workspace, and a failing catalog
+// leaves a fully usable app with the serve's reason as the picker
+// footer's text.
 startCatalogServe();
-
-// Live GitHub stars (round 5): one bounded refresh per launch, from the
-// repos the catalog manifest pins; cached to storage for offline runs.
-// Fire-and-forget like every boot task — the curated seed shows until
-// (and unless) fresh counts land. Still gated on the classic bootstrap
-// URL seam (dev builds; a serve-backed page without one stays quiet).
-if (readConfig().catalogBootstrapUrl !== null) void refreshStars();
