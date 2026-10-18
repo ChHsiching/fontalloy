@@ -33,6 +33,12 @@ export const OTHER_ORIGIN = "http://allowlist.example";
 export interface ServeHandle {
   baseUrl: string;
   port: number;
+  /**
+   * The serve's work directory (uploads land under `uploads/`): the
+   * upload-era tests' seam for making a picked file vanish from where
+   * the BUILD reads it (the scratch copy, not the picked-from file).
+   */
+  workDir: string;
   /** Kill the service and await its exit (best effort, never throws). */
   stop(): Promise<void>;
 }
@@ -93,6 +99,14 @@ export async function startServe(opts: {
    * fetched-catalog layout manifest instead).
    */
   manifest?: string;
+  /**
+   * The serve-side catalog lifecycle (ticket #37 / spec #25, finding
+   * 1): the release-document origin + the cache directory. The journey
+   * suite passes the shared, persistent journey scratch dir so the
+   * whole run syncs the catalog ONCE.
+   */
+  catalogReleaseOrigin?: string;
+  catalogDir?: string;
 }): Promise<ServeHandle> {
   const workDir = mkdtempSync(path.join(tmpdir(), "fontalloy-web-serve-"));
   const args = [
@@ -112,6 +126,12 @@ export async function startServe(opts: {
   }
   if (opts.manifest !== undefined) {
     args.push("--manifest", opts.manifest);
+  }
+  if (opts.catalogReleaseOrigin !== undefined) {
+    args.push("--catalog-release-origin", opts.catalogReleaseOrigin);
+  }
+  if (opts.catalogDir !== undefined) {
+    args.push("--catalog-dir", opts.catalogDir);
   }
 
   const child: ChildProcess = spawn("uv", args, {
@@ -185,5 +205,5 @@ export async function startServe(opts: {
     }
   };
 
-  return { baseUrl: `http://127.0.0.1:${port}`, port, stop };
+  return { baseUrl: `http://127.0.0.1:${port}`, port, workDir, stop };
 }

@@ -118,6 +118,34 @@ class TestLoadCatalogRelease:
         with pytest.raises(ReleaseError, match="sha256"):
             load_catalog_release(path)
 
+    def test_metadata_accepts_a_loopback_http_origin_the_dev_carve_out(self, tmp_path):
+        # The vite dev/preview catalog middleware serves its origin at a
+        # loopback http address by construction (gui/scripts/
+        # dev-catalog.mjs); a local serve consuming the dev catalog
+        # (the journey harness, spec #25) must be able to load that
+        # document. Loopback ONLY — the production rule below stands.
+        path = write_release(
+            tmp_path / "catalog-release.json",
+            [
+                {"id": "dev", "base_url": "http://127.0.0.1:5351/dev-catalog/origins/dev"},
+                {"id": "dev-v6", "base_url": "http://[::1]:5351/dev-catalog/origins/dev"},
+                {"id": "dev-named", "base_url": "http://localhost:4273/dev-catalog/origins/dev"},
+            ],
+        )
+
+        release = load_catalog_release(path)
+
+        assert [o.id for o in release.origins] == ["dev", "dev-v6", "dev-named"]
+
+    def test_metadata_rejects_plain_http_off_loopback(self, tmp_path):
+        path = write_release(
+            tmp_path / "catalog-release.json",
+            [{"id": "not-dev", "base_url": "http://example.com/fontalloy/v1"}],
+        )
+
+        with pytest.raises(ReleaseError, match="https:// or file://"):
+            load_catalog_release(path)
+
 
 class TestFetchFromOrigins:
     def test_the_first_origin_that_serves_the_artifact_wins(self, tmp_path):

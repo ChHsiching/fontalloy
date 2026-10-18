@@ -7,20 +7,22 @@ import { defineConfig } from "@playwright/test";
  *
  *   npx playwright test --config playwright.journey.config.ts
  *
- * Ten journeys (J1–J10) walk the app like one real user: the REAL dev
- * catalog is ON (the vite server serves /dev-catalog — the repo
- * manifest's families zipped from the local prototype fonts directory)
- * and ONE persistent browser profile spans the whole run, exactly like
- * a user's machine: the first boot (J1 初次启动) pays the one-time
- * catalog download, every later launch starts from stored catalog +
- * theme state (picks, rules, and settings still reset per launch —
- * only the catalog and the theme preference persist by design).
+ * Ten journeys (J1–J10) walk the app like one real user, ONE persistent
+ * browser profile spanning the whole run, exactly like a user's
+ * machine: theme state persists across launches; everything else
+ * resets per launch or lives with its serve by design.
  *
- * J9 合成 runs against the owner's real serve layout
- * (FONTALLOY_RUN_ASSETS, default the fontalloy-run checkout): the
- * repo's own `fontalloy serve` binary over the fetched catalog
- * directory, so the catalog picks resolve through the manifest's
- * catalog-family references — the production build path.
+ * Ticket #37's serve-less conversion: J1/J8/J10 boot with NO serve
+ * (?noservice=1 — the T3 catalog model's terminal "none" state: zero
+ * rows, no sweep wait, the honest degrade) and J2 runs its picker
+ * surface against its own TINY fixture catalog serve, so a run of
+ * those four journeys touches no real catalog bytes at all. J3–J7/J9
+ * still run against the real layout: the shared coloring serve and
+ * J9's own serve sync the journey catalog from this server's
+ * /dev-catalog (the repo manifest's families zipped from the local
+ * prototype fonts directory), and J9 submits builds over the run
+ * assets (FONTALLOY_RUN_ASSETS, default the fontalloy-run checkout) —
+ * the production build path.
  *
  * `reuseExistingServer: false` is deliberate: a stray dev server on
  * 5173 could have the catalog OFF (the component suite's setting), and
@@ -55,8 +57,9 @@ export default defineConfig({
     timeout: 60_000,
     stdout: "ignore",
     stderr: "pipe",
-    // The journeys' whole point: the REAL dev catalog, the same families
-    // production serves, from the local prototype fonts directory.
+    // The coloring serves' release origin: the REAL dev catalog (the
+    // same families production serves) from the local prototype fonts
+    // directory. The serve-less journeys never request it.
     env: { ...process.env, VITE_DEV_CATALOG: "1" },
   },
 });

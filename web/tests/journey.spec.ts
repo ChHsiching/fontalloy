@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -29,7 +29,8 @@ import { PREVIEW_ORIGIN, startServe } from "./serve";
  *   synthesize through the seven report-copy stages → the verification
  *   report → the artifact as a real browser download, parsed with
  *   fontTools — then the no-service degrade panel (an address nothing
- *   answers): the copy-CLI command and the recipe YAML download.
+ *   answers): the serve-less terminal state with no catalog waits and
+ *   the copy-CLI surface stating what is missing.
  *
  * Steps carry the `J11.<n>` scorecard keys; the machine-readable
  * report lands at `fontalloy-notes/journey-report-web.json` (written
@@ -49,6 +50,27 @@ const REPORT_PATH = path.join(NOTES_DIR, "journey-report-web.json");
 const RUN_ASSETS =
   process.env.FONTALLOY_RUN_ASSETS ??
   "C:/Users/Administrator/Git/fontalloy-run/assets";
+
+/**
+ * The journey run's ONE serve catalog directory (ticket #37 / spec #25,
+ * finding 1) and the release origin J11's serve syncs it from — the
+ * preview server's own /dev-catalog (the same real catalog the gui dev
+ * server serves). The stable gitignored scratch path is SHARED with the
+ * gui journeys (both resolve `<repoRoot>/.scratch/journey-catalog`):
+ * whichever suite runs first pays the sync; J11 boots warm.
+ * FONTALLOY_JOURNEY_CATALOG_ORIGIN overrides the origin outright.
+ */
+function journeyCatalogDir(): Promise<string> {
+  return (async () => {
+    const dir = path.join(REPO_ROOT, ".scratch", "journey-catalog");
+    await mkdir(dir, { recursive: true });
+    return dir;
+  })();
+}
+
+function journeyCatalogOrigin(): string {
+  return `${PREVIEW_ORIGIN}/dev-catalog`;
+}
 
 /* ------------------------------------------------------------------ */
 /* Step tracking + the JSON report                                      */
@@ -280,6 +302,12 @@ test("J11 Web 目标 — detection, picks, preset, live merge, report, download,
     allowOrigin: PREVIEW_ORIGIN,
     fontDir: path.join(RUN_ASSETS, "fonts"),
     manifest: path.join(RUN_ASSETS, "fonts.manifest.json"),
+    // The shared journey catalog (ticket #37, finding 1): ONE stable
+    // scratch dir for the whole run — the first sync lands here, every
+    // later serve (J11's own relaunch included) starts warm.
+    catalogReleaseOrigin:
+      process.env.FONTALLOY_JOURNEY_CATALOG_ORIGIN ?? journeyCatalogOrigin(),
+    catalogDir: await journeyCatalogDir(),
   });
   try {
     console.log("\n=== J11 Web 目标 ===");
@@ -485,14 +513,24 @@ test("J11 Web 目标 — detection, picks, preset, live merge, report, download,
       expect(parsed.cjkCodepoints).toBeGreaterThan(0);
     });
 
-    await step("J11.8 no service: the degrade panel offers copy-CLI + the JSON download", async () => {
-      // Same page (the stored catalog + theme persist by origin): a
-      // navigation to an address nothing answers is the honest state.
+    await step("J11.8 no service: the degrade panel is the honest CLI surface, no catalog waits", async () => {
+      // Same page origin, a navigation to an address nothing answers —
+      // the serve-less terminal state (ticket #37's conversion): the
+      // service probe refuses within its own budget and the T3 catalog
+      // poller NEVER STARTS (no sweep attribute is ever set, the
+      // picker lists zero catalog rows), so nothing may wait on
+      // catalog readiness here. Under the #36 upload model no pick
+      // path exists without a serve either — the recipe honestly
+      // cannot exist, and the panel states what is missing (the
+      // missing-pick recipe contract is pinned by noservice.spec).
       await page.goto(`/?serve=${encodeURIComponent(UNUSED_SERVE)}`);
       await waitForFontsReady(page);
       await expect(page.locator(".workspace-rail")).toBeVisible();
-      // Picks reset per launch — re-pick through the (stored) catalog.
-      await pickFlagshipPair(page);
+      expect(
+        await page.evaluate(
+          () => document.documentElement.dataset.catalogSweep,
+        ),
+      ).toBeUndefined();
       const panel = page.locator('[data-testid="cli-panel"]');
       if (!(await panel.isVisible())) {
         await pointerClick(
@@ -503,31 +541,25 @@ test("J11 Web 目标 — detection, picks, preset, live merge, report, download,
       await expect(panel).toBeVisible();
       const notice = panel.locator('[data-testid="service-notice"]');
       await expect(notice).toContainText("未检测到本地服务");
+      await expect(notice).toContainText(UNUSED_SERVE);
       await expect(
         panel.locator('[data-testid="cli-command"]'),
       ).toContainText("fontalloy build");
+      // No picks without a serve: copy/download stay disabled, the
+      // recipe preview stays empty, and the status line names the
+      // missing picks — the honest degrade, never an invented recipe.
       await expect(
         panel.locator('[data-testid="copy-command"]'),
-      ).toHaveAttribute("aria-disabled", "false");
-      // The recipe JSON download: a real browser download of the file
-      // (ticket #29: the wire JSON — the same body a serve submission
-      // sends; the CLI command runs it as-is, YAML being a JSON
-      // superset).
+      ).toHaveAttribute("aria-disabled", "true");
+      await expect(
+        panel.locator('[data-testid="download-recipe"]'),
+      ).toHaveAttribute("aria-disabled", "true");
       await expect(
         panel.locator('[data-testid="recipe-json"]'),
-      ).toContainText('"base"');
-      const jsonDownload = page.waitForEvent("download");
-      await pointerClick(
-        page,
-        panel.locator('[data-testid="download-recipe"]'),
+      ).toHaveText("");
+      await expect(panel.locator('[data-testid="copy-status"]')).toContainText(
+        "请先在左侧选择英文字体与中文字体",
       );
-      const jsonFile = await jsonDownload;
-      const jsonPath = path.join(tmpdir(), "fontalloy-j11-recipe.json");
-      await jsonFile.saveAs(jsonPath);
-      const recipe = JSON.parse(await readFile(jsonPath, "utf8"));
-      expect(typeof recipe.base).toBeTruthy();
-      expect(Array.isArray(recipe.donors)).toBe(true);
-      expect(recipe.output.family).toBe("ChHsich");
     });
 
     await step("J11.9 zero JS errors across the journey", () =>

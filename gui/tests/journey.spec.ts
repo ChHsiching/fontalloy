@@ -1,18 +1,25 @@
 import { test as base, expect, chromium, type Locator, type Page } from "@playwright/test";
 import { mkdtempSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  fixtureFontPaths,
   hitTestCenter,
   isKnownBenignConsoleError,
   pointerClick,
   tagGeometry,
   waitForFontsReady,
 } from "./helpers";
-import { spawnServeOverFonts } from "./serve";
+import { generateNamedFace, spawnServeOverFonts } from "./serve";
+import {
+  buildServeCatalogSite,
+  type ServeCatalogSite,
+  type SiteFamilySpec,
+} from "./catalog-serve-site";
+import { journeyCatalogFlags } from "./journey-catalog";
 
 /**
  * USER-JOURNEY e2e — one real user walks the whole app, quantified.
@@ -24,14 +31,22 @@ import { spawnServeOverFonts } from "./serve";
  * at `fontalloy-notes/journey-report-gui.json` — refreshed after every
  * journey, so even a crashed run leaves the table for the scorecard.
  *
- * Environment (playwright.journey.config.ts): the REAL dev catalog ON
- * (the vite server serves the repo manifest's families from the local
- * prototype fonts directory) and ONE persistent browser profile for
- * the whole run — a user's machine: J1's first boot pays the one-time
- * catalog download, later launches start from stored catalog + theme
- * state. Picks, rules, and settings still reset per launch (only the
- * catalog and the theme preference persist by design), so every
- * journey sets up its own picks through the UI and stays independent.
+ * Environment (playwright.journey.config.ts): ONE persistent browser
+ * profile for the whole run — a user's machine: later launches start
+ * from the stored theme state (picks, rules, and settings reset per
+ * launch by design; the catalog lives with its serve), so every
+ * journey sets up its own state through the UI and stays independent.
+ *
+ * Ticket #37's serve-less conversion (the owner's #35-era ruling: no
+ * serve = no business computation, honest degrade): J1/J8/J10 boot
+ * with NO serve at all (`?noservice=1` — the T3 catalog status
+ * model's terminal "none" state: the poller never starts, the pickers
+ * list zero rows, and NOTHING waits on a sweep that cannot run); J2's
+ * picker surface runs against a TINY fixture catalog serve (generated
+ * single-face binaries carrying exactly the identity structure the
+ * journey pins — never the real release bytes); J3–J7 share ONE
+ * coloring serve and J9 keeps its own, both over the run assets with
+ * the shared journey catalog.
  *
  * J9 合成 runs against the owner's real serve layout
  * (FONTALLOY_RUN_ASSETS — the fontalloy-run checkout's fetched
@@ -51,7 +66,7 @@ import { spawnServeOverFonts } from "./serve";
  * assets — the same layout J9 uses — so the coloring is the serve's
  * resolve answer, never a client-side mirror. J1/J2 assert only
  * chrome and identity (no coloring), J8 deliberately boots
- * no-service (the CLI panel is its recipe surface), J10 is theme
+ * no-service (the CLI panel is its surface), J10 is theme
  * chrome. J9 keeps its own serve (it also submits builds).
  */
 
@@ -95,9 +110,11 @@ async function writeReport(): Promise<void> {
     generated: new Date().toISOString(),
     suite: "gui/tests/journey.spec.ts (playwright.journey.config.ts)",
     environment:
-      "real dev catalog (VITE_DEV_CATALOG=1), one persistent browser " +
-      "profile across the run, J9 against the real serve layout " +
-      `(${RUN_ASSETS.replace(/\\/g, "/")})`,
+      "one persistent browser profile across the run; J1/J8/J10 boot " +
+      "no-serve (?noservice=1, the T3 catalog model's terminal none " +
+      "state — zero rows, no sweep), J2 against a tiny fixture catalog " +
+      "serve, J3–J7/J9 against the real serve layout " +
+      `(${RUN_ASSETS.replace(/\\/g, "/")}) with the shared journey catalog`,
     journey: journeyResults.map((j) => ({
       name: j.name,
       steps: `${j.passed}/${j.total}`,
@@ -522,10 +539,11 @@ async function paintDrag(page: Page, cps: string[]): Promise<void> {
 
 /** Boot a launch against the shared coloring serve (J3–J7). */
 async function bootWithServe(page: Page): Promise<void> {
-  if (coloringServeUrl === null) {
+  const url = await sharedColoringServe();
+  if (url === null) {
     throw new Error("the coloring serve never started (run assets absent?)");
   }
-  await boot(page, `/?serve=${encodeURIComponent(coloringServeUrl)}`);
+  await boot(page, `/?serve=${encodeURIComponent(url)}`);
 }
 
 /** Boot a launch and wait until the workspace is usable. */
@@ -558,6 +576,62 @@ async function boot(page: Page, url = "/"): Promise<void> {
   await page.waitForTimeout(400);
   await expect(page.locator(".catalog-screen")).toBeHidden();
   await expect(page.locator(".workspace-rail")).toBeVisible();
+}
+
+/**
+ * Boot a launch with NO serve attached (ticket #37's conversion, the
+ * owner's #35-era ruling: honest degrade): `?noservice=1` pins
+ * serveUrl null, so the service status model reaches its terminal
+ * "none" state synchronously and the T3 catalog poller NEVER STARTS
+ * — the catalog status sits at "none" (no rows, no note, no screen)
+ * and no sweep attribute is ever set. The settle signal is therefore
+ * the WORKSPACE itself (chrome mounted, screen hidden) plus the
+ * sweep-attribute absence — the poller's own observability seam read
+ * the honest way round: nothing may wait for a sweep that cannot run.
+ */
+async function bootNoServe(page: Page): Promise<void> {
+  jsErrors.length = 0;
+  await page.goto("/?noservice=1");
+  await waitForFontsReady(page);
+  await expect(page.locator(".catalog-screen")).toBeHidden();
+  await expect(page.locator(".workspace-rail")).toBeVisible();
+  await expect(page.locator(".workspace-content")).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.dataset.catalogSweep,
+    ),
+    "a serve-less page must never run (let alone hang on) the catalog sweep",
+  ).toBeUndefined();
+}
+
+/**
+ * The picker's honest serve-less listing (the terminal "none" state):
+ * ZERO catalog rows, the round-30 loading row never stood up, the
+ * empty-state line points at the one load path that still works (the
+ * local-file footer), and NO catalog note renders — a note exists
+ * only for a configured-but-failing catalog ("unavailable"), and
+ * inventing an offline error for a state that never probed would be
+ * the dishonest direction.
+ */
+async function assertPickerEmptyNoServe(
+  page: Page,
+  role: "en" | "cjk",
+): Promise<void> {
+  await openPicker(page, role);
+  const popup = pickerPopup(page, role);
+  await expect(popup.locator(".kit-fp")).toHaveCount(0);
+  await expect(
+    popup.locator(".kit-fp", { hasText: "内置目录准备中…" }),
+  ).toHaveCount(0);
+  await expect(popup.locator(".kit-gempty")).toHaveText(
+    "尚未加载字体 —— 请从下方加载本地字体文件。",
+  );
+  await expect(popup.locator(".kit-fpsys")).toContainText(
+    "加载本地字体文件",
+  );
+  await expect(popup.locator("[data-picker-note]")).toBeHidden();
+  await page.keyboard.press("Escape");
+  await expect(popup).toBeHidden();
 }
 
 const num = (text: string | null | undefined): number =>
@@ -651,38 +725,209 @@ async function parseBuiltFont(path: string): Promise<{
 }
 
 /* ------------------------------------------------------------------ */
+/* J2's tiny fixture catalog (ticket #37: no real origin for pickers)  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The filler CJK families that keep the CJK picker's baseline honest
+ * (J2.4's >= 10 rows) without a single real release byte: manifest
+ * families from the curated CJK slot list, each one generated host
+ * binary over one zip. Their rows are never name-asserted — only the
+ * carried count matters.
+ */
+const J2_FILLER_CJK_FAMILIES = [
+  "NotoSansSC",
+  "NotoSerifSC",
+  "SmileySans",
+  "SarasaGothic",
+  "ArkPixel",
+  "ZhuqueFangsong",
+  "FusionPixel",
+  "UDEVGothic",
+] as const;
+
+/**
+ * J2's picker surface at fixture scale (ticket #37's conversion): a
+ * serve-side catalog origin whose families carry EXACTLY the identity
+ * structure the journey pins — the JetBrainsMono Nerd Font row,
+ * MapleMono's NF + NF-CN cuts (the chips read the cut faces' OWN name
+ * tables, 「Maple Mono NF」/「Maple Mono NF CN」), and the WenKai
+ * group's Mono + Screen members — over generated single-face binaries
+ * (a few KB each, `generateNamedFace`; never the real release bytes).
+ * The serve rides the SAME journey-catalog wiring as the coloring
+ * serves (./journey-catalog.ts, its own stable scratch name so it
+ * never evicts the real run's warm catalog; the env override wins
+ * outright for pinned rerun environments).
+ */
+async function startJourneyPickerServe(): Promise<{
+  url: string;
+  dispose: () => Promise<void>;
+}> {
+  const facesRoot = await mkdtemp(resolve(tmpdir(), "fontalloy-j2-faces-"));
+  const site: ServeCatalogSite = await (async () => {
+    const [
+      jetbrains,
+      mapleNf,
+      mapleNfCn,
+      wenkai,
+      wenkaiMono,
+      wenkaiScreen,
+    ] = await Promise.all([
+      generateNamedFace(facesRoot, "JetBrainsMono Nerd Font", "JetBrainsMonoNerdFont"),
+      generateNamedFace(facesRoot, "Maple Mono NF", "MapleMono-NF"),
+      generateNamedFace(facesRoot, "Maple Mono NF CN", "MapleMono-NF-CN"),
+      generateNamedFace(facesRoot, "LXGW WenKai", "LXGWWenKai"),
+      generateNamedFace(facesRoot, "LXGW WenKai Mono", "LXGWWenKaiMono"),
+      generateNamedFace(facesRoot, "LXGW WenKai Screen", "LXGWWenKaiScreen"),
+    ]);
+    const [hostFont] = fixtureFontPaths();
+    const specs: SiteFamilySpec[] = [
+      {
+        family: "JetBrainsMono",
+        faces: [
+          { file: "JetBrainsMonoNerdFont-Regular.ttf", fontPath: jetbrains },
+        ],
+        manifestEntries: [
+          { variant: "Nerd Font", file: "JetBrainsMono.zip" },
+        ],
+      },
+      {
+        family: "MapleMono",
+        faces: [
+          { file: "MapleMono-NF-Regular.ttf", fontPath: mapleNf },
+          { file: "MapleMono-NF-CN-Regular.ttf", fontPath: mapleNfCn },
+        ],
+        // The real manifest's own variants, axes, and per-cut artifact
+        // names (each entry's file must be unique across entries), so
+        // the serve's cut model collapses them exactly like production:
+        // NF is the default cut (implicit cjk_width prop), NF-CN the
+        // mono+SC one. The release schema stays unique by family (one
+        // zip holding both faces), exactly like the proven multi-cut
+        // fixtures in catalog.spec.
+        manifestEntries: [
+          { variant: "NF", file: "MapleMono-NF.zip", axes: { icons: "nf" } },
+          {
+            variant: "NF-CN",
+            file: "MapleMono-NF-CN.zip",
+            axes: { icons: "nf", cjk_width: "mono", region: "SC" },
+          },
+        ],
+      },
+      {
+        family: "LXGWWenKai",
+        faces: [{ file: "LXGWWenKai-Regular.ttf", fontPath: wenkai }],
+        manifestEntries: [
+          { variant: "Regular", file: "LXGWWenKai.zip" },
+        ],
+      },
+      {
+        family: "LXGWWenKaiMono",
+        faces: [{ file: "LXGWWenKaiMono-Regular.ttf", fontPath: wenkaiMono }],
+        manifestEntries: [
+          { variant: "Regular", file: "LXGWWenKaiMono.zip" },
+        ],
+      },
+      {
+        family: "LXGWWenKaiScreen",
+        faces: [
+          { file: "LXGWWenKaiScreen-Regular.ttf", fontPath: wenkaiScreen },
+        ],
+        manifestEntries: [
+          { variant: "Regular", file: "LXGWWenKaiScreen.zip" },
+        ],
+      },
+      ...J2_FILLER_CJK_FAMILIES.map((family) => ({
+        family,
+        faces: [{ file: `${family}-Regular.ttf`, fontPath: hostFont }],
+      })),
+    ];
+    return buildServeCatalogSite(specs, { manifest: true });
+  })();
+  const spawned = await spawnServeOverFonts(site.catalogDir, [
+    "--manifest",
+    site.manifestPath!,
+    ...(await journeyCatalogFlags(site.originUri, "journey-catalog-j2")),
+  ]);
+  return {
+    url: await spawned.url,
+    dispose: async () => {
+      await spawned.dispose();
+      await rm(site.root, { recursive: true, force: true });
+      await rm(facesRoot, { recursive: true, force: true });
+    },
+  };
+}
+
+/* ------------------------------------------------------------------ */
 /* The shared coloring serve (ticket #35)                              */
 /* ------------------------------------------------------------------ */
 
 /**
- * One serve over the run assets for the whole run (J3–J7): the
- * journeys' picks are the real catalog faces, whose files the run
- * layout holds — the picks resolve by file name against the serve's
- * /fonts index, exactly the slot resolution a build submission walks.
- * Null when the run assets are absent (the J9-only environments):
- * the coloring journeys then degrade to the plain preview, and their
- * effective-table steps fail loudly rather than silently passing.
+ * One serve over the run assets for the coloring journeys (J3–J7),
+ * spawned LAZILY on the first bootWithServe call (ticket #37's
+ * conversion): the serve-less journeys (J1/J8/J10) never touch the
+ * run assets or the shared catalog — running them alone stays cheap
+ * and never depends on the real layout. The journeys' picks are the
+ * real catalog faces, whose files the run layout holds — the picks
+ * resolve by file name against the serve's /fonts index, exactly the
+ * slot resolution a build submission walks. Null when the run assets
+ * are absent (the J9-only environments): the coloring journeys then
+ * degrade to the plain preview, and their effective-table steps fail
+ * loudly rather than silently passing.
  */
 let coloringServeUrl: string | null = null;
+let coloringServeStart: Promise<string | null> | null = null;
 
-test.describe("user journey", () => {
-  test.beforeAll(async () => {
+/** Start (once) or return the shared coloring serve's URL promise. */
+function sharedColoringServe(): Promise<string | null> {
+  coloringServeStart ??= (async () => {
+    // Ticket #37 / spec #25 (finding 1): the serve catalog is the
+    // whole run's ONE shared, persistent scratch dir — the first
+    // journey pays the sync, every later journey boots warm.
     const service = await spawnServeOverFonts(RUN_FONTS, [
       "--manifest",
       RUN_MANIFEST,
+      ...(await journeyCatalogFlags(journeyCatalogOrigin())),
     ]);
     // A failed spawn (assets absent, port trouble) must NOT take the
-    // whole file down: J1/J2/J8/J10 need no serve, and the coloring
-    // journeys fail loudly at bootWithServe instead — null carries the
-    // documented degradation, a thrown beforeAll would fail even the
-    // journeys that never color.
-    coloringServeUrl = await service.url.catch(() => null);
-    journeyTeardown.push(async () => {
+    // whole file down: the serve-less journeys need no serve, and the
+    // coloring journeys fail loudly at bootWithServe instead — null
+    // carries the documented degradation, a thrown spawn would fail
+    // even the journeys that never color.
+    const url = await service.url.catch(() => null);
+    if (url !== null) {
+      journeyTeardown.push(async () => {
+        await service.dispose();
+      });
+    } else {
       await service.dispose();
-    });
-  });
+    }
+    coloringServeUrl = url;
+    return url;
+  })();
+  return coloringServeStart;
+}
+
+/**
+ * The release origin the journey serves sync their catalog from: the
+ * vite dev server's REAL dev catalog (the journey config boots it with
+ * VITE_DEV_CATALOG=1). FONTALLOY_JOURNEY_CATALOG_ORIGIN overrides it
+ * (see ./journey-catalog.ts).
+ */
+function journeyCatalogOrigin(): string {
+  return `${JOURNEY_ORIGIN}/dev-catalog`;
+}
+
+test.describe("user journey", () => {
+  // No eager beforeAll spawn (ticket #37's conversion): the shared
+  // coloring serve starts lazily on the first bootWithServe call, so
+  // a run of the serve-less journeys (J1/J8/J10 — or J2's own tiny
+  // fixture serve) never touches the run assets at all.
 
   test.afterAll(async () => {
+    // Starting the lazy serve (if a coloring journey reached for it)
+    // settles its dispose hook before the teardown walk.
+    await coloringServeStart?.catch(() => undefined);
     for (const teardown of journeyTeardown.splice(0)) {
       await teardown();
     }
@@ -694,11 +939,18 @@ test.describe("user journey", () => {
   }) => {
     test.setTimeout(900_000);
     await journey("J1 初次启动", async (step) => {
-      await step("J1.1 first boot: the catalog screen settles, workspace up", async () => {
-        await boot(page);
+      await step("J1.1 first boot (no serve): the workspace is alive, the pickers honestly empty", async () => {
+        // Ticket #37's conversion: a fresh boot with NOTHING attached
+        // — the terminal "none" state of the T3 catalog model. No
+        // catalog wait can ever satisfy here (the poller never
+        // starts), so the settle is the workspace itself plus the
+        // zero-row picker state.
+        await bootNoServe(page);
         await expect(page.locator(".catalog-screen")).toBeHidden();
         await expect(page.locator(".workspace-rail")).toBeVisible();
         await expect(page.locator(".workspace-content")).toBeVisible();
+        await assertPickerEmptyNoServe(page, "en");
+        await assertPickerEmptyNoServe(page, "cjk");
       });
 
       await step("J1.2 top bar chrome complete: brand+mark, pair slot, GitHub, theme, font-name, 合成字体", async () => {
@@ -715,8 +967,28 @@ test.describe("user journey", () => {
         await expect(fontName).toHaveValue("ChHsich");
         const synthesize = bar.locator("[data-role='synthesize']");
         await expect(synthesize).toHaveText("合成字体");
-        // Fresh state, no service: the action is disabled — honestly.
+        // Fresh state, no service: the action is disabled — honestly —
+        // and the click states WHY: the offline notice opens together
+        // with the no-service CLI panel (the degrade surface).
         await expect(synthesize).toHaveAttribute("aria-disabled", "true");
+        await pointerClick(page, synthesize);
+        await expect(
+          page.locator(".synthesize-notice .notice-text"),
+        ).toContainText("未连接本地合成服务");
+        const cliPanel = page.locator(".cli-panel");
+        await expect(cliPanel).toBeVisible();
+        await expect(
+          cliPanel.locator("[data-testid='service-notice']"),
+        ).toContainText("当前环境未提供服务地址");
+        await pointerClick(page, cliPanel.locator(".cli-close"));
+        await expect(cliPanel).toBeHidden();
+        await pointerClick(
+          page,
+          page.locator(".synthesize-notice .notice-close"),
+        );
+        await expect(
+          page.locator(".synthesize-notice"),
+        ).toBeHidden();
       });
 
       await step("J1.3 rail sections complete with the design's empty states", async () => {
@@ -795,171 +1067,181 @@ test.describe("user journey", () => {
   test("J2 挑字体 — pickers, chips, the flagship pair, rail identity", async ({
     journeysPage: page,
   }) => {
-    await journey("J2 挑字体", async (step) => {
-      await step("J2.1 the EN picker opens in the AppSelect form with search + footer", async () => {
-        await boot(page);
-        await openPicker(page, "en");
-        const popup = pickerPopup(page, "en");
-        await expect(popup.locator(".kit-q")).toBeVisible();
-        await expect(popup.locator(".kit-fp").first()).toBeVisible();
-        await expect(popup.locator(".kit-fpsys")).toContainText(
-          "加载本地字体文件",
-        );
-      });
-
-      await step("J2.2 rows self-render in their own typeface with meta lines", async () => {
-        const row = pickerRow(page, "en", "JetBrainsMono Nerd Font");
-        await expect(row).toBeVisible();
-        // Self-rendering: the name's inline font-family is its own face.
-        // The lazy registration sweep lands AFTER the catalog screen
-        // hides (manager.registerVerified runs post-settle), so the
-        // inline style arrives asynchronously — poll for it.
-        await expect
-          .poll(
-            async () =>
-              row.locator(".kit-nm").evaluate((el) => el.style.fontFamily),
-            { timeout: 30_000 },
-          )
-          .not.toBe("");
-        // Meta line: license + trait (curated 连字) + stars (routed 4242).
-        await expect(row.locator(".kit-meta")).toBeVisible();
-        await expect(row).toContainText("连字");
-        await expect(row).toContainText("OFL");
-      });
-
-      await step("J2.3 pick JetBrains Mono (the Nerd Font cut) → the base pair tag", async () => {
-        await rawClick(page, pickerRow(page, "en", "JetBrainsMono Nerd Font"));
-        await waitForFontsReady(page);
-        await expect(
-          page.locator("[data-role='font-pair'] [data-pair='base']"),
-        ).toHaveText(/JetBrains/, { timeout: 20_000 });
-        await page.keyboard.press("Escape");
-        await expect(pickerPopup(page, "en")).toBeHidden();
-      });
-
-      await step("J2.4 the CJK picker lists the expanded CJK set", async () => {
-        await openPicker(page, "cjk");
-        const rows = pickerPopup(page, "cjk").locator(".kit-fp");
-        const count = await rows.count();
-        expect(count).toBeGreaterThanOrEqual(10);
-        // Round 20: the unselected row reads the DEFAULT cut's own
-        // representative name (「Maple Mono NF」), no longer the
-        // prototype-era shared CN face.
-        for (const name of ["Maple Mono NF", "LXGW WenKai"]) {
-          await expect(pickerRow(page, "cjk", name)).toBeVisible();
-        }
-      });
-
-      await step("J2.5 variant chips read the fonts' own names (plain default, picker-level help)", async () => {
-        const maple = pickerRow(page, "cjk", "Maple Mono NF");
-        // Round 8 final form: one chip per CUT; round 23 (owner item 1):
-        // the labels are the fonts' OWN names — the registered cut's
-        // name-table display string, the default cut included, verbatim
-        // (no 标准/别名 token). The default cut renders PLAIN: no 默认
-        // marker, no dashed ring, never a pressed look; the weight axis
-        // never chips.
-        const nf = maple.locator(".kit-vchip[data-chip='MapleMono::NF']");
-        const nfCn = maple.locator(".kit-vchip[data-chip='MapleMono::NF-CN']");
-        await expect(nf).toBeVisible();
-        // Both cuts' faces are served, so both chips read their real
-        // name-table names — no click needed first (the boot sweep
-        // registers every cut of a multi-entry family).
-        await expect(nf).toHaveText("Maple Mono NF");
-        await expect(nf).not.toContainText("默认");
-        await expect(nf).not.toHaveClass(/def|on/);
-        await expect(nfCn).toBeVisible();
-        await expect(nfCn).toHaveText("Maple Mono NF CN");
-        await expect(nfCn).not.toHaveClass(/on/);
-        await expect(maple.locator(".kit-vchip")).toHaveCount(2);
-        // The WenKai group row: a served member's chip reads its own
-        // name-table name (「LXGW WenKai Mono」); an unserved member
-        // keeps its release artifact's own stem — never a weight chip.
-        const wenkai = pickerRow(page, "cjk", "LXGW WenKai");
-        await expect(
-          wenkai.locator(".kit-vchip[data-chip='LXGWWenKaiMono::Regular']"),
-        ).toHaveText("LXGW WenKai Mono");
-        // Round 23: a served member reads its own name-table name —
-        // every chip of the row, straight from the fonts themselves.
-        await expect(
-          wenkai.locator(".kit-vchip[data-chip='LXGWWenKaiScreen::Regular']"),
-        ).toHaveText("LXGW WenKai Screen");
-        for (const chip of await wenkai.locator(".kit-vchip").all()) {
-          const text = await chip.textContent();
-          expect(text, `no weight chips: ${text}`).not.toMatch(
-            /^(Light|Medium|Regular)(?![A-Za-z])/,
+    // Ticket #37's conversion: the picker journey genuinely needs
+    // catalog rows, so it boots against its own TINY fixture catalog
+    // serve (generated single-face binaries with the exact identity
+    // structure the steps pin — never the real release bytes and never
+    // the shared coloring serve's run assets).
+    const pickerServe = await startJourneyPickerServe();
+    try {
+      await journey("J2 挑字体", async (step) => {
+        await step("J2.1 the EN picker opens in the AppSelect form with search + footer", async () => {
+          await boot(page, `/?serve=${encodeURIComponent(pickerServe.url)}`);
+          await openPicker(page, "en");
+          const popup = pickerPopup(page, "en");
+          await expect(popup.locator(".kit-q")).toBeVisible();
+          await expect(popup.locator(".kit-fp").first()).toBeVisible();
+          await expect(popup.locator(".kit-fpsys")).toContainText(
+            "加载本地字体文件",
           );
-        }
-        // ONE ? for the whole picker (never per row): the variant help.
-        const help = pickerPopup(page, "cjk").locator(
-          "[data-role='help-picker-variants-cjk']",
-        );
-        await expect(help).toBeVisible();
-        await pointerClick(page, help);
-        const pop = page.locator(
-          "[data-help-popup='picker-variants-cjk']",
-        );
-        await expect(pop).toBeVisible();
-        await expect(pop.locator("h5")).toHaveText("变体是什么");
-        await expect(pop).toContainText("同一款字体常有多个发行版本");
-        // The token vocabulary the names carry, as official terms —
-        // and no weight row (the axis is deleted).
-        for (const term of ["NF / NL", "Mono / HW", "Screen"]) {
-          await expect(pop).toContainText(term);
-        }
-        await expect(pop).not.toContainText("字重");
-        await page.keyboard.press("Escape");
-        await expect(pop).toBeHidden();
-      });
+        });
 
-      await step("J2.6 pick Maple Mono NF-CN via the chip → the variant's real name everywhere", async () => {
-        // J2.5's Escape closed only the help popover — the picker
-        // itself stays open (one layer per press). Fail fast if that
-        // layering ever breaks instead of waiting on a hidden chip.
-        await expect(pickerPopup(page, "cjk")).toBeVisible();
-        const nfCn = page
-          .locator(".kit-fp", { hasText: "Maple Mono" })
-          .locator(".kit-vchip[data-chip='MapleMono::NF-CN']");
-        await rawClick(page, nfCn);
-        await waitForFontsReady(page);
-        // The identity follows the font file itself (round 9, owner
-        // item 2; round 20: the cut's OWN face): the pair tag carries
-        // the served face's OWN name-table string — the NF-CN cut's
-        // MapleMono-NF-CN-Regular.ttf reads 「Maple Mono NF CN」.
-        await expect(
-          page.locator("[data-role='font-pair'] [data-pair='donor']"),
-        ).toHaveText("Maple Mono NF CN", { timeout: 20_000 });
-        // The chip is the EXPLICIT selection (accent); the default NF
-        // cut stays plain.
-        await expect(
-          page.locator(".kit-vchip[data-chip='MapleMono::NF-CN']"),
-        ).toHaveClass(/on/);
-        await expect(
-          page.locator(".kit-vchip[data-chip='MapleMono::NF']"),
-        ).not.toHaveClass(/on/);
-        await page.keyboard.press("Escape");
-        await expect(pickerPopup(page, "cjk")).toBeHidden();
-      });
+        await step("J2.2 rows self-render in their own typeface with meta lines", async () => {
+          const row = pickerRow(page, "en", "JetBrainsMono Nerd Font");
+          await expect(row).toBeVisible();
+          // Self-rendering: the name's inline font-family is its own face.
+          // The lazy registration sweep lands AFTER the catalog screen
+          // hides (manager.registerVerified runs post-settle), so the
+          // inline style arrives asynchronously — poll for it.
+          await expect
+            .poll(
+              async () =>
+                row.locator(".kit-nm").evaluate((el) => el.style.fontFamily),
+              { timeout: 30_000 },
+            )
+            .not.toBe("");
+          // Meta line: license + trait (curated 连字) + stars (routed 4242).
+          await expect(row.locator(".kit-meta")).toBeVisible();
+          await expect(row).toContainText("连字");
+          await expect(row).toContainText("OFL");
+        });
 
-      await step("J2.7 the rail carries both identity cards, self-rendered, real names", async () => {
-        for (const role of ["en", "cjk"] as const) {
-          const name = page.locator(
-            `[data-role='picker-${role}'] .kit-hd .kit-hdc b`,
+        await step("J2.3 pick JetBrains Mono (the Nerd Font cut) → the base pair tag", async () => {
+          await rawClick(page, pickerRow(page, "en", "JetBrainsMono Nerd Font"));
+          await waitForFontsReady(page);
+          await expect(
+            page.locator("[data-role='font-pair'] [data-pair='base']"),
+          ).toHaveText(/JetBrains/, { timeout: 20_000 });
+          await page.keyboard.press("Escape");
+          await expect(pickerPopup(page, "en")).toBeHidden();
+        });
+
+        await step("J2.4 the CJK picker lists the expanded CJK set", async () => {
+          await openPicker(page, "cjk");
+          const rows = pickerPopup(page, "cjk").locator(".kit-fp");
+          const count = await rows.count();
+          expect(count).toBeGreaterThanOrEqual(10);
+          // Round 20: the unselected row reads the DEFAULT cut's own
+          // representative name (「Maple Mono NF」), no longer the
+          // prototype-era shared CN face.
+          for (const name of ["Maple Mono NF", "LXGW WenKai"]) {
+            await expect(pickerRow(page, "cjk", name)).toBeVisible();
+          }
+        });
+
+        await step("J2.5 variant chips read the fonts' own names (plain default, picker-level help)", async () => {
+          const maple = pickerRow(page, "cjk", "Maple Mono NF");
+          // Round 8 final form: one chip per CUT; round 23 (owner item 1):
+          // the labels are the fonts' OWN names — the registered cut's
+          // name-table display string, the default cut included, verbatim
+          // (no 标准/别名 token). The default cut renders PLAIN: no 默认
+          // marker, no dashed ring, never a pressed look; the weight axis
+          // never chips.
+          const nf = maple.locator(".kit-vchip[data-chip='MapleMono::NF']");
+          const nfCn = maple.locator(".kit-vchip[data-chip='MapleMono::NF-CN']");
+          await expect(nf).toBeVisible();
+          // Both cuts' faces are served, so both chips read their real
+          // name-table names — no click needed first (the boot sweep
+          // registers every cut of a multi-entry family).
+          await expect(nf).toHaveText("Maple Mono NF");
+          await expect(nf).not.toContainText("默认");
+          await expect(nf).not.toHaveClass(/def|on/);
+          await expect(nfCn).toBeVisible();
+          await expect(nfCn).toHaveText("Maple Mono NF CN");
+          await expect(nfCn).not.toHaveClass(/on/);
+          await expect(maple.locator(".kit-vchip")).toHaveCount(2);
+          // The WenKai group row: a served member's chip reads its own
+          // name-table name (「LXGW WenKai Mono」); an unserved member
+          // keeps its release artifact's own stem — never a weight chip.
+          const wenkai = pickerRow(page, "cjk", "LXGW WenKai");
+          await expect(
+            wenkai.locator(".kit-vchip[data-chip='LXGWWenKaiMono::Regular']"),
+          ).toHaveText("LXGW WenKai Mono");
+          // Round 23: a served member reads its own name-table name —
+          // every chip of the row, straight from the fonts themselves.
+          await expect(
+            wenkai.locator(".kit-vchip[data-chip='LXGWWenKaiScreen::Regular']"),
+          ).toHaveText("LXGW WenKai Screen");
+          for (const chip of await wenkai.locator(".kit-vchip").all()) {
+            const text = await chip.textContent();
+            expect(text, `no weight chips: ${text}`).not.toMatch(
+              /^(Light|Medium|Regular)(?![A-Za-z])/,
+            );
+          }
+          // ONE ? for the whole picker (never per row): the variant help.
+          const help = pickerPopup(page, "cjk").locator(
+            "[data-role='help-picker-variants-cjk']",
           );
-          await expect(name).toBeVisible();
-          await expect(name).not.toBeEmpty();
-          const family = await name.evaluate((el) => el.style.fontFamily);
-          expect(family.length).toBeGreaterThan(0); // rendered in its own face
-        }
-        // The CJK card reads the picked face's own name-table string
-        // (round 9, item 2; round 20: the NF-CN cut's own face) — the
-        // same identity the pair tag and the report carry.
-        await expect(
-          page.locator("[data-role='picker-cjk'] .kit-hd .kit-hdc b"),
-        ).toHaveText("Maple Mono NF CN");
-      });
+          await expect(help).toBeVisible();
+          await pointerClick(page, help);
+          const pop = page.locator(
+            "[data-help-popup='picker-variants-cjk']",
+          );
+          await expect(pop).toBeVisible();
+          await expect(pop.locator("h5")).toHaveText("变体是什么");
+          await expect(pop).toContainText("同一款字体常有多个发行版本");
+          // The token vocabulary the names carry, as official terms —
+          // and no weight row (the axis is deleted).
+          for (const term of ["NF / NL", "Mono / HW", "Screen"]) {
+            await expect(pop).toContainText(term);
+          }
+          await expect(pop).not.toContainText("字重");
+          await page.keyboard.press("Escape");
+          await expect(pop).toBeHidden();
+        });
 
-      await step("J2.8 zero JS errors across the journey", assertNoJsErrors);
-    });
+        await step("J2.6 pick Maple Mono NF-CN via the chip → the variant's real name everywhere", async () => {
+          // J2.5's Escape closed only the help popover — the picker
+          // itself stays open (one layer per press). Fail fast if that
+          // layering ever breaks instead of waiting on a hidden chip.
+          await expect(pickerPopup(page, "cjk")).toBeVisible();
+          const nfCn = page
+            .locator(".kit-fp", { hasText: "Maple Mono" })
+            .locator(".kit-vchip[data-chip='MapleMono::NF-CN']");
+          await rawClick(page, nfCn);
+          await waitForFontsReady(page);
+          // The identity follows the font file itself (round 9, owner
+          // item 2; round 20: the cut's OWN face): the pair tag carries
+          // the served face's OWN name-table string — the NF-CN cut's
+          // MapleMono-NF-CN-Regular.ttf reads 「Maple Mono NF CN」.
+          await expect(
+            page.locator("[data-role='font-pair'] [data-pair='donor']"),
+          ).toHaveText("Maple Mono NF CN", { timeout: 20_000 });
+          // The chip is the EXPLICIT selection (accent); the default NF
+          // cut stays plain.
+          await expect(
+            page.locator(".kit-vchip[data-chip='MapleMono::NF-CN']"),
+          ).toHaveClass(/on/);
+          await expect(
+            page.locator(".kit-vchip[data-chip='MapleMono::NF']"),
+          ).not.toHaveClass(/on/);
+          await page.keyboard.press("Escape");
+          await expect(pickerPopup(page, "cjk")).toBeHidden();
+        });
+
+        await step("J2.7 the rail carries both identity cards, self-rendered, real names", async () => {
+          for (const role of ["en", "cjk"] as const) {
+            const name = page.locator(
+              `[data-role='picker-${role}'] .kit-hd .kit-hdc b`,
+            );
+            await expect(name).toBeVisible();
+            await expect(name).not.toBeEmpty();
+            const family = await name.evaluate((el) => el.style.fontFamily);
+            expect(family.length).toBeGreaterThan(0); // rendered in its own face
+          }
+          // The CJK card reads the picked face's own name-table string
+          // (round 9, item 2; round 20: the NF-CN cut's own face) — the
+          // same identity the pair tag and the report carry.
+          await expect(
+            page.locator("[data-role='picker-cjk'] .kit-hd .kit-hdc b"),
+          ).toHaveText("Maple Mono NF CN");
+        });
+
+        await step("J2.8 zero JS errors across the journey", assertNoJsErrors);
+      });
+    } finally {
+      await pickerServe.dispose();
+    }
   });
 
   test("J3 文字范围 — language chips, preset effect, the last-language guard", async ({
@@ -2087,13 +2369,20 @@ test.describe("user journey", () => {
     });
   });
 
-  test("J8 合成设置 — four settings, verbatim help, width chips and format in the recipe", async ({
+  test("J8 合成设置 — four settings, verbatim help, the no-service CLI surface", async ({
     journeysPage: page,
   }) => {
     await journey("J8 合成设置", async (step) => {
-      await step("J8.1 setup: picks made, no service (the CLI panel is the recipe surface)", async () => {
-        await boot(page, "/?noservice=1"); // serveUrl null — honest absence
-        await pickFlagshipPair(page);
+      await step("J8.1 setup: no service, no catalog — the honest serve-less boot", async () => {
+        // Ticket #37's conversion: `?noservice=1` is the terminal
+        // "none" state of the T3 catalog model — the poller never
+        // starts, so nothing may wait on catalog readiness, and the
+        // #36 upload model leaves no pick path without a serve either
+        // (the old step's catalog picks were the deleted page-side
+        // downloader's luxury). The journey walks the settings and the
+        // CLI surface exactly as a serve-less user gets them.
+        await bootNoServe(page);
+        await assertPickerEmptyNoServe(page, "en");
       });
 
       await step("J8.2 all four settings open and change", async () => {
@@ -2200,73 +2489,38 @@ test.describe("user journey", () => {
         await expect(pop).toBeHidden();
       });
 
-      await step("J8.4 width chips select 1.8× then 1.5×; the recipe reflects it", async () => {
-        // No service: the synthesize flow offers the CLI panel, whose
-        // JSON is the recipe the CLI would run — the width knob shows.
-        // (Ticket #29: the panel emits the wire JSON — the same body
-        // the serve submission sends — not YAML.)
+      await step("J8.4 no service, no picks: the CLI panel is the honest degrade surface", async () => {
+        // Ticket #37's conversion: the #36 upload model leaves no pick
+        // path without a serve, so the panel's recipe honestly cannot
+        // exist — the buttons stay disabled, the preview stays empty,
+        // and the status line names the missing picks (the same
+        // missing-pick contract the web noservice spec pins). The
+        // width/baseline/format → recipe reflections the old step
+        // asserted live at fixture scale in scenes.spec and the web
+        // catalog spec, where a serve CAN make the picks.
         const synthesize = page.locator(".topbar [data-role='synthesize']");
         await expect(synthesize).toHaveAttribute("aria-disabled", "true");
         await pointerClick(page, synthesize);
         const panel = page.locator(".cli-panel");
         await expect(panel).toBeVisible();
         await expect(
+          panel.locator("[data-testid='service-notice']"),
+        ).toContainText("当前环境未提供服务地址");
+        await expect(
+          panel.locator("[data-testid='cli-command']"),
+        ).toContainText("fontalloy build");
+        await expect(
           panel.locator("[data-testid='copy-command']"),
-        ).toHaveAttribute("aria-disabled", "false");
-        const recipe = panel.locator("[data-testid='recipe-json']");
-        await expect(recipe).toContainText('"width_factor": 1.8');
-        // Switch to 1.5× — the recipe follows.
-        const select = page.locator("[data-role='select-cjkWidth']");
-        await pointerClick(page, select.locator(".kit-csel"));
-        await pointerClick(
-          page,
-          select.locator(".kit-cso", { hasText: "1.5 倍英文宽" }),
-        );
-        await expect(recipe).toContainText('"width_factor": 1.5');
-        // Back to the 2× default: the knob disappears from the recipe
-        // (round 11: the label reads 2 倍英文宽, matching its siblings).
-        await pointerClick(page, select.locator(".kit-csel"));
-        await pointerClick(
-          page,
-          select.locator(".kit-cso", { hasText: "2 倍英文宽" }),
-        );
-        await expect(recipe).not.toContainText("width_factor");
-        // Round 20 (owner item 7): the baseline school writes the
-        // recipe's normalization block ONLY when it is explicit — grid
-        // and optical name their mode; 自动 is the core's default now
-        // and writes NOTHING. J8.2 left the baseline at grid, so the
-        // block is live here; with the width back at the 2× default
-        // and the baseline back on 自动, the block disappears entirely.
-        await expect(recipe).toContainText('"normalization"');
-        await expect(recipe).toContainText('"mode": "grid"');
-        const baselineSelect = page.locator("[data-role='select-baseline']");
-        await pointerClick(page, baselineSelect.locator(".kit-csel"));
-        await pointerClick(
-          page,
-          baselineSelect.locator(".kit-cso", { hasText: "中文字缩小一点更匀称" }),
-        );
-        await expect(recipe).toContainText('"mode": "optical"');
-        await pointerClick(page, baselineSelect.locator(".kit-csel"));
-        await pointerClick(
-          page,
-          baselineSelect.locator(".kit-cso", { hasText: /^自动/ }),
-        );
-        await expect(recipe).not.toContainText("normalization");
-        await expect(recipe).not.toContainText('"mode"');
-        // Round 12 (owner item 7): the output-format setting rides the
-        // recipe's output.format — J8.2 left it at WOFF2, so the recipe
-        // names woff2; back on TTF the recipe reads ttf again. Round 13
-        // (owner item 2): the TTF option label is the bare proper noun
-        // — the 默认 badge moved onto 自动 — so the row is matched by
-        // its exact text (the auto row's description also names TTF).
-        await expect(recipe).toContainText('"format": "woff2"');
-        const formatSelect = page.locator("[data-role='select-outputFormat']");
-        await pointerClick(page, formatSelect.locator(".kit-csel"));
-        await pointerClick(
-          page,
-          formatSelect.locator(".kit-cso").filter({ hasText: /^TTF$/ }),
-        );
-        await expect(recipe).toContainText('"format": "ttf"');
+        ).toHaveAttribute("aria-disabled", "true");
+        await expect(
+          panel.locator("[data-testid='download-recipe']"),
+        ).toHaveAttribute("aria-disabled", "true");
+        await expect(
+          panel.locator("[data-testid='recipe-json']"),
+        ).toHaveText("");
+        await expect(
+          panel.locator("[data-testid='copy-status']"),
+        ).toContainText("请先在左侧选择英文字体与中文字体");
       });
 
       await step("J8.5 zero JS errors across the journey", assertNoJsErrors);
@@ -2288,10 +2542,14 @@ test.describe("user journey", () => {
     // references — the production build path. (spawnServeOverFonts's
     // `url` field is the startup-line PROMISE — unlike the fixture
     // helper, it does not await it internally — so await it here or
-    // encodeURIComponent would stringify the promise object.)
+    // encodeURIComponent would stringify the promise object.) The
+    // catalog rides the run's ONE shared persistent dir (ticket #37,
+    // finding 1): J9's spawn settles warm, never re-syncing what the
+    // coloring serve already landed.
     const service = await spawnServeOverFonts(RUN_FONTS, [
       "--manifest",
       RUN_MANIFEST,
+      ...(await journeyCatalogFlags(journeyCatalogOrigin())),
     ]);
     const serviceUrl = await service.url;
     // Verification economy (owner, round 13): the app really submits the
@@ -2707,8 +2965,11 @@ test.describe("user journey", () => {
       const effective = () =>
         page.evaluate(() => document.documentElement.dataset.theme ?? "");
 
-      await step("J10.1 boot: the persisted preference drives the mode", async () => {
-        await boot(page);
+      await step("J10.1 boot (no serve): the persisted preference drives the mode", async () => {
+        // Theme chrome is catalog-free by construction (ticket #37's
+        // conversion): the no-serve boot settles on the workspace
+        // itself, never on a catalog sweep.
+        await bootNoServe(page);
         expect(["auto", "light", "dark"]).toContain(await mode());
       });
 
