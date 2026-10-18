@@ -63,6 +63,15 @@
  * document 503s and the app falls back to "catalog unavailable",
  * still fully usable. The production catalog flow is untouched — this
  * plugin never participates in a build and never serves production.
+ *
+ * Spec #25's final batch: every family entry in the release document
+ * ALSO carries its per-cut list (the `cuts` field — the
+ * family_docs.variant_cuts port: entries collapsed by their non-weight
+ * axis vector, Regular-canonical, default first, each cut with its own
+ * resolved faces). One `variant` field per family cannot represent a
+ * multi-cut family (MapleMono NF + NF-CN collapsed); the nested cuts
+ * make the family's full cut structure visible to a consumer of the
+ * document alone, matching what /catalog/families serves.
  */
 
 import { createHash } from "node:crypto";
@@ -666,7 +675,12 @@ function resolveFamilyFile(family, available, manifestFiles = []) {
   }
   return null;
 }/**
- * @typedef {{family: string, variant: string | undefined, zip: string, zipSha256: string,
+ * @typedef {{variant: string, def: boolean, label: string, file: string,
+ *            version?: string, sha256: string, axes?: Record<string, string>,
+ *            files: Array<{file: string, sha256: string}>}} CatalogCut
+ */
+/**
+ * @typedef {{family: string, variant: string | undefined, cuts: CatalogCut[] | null, zip: string, zipSha256: string,
  *            zipBytes: Buffer, file: string, fileSha256: string,
  *            faces: Array<{file: string, sha256: string, data: Buffer}>}} CatalogFamily
  */
@@ -688,6 +702,119 @@ let catalogPromise = null;
  * Variable face the prototype actually ships).
  */
 const CANONICAL_VARIANTS = ["Regular", "Variable", "Standard", "Light", "Medium"];
+
+/* ---------- the cut model (the family_docs.variant_cuts port) ---------- */
+
+/**
+ * The typed-axes cut structure (the spec #25 final-batch fix): a
+ * family's manifest entries collapse by their non-weight axis vector
+ * into CUTS — exactly what the serve's /catalog/families documents and
+ * variant_cuts() computes core-side. The release document carries the
+ * same list per family (one nested entry per cut), so a multi-cut
+ * family (MapleMono NF + NF-CN) is REPRESENTABLE in the document
+ * alone — the old single `variant` field collapsed it and a
+ * manifest-less consumer could not tell the cuts apart.
+ */
+const CUT_AXES = ["icons", "ligature", "cjk_width", "region", "charset", "rendering"];
+
+/** The implicit per-axis defaults a family's cuts disagree against. */
+const CUT_IMPLICIT_DEFAULTS = {
+  icons: "plain",
+  ligature: "liga",
+  cjk_width: "prop",
+  charset: "full",
+  rendering: "print",
+};
+
+/** Variant strings that are weight names (anything else collapses to Regular). */
+const CUT_WEIGHT_NAMES = new Set([
+  "Thin",
+  "ExtraLight",
+  "Light",
+  "Regular",
+  "Medium",
+  "SemiBold",
+  "Bold",
+  "ExtraBold",
+  "Black",
+]);
+
+/** The weight an entry effectively carries (axes first, else its variant word). */
+function cutEntryWeight(entry) {
+  const recorded = entry.axes?.weight;
+  if (recorded !== undefined) return recorded;
+  return CUT_WEIGHT_NAMES.has(entry.variant) ? entry.variant : "Regular";
+}
+
+/** One axis's effective value (weight special-cased; region carries no default). */
+function cutAxis(entry, axis) {
+  if (axis === "weight") return cutEntryWeight(entry);
+  const value = entry.axes?.[axis];
+  if (value !== undefined) return value;
+  return CUT_IMPLICIT_DEFAULTS[axis] ?? null;
+}
+
+/**
+ * The cut's DATA label: the artifact's OWN stem minus the catalog's
+ * leading index numbering and a trailing version (the data_cut_label
+ * port — `14_SourceHanSansHWSC.zip` → `SourceHanSansHWSC`).
+ */
+function dataCutLabel(file, variant) {
+  let stem = file.replace(/\.[^.]+$/, "").replace(/^\d+_/, "");
+  stem = stem.replace(/[-_]v?\d+(\.\d+)+([-_].*)?$/, "");
+  return stem || variant;
+}
+
+/**
+ * The cuts of one family (the variant_cuts port): entries bucketed by
+ * their non-weight axis vector, the canonical member of each bucket
+ * preferring the Regular weight, the default cut first. Returns
+ * `{ entry, members, def }[]`.
+ */
+function variantCuts(entries) {
+  if (entries.length === 0) return [];
+  const buckets = [];
+  const byKey = new Map();
+  for (const entry of entries) {
+    const key = CUT_AXES.map((axis) => cutAxis(entry, axis) ?? "").join("|");
+    if (!byKey.has(key)) {
+      byKey.set(key, []);
+      buckets.push(byKey.get(key));
+    }
+    byKey.get(key).push(entry);
+  }
+  const canonical = buckets.map((members) => ({
+    members,
+    entry: members.find((m) => cutEntryWeight(m) === "Regular") ?? members[0],
+  }));
+  const values = (axis) => {
+    const seen = [];
+    for (const { entry } of canonical) {
+      const value = cutAxis(entry, axis);
+      if (value !== null && !seen.includes(value)) seen.push(value);
+    }
+    return seen;
+  };
+  const contrasting = CUT_AXES.filter((axis) => values(axis).length > 1);
+  const defaultVector = {};
+  for (const axis of contrasting) {
+    const vals = values(axis);
+    const implicit = CUT_IMPLICIT_DEFAULTS[axis];
+    defaultVector[axis] = implicit !== undefined && vals.includes(implicit)
+      ? implicit
+      : vals[0];
+  }
+  const defaultEntry = canonical.find(({ entry }) =>
+    contrasting.every((axis) => cutAxis(entry, axis) === defaultVector[axis]),
+  )?.entry ?? canonical[0].entry;
+  const cuts = canonical.map(({ entry, members }) => ({
+    entry,
+    members,
+    def: entry === defaultEntry,
+  }));
+  cuts.sort((a, b) => Number(b.def) - Number(a.def)); // stable: default first
+  return cuts;
+}
 
 function chooseVariant(family, file, manifest) {
   const variants = manifest.families.filter((e) => e.family === family);
@@ -829,12 +956,15 @@ function buildCatalog() {
       // of all entries' faces, so every chip serves its own cut. The
       // primary face follows the DEFAULT entry (its Regular, else its
       // plainest face) — chooseVariant reads it unchanged.
+      /** @type {Map<object, string[]>} entry -> its resolved face names */
+      const entryFaces = new Map();
       /** @type {Map<string, string>} face -> path */
       const union = new Map();
       let defaultFaces = [];
       const defaultEntry = defaultEntryFor(entries);
       for (const e of entries) {
         const names = entryFaceNames(e, available, bySubdir);
+        entryFaces.set(e, names);
         if (e === defaultEntry) defaultFaces = names;
         for (const name of names) {
           if (!union.has(name)) union.set(name, available.get(name));
@@ -872,9 +1002,33 @@ function buildCatalog() {
         }),
       );
       const zipBytes = makeZip(faces.map(({ file: name, data }) => ({ name, data })));
+      // The per-cut entries (the variant_cuts port): EVERY cut of the
+      // family rides the document when the entry path resolved — each
+      // cut's own identity (canonical entry, axes, artifact stem) plus
+      // the faces ITS entries resolved (an honest empty list for a cut
+      // whose fetch failed — the 未下载 shape, never a silent collapse
+      // onto a sibling cut). The alias-fallback path (no entry resolved
+      // anything) keeps the legacy single-variant shape.
+      let cuts = null;
+      if (union.size > 0) {
+        const shaByName = new Map(faces.map((f) => [f.file, f.sha256]));
+        cuts = variantCuts(entries).map(({ entry, members, def }) => ({
+          variant: entry.variant,
+          def,
+          label: dataCutLabel(basename(entry.file), entry.variant),
+          file: basename(entry.file),
+          ...(entry.version === undefined ? {} : { version: entry.version }),
+          sha256: entry.sha256,
+          ...(entry.axes === undefined ? {} : { axes: entry.axes }),
+          files: [...new Set(members.flatMap((m) => entryFaces.get(m) ?? []))]
+            .sort()
+            .map((name) => ({ file: name, sha256: shaByName.get(name) ?? "" })),
+        }));
+      }
       families.push({
         family: entry.family,
         variant: chooseVariant(entry.family, file, manifest),
+        ...(cuts === null ? {} : { cuts }),
         zip: `${entry.family.replace(/\s+/g, "")}.zip`,
         zipSha256: sha256hex(zipBytes),
         zipBytes,
@@ -933,6 +1087,23 @@ function releaseDocument(families, baseUrl) {
       families: families.map((f) => ({
         family: f.family,
         ...(f.variant === undefined ? {} : { variant: f.variant }),
+        // The per-cut entries (additive, like `variant`): every cut of
+        // a multi-entry family, variant_cuts semantics, so a consumer
+        // of the document alone can represent the family's cuts.
+        ...(f.cuts === undefined || f.cuts === null
+          ? {}
+          : {
+              cuts: f.cuts.map((cut) => ({
+                variant: cut.variant,
+                def: cut.def,
+                label: cut.label,
+                ...(cut.version === undefined ? {} : { version: cut.version }),
+                file: cut.file,
+                sha256: cut.sha256,
+                ...(cut.axes === undefined ? {} : { axes: cut.axes }),
+                files: cut.files,
+              })),
+            }),
         zip: f.zip,
         sha256: f.zipSha256,
         files: f.faces.map(({ file, sha256 }) => ({ file, sha256 })),

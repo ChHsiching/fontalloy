@@ -1,4 +1,5 @@
 import { mkdir, rm, writeFile, readFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -63,6 +64,13 @@ function fakeRequest(url: string): {
   return { req, handlerRes, captured };
 }
 
+/** The sha256 of a fixture file (manifest pins in the tests below). */
+function shaOf(path: string): string {
+  return createHash("sha256")
+    .update(readFileSync(path))
+    .digest("hex");
+}
+
 test.describe("the dev catalog generator", () => {
   test("a multi-cut family serves BOTH cuts' faces — never the shadowed prototype alias", async () => {
     const fontDir = join(tmpdir(), `fontalloy-devcat-cut-${Date.now()}`);
@@ -84,7 +92,7 @@ test.describe("the dev catalog generator", () => {
     process.env.FONTALLOY_DEV_CATALOG_FETCH = "0";
 
     try {
-      const { devCatalogPlugin } = await import(SCRIPT);
+      const { devCatalogPlugin } = await freshPlugin("cutshadow");
       let middleware: ((req: unknown, res: unknown, next: () => void) => Promise<void>) | null =
         null;
       devCatalogPlugin().configureServer({
@@ -127,7 +135,7 @@ test.describe("the dev catalog generator", () => {
     process.env.FONTALLOY_DEV_CATALOG_FETCH = "0";
 
     try {
-      const { devCatalogPlugin } = await import(SCRIPT);
+      const { devCatalogPlugin } = await freshPlugin("multiface");
       let middleware: ((req: unknown, res: unknown, next: () => void) => Promise<void>) | null =
         null;
       devCatalogPlugin().configureServer({
@@ -247,6 +255,146 @@ test.describe("the dev catalog generator", () => {
       delete process.env.FONTALLOY_DEV_CATALOG_FETCH;
       await rm(fontDir, { recursive: true, force: true });
       await rm(cacheDir, { recursive: true, force: true });
+    }
+  });
+
+  test("a multi-entry family's release entry carries EVERY cut — per-cut entries, variant_cuts semantics", async () => {
+    // The spec #25 final-batch finding: the release document emitted ONE
+    // entry per family with ONE chosen variant, so a multi-cut family
+    // (MapleMono NF + NF-CN) could not be REPRESENTED — a consumer of
+    // the document alone (a manifest-less serve, the run-assets refresh)
+    // saw a single cut where /catalog/families lists two. The family's
+    // release entry now carries a nested per-cut list with the SAME
+    // semantics as variant_cuts: entries collapse by their non-weight
+    // axis vector, the canonical member prefers the Regular weight, the
+    // default cut comes first, and each cut lists its OWN resolved
+    // faces (a failed cut stays an honest empty entry).
+    const root = join(tmpdir(), `fontalloy-devcat-cuts-${Date.now()}`);
+    const fontDir = join(root, "fonts");
+    const cacheDir = join(root, "cache");
+    await mkdir(join(fontDir, "MapleMono-NF"), { recursive: true });
+    await mkdir(join(fontDir, "MapleMono-NF-CN"), { recursive: true });
+    for (const face of [
+      "MapleMono-NF-Regular.ttf",
+      "MapleMono-NF-Bold.ttf",
+      "MapleMono-NF-CN-Regular.ttf",
+      "MapleMono-NF-CN-Bold.ttf",
+    ]) {
+      const dir = face.includes("-CN-") ? "MapleMono-NF-CN" : "MapleMono-NF";
+      await writeFile(join(fontDir, dir, face), Buffer.from(`dummy-${face}`));
+    }
+    // The collapse pin: two entries of ONE axis vector (a Light + Regular
+    // weight pair) are ONE cut, the Regular the canonical member.
+    for (const face of ["WeightPair-Regular.ttf", "WeightPair-Light.ttf"]) {
+      await writeFile(join(fontDir, face), Buffer.from(`dummy-${face}`));
+    }
+    const manifest = {
+      schema: "fontalloy/font-catalog@v1",
+      families: [
+        {
+          family: "MapleMono", variant: "NF", file: "MapleMono-NF.zip",
+          version: "v7.9", upstream_url: "http://127.0.0.1:9/nf.zip",
+          sha256: "a".repeat(64), axes: { icons: "nf" },
+        },
+        {
+          family: "MapleMono", variant: "NF-CN", file: "MapleMono-NF-CN.zip",
+          version: "v7.9", upstream_url: "http://127.0.0.1:9/nfcn.zip",
+          sha256: "b".repeat(64), axes: { icons: "nf", region: "SC" },
+        },
+        {
+          family: "WeightPair", variant: "Regular", file: "WeightPair-Regular.ttf",
+          version: "v1", upstream_url: "http://127.0.0.1:9/r.ttf",
+          sha256: shaOf(join(fontDir, "WeightPair-Regular.ttf")),
+        },
+        {
+          family: "WeightPair", variant: "Light", file: "WeightPair-Light.ttf",
+          version: "v1", upstream_url: "http://127.0.0.1:9/l.ttf",
+          sha256: shaOf(join(fontDir, "WeightPair-Light.ttf")),
+        },
+      ],
+    };
+    const manifestPath = join(root, "manifest.json");
+    await writeFile(manifestPath, JSON.stringify(manifest));
+
+    process.env.FONTALLOY_DEV_FONT_DIR = fontDir;
+    process.env.FONTALLOY_DEV_CATALOG_CACHE = cacheDir;
+    process.env.FONTALLOY_DEV_CATALOG_MANIFEST = manifestPath;
+    process.env.FONTALLOY_DEV_CATALOG_FETCH = "0";
+    try {
+      const { devCatalogPlugin } = await freshPlugin("cutsdoc");
+      let middleware: ((req: unknown, res: unknown, next: () => void) => Promise<void>) | null = null;
+      devCatalogPlugin().configureServer({
+        middlewares: { use: (fn: typeof middleware) => (middleware = fn) },
+      });
+      const doc = fakeRequest("/dev-catalog/catalog-release.json");
+      await middleware!(doc.req as never, doc.handlerRes as never, () => {});
+      expect(doc.captured.status).toBe(200);
+      const release = JSON.parse(doc.captured.body.toString("utf8")) as {
+        families: Array<{
+          family: string;
+          variant?: string;
+          cuts?: Array<{
+            variant: string;
+            def: boolean;
+            label: string;
+            file: string;
+            sha256: string;
+            axes: Record<string, string>;
+            files: Array<{ file: string; sha256: string }>;
+          }>;
+          files: Array<{ file: string }>;
+        }>;
+      };
+      const maple = release.families.find((f) => f.family === "MapleMono");
+      expect(maple).toBeDefined();
+      expect(maple!.variant).toBe("NF");
+      expect(maple!.cuts, "the release entry carries EVERY cut").toHaveLength(2);
+      // Default first: the NF cut (region carries no implicit default, so
+      // the first manifest entry of the collapsed set is the default).
+      expect(maple!.cuts![0]).toMatchObject({
+        variant: "NF",
+        def: true,
+        label: "MapleMono-NF",
+        file: "MapleMono-NF.zip",
+        sha256: "a".repeat(64),
+        axes: { icons: "nf" },
+      });
+      expect(maple!.cuts![0]!.files.map((f) => f.file).sort()).toEqual([
+        "MapleMono-NF-Bold.ttf",
+        "MapleMono-NF-Regular.ttf",
+      ]);
+      expect(maple!.cuts![1]).toMatchObject({
+        variant: "NF-CN",
+        def: false,
+        label: "MapleMono-NF-CN",
+        axes: { icons: "nf", region: "SC" },
+      });
+      expect(maple!.cuts![1]!.files.map((f) => f.file).sort()).toEqual([
+        "MapleMono-NF-CN-Bold.ttf",
+        "MapleMono-NF-CN-Regular.ttf",
+      ]);
+      // The family-level shape is unchanged: ONE zip, the union of all
+      // cuts' faces.
+      expect(maple!.files.map((f) => f.file)).toHaveLength(4);
+      // The collapse: a weight pair of one axis vector is ONE cut, the
+      // Regular its canonical member.
+      const pair = release.families.find((f) => f.family === "WeightPair");
+      expect(pair!.cuts).toHaveLength(1);
+      expect(pair!.cuts![0]).toMatchObject({
+        variant: "Regular",
+        def: true,
+        file: "WeightPair-Regular.ttf",
+      });
+      expect(pair!.cuts![0]!.files.map((f) => f.file).sort()).toEqual([
+        "WeightPair-Light.ttf",
+        "WeightPair-Regular.ttf",
+      ]);
+    } finally {
+      delete process.env.FONTALLOY_DEV_FONT_DIR;
+      delete process.env.FONTALLOY_DEV_CATALOG_CACHE;
+      delete process.env.FONTALLOY_DEV_CATALOG_MANIFEST;
+      delete process.env.FONTALLOY_DEV_CATALOG_FETCH;
+      await rm(root, { recursive: true, force: true });
     }
   });
 

@@ -45,7 +45,11 @@ const REPORT_PATH = path.join(NOTES_DIR, "journey-report-web.json");
 /**
  * The owner's real serve layout (see the GUI twin for the rationale):
  * the fetched catalog directory + its own manifest, so the catalog
- * picks resolve as catalog-family references.
+ * picks resolve as catalog-family references. When the layout's
+ * manifest drifts behind the repo's (spec #25's final batch: a
+ * pre-typed-axes layout collapsed MapleMono's cuts), refresh it with
+ * scripts/refresh_run_assets.py and point this env at the new
+ * directory — never write into the source layout.
  */
 const RUN_ASSETS =
   process.env.FONTALLOY_RUN_ASSETS ??
@@ -196,6 +200,31 @@ async function parseBuiltFont(
 }
 
 /**
+ * Every pick-surface wait is EXPLICITLY bounded (spec #25's final
+ * batch): a missing row or chip — the stale-manifest symptom, where
+ * variant_cuts collapses MapleMono NF/NF-CN into one cut and the
+ * NF-CN chip never renders — must fail the journey in MINUTES with a
+ * message naming the surface, never ride an implicit default (or the
+ * 40-minute journey timeout) as an unexplained hang.
+ */
+const PICK_WAIT_MS = 120_000;
+
+/** Post-build UI assertions: the build already settled, 30s is generous. */
+const UI_WAIT_MS = 30_000;
+
+/**
+ * Wait for one pick surface (row or chip) with an explicit bound and a
+ * failure that names what the journey was waiting for.
+ */
+async function awaitPickSurface(
+  locator: Locator,
+  what: string,
+  timeout = PICK_WAIT_MS,
+): Promise<void> {
+  await expect(locator, what).toBeVisible({ timeout });
+}
+
+/**
  * Click at the target's center by RAW COORDINATES (no node-identity
  * pin — the pickCatalogFamily precedent in ./helpers): while the
  * catalog's lazy registration sweep runs, every store patch rebuilds
@@ -240,7 +269,11 @@ async function pickFlagshipPair(page: Page): Promise<void> {
   const jetRow = en.locator(".kit-fp").filter({
     has: page.locator(".kit-nm", { hasText: /^JetBrainsMono Nerd Font$/ }),
   });
-  await jetRow.scrollIntoViewIfNeeded();
+  await awaitPickSurface(
+    jetRow,
+    "the JetBrainsMono Nerd Font row must appear in the EN picker",
+  );
+  await jetRow.scrollIntoViewIfNeeded({ timeout: PICK_WAIT_MS });
   await rawClick(page, jetRow);
   await waitForFontsReady(page);
   await expect(
@@ -258,11 +291,23 @@ async function pickFlagshipPair(page: Page): Promise<void> {
   const mapleRow = cjk.locator(".kit-fp").filter({
     has: page.locator(".kit-nm", { hasText: /^Maple Mono NF$/ }),
   });
-  await mapleRow.scrollIntoViewIfNeeded();
-  await rawClick(
-    page,
-    mapleRow.locator(".kit-vchip[data-chip='MapleMono::NF-CN']"),
+  await awaitPickSurface(
+    mapleRow,
+    "the Maple Mono NF row must appear in the CJK picker",
   );
+  await mapleRow.scrollIntoViewIfNeeded({ timeout: PICK_WAIT_MS });
+  // The chip is the journey's canary for the typed-axes manifest: a
+  // stale run-assets manifest collapses MapleMono NF/NF-CN into ONE
+  // cut and this chip never renders — the bounded wait must say so in
+  // minutes instead of hanging the 40-minute journey.
+  const nfCnChip = mapleRow.locator(".kit-vchip[data-chip='MapleMono::NF-CN']");
+  await awaitPickSurface(
+    nfCnChip,
+    "the MapleMono::NF-CN variant chip must render — variant_cuts over " +
+      "the CURRENT manifest; a single-chip row means the run-assets " +
+      "manifest predates the typed-axes schema (refresh it; spec #25)",
+  );
+  await rawClick(page, nfCnChip);
   await waitForFontsReady(page);
   // Round 9: the served face's own name-table string.
   await expect(
@@ -320,7 +365,9 @@ test("J11 Web 目标 — detection, picks, preset, live merge, report, download,
       await expect(
         page.locator(".topbar [data-role='synthesize']"),
       ).toHaveAttribute("aria-disabled", "true", { timeout: 30_000 });
-      await expect(page.locator(".workspace-rail")).toBeVisible();
+      await expect(page.locator(".workspace-rail")).toBeVisible({
+        timeout: UI_WAIT_MS,
+      });
     });
 
     await step("J11.2 the catalog settles (the first-run download)", async () => {
@@ -331,7 +378,9 @@ test("J11 Web 目标 — detection, picks, preset, live merge, report, download,
       await pickFlagshipPair(page);
       await expect(
         page.locator(".topbar [data-role='synthesize']"),
-      ).toHaveAttribute("aria-disabled", "false");
+      ).toHaveAttribute("aria-disabled", "false", {
+        timeout: UI_WAIT_MS,
+      });
     });
 
     await step("J11.4 the 文字范围 preset: 日文 toggles on, the kana resolve by rule", async () => {
@@ -341,17 +390,21 @@ test("J11 Web 目标 — detection, picks, preset, live merge, report, download,
       const cell = page.locator(
         ".charmap-grid .kit-cell[data-cp='U+3042']",
       );
-      await expect(cell).toHaveClass(/cur/);
+      await expect(cell).toHaveClass(/cur/, { timeout: UI_WAIT_MS });
       const ja = page.locator("[data-role='lang-chip'][data-preset='ja']");
       await pointerClick(page, ja);
-      await expect(ja).toHaveAttribute("aria-pressed", "true");
-      await expect(cell).toHaveAttribute("data-via", /rule-\d+/);
+      await expect(ja).toHaveAttribute("aria-pressed", "true", {
+        timeout: UI_WAIT_MS,
+      });
+      await expect(cell).toHaveAttribute("data-via", /rule-\d+/, {
+        timeout: UI_WAIT_MS,
+      });
     });
 
     await step("J11.5 synthesize runs the 7 report-copy stages to 完成", async () => {
       await pointerClick(page, page.locator(".topbar [data-role='synthesize']"));
       const panel = page.locator('[data-testid="build-panel"]');
-      await expect(panel).toBeVisible();
+      await expect(panel).toBeVisible({ timeout: UI_WAIT_MS });
       const stepLabels = await panel
         .locator(".build-step")
         .evaluateAll((dots) => dots.map((dot) => (dot as HTMLElement).title));
@@ -379,13 +432,13 @@ test("J11 Web 目标 — detection, picks, preset, live merge, report, download,
       // collection from the start (J11.6 asserts its 16-slot grid).
       await expect(
         panel.locator("[data-build-saved-label]").first(),
-      ).toHaveText("已保存");
+      ).toHaveText("已保存", { timeout: UI_WAIT_MS });
       await expect(
         panel.locator("[data-build-saved-path]").first(),
-      ).toHaveAttribute("title", "ChHsich.ttc");
+      ).toHaveAttribute("title", "ChHsich.ttc", { timeout: UI_WAIT_MS });
       await expect(
         panel.locator("[data-build-saveas]").first(),
-      ).toBeVisible();
+      ).toBeVisible({ timeout: UI_WAIT_MS });
     });
 
     await step("J11.6 the verification report renders under the real terms", async () => {
@@ -393,7 +446,10 @@ test("J11 Web 目标 — detection, picks, preset, live merge, report, download,
       // Round 10: the settled row stays calm — the report sits behind
       // the 查看报告 disclosure (saved line first); the raw JSON form
       // is gone from the UI.
-      await expect(panel.locator(".build-row").first()).toContainText("已保存");
+      await expect(panel.locator(".build-row").first()).toContainText(
+        "已保存",
+        { timeout: UI_WAIT_MS },
+      );
       await pointerClick(page, panel.locator(".report-details > summary"));
       for (const label of [
         "验证报告",
@@ -419,7 +475,7 @@ test("J11 Web 目标 — detection, picks, preset, live merge, report, download,
         "行高保持不变",
         "字重档位",
       ]) {
-        await expect(panel).toContainText(label);
+        await expect(panel).toContainText(label, { timeout: UI_WAIT_MS });
       }
       // Round 18 (owner item 5, no web regression): the 行高保持不变
       // fact is 「是」 plus the qualifier TAG — the colon-qualifier
@@ -431,7 +487,7 @@ test("J11 Web 目标 — detection, picks, preset, live merge, report, download,
         lineHeightFact
           .locator('[data-role="report-tag"]')
           .filter({ hasText: "完全沿用英文字体" }),
-      ).toHaveCount(1);
+      ).toHaveCount(1, { timeout: UI_WAIT_MS });
       // Round 19 (owner items 4a+4b): the qualifier rides INLINE on
       // the value's line, flush to the value container's right edge.
       const lineHeightGeometry = await tagGeometry(lineHeightFact);
@@ -450,7 +506,7 @@ test("J11 Web 目标 — detection, picks, preset, live merge, report, download,
       // Round 13 (owner item 6): the metrics section is a real table —
       // the 合并前 / 合并后 data columns stated ONCE in a header row.
       const metricsTable = panel.locator(".report-mtable").first();
-      await expect(metricsTable).toBeVisible();
+      await expect(metricsTable).toBeVisible({ timeout: UI_WAIT_MS });
       expect(
         (await metricsTable.locator("thead th").allTextContents()).filter(
           (h) => h === "合并前" || h === "合并后",
@@ -460,16 +516,20 @@ test("J11 Web 目标 — detection, picks, preset, live merge, report, download,
       // weight grid — the per-slot 「N ← …」 borrow lines are gone.
       // Round 17 (owner item 2): the via qualifier rides a TAG beside
       // the sentence, never bracket text.
-      await expect(panel).toContainText(/\d+ 档全部取自 .+/);
+      await expect(panel).toContainText(/\d+ 档全部取自 .+/, {
+        timeout: UI_WAIT_MS,
+      });
       await expect(
         panel
           .locator('[data-role="report-tag"]')
           .filter({ hasText: /自动取最近|指定字重|锁定/ }),
-      ).toHaveCount(1);
-      await expect(panel).not.toContainText("←");
+      ).toHaveCount(1, { timeout: UI_WAIT_MS });
+      await expect(panel).not.toContainText("←", { timeout: UI_WAIT_MS });
       // Round 12 (owner item 1): no dash-joins anywhere in the panel.
-      await expect(panel).not.toContainText("—");
-      await expect(panel).not.toContainText("fontalloy/verification-report");
+      await expect(panel).not.toContainText("—", { timeout: UI_WAIT_MS });
+      await expect(panel).not.toContainText("fontalloy/verification-report", {
+        timeout: UI_WAIT_MS,
+      });
       // Round 12 (owner item 8): the matrix is the family's own — the
       // JetBrainsMono NF cut's every face (100–800, upright + italic).
       // Round 16: the grid — one row per weight ascending, a ✓ in
@@ -477,7 +537,7 @@ test("J11 Web 目标 — detection, picks, preset, live merge, report, download,
       const weightSection = panel
         .locator(".report-section")
         .filter({ hasText: "字重档位" });
-      await expect(weightSection).toBeVisible();
+      await expect(weightSection).toBeVisible({ timeout: UI_WAIT_MS });
       const matrix = weightSection.locator(".report-mtable");
       expect(await matrix.locator("tbody tr th").allTextContents()).toEqual([
         "100",
@@ -525,7 +585,9 @@ test("J11 Web 目标 — detection, picks, preset, live merge, report, download,
       // missing-pick recipe contract is pinned by noservice.spec).
       await page.goto(`/?serve=${encodeURIComponent(UNUSED_SERVE)}`);
       await waitForFontsReady(page);
-      await expect(page.locator(".workspace-rail")).toBeVisible();
+      await expect(page.locator(".workspace-rail")).toBeVisible({
+        timeout: UI_WAIT_MS,
+      });
       expect(
         await page.evaluate(
           () => document.documentElement.dataset.catalogSweep,
@@ -538,27 +600,32 @@ test("J11 Web 目标 — detection, picks, preset, live merge, report, download,
           page.locator(".topbar [data-role='synthesize']"),
         );
       }
-      await expect(panel).toBeVisible();
+      await expect(panel).toBeVisible({ timeout: UI_WAIT_MS });
       const notice = panel.locator('[data-testid="service-notice"]');
-      await expect(notice).toContainText("未检测到本地服务");
-      await expect(notice).toContainText(UNUSED_SERVE);
+      await expect(notice).toContainText("未检测到本地服务", {
+        timeout: UI_WAIT_MS,
+      });
+      await expect(notice).toContainText(UNUSED_SERVE, {
+        timeout: UI_WAIT_MS,
+      });
       await expect(
         panel.locator('[data-testid="cli-command"]'),
-      ).toContainText("fontalloy build");
+      ).toContainText("fontalloy build", { timeout: UI_WAIT_MS });
       // No picks without a serve: copy/download stay disabled, the
       // recipe preview stays empty, and the status line names the
       // missing picks — the honest degrade, never an invented recipe.
       await expect(
         panel.locator('[data-testid="copy-command"]'),
-      ).toHaveAttribute("aria-disabled", "true");
+      ).toHaveAttribute("aria-disabled", "true", { timeout: UI_WAIT_MS });
       await expect(
         panel.locator('[data-testid="download-recipe"]'),
-      ).toHaveAttribute("aria-disabled", "true");
+      ).toHaveAttribute("aria-disabled", "true", { timeout: UI_WAIT_MS });
       await expect(
         panel.locator('[data-testid="recipe-json"]'),
-      ).toHaveText("");
+      ).toHaveText("", { timeout: UI_WAIT_MS });
       await expect(panel.locator('[data-testid="copy-status"]')).toContainText(
         "请先在左侧选择英文字体与中文字体",
+        { timeout: UI_WAIT_MS },
       );
     });
 
