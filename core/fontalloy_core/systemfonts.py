@@ -47,6 +47,8 @@ from pathlib import Path
 
 from fontTools.ttLib import TTFont
 
+from fontalloy_core.placeholder import face_coverage
+
 #: Font file suffixes the scan admits (woff/woff2 are web formats a
 #: system directory rarely carries; they also parse slower, so the
 #: scan stays with the installable formats).
@@ -69,8 +71,10 @@ _LATIN_MARKERS = (0x41, 0x61)
 _CJK_MARKERS = (0x4E2D,)
 
 #: The on-disk cache schema version — a bump invalidates old caches
-#: (v3: ticket #36 added the per-face coverage intervals).
-CACHE_VERSION = 3
+#: (v3: ticket #36 added the per-face coverage intervals; v4: the
+#: intervals became the honest placeholder-aware set, so v3 caches
+#: computed from the raw cmap are stale by definition).
+CACHE_VERSION = 4
 
 
 @dataclass(frozen=True)
@@ -86,9 +90,12 @@ class SystemFace:
     italic: bool
     latin: bool
     cjk: bool
-    #: Ticket #36: the honest (best-cmap, glyph-0-free) coverage as
-    #: run-length intervals — the counters' data, computed by the same
-    #: scan pass that already enumerates the cmap for the flags.
+    #: Ticket #36: the honest coverage as run-length intervals — the
+    #: counters' data, computed by the same scan pass that already
+    #: enumerates the cmap for the flags. Placeholder-aware exactly
+    #: like every sibling scan's intervals: glyph-0 mappings are absent
+    #: by convention and suspected placeholder boxes are neither
+    #: coverage nor flag evidence (the raw best-cmap is never reported).
     intervals: tuple[tuple[int, int], ...] = ()
 
 
@@ -216,10 +223,19 @@ def _name(font: TTFont, name_id: int) -> str:
 
 
 def _face_document(font: TTFont):
-    """One open face's identity, coverage flags, and coverage runs."""
+    """One open face's identity, coverage flags, and coverage runs.
+
+    The coverage goes through :func:`fontalloy_core.placeholder
+    .face_coverage` — the same single detection point the family-docs
+    and local-font scans use — so glyph-0 mappings and suspected
+    placeholder boxes count as neither the intervals nor the latin/cjk
+    flag evidence. A system face that draws its tofu box under mapped
+    codepoints reports the honest set, exactly like its catalog and
+    local siblings.
+    """
     os2 = font.get("OS/2")
-    cmap = font.getBestCmap()
-    codepoints = set(cmap) if cmap else set()
+    coverage = face_coverage(font)
+    codepoints = coverage.codepoints
     latin = any(marker in codepoints for marker in _LATIN_MARKERS)
     cjk = any(marker in codepoints for marker in _CJK_MARKERS)
     italic = bool(os2 is not None and os2.fsSelection & 0x01)

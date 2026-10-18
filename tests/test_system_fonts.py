@@ -143,6 +143,63 @@ def test_cache_round_trip_and_incremental_scan(tmp_path: Path):
     assert load_cache(cache_file) is None
 
 
+def test_placeholder_and_glyph0_mappings_report_honest_coverage(tmp_path: Path):
+    """The intervals ride :func:`fontalloy_core.placeholder.face_coverage`
+    exactly like the family-docs and local-font scans — a system face
+    that maps a codepoint onto glyph 0 (absent by convention) or onto a
+    suspected placeholder box must report neither as coverage, and the
+    latin/cjk flags ride the honest set too, never the raw cmap."""
+    from fontTools.fontBuilder import FontBuilder
+    from fontTools.pens.ttGlyphPen import TTGlyphPen
+
+    def box(x_min, y_min, x_max, y_max):  # type: ignore[no-untyped-def]
+        pen = TTGlyphPen(None)
+        pen.moveTo((x_min, y_min))
+        pen.lineTo((x_max, y_min))
+        pen.lineTo((x_max, y_max))
+        pen.lineTo((x_min, y_max))
+        pen.closePath()
+        return pen.glyph()
+
+    glyph_names = [".notdef", "placeholderBox", "uni4E2D"]
+    builder = FontBuilder(unitsPerEm=1000, isTTF=True)
+    builder.setupGlyphOrder(glyph_names)
+    # placeholderBox draws .notdef's exact outline (the rule-2 shape).
+    builder.setupGlyf(
+        {".notdef": box(0, 0, 500, 700), "placeholderBox": box(0, 0, 500, 700), "uni4E2D": box(40, 0, 560, 400)}
+    )  # type: ignore[arg-type]
+    builder.setupHorizontalMetrics({name: (600, 40) for name in glyph_names})
+    builder.setupCharacterMap(
+        {
+            0x41: ".notdef",  # glyph-0 mapping: absent by convention (rule 1)
+            0x61: "placeholderBox",  # the tofu box under another name (rule 2)
+            0x4E2D: "uni4E2D",  # the one real mapping
+        }
+    )
+    builder.setupHorizontalHeader(ascent=800, descent=-200)
+    builder.setupOS2(
+        sTypoAscender=800,
+        sTypoDescender=-200,
+        usWinAscent=900,
+        usWinDescent=300,
+        usWeightClass=400,
+    )
+    builder.setupNameTable({"familyName": "AlloyHonest", "styleName": "Regular"})
+    builder.setupPost()
+    builder.font.save(tmp_path / "AlloyHonest-Regular.ttf")
+
+    faces = scan_system_fonts_sync((tmp_path,))
+    assert len(faces) == 1
+    face = faces[0]
+
+    # Honest intervals: the CJK mark alone. The raw cmap would read
+    # [[0x41,0x41],[0x4E2D,0x4E2D],[0x61,0x61]].
+    assert face.intervals == ((0x4E2D, 0x4E2D),)
+    # The flags ride the honest set: neither latin marker really covers.
+    assert face.latin is False
+    assert face.cjk is True
+
+
 def _get(url: str, timeout: float = 5.0) -> object:
     with urllib.request.urlopen(url, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
