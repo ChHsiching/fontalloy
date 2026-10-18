@@ -1055,6 +1055,35 @@ class _ServeHandler(BaseHTTPRequestHandler):
                 extra_headers={"Allow": ", ".join(allowed)},
             )
 
+    def _content_length(self) -> int | None:
+        """The request's Content-Length, or None when it is not a length.
+
+        Spec #25 review P2-5: ``int(header)`` on a garbage value used to
+        raise inside the handler (a crashed thread, a connection closed
+        without a response). The helper treats a missing header as 0 and
+        anything non-numeric or negative as None — the caller answers a
+        400 in the JSON error shape, never reads the body, and closes
+        the connection (the stream cannot be resynced against a bogus
+        length).
+        """
+        raw = self.headers.get("Content-Length")
+        if raw is None:
+            return 0
+        try:
+            length = int(raw.strip())
+        except ValueError:
+            return None
+        return length if length >= 0 else None
+
+    def _reject_malformed_length(self) -> None:
+        """The 400 for a Content-Length that is not a number."""
+        self._send_error(
+            400,
+            "the Content-Length header is not a valid length: "
+            f"{self.headers.get('Content-Length')!r}",
+            extra_headers={"Connection": "close"},
+        )
+
     def _jobs(self) -> list[BuildJob]:
         with self.state.lock:
             return list(self.state.jobs.values())
@@ -1064,7 +1093,10 @@ class _ServeHandler(BaseHTTPRequestHandler):
             return self.state.jobs.get(build_id)
 
     def _submit_build(self) -> None:
-        length = int(self.headers.get("Content-Length") or 0)
+        length = self._content_length()
+        if length is None:
+            self._reject_malformed_length()
+            return
         if length > MAX_BODY_BYTES:
             self._send_error(413, "submission body exceeds the size limit")
             return
@@ -1093,7 +1125,10 @@ class _ServeHandler(BaseHTTPRequestHandler):
         reference is a synchronous 400 — the resolve never queues, so
         there is nothing to poll and no partial state to clean up.
         """
-        length = int(self.headers.get("Content-Length") or 0)
+        length = self._content_length()
+        if length is None:
+            self._reject_malformed_length()
+            return
         if length > MAX_BODY_BYTES:
             self._send_error(413, "submission body exceeds the size limit")
             return
@@ -1166,7 +1201,10 @@ class _ServeHandler(BaseHTTPRequestHandler):
         missing, not a font) is a synchronous 400 naming every offender;
         a readable-but-invalid font file is never fatal — it rides the
         response's ``skipped`` list while its siblings still scan."""
-        length = int(self.headers.get("Content-Length") or 0)
+        length = self._content_length()
+        if length is None:
+            self._reject_malformed_length()
+            return
         if length > MAX_BODY_BYTES:
             self._send_error(413, "submission body exceeds the size limit")
             return
@@ -1219,7 +1257,10 @@ class _ServeHandler(BaseHTTPRequestHandler):
                 f"{', '.join(sorted(_FONT_SUFFIXES))}): {name}",
             )
             return
-        length = int(self.headers.get("Content-Length") or 0)
+        length = self._content_length()
+        if length is None:
+            self._reject_malformed_length()
+            return
         if length <= 0:
             self._send_error(400, "the upload body is empty")
             return

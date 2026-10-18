@@ -16,6 +16,7 @@ import json
 import os
 import re
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -939,6 +940,56 @@ class TestRetention:
         assert serve_service.get(f"/builds/{ids[-1]}/font").status == 200
         listing = serve_service.get("/builds").json()["builds"]
         assert len(listing) <= 10
+
+
+class TestMalformedContentLength:
+    """A non-numeric Content-Length is a 400, never a crashed handler
+    (spec #25 review P2-5) — the stdlib client never emits one, so the
+    requests go over a raw socket."""
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/builds",
+            "/precedence-resolve",
+            "/local-fonts",
+            "/local-fonts/upload?filename=x.ttf",
+        ],
+    )
+    def test_garbage_length_answers_400_json(self, serve_service, path):
+        port = int(serve_service.base.rsplit(":", 1)[1])
+        request = (
+            f"POST {path} HTTP/1.1\r\n"
+            f"Host: 127.0.0.1:{port}\r\n"
+            "Content-Length: banana\r\n"
+            "Connection: close\r\n\r\n"
+        ).encode("ascii")
+        status, body = _raw_request(port, request)
+        assert status == 400
+        document = json.loads(body.decode("utf-8"))
+        assert "Content-Length" in document["error"]
+
+
+def _raw_request(port: int, request: bytes, timeout: float = 5.0) -> tuple[int, bytes]:
+    """One raw-socket request's (status, body).
+
+    The connection asks to close, so the response reads until EOF —
+    header-level cases the stdlib client would never emit.
+    """
+    with socket.create_connection(("127.0.0.1", port), timeout=timeout) as sock:
+        sock.settimeout(timeout)
+        sock.sendall(request)
+        chunks: list[bytes] = []
+        while True:
+            chunk = sock.recv(65536)
+            if not chunk:
+                break
+            chunks.append(chunk)
+    raw = b"".join(chunks)
+    assert raw, "the service closed the connection without a response"
+    status_line = raw.split(b"\r\n", 1)[0]
+    body = raw.partition(b"\r\n\r\n")[2]
+    return int(status_line.split(b" ")[1]), body
 
 
 class TestGracefulShutdown:
