@@ -41,12 +41,13 @@
  *   inject a stand-in to observe that the DEFAULT flow never touches it
  *   (the no-dialog contract) and to drive the dialog-unavailable
  *   fallback.
- * - `readFontPath` — the typed-path loader (round 20): resolves a
- *   pasted absolute path, FILE or directory, into the font files it
- *   names. Under Tauri the shell's `read_font_path` command resolves
- *   and the bytes travel the raw pipe; tests inject a stand-in against
- *   real fixture files on disk. Its presence also unhides the picker's
- *   path-input fallback (Linux without a DBus file manager).
+ * - `readFontPath` — the typed-path resolver (round 20; ticket #34):
+ *   resolves a pasted absolute path, FILE or directory, into the font
+ *   file PATHS it names — never bytes (the serve's local-font scan
+ *   reads the files). Under Tauri the shell's `read_font_path`
+ *   command resolves; tests inject a stand-in against real fixture
+ *   files on disk. Its presence also unhides the picker's path-input
+ *   fallback (Linux without a DBus file manager).
  * - `testFontLoadDelayMs` — test-only pacing for the local-load path
  *   (round 21): every event-loop yield between faces also sleeps this
  *   many milliseconds, so an e2e spec can observe the inline load
@@ -129,26 +130,21 @@ export type ArtifactSaver = (
   bytes: Uint8Array,
 ) => Promise<ArtifactSaveResult>;
 
-/** One font file a typed path resolved to (round 20). */
-export interface FontPathFile {
-  fileName: string;
-  buffer: ArrayBuffer;
-  /** The absolute path (always set on the Tauri path). */
-  path: string;
-}
-
-/** What a typed path resolved to (round 20). */
+/** What a typed path resolved to (round 20; ticket #34: paths only). */
 export interface FontPathRead {
   /** True when the path named a directory (every font file inside). */
   isDirectory: boolean;
-  files: FontPathFile[];
+  /** The absolute font file paths the path named — never bytes. */
+  paths: string[];
 }
 
 /**
- * The typed-path resolver (round 20): a font FILE resolves to itself; a
- * DIRECTORY resolves to the font files it holds (the same suffix sweep
- * the sibling scan uses). Throws with a user-readable reason when the
- * path does not exist or cannot be read.
+ * The typed-path resolver (round 20; ticket #34): a font FILE resolves
+ * to itself; a DIRECTORY resolves to the font files it holds (the same
+ * suffix sweep the shell's dialog filters on). The resolution carries
+ * PATHS ONLY — the bytes live behind the serve's local-font scan, so
+ * nothing readable ever crosses this seam. Throws with a user-readable
+ * reason when the path does not exist or cannot be read.
  */
 export type FontPathReader = (path: string) => Promise<FontPathRead>;
 

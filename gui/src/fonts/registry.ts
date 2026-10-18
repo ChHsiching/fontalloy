@@ -172,6 +172,20 @@ export function registerCatalogUrlFaces(
 }
 
 /**
+ * The css family name as the FontFace API reports it. A URL-source
+ * FontFace's ``family`` is re-serialized through the CSS grammar — a
+ * spaced family like ``Alloy Wide`` reads back as ``"Alloy Wide"``
+ * WITH quotes (an ArrayBuffer source keeps the raw string), so every
+ * family-keyed comparison normalizes the quotes away first.
+ */
+function reportedFamily(face: FontFace): string {
+  const name = face.family;
+  return name.length > 1 && name.startsWith('"') && name.endsWith('"')
+    ? name.slice(1, -1)
+    : name;
+}
+
+/**
  * Evict one css family's registration (ticket #32): every face of the
  * family comes off document.fonts — the browser releases the native
  * font data behind them — and the store's records for the family drop,
@@ -185,7 +199,7 @@ export function registerCatalogUrlFaces(
  */
 export function evictCssFamily(cssFamily: string): void {
   for (const face of [...document.fonts]) {
-    if (face.family === cssFamily) document.fonts.delete(face);
+    if (reportedFamily(face) === cssFamily) document.fonts.delete(face);
   }
   const before = store.get().fonts;
   const after = before.filter((font) => font.cssFamily !== cssFamily);

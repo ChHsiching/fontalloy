@@ -10,7 +10,10 @@ import {
   evictCssFamily,
   type LocalFontFile,
 } from "../fonts/registry";
-import { sweepLocalFamily } from "../fonts/localFamily";
+import {
+  registerLocalFontPaths,
+  sweepLocalFamily,
+} from "../fonts/localFamily";
 import {
   ensureCatalogRegistered,
   previewCssFamily,
@@ -346,21 +349,12 @@ export function mountPicker(
     | null = null;
 
   /**
-   * The picker's local-load flow — every entry point funnels here (the
-   * hidden input, the native dialog, the typed path).
-   * Round 20 (owner items 2+3): the load registers the files' families
-   * (a collection registers EVERY face — one css family per name-table
-   * family, weight-descriptor faces behind a Regular-preferred
-   * representative) and THIS slot takes the loaded family as its pick,
-   * REPLACING whatever it held — 从本地加载了肯定就直接选中了. A
-   * failure keeps the picker open with the error line above the footer;
-   * a partial failure still selects what loaded.
-   *
-   * Round 21 (owner item 2): the registration runs ASYNC with yields
-   * between faces — the footer's load action carries the inline
-   * 「正在加载 3/16」 indicator while it runs (never a blocking
-   * overlay; the workspace stays interactive), and completion posts
-   * ONE outcome card with the run's stats (家族 N · 字形 M).
+   * The picker's bytes-level local-load flow — the PLAIN BROWSER
+   * fallback only (the hidden HTML file input has no paths to hand
+   * the serve, so its File bytes register page-side; ticket #34 keeps
+   * exactly this one byte flow alive for the no-shell environment).
+   * Every PATH-bearing entry point (the native dialog, the typed
+   * path) funnels into {@link registerPickedPaths} instead.
    */
   const registerPicked = async (files: LocalFontFile[]): Promise<void> => {
     error = null;
@@ -380,15 +374,10 @@ export function mountPicker(
           [options.role]: outcome.representative.cssFamily,
         },
       });
-      // Round 13 (owner item 7): the pick is the FAMILY — discover and
-      // register the same-directory sibling faces in the background,
-      // the same face-set discipline a catalog pick follows. Never
+      // The browser fallback's residual sibling sweep (the service's
+      // /fonts index stands in for the directory listing). Never
       // blocks the pick; a one-file family registers nothing.
       void sweepLocalFamily(outcome.representative);
-      // The outcome card (round 21): ONE structured card with the
-      // run's stats — the message system's stat-pair idiom, never a
-      // prose line. A partial failure warns; the failures themselves
-      // stay on the picker's error line below.
       appMessages().push({
         icon: outcome.failures.length > 0 ? "warn" : "check",
         title: "已加载本地字体",
@@ -411,20 +400,76 @@ export function mountPicker(
   localFlows.set(options.role, registerPicked);
 
   /**
-   * The typed-path fallback (round 20, owner item 3): resolve the
-   * pasted absolute path — file or directory — and run the same
-   * register+select flow. Failures render on the picker's error line.
+   * The picker's PATH-level local-load flow (ticket #34): the picked
+   * absolute paths go to the serve's local-font scan; the returned
+   * family documents register as URL FontFaces (lazy per used
+   * weight/style — no font bytes ever enter the page) and THIS slot
+   * takes the first family as its pick, REPLACING whatever it held —
+   * 从本地加载了肯定就直接选中了. The loading UX is the round-21
+   * discipline: async with yields between faces, the footer's inline
+   * count while it runs, ONE outcome card (家族 N · 字形 M) at the
+   * end. A failure keeps the picker open with the error line; a
+   * partial failure still selects what loaded.
+   */
+  const registerPickedPaths = async (paths: string[]): Promise<void> => {
+    error = null;
+    loading = { loaded: 0, total: paths.length, phase: "reading" };
+    rerender();
+    let outcome;
+    try {
+      outcome = await registerLocalFontPaths(paths, {
+        onProgress: (loaded, total, phase) => {
+          loading = { loaded, total, phase };
+          rerender();
+        },
+      });
+    } catch (err) {
+      loading = null;
+      error = err instanceof Error ? err.message : String(err);
+      rerender();
+      return;
+    }
+    loading = null;
+    if (outcome.representative !== null) {
+      store.set({
+        selected: {
+          ...store.get().selected,
+          [options.role]: outcome.representative.cssFamily,
+        },
+      });
+      appMessages().push({
+        icon: outcome.failures.length > 0 ? "warn" : "check",
+        title: "已加载本地字体",
+        stats: [
+          { value: String(outcome.families), label: "家族" },
+          {
+            value: outcome.glyphs.toLocaleString("en-US"),
+            label: "字形",
+          },
+        ],
+      });
+    }
+    error = outcome.failures.length > 0 ? outcome.failures.join("；") : null;
+    if (error === null) popup.close();
+    rerender();
+  };
+
+  /**
+   * The typed-path fallback (round 20, owner item 3; ticket #34):
+   * resolve the pasted absolute path — file or directory — into font
+   * file PATHS and run the scan+register+select flow. Failures render
+   * on the picker's error line.
    */
   const commitPathInput = async (path: string): Promise<void> => {
     error = null;
     rerender();
     try {
       const read = await readFontPathInput(path);
-      if (read.files.length === 0) {
+      if (read.paths.length === 0) {
         error = `路径下没有字体文件：${path}`;
       } else {
-        await registerPicked(read.files);
-        return; // registerPicked owns error/close/rerender.
+        await registerPickedPaths(read.paths);
+        return; // registerPickedPaths owns error/close/rerender.
       }
     } catch (err) {
       error = `无法读取 ${path}：${
@@ -435,14 +480,15 @@ export function mountPicker(
   };
 
   const openLocalFlow = async (): Promise<void> => {
-    // Under Tauri the native dialog: real absolute paths for recipes.
-    // A dialog that errors (no DBus file manager) falls back to the
-    // picker's own error line — the typed path stays the fallback.
+    // Under Tauri the native dialog: real absolute paths for recipes,
+    // handed to the serve's scan (ticket #34 — the bytes never ride
+    // IPC). A dialog that errors (no DBus file manager) falls back to
+    // the picker's own error line — the typed path stays the fallback.
     if (canPickWithDialog()) {
       try {
         const picked = await pickLocalFonts();
         if (picked !== null && picked.length > 0) {
-          await registerPicked(picked);
+          await registerPickedPaths(picked);
         }
         return;
       } catch (err) {
@@ -458,22 +504,21 @@ export function mountPicker(
   };
 
   /**
-   * Round 18 + ticket #32: unload THIS slot's pick — the selection
-   * returns to the never-picked null AND a catalog pick's URL faces
-   * evict from document.fonts with their registry record (the MEMORY
-   * RED LINE's other half: unloading actually frees the font memory).
-   * Local and system picks keep their registrations (a user-loaded
-   * file stays loaded — the original round-18 behavior); the other
-   * slot holding the same family holds it too.
+   * Round 18 + ticket #32/#34: unload THIS slot's pick — the selection
+   * returns to the never-picked null AND the pick's URL faces evict
+   * from document.fonts with their registry record (the MEMORY RED
+   * LINE's other half: unloading actually frees the font memory).
+   * Ticket #34 extends the eviction to EVERY origin — catalog, local,
+   * and system picks are all URL registrations now, so repeat-click
+   * unload frees them alike. The other slot holding the same family
+   * keeps it.
    */
   const unloadSlotPick = (): void => {
     const prior = store.get().selected[options.role];
     if (prior !== null) {
-      const record = store.get().fonts.find((f) => f.cssFamily === prior);
       const other = options.role === "en" ? "cjk" : "en";
       if (
-        record !== undefined &&
-        record.origin === "catalog" &&
+        store.get().fonts.some((f) => f.cssFamily === prior) &&
         store.get().selected[other] !== prior
       ) {
         evictCssFamily(prior);
@@ -527,17 +572,19 @@ export function mountPicker(
   };
 
   /**
-   * Round 24 (owner item 3): pick an installed system family. The
-   * service serves the scanned file's bytes; registration follows the
-   * local-load path (a collection contributes every extracted face,
-   * representative first). A failure keeps the picker open with the
-   * error line.
+   * Round 24 (owner item 3; ticket #34): pick an installed system
+   * family. The serve's grouped document carries the family's faces
+   * with their byte-source hrefs; registration puts ONE URL FontFace
+   * per (weight, style) slot on document.fonts (the same registration
+   * a catalog pick uses — no ArrayBuffer enters the page), and the
+   * default slot is awaited so the anchor renders in it immediately.
+   * A failure keeps the picker open with the error line.
    */
   const selectSystemFamily = async (familyName: string): Promise<void> => {
     const client = synthStore.get().service.client;
     const family = systemFamilies().find((f) => f.family === familyName);
     if (!client || !family) return;
-    const cssKey = await registerSystemFamily(client, family);
+    const cssKey = registerSystemFamily(client, family);
     if (!cssKey) {
       // Round 25 (owner item 2): a failed LOAD is an outcome, not a
       // form validation error — it rides the message system like the
@@ -549,7 +596,18 @@ export function mountPicker(
       });
       return;
     }
-    await document.fonts.load(`16px ${cssFamily(cssKey)}`);
+    try {
+      await document.fonts.load(`16px ${cssFamily(cssKey)}`);
+    } catch (err) {
+      appMessages().push({
+        icon: "warn",
+        title: "无法载入系统字体",
+        lines: [
+          `${familyName}：${err instanceof Error ? err.message : String(err)}`,
+        ],
+      });
+      return;
+    }
     store.set({
       selected: { ...store.get().selected, [options.role]: cssKey },
     });
