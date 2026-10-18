@@ -21,9 +21,12 @@
 
 import { store, type LoadedFont, type CpIntervals } from "../state";
 import { synthStore } from "../service/state";
-import { registerCatalogUrlFaces } from "./registry";
+import {
+  registerCatalogUrlFaces,
+  loadDefaultSlotWithBudget,
+  FontLoadBudgetError,
+} from "./registry";
 import { readConfig } from "../platform/config";
-import { cssFamily } from "../kit/pickerPopup";
 import type { LocalFontsDocument } from "../service/client";
 
 /** What a local load run registered (the picker's outcome card). */
@@ -277,12 +280,17 @@ async function registerScannedFamilies(
 
   // The rendered default slot of the FIRST new family is awaited —
   // the pick renders in it immediately, and a face the serve can no
-  // longer serve surfaces here instead of as a silent blank.
+  // longer serve surfaces here instead of as a silent blank. The
+  // shared abort budget rides it (a parked byte fetch must fail
+  // loudly, never hang the load — the r30 lesson's FontFace half); a
+  // BUDGET expiry also evicted the family, so its representative must
+  // not become the pick (the record no longer exists).
   const first = representative;
   if (first !== null) {
     try {
-      await document.fonts.load(`16px ${cssFamily(first.cssFamily)}`);
+      await loadDefaultSlotWithBudget(first.cssFamily);
     } catch (err) {
+      if (err instanceof FontLoadBudgetError) representative = null;
       failures.push(`无法加载 ${first.cssFamily}：${reason(err)}`);
     }
   }

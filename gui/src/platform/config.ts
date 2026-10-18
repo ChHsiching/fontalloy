@@ -46,6 +46,13 @@
  *   many milliseconds, so an e2e spec can observe the inline load
  *   indicator and drive the workspace DURING a load, deterministically.
  *   Never set outside tests.
+ * - `testFontLoadBudgetMs` — test-only override of the default-slot
+ *   font-load abort budget (the r30 lesson applied to FontFace loads):
+ *   a URL face's byte fetch rides the BROWSER's loader, not the serve
+ *   client, so an endpoint that accepts the connection and never
+ *   answers would park `document.fonts.load` (and with it
+ *   `document.fonts.ready`) forever. The budget makes every pick's
+ *   default-slot load fail loudly instead. Never set outside tests.
  */
 
 /** The result of handing a built font to the platform saver. */
@@ -129,6 +136,12 @@ export interface FontalloyConfig {
    * app itself.
    */
   testFontLoadDelayMs?: number;
+  /**
+   * Test-only override of the default-slot font-load abort budget —
+   * see {@link FONT_LOAD_BUDGET_MS} in fonts/registry. Never set by
+   * the app itself.
+   */
+  testFontLoadBudgetMs?: number;
 }
 
 declare global {
@@ -180,5 +193,6 @@ export function readConfig(): FontalloyConfig {
     probeArtifact: injected?.probeArtifact,
     readFontPath: injected?.readFontPath,
     testFontLoadDelayMs: injected?.testFontLoadDelayMs,
+    testFontLoadBudgetMs: injected?.testFontLoadBudgetMs,
   };
 }

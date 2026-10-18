@@ -1,4 +1,6 @@
 import { store, type LoadedFont } from "../state";
+import { readConfig } from "../platform/config";
+import { cssFamily } from "../kit/pickerPopup";
 
 /**
  * The user-facing name of a registered font (round 9, owner item 2):
@@ -80,4 +82,73 @@ export function evictCssFamily(cssFamily: string): void {
   const before = store.get().fonts;
   const after = before.filter((font) => font.cssFamily !== cssFamily);
   if (after.length !== before.length) store.set({ fonts: after });
+}
+
+/**
+ * The abort budget for a pick's default-slot font load (the round-30
+ * hung-fetch lesson, applied to the one await the serve client cannot
+ * reach): a URL-source FontFace's byte fetch rides the BROWSER's font
+ * loader, not {@link ServeClient} — an endpoint that accepts the
+ * connection and never answers leaves the face in ``loading`` forever,
+ * parking `document.fonts.load` AND `document.fonts.ready` with it at
+ * zero CPU (the J11.3 wedge, ticket #37 / spec #25). Every pick's
+ * default-slot load runs under this budget: a service that cannot
+ * deliver the face within it reads as a failed load, the family's
+ * registration is evicted (a stuck-loading face must come OFF
+ * document.fonts, or the set's ready promise stays parked for the rest
+ * of the page's life), and the caller surfaces the error loudly.
+ */
+export const FONT_LOAD_BUDGET_MS = 30_000;
+
+/**
+ * The default-slot load's budget expired: the face's byte fetch never
+ * settled within {@link FONT_LOAD_BUDGET_MS} and the family's
+ * registration was evicted with it. Consumers treat it as a failed
+ * load (their existing error surfaces state it); the local-load flow
+ * additionally drops its representative pick, since the family it
+ * would select no longer exists.
+ */
+export class FontLoadBudgetError extends Error {}
+
+/**
+ * Load one registered css family's default slot within
+ * {@link FONT_LOAD_BUDGET_MS} (the spec the pick paths use:
+ * ``16px <family>``). Resolves when the face renders; on budget expiry
+ * the family's faces are evicted and the rejection carries the
+ * timeout, so the caller's existing error handling (the picker's error
+ * line, the outcome card) states it — the flow fails loudly instead of
+ * hanging. A genuine load REJECTION (corrupt bytes, a 404) passes
+ * through untouched: only the never-settling fetch warrants eviction.
+ * The config seam `testFontLoadBudgetMs` overrides the budget for the
+ * e2e regression specs only.
+ */
+export async function loadDefaultSlotWithBudget(cssKey: string): Promise<void> {
+  const budgetMs = readConfig().testFontLoadBudgetMs ?? FONT_LOAD_BUDGET_MS;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      document.fonts.load(`16px ${cssFamily(cssKey)}`),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(
+              new FontLoadBudgetError(
+                `字体载入超时（${Math.round(budgetMs / 1000)} 秒内服务未返回字体数据）。`,
+              ),
+            ),
+          budgetMs,
+        );
+      }),
+    ]);
+  } catch (err) {
+    if (err instanceof FontLoadBudgetError) {
+      // The stuck face must leave the set: a loading FontFace parked
+      // on document.fonts keeps the set's ready promise pending
+      // forever — the very wedge this budget exists to end.
+      evictCssFamily(cssKey);
+    }
+    throw err;
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
 }

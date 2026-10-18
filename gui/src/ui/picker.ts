@@ -4,7 +4,11 @@ import {
   type CatalogState,
   type LoadedFont,
 } from "../state";
-import { fontDisplayName, evictCssFamily } from "../fonts/registry";
+import {
+  fontDisplayName,
+  evictCssFamily,
+  loadDefaultSlotWithBudget,
+} from "../fonts/registry";
 import {
   registerLocalFontFiles,
   registerLocalFontPaths,
@@ -29,7 +33,6 @@ import {
 } from "../service/systemfonts";
 import { synthStore } from "../service/state";
 import {
-  cssFamily,
   mountPickerPopup,
   type PickerChip,
   type PickerFont,
@@ -641,11 +644,13 @@ export function mountPicker(
       rerender();
       return;
     }
-    // Deterministic load of the default slot for immediate rendering;
+    // Deterministic load of the default slot for immediate rendering,
+    // under the shared abort budget (a parked byte fetch must fail
+    // loudly, never hang the pick — the r30 lesson's FontFace half);
     // the other slots stay lazy (a load failure is the picker's error
     // line, never an unhandled rejection).
     try {
-      await document.fonts.load(`16px ${cssFamily(cssKey)}`);
+      await loadDefaultSlotWithBudget(cssKey);
     } catch (err) {
       error = `无法载入目录字体 ${family}：${
         err instanceof Error ? err.message : String(err)
@@ -684,7 +689,9 @@ export function mountPicker(
       return;
     }
     try {
-      await document.fonts.load(`16px ${cssFamily(cssKey)}`);
+      // The shared abort budget applies here too: a system face's byte
+      // fetch can hang exactly like a catalog face's.
+      await loadDefaultSlotWithBudget(cssKey);
     } catch (err) {
       appMessages().push({
         icon: "warn",
@@ -723,7 +730,7 @@ export function mountPicker(
       return;
     }
     try {
-      await document.fonts.load(`16px ${cssFamily(cssKey)}`);
+      await loadDefaultSlotWithBudget(cssKey);
     } catch (err) {
       error = `无法载入目录字体 ${family}：${
         err instanceof Error ? err.message : String(err)
