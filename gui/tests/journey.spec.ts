@@ -14,6 +14,7 @@ import {
   waitForFontsReady,
 } from "./helpers";
 import { generateNamedFace, spawnServeOverFonts } from "./serve";
+import { exposeSaveSeam, saveSeamPageScript } from "./save-seam";
 import {
   buildServeCatalogSite,
   type ServeCatalogSite,
@@ -182,90 +183,35 @@ const test = base.extend<{ journeysPage: Page }>({
         }),
       );
 
-      // The native-save stand-in (one binding for the whole run; the
+      // The native-save stand-in (one binding set for the whole run; the
       // bytes land in the CURRENT journey's temp dir). Round 12 splits
       // the seam in two, mirroring the app: `saveArtifact` is the
       // DEFAULT-PATH save (what synthesis uses — no dialog), and
       // `saveArtifactAs` is the 另存为 dialog (an as- copy; counting
       // its calls proves the automatic save never depends on it).
-      await page.exposeFunction(
-        "__fontalloyJourneySave",
-        async (name: string, bytesB64: string): Promise<string | null> => {
-          if (currentSaveDir === null) return null;
-          const target = resolve(currentSaveDir, name);
-          await writeFile(target, Buffer.from(bytesB64, "base64"));
-          return target;
-        },
-      );
-      await page.exposeFunction(
-        "__fontalloyJourneySaveAs",
-        async (name: string, bytesB64: string): Promise<string | null> => {
-          if (currentSaveDir === null) return null;
+      // Round 31 (ticket #37, J9): the seam lives in ./save-seam — it
+      // transfers artifacts in 3 MiB base64 chunks because the old
+      // one-shot `btoa(Array.from(bytes…))` died on the real-scale
+      // ttc with `RangeError: Invalid array length` (Chromium's
+      // `Array.from` limit, ~134 MiB; any single accumulated b64
+      // string would also cross V8's max string length past ~400 MB).
+      await exposeSaveSeam(page, {
+        resolveSaveDir: () => currentSaveDir,
+        onDialogSave: () => {
           dialogSaveCalls += 1;
-          const target = resolve(currentSaveDir, `as-${name}`);
-          await writeFile(target, Buffer.from(bytesB64, "base64"));
-          return target;
         },
-      );
+      });
+      await page.addInitScript(saveSeamPageScript);
+      // `?noservice=1` disables the merge service (serveUrl null), so
+      // a stray listener on the default probe port can never make a
+      // no-service journey depend on machine state.
       await page.addInitScript(() => {
-        const config = (
-          window as unknown as {
-            __FONTALLOY_CONFIG__: Record<string, unknown>;
-          }
-        ).__FONTALLOY_CONFIG__ ??= {};
-        const toB64 = (bytes: Uint8Array): string =>
-          btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(""));
-        config.saveArtifact = async (
-          name: string,
-          bytes: Uint8Array,
-        ): Promise<{ saved: boolean; path: string | null }> => {
-          // Chunked base64: a round-12 family build saves a ttc
-          // collection of hundreds of MB — the one-shot
-          // Array.from().join() would build gigabytes of intermediate
-          // strings and crash the page. The chunk size must be a
-          // multiple of 3 (btoa then emits no '=' padding — a padded
-          // group mid-string would truncate the decode at the first
-          // '=') and modest enough to stay under the spread
-          // argument-count limit.
-          let b64 = "";
-          const chunk = 30_720;
-          for (let i = 0; i < bytes.length; i += chunk) {
-            b64 += btoa(
-              String.fromCharCode(...bytes.subarray(i, i + chunk)),
-            );
-          }
-          const path = await (
-            window as unknown as {
-              __fontalloyJourneySave(
-                name: string,
-                b64: string,
-              ): Promise<string | null>;
-            }
-          ).__fontalloyJourneySave(name, toB64(bytes));
-          return path === null
-            ? { saved: false, path: null }
-            : { saved: true, path };
-        };
-        config.saveArtifactAs = async (
-          name: string,
-          bytes: Uint8Array,
-        ): Promise<{ saved: boolean; path: string | null }> => {
-          const path = await (
-            window as unknown as {
-              __fontalloyJourneySaveAs(
-                name: string,
-                b64: string,
-              ): Promise<string | null>;
-            }
-          ).__fontalloyJourneySaveAs(name, toB64(bytes));
-          return path === null
-            ? { saved: false, path: null }
-            : { saved: true, path };
-        };
-        // `?noservice=1` disables the merge service (serveUrl null), so
-        // a stray listener on the default probe port can never make a
-        // no-service journey depend on machine state.
         if (new URLSearchParams(location.search).has("noservice")) {
+          const config = (
+            window as unknown as {
+              __FONTALLOY_CONFIG__: Record<string, unknown>;
+            }
+          ).__FONTALLOY_CONFIG__ ??= {};
           config.serveUrl = null;
         }
       });
