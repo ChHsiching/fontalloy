@@ -81,6 +81,7 @@ jobs:
       # MapleMonoCN-Regular.ttf the test discovery accepts; the ground
       # truth reads the actual bytes either way).
       - name: Stage the two real catalog fonts
+        id: stagefonts
         shell: bash
         working-directory: .
         run: |
@@ -97,6 +98,7 @@ jobs:
           find "${RUNNER_TEMP}/mm" -name 'MapleMono-NF-CN-Regular.ttf' -exec cp {} "$stage/MapleMonoCN-Regular.ttf" \;
           ls -la "$stage"
           echo "FONTALLOY_DEV_FONT_DIR=${stage}" >> "$GITHUB_ENV"
+          echo "dir=$stage" >> "$GITHUB_OUTPUT"
 
       # Production-compile gate before the suite drives the dev server.
       - run: npm run build
@@ -105,6 +107,10 @@ jobs:
         env:
           FONTALLOY_SERVE_BIN: ${{ github.workspace }}/.venv/bin/fontalloy
           FONTALLOY_PYTHON: ${{ github.workspace }}/.venv/bin/python
+          # Explicit step-output wiring (a plain GITHUB_ENV write was not
+          # reaching the suite's workers on some runs — run 39253005421
+          # saw the var unset while the staging step itself succeeded).
+          FONTALLOY_DEV_FONT_DIR: ${{ steps.stagefonts.outputs.dir }}
 
       - uses: actions/upload-artifact@v4
         if: failure()
