@@ -659,6 +659,10 @@ test.describe("sidecar synthesize", () => {
   test("round 12: the save handoff needs no dialog, keeps the stepper lit, and offers 另存为", async ({
     page,
   }) => {
+    // The real-pair build rides a 2-core CI runner: the whole journey
+    // (upload both binaries, graft, save) needs more than the default
+    // 30 s there (it passes locally well inside it).
+    test.setTimeout(180_000);
     const service = await startServeFixture();
     const saved: string[] = [];
     const dialogCalls: string[] = [];

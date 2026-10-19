@@ -238,7 +238,7 @@ export function realCatalogFontPaths(): { base: string; donor: string } {
     process.env.FONTALLOY_DEV_FONT_DIR,
     resolve(root, "..", "fontalloy", "gui", "prototype", "fonts"),
     resolve(root, "gui", "prototype", "fonts"),
-  ].filter((p): p is string => p.length > 0);
+  ].filter((p): p is string => typeof p === "string" && p.length > 0);
   for (const dir of candidates) {
     const base = resolve(dir, "JetBrainsMonoNerdFont-Regular.ttf");
     const donor = resolve(dir, "MapleMonoCN-Regular.ttf");
