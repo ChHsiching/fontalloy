@@ -454,15 +454,29 @@ test.describe("renderer memory (ticket #32: the MEMORY RED LINE)", () => {
 
     /* --- phase 3: worst-case multi-face pick --- */
     await pickHeavyRow(page);
+    // The pick's own immediate renders settle FIRST, so the lazy check
+    // reads a settled UI instead of racing the paint: the closed
+    // header card repaints with the pick (`picker.ts` renderHeader
+    // paints `.kit-hd b` — font-weight 600 — in the pick's own
+    // registered family), which the browser serves from the family's
+    // 600 face.
+    await expect(page.locator('[data-role="picker-en"] .kit-hd b')).toContainText(
+      "Alloy Heavy",
+      { timeout: 30_000 },
+    );
     // MECHANISM: the pick registered every (weight, style) slot winner
-    // as a URL FontFace with its descriptor — lazy: only the picker's
-    // own immediate-render load of the default slot may be in flight,
-    // the other seven are still untouched.
+    // as a URL FontFace with its descriptor — lazy: only the faces the
+    // UI itself renders immediately ever load. Those are exactly two:
+    // the default slot 400 (the pick's explicit
+    // loadDefaultSlotWithBudget) and 600 (the header card's
+    // picked-name self-render); the other six stay untouched.
     const descriptors = await facesOf(page, HEAVY_FAMILY);
     expect(descriptors).toEqual(HEAVY_WEIGHTS.map((weight) => `${weight}/normal`));
     const lazyStatuses = await statusesOf(page, HEAVY_FAMILY);
     for (const [index, status] of lazyStatuses.entries()) {
-      if (HEAVY_WEIGHTS[index] === 400) continue; // the rendered slot
+      if (HEAVY_WEIGHTS[index] === 400 || HEAVY_WEIGHTS[index] === 600) {
+        continue; // the UI's own immediate renders (see above)
+      }
       expect(status, `face ${HEAVY_WEIGHTS[index]} stays lazy`).toBe("unloaded");
     }
     // The worst case: every descriptor actually loads its bytes by URL.

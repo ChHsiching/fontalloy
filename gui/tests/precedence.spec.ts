@@ -63,11 +63,22 @@ test.describe("precedence editing", () => {
     return { base: live.baseFont, donor: live.donorFont };
   }
 
-  /** Load one font file into a picker through its file input. */
+  /**
+   * Load one font file into a picker through its file input. Ticket
+   * #36 made a SUCCESSFUL local load CLOSE the picker (registerPicked
+   * in ui/picker.ts — the closed card shows the new pick), so waiting
+   * for the local row to appear inside the still-open popup races
+   * that close and loses on a slow host (the row exists, picked,
+   * inside the hidden popup). The 03297d9 discipline (the web twin):
+   * the close IS the completion signal — await it, prove the pick
+   * landed on the closed card, then REOPEN and assert the local row
+   * renders.
+   */
   async function loadIntoPicker(
     page: Page,
     role: "en" | "cjk",
     path: string,
+    family: string,
   ): Promise<void> {
     await pointerClick(
       page,
@@ -76,9 +87,21 @@ test.describe("precedence editing", () => {
     const popup = page.locator(`[data-picker-popup="${role}"]`);
     await expect(popup).toBeVisible();
     await page.locator("input[data-role='font-file']").setInputFiles(path);
-    await expect(popup.locator(".kit-fp").first()).toBeVisible();
+    await expect(popup).toBeHidden({ timeout: 30_000 });
     await waitForFontsReady(page);
+    await expect(
+      page.locator(`[data-role="picker-${role}"] .kit-hd b`),
+    ).toHaveText(family);
+    await pointerClick(
+      page,
+      page.locator(`[data-role="picker-${role}"] .kit-hd`),
+    );
+    await expect(popup).toBeVisible();
+    await expect(
+      popup.locator(".kit-fp", { hasText: family }).first(),
+    ).toBeVisible();
     await page.keyboard.press("Escape");
+    await expect(popup).toBeHidden();
   }
 
   /** Open the page pointed at the fixture serve, with both fonts picked. */
@@ -96,8 +119,8 @@ test.describe("precedence editing", () => {
     }, service!.url);
     await page.goto("/");
     await waitForFontsReady(page);
-    await loadIntoPicker(page, "en", fonts.base);
-    await loadIntoPicker(page, "cjk", fonts.donor);
+    await loadIntoPicker(page, "en", fonts.base, "AlloyBase");
+    await loadIntoPicker(page, "cjk", fonts.donor, "AlloyDonor");
   }
 
   /** The grid's effective table on the current page, from cell attributes. */
@@ -423,12 +446,12 @@ test.describe("precedence editing", () => {
     // safe (nothing colored before it); the PAIR's wait must anchor on
     // a cell only the pair's document colors — the donor-only CJK run —
     // because A–Z read identically under both documents.
-    await loadIntoPicker(page, "en", fonts.base);
+    await loadIntoPicker(page, "en", fonts.base, "AlloyBase");
     await expect(
       page.locator(".charmap-grid .kit-cell[data-cp='U+0041']"),
     ).toHaveAttribute("data-winner", "base");
     expect(resolves).toBe(1);
-    await loadIntoPicker(page, "cjk", fonts.donor);
+    await loadIntoPicker(page, "cjk", fonts.donor, "AlloyDonor");
     await gotoCjkPage(page);
     await expect(
       page.locator(".charmap-grid .kit-cell[data-cp='U+4E00']"),

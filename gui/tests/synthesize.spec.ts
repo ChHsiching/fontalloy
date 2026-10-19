@@ -791,9 +791,14 @@ test.describe("sidecar synthesize", () => {
         savedBlock.locator("[data-build-saved-label]"),
       ).toHaveText("已保存");
       const savedPath = panel.locator("[data-build-saved-path]").first();
+      // The exact saved location, derived from the save stand-in's own
+      // directory: the seam returns resolve(saveDir, name) verbatim,
+      // so the full path pins by equality — platform-shaped (a
+      // Windows drive root locally, /tmp under the Linux CI) without
+      // a drive-letter regex.
       await expect(savedPath).toHaveAttribute(
         "title",
-        /^[A-Za-z]:\\.+[\\/]ChHsich\.ttf$/,
+        resolve(saveDir, "ChHsich.ttf"),
       );
       await expect(savedPath).toHaveText(/ChHsich\.ttf$/);
       expect(saved.length).toBe(1);

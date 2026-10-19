@@ -17,7 +17,7 @@
 // face over the scene's own character ranges.
 import { test, expect } from "@playwright/test";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { pointerClick, waitForFontsReady } from "./helpers";
@@ -270,39 +270,29 @@ test("scene parity v2: catalog picks vs synthesized output", async ({ page }) =>
     await writeFile(artifact, Buffer.from(await fontResponse.arrayBuffer()));
 
     // The merged artifact reaches the page through the readFontPath
-    // seam (the local-load path's browser fetch — the one byte path
-    // left).
-    await page.route("**/testfont/*", async (route) => {
-      const name = new URL(route.request().url()).searchParams.get("name") ?? "";
-      const target = [artifact].find((p) => p.endsWith(name));
-      if (target === undefined) {
-        await route.fulfill({ status: 404 });
-        return;
-      }
-      await route.fulfill({
-        status: 200,
-        contentType: "application/octet-stream",
-        body: await readFile(target),
-      });
-    });
-    await page.exposeFunction("__cmpName", async (path: string) =>
-      path.split(/[\\/]/).pop() ?? "",
+    // seam — the PATHS-ONLY shape (ticket #34: no bytes cross the
+    // seam; the serve's local-font scan reads the real artifact file
+    // off the same absolute path, exactly like localload's seam).
+    await page.exposeFunction(
+      "__fontalloyTestReadFontPath",
+      async (path: string): Promise<{ isDirectory: boolean; paths: string[] }> => {
+        const info = await stat(path);
+        if (!info.isFile()) throw new Error(`not a file: ${path}`);
+        return { isDirectory: false, paths: [path] };
+      },
     );
     await page.addInitScript((serve: string) => {
       const w = window as unknown as { __FONTALLOY_CONFIG__?: Record<string, unknown> };
       w.__FONTALLOY_CONFIG__ ??= {};
       w.__FONTALLOY_CONFIG__.serveUrl = serve;
-      w.__FONTALLOY_CONFIG__.readFontPath = async (path: string) => {
-        const name = await (
-          window as unknown as { __cmpName: (p: string) => Promise<string> }
-        ).__cmpName(path);
-        const res = await fetch(`/testfont/?name=${encodeURIComponent(name)}`);
-        if (!res.ok) throw new Error(`no fixture for ${name}`);
-        return {
-          isDirectory: false,
-          files: [{ fileName: name, path, buffer: await res.arrayBuffer() }],
-        };
-      };
+      w.__FONTALLOY_CONFIG__.readFontPath = async (path: string) =>
+        (
+          window as unknown as {
+            __fontalloyTestReadFontPath: (
+              p: string,
+            ) => Promise<{ isDirectory: boolean; paths: string[] }>;
+          }
+        ).__fontalloyTestReadFontPath(path);
     }, serviceUrl);
     await page.goto("/");
     await waitForFontsReady(page);
@@ -327,20 +317,17 @@ test("scene parity v2: catalog picks vs synthesized output", async ({ page }) =>
       .waitFor({ timeout: 30_000 });
 
     // PRE: catalog picks — the multi-face base by URL (its whole
-    // weight matrix registers), the single-weight donor via its chip.
+    // weight matrix registers), the single-weight donor by its row.
     console.log("[parity] picking en");
     await pickCatalogRow(page, "en", "Scene Parity Mono");
     console.log("[parity] picking cjk");
-    // The WenKai families collapse into ONE group row — click the
-    // member chip itself (the fixture catalog carries only this cut).
-    await pointerClick(page, page.locator('[data-role="picker-cjk"] .kit-hd'));
-    const cjkPopup = page.locator('[data-picker-popup="cjk"]');
-    await cjkPopup
-      .locator(".kit-vchip[data-chip='LXGWWenKai::Regular']")
-      .click({ timeout: 30_000 });
-    // A chip pick keeps the popup open by design — the header card is
-    // the signal.
-    await page.keyboard.press("Escape");
+    // The WenKai manifest families collapse into ONE curated group
+    // row, and the fixture catalog carries only the Regular cut of
+    // only one member — a single-cut row renders NO variant chips
+    // (picker.ts lists chips only for more than one cut), so the ROW
+    // click is the pick: it resolves the group's one cut exactly like
+    // the member chip would, and the popup closes on completion.
+    await pickCatalogRow(page, "cjk", "Scene Parity Kai");
     await expect(page.locator('[data-role="picker-cjk"] .kit-hd .kit-hdc b')).toContainText(
       "Scene Parity Kai",
       { timeout: 30_000 },

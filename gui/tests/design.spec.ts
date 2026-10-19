@@ -8,11 +8,13 @@ import {
 import {
   assertNoJsErrors,
   collectJsErrors,
+  fontTruth,
   hitTestCenter,
   pointerClick,
   realCatalogFontPaths,
   waitForFontsReady,
 } from "./helpers";
+import { BLOCK_GROUPS } from "../src/unicode/blocks";
 
 /**
  * Design-fidelity repair (prototype parity): the ActionBar's rule-state
@@ -106,8 +108,11 @@ test.describe("action bar rule wiring", () => {
       await expect(popup).toBeVisible();
       await page.locator("input[data-role='font-file']").setInputFiles(path);
       // Round 4: a successful local load CLOSES the picker (prototype
-      // parity — the closed card now shows the new pick).
-      await expect(popup).toBeHidden();
+      // parity — the closed card now shows the new pick). The close is
+      // the completion signal: a REAL catalog binary (the ~20 MB CJK
+      // face) uploads and scans for far longer than the 5s default —
+      // budget it like the pair's own resolve budget below.
+      await expect(popup).toBeHidden({ timeout: 120_000 });
     }
   }
 
@@ -362,10 +367,56 @@ test.describe("action bar rule wiring", () => {
       const groupButton = (label: string) =>
         groupRow.locator(".kit-mseg button", { hasText: new RegExp(`^${label}$`) });
 
-      // Boot state: the donor alone covers the group — 全用中文 pressed,
-      // the first visible cell (、U+3001) resolves via the default with
-      // no adjusted dot.
-      await expect(groupButton("全用中文")).toHaveAttribute("aria-pressed", "true");
+      // Boot state — DERIVED from the staged pair (ticket #37: the
+      // CI-staged base carries the fullwidth braces U+FF5B/FF5D, so
+      // the 半形与全形字符 block votes base and the group's boot
+      // default is mixed — neither chip pressed). The derivation is
+      // the toolbar's own rule (effectiveGroupSide): a block votes
+      // the base when the base covers any of it, the donor when only
+      // the donor does; the group carries a side only when its voting
+      // blocks agree. The first visible cell (、U+3001) is
+      // donor-only either way: it resolves via the default with no
+      // adjusted dot.
+      const cjkBlocks = BLOCK_GROUPS.find((group) => group.id === "cjk")!.blocks;
+      const baseCps = new Set(fontTruth(real.base).codepoints);
+      const donorCps = new Set(fontTruth(real.donor).codepoints);
+      const covers = (
+        cps: Set<number>,
+        block: (typeof cjkBlocks)[number],
+      ): boolean =>
+        cps.size > 0 &&
+        [...cps].some((cp) => cp >= block.start && cp <= block.end);
+      let bootSide: "base" | "donor" | "" = "";
+      for (const block of cjkBlocks) {
+        const vote = covers(baseCps, block)
+          ? "base"
+          : covers(donorCps, block)
+            ? "donor"
+            : null;
+        if (vote === null) continue; // uncovered blocks abstain
+        if (bootSide === "") bootSide = vote;
+        else if (bootSide !== vote) {
+          bootSide = "";
+          break;
+        }
+      }
+      const pressedLabel =
+        bootSide === "donor" ? "全用中文" : bootSide === "base" ? "全用英文" : null;
+      if (pressedLabel !== null) {
+        await expect(groupButton(pressedLabel)).toHaveAttribute(
+          "aria-pressed",
+          "true",
+        );
+      } else {
+        await expect(groupButton("全用中文")).toHaveAttribute(
+          "aria-pressed",
+          "false",
+        );
+        await expect(groupButton("全用英文")).toHaveAttribute(
+          "aria-pressed",
+          "false",
+        );
+      }
       const cell = page.locator(".charmap-grid .kit-cell[data-cp='U+3001']");
       // The pair's first document lands after the cold ~12s resolve —
       // every subsequent assignment's document re-lands in seconds
