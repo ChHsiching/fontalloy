@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page } from "@playwright/test";
+import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -219,7 +220,7 @@ export function realCatalogFontPaths(): { base: string; donor: string } {
     process.env.FONTALLOY_DEV_FONT_DIR,
     resolve(root, "..", "fontalloy", "gui", "prototype", "fonts"),
     resolve(root, "gui", "prototype", "fonts"),
-  ].filter((p): p is string => typeof p === "string" && p.length > 0);
+  ].filter((p): p is string => p.length > 0);
   for (const dir of candidates) {
     const base = resolve(dir, "JetBrainsMonoNerdFont-Regular.ttf");
     const donor = resolve(dir, "MapleMonoCN-Regular.ttf");
@@ -230,6 +231,59 @@ export function realCatalogFontPaths(): { base: string; donor: string } {
       candidates.map((p) => `"${p}"`).join(", ") +
       ") — set FONTALLOY_DEV_FONT_DIR to the dev-catalog font directory",
   );
+}
+
+/**
+ * fontTools ground truth for one font file (the countertruth seam,
+ * round 21): gui/scripts/counter_truth.py reads the binary with
+ * fontTools and applies the same effective-coverage spec the GUI's
+ * sfnt reader defined (best cmap subtable, glyph-0 absent, placeholder
+ * outlines and mass duplication read as missing). Shared so specs
+ * beyond countertruth can derive expectations from whatever real
+ * binaries the environment actually staged (ticket #37: the CI-staged
+ * pair is not the pair every expectation was written against).
+ */
+export interface FontTruth {
+  family: string;
+  display: string;
+  /** Mapped codepoints of the chosen cmap subtable (glyph 0 dropped). */
+  raw: number;
+  /** Effective coverage after the placeholder rules. */
+  effective: number;
+  codepoints: number[];
+}
+
+const fontTruthCache = new Map<string, FontTruth>();
+
+/** fontTools truth per font file, computed once per worker. */
+export function fontTruth(path: string): FontTruth {
+  const cached = fontTruthCache.get(path);
+  if (cached) return cached;
+  const python = process.env.FONTALLOY_PYTHON ?? "python";
+  const run = spawnSync(
+    python,
+    [
+      resolve(
+        dirname(fileURLToPath(import.meta.url)),
+        "..",
+        "scripts",
+        "counter_truth.py",
+      ),
+      path,
+    ],
+    { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
+  );
+  if (run.status !== 0 || run.error) {
+    throw new Error(
+      `counter_truth.py failed for ${path}: ${run.error ?? ""}${
+        run.stderr ?? ""
+      }`,
+    );
+  }
+  const truth = (JSON.parse(run.stdout) as Record<string, FontTruth>)[path]!;
+  if (truth === undefined) throw new Error(`no truth emitted for ${path}`);
+  fontTruthCache.set(path, truth);
+  return truth;
 }
 
 /** The geometry facts of one qualifier TAG, read off its fact row. */

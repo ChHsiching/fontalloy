@@ -1,5 +1,4 @@
 import { test, expect, type Page } from "@playwright/test";
-import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
@@ -7,6 +6,8 @@ import { fileURLToPath } from "node:url";
 import {
   assertNoJsErrors,
   collectJsErrors,
+  fontTruth,
+  type FontTruth,
   pointerClick,
   waitForFontsReady,
 } from "./helpers";
@@ -46,9 +47,6 @@ import {
 
 /* ---------- the real pair (same discovery as helpers.ts) ---------- */
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(HERE, "../..");
-
 /**
  * Locate the two real catalog binaries (font binaries never enter git).
  * The CJK slot accepts the staged donor of the T12 verification layout
@@ -81,40 +79,9 @@ function realFontPaths(): { en: string; cjk: string } {
 
 /* ---------- the independent ground truth ---------- */
 
-interface FontTruth {
-  family: string;
-  display: string;
-  /** Mapped codepoints of the chosen cmap subtable (glyph 0 dropped). */
-  raw: number;
-  /** Effective coverage after the placeholder rules. */
-  effective: number;
-  codepoints: number[];
-}
-
-/** fontTools truth per font file, computed once per worker. */
-const truthCache = new Map<string, FontTruth>();
-
-function fontTruth(path: string): FontTruth {
-  const cached = truthCache.get(path);
-  if (cached) return cached;
-  const python = process.env.FONTALLOY_PYTHON ?? "python";
-  const run = spawnSync(
-    python,
-    [resolve(REPO_ROOT, "gui/scripts/counter_truth.py"), path],
-    { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
-  );
-  if (run.status !== 0 || run.error) {
-    throw new Error(
-      `counter_truth.py failed for ${path}: ${run.error ?? ""}${
-        run.stderr ?? ""
-      }`,
-    );
-  }
-  const truth = (JSON.parse(run.stdout) as Record<string, FontTruth>)[path]!;
-  if (truth === undefined) throw new Error(`no truth emitted for ${path}`);
-  truthCache.set(path, truth);
-  return truth;
-}
+// fontTruth (the counter_truth.py seam) lives in helpers.ts since
+// ticket #37: the CI-staged pair is not the pair every expectation
+// was written against, so other specs derive from the same truth.
 
 /** Membership in sorted disjoint intervals — this spec's own walk. */
 function inIntervals(
