@@ -121,8 +121,33 @@ export async function waitForCatalogReady(
   page: Page,
   timeout = 240_000,
 ): Promise<void> {
+  // The boot must START before anything can settle: the sweep mark (or
+  // the first-run screen) is set the moment the page's serve
+  // connection begins polling the catalog. A page with NO serve sets
+  // NEITHER — the poller never runs — which through the old
+  // `?? "running"` fallback read as an eternal in-flight catalog and
+  // burned the whole timeout (round 31's web catalog failures). Prove
+  // the start first and fail fast with the honest reason instead.
+  const started = await page
+    .waitForFunction(
+      () =>
+        document.documentElement.dataset.catalogSweep !== undefined ||
+        document.querySelector(".catalog-screen") !== null,
+      null,
+      { timeout: 20_000, polling: 500 },
+    )
+    .then(() => true)
+    .catch(() => false);
+  expect(
+    started,
+    "the catalog boot never started — no serve connection to poll " +
+      "(load the page with ?serve=<a fontalloy serve that carries the catalog>",
+  ).toBe(true);
   const screen = page.locator(".catalog-screen");
-  await screen.waitFor({ state: "visible", timeout: 20_000 }).catch(() => {});
+  // The screen appears (if at all) on the first status poll after the
+  // connection — a short grace covers that cadence without stalling
+  // warm catalogs (state already ready) the full 20 s.
+  await screen.waitFor({ state: "visible", timeout: 5_000 }).catch(() => {});
   await expect(screen).toBeHidden({ timeout });
   await expect
     .poll(
@@ -291,6 +316,17 @@ export async function pickCatalogFamily(
  * Load one local font file into a picker through the workspace's shared
  * hidden file input (the browser local-load path — the footer action's
  * own input, set directly like the GUI suite does).
+ *
+ * Ticket #36's browser pick is a serve UPLOAD: the File streams to the
+ * serve's /local-fonts/upload endpoint, the returned family documents
+ * register, and — prototype parity, pinned by the GUI suite since
+ * round 4 — a SUCCESSFUL load CLOSES the picker (the closed card shows
+ * the new pick). Waiting for the row to be visible inside the
+ * still-open popup races that close and loses (the row exists, picked,
+ * inside the display:none popup), so the close IS the completion
+ * signal: await it, prove the pick landed on the card, then REOPEN and
+ * assert the local row renders — the row-visibility contract, raced no
+ * more.
  */
 export async function loadLocalFont(
   page: Page,
@@ -299,8 +335,14 @@ export async function loadLocalFont(
 ): Promise<void> {
   const popup = await openFontPicker(page, role);
   await page.locator("input[data-role='font-file']").setInputFiles(path);
-  await expect(popup.locator(".kit-fp").first()).toBeVisible();
+  await expect(popup).toBeHidden({ timeout: 30_000 });
   await waitForFontsReady(page);
+  const card = page.locator(`[data-role="picker-${role}"] .kit-hd b`);
+  await expect(card).not.toHaveText("尚未加载字体");
+  const reopened = await openFontPicker(page, role);
+  await expect(
+    reopened.locator(".kit-fp", { hasText: "本地字体文件" }).first(),
+  ).toBeVisible();
   await page.keyboard.press("Escape");
 }
 

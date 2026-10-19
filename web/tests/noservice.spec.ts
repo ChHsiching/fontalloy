@@ -3,8 +3,8 @@ import {
   allowProbeRefusal,
   assertNoJsErrors,
   collectJsErrors,
-  loadLocalFont,
   openCliPanel,
+  openFontPicker,
   optOutOfCatalog,
   pointerClick,
   UNUSED_SERVE,
@@ -93,7 +93,7 @@ test("absent service: the re-probe affordance is click-reachable", async ({
   assertNoJsErrors(errors);
 });
 
-test("a missing pick blocks copy/download; a made pick emits the declared JSON", async ({
+test("a missing pick blocks copy/download; a serve-less browser load states its reason", async ({
   page,
 }) => {
   const panel = await openCliPanel(page);
@@ -115,32 +115,36 @@ test("a missing pick blocks copy/download; a made pick emits the declared JSON",
     "请先在左侧选择英文字体与中文字体",
   );
 
-  // Browser-loaded local fonts have no path the recipe could name: with
-  // the pair made, the emitted JSON says so itself (empty base path and
-  // donor), with NO local validation mirror inventing a problem list —
-  // the file is what it is, and the CLI (like the serve) rejects it
-  // loudly when run.
+  // Ticket #36's upload model ended the serve-less browser pick: the
+  // file input's File objects have no path a recipe could name, so
+  // they STREAM to the serve's upload endpoint — no serve, no load
+  // (parsing font bytes in the page would be frontend business logic;
+  // the core owns it). The attempt is HONEST about exactly that: the
+  // picker stays open, the service-required reason rides its error
+  // line, no row appears, and the panel's missing-pick gate above is
+  // unchanged. The enabled-with-picks contract is the catalog flow's —
+  // catalog.spec pins it with real fetch-layout picks.
+  const popup = await openFontPicker(page, "en");
   const fontsDir = await import("./serve").then((m) => m.serveFixtureDir());
   const nodePath = await import("node:path");
-  await loadLocalFont(page, "en", nodePath.join(fontsDir, "Alpha.ttf"));
-  await loadLocalFont(page, "cjk", nodePath.join(fontsDir, "Beta.ttf"));
-  await expect(panel.locator('[data-testid="recipe-json"]')).toContainText(
-    '"base": ""',
-  );
-  await expect(panel.locator('[data-testid="recipe-json"]')).toContainText(
-    '"donors": [\n    ""\n  ]',
-  );
-  // The recipe exists: the buttons are enabled (no pre-validation).
+  await page
+    .locator("input[data-role='font-file']")
+    .setInputFiles(nodePath.join(fontsDir, "Alpha.ttf"));
+  const error = popup.locator("[data-picker-error]");
+  await expect(error).toBeVisible();
+  await expect(error).toContainText("本地字体加载需要本地服务");
+  await expect(popup.locator(".kit-fp")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  // The failed attempt changed no workspace state: still no recipe, so
+  // the buttons stay disabled and the status line still names the
+  // missing picks.
   await expect(panel.locator('[data-testid="copy-command"]')).toHaveAttribute(
     "aria-disabled",
-    "false",
+    "true",
   );
-  await expect(panel.locator('[data-testid="download-recipe"]')).toHaveAttribute(
-    "aria-disabled",
-    "false",
-  );
-  // The command names the JSON file the download produces.
-  await expect(panel.locator('[data-testid="cli-command"]')).toContainText(
-    ".json",
+  await expect(panel.locator('[data-testid="recipe-json"]')).toHaveText("");
+  await expect(panel.locator('[data-testid="copy-status"]')).toContainText(
+    "请先在左侧选择英文字体与中文字体",
   );
 });
