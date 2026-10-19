@@ -291,6 +291,17 @@ export async function pickCatalogFamily(
  * Load one local font file into a picker through the workspace's shared
  * hidden file input (the browser local-load path — the footer action's
  * own input, set directly like the GUI suite does).
+ *
+ * Ticket #36's browser pick is a serve UPLOAD: the File streams to the
+ * serve's /local-fonts/upload endpoint, the returned family documents
+ * register, and — prototype parity, pinned by the GUI suite since
+ * round 4 — a SUCCESSFUL load CLOSES the picker (the closed card shows
+ * the new pick). Waiting for the row to be visible inside the
+ * still-open popup races that close and loses (the row exists, picked,
+ * inside the display:none popup), so the close IS the completion
+ * signal: await it, prove the pick landed on the card, then REOPEN and
+ * assert the local row renders — the row-visibility contract, raced no
+ * more.
  */
 export async function loadLocalFont(
   page: Page,
@@ -299,8 +310,14 @@ export async function loadLocalFont(
 ): Promise<void> {
   const popup = await openFontPicker(page, role);
   await page.locator("input[data-role='font-file']").setInputFiles(path);
-  await expect(popup.locator(".kit-fp").first()).toBeVisible();
+  await expect(popup).toBeHidden({ timeout: 30_000 });
   await waitForFontsReady(page);
+  const card = page.locator(`[data-role="picker-${role}"] .kit-hd b`);
+  await expect(card).not.toHaveText("尚未加载字体");
+  const reopened = await openFontPicker(page, role);
+  await expect(
+    reopened.locator(".kit-fp", { hasText: "本地字体文件" }).first(),
+  ).toBeVisible();
   await page.keyboard.press("Escape");
 }
 
