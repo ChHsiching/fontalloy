@@ -759,7 +759,14 @@ test("a 7z artifact unpacks through the repo python and serves the family (round
   await mkdir(facesDir, { recursive: true });
   await writeFile(join(facesDir, "LxgwBrightCodeNF-Regular.ttf"), Buffer.from("dummy-regular"));
   await writeFile(join(facesDir, "LxgwBrightCodeNF-Bold.ttf"), Buffer.from("dummy-bold"));
-  const py = resolve(HERE, "../../.venv/Scripts/python.exe");
+  // The venv python per platform (the Windows CI-red was spawn ENOENT
+  // on the Scripts path).
+  const py = resolve(
+    HERE,
+    process.platform === "win32"
+      ? "../../.venv/Scripts/python.exe"
+      : "../../.venv/bin/python",
+  );
   await new Promise<void>((resolveRun, rejectRun) => {
     const child = spawn(py, ["-c", "import py7zr, sys; py7zr.pack_7zarchive(sys.argv[1], sys.argv[2])", artifact.replace(/\.7z$/, ""), facesDir], {
       cwd: resolve(HERE, "../.."),

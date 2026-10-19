@@ -72,6 +72,32 @@ jobs:
 
       - run: npx playwright install --with-deps chromium
 
+      # The real-font specs (countertruth ground truth, the minimal-path
+      # synthesis, design real-pair, sceneparity, round11shots) need the
+      # two real catalog binaries that never enter git. Stage them from
+      # the manifest's pinned upstream artifacts (zip sha verified), the
+      # same pair the local runs stage: JetBrainsMono Nerd Font Regular
+      # + the Maple Mono NF-CN Regular face (staged under the t12 name
+      # MapleMonoCN-Regular.ttf the test discovery accepts; the ground
+      # truth reads the actual bytes either way).
+      - name: Stage the two real catalog fonts
+        shell: bash
+        working-directory: .
+        run: |
+          set -euo pipefail
+          stage="${RUNNER_TEMP}/realfonts"
+          mkdir -p "$stage" "${RUNNER_TEMP}/jb" "${RUNNER_TEMP}/mm"
+          curl -fsSL -o "${RUNNER_TEMP}/JetBrainsMono.zip"             "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/JetBrainsMono.zip"
+          curl -fsSL -o "${RUNNER_TEMP}/MapleMono-NF-CN.zip"             "https://github.com/subframe7536/maple-font/releases/download/v7.9/MapleMono-NF-CN.zip"
+          echo "fab782a66f7d3019da64f6572db9fc5d3a4bcb19f9fa13e2d8a62e3693d6396e  ${RUNNER_TEMP}/JetBrainsMono.zip" | sha256sum -c -
+          echo "af913b6322905348b3f50e4397fedc35b3a880db5effcce7969003051dcd3e94  ${RUNNER_TEMP}/MapleMono-NF-CN.zip" | sha256sum -c -
+          .venv/bin/python -m zipfile -e "${RUNNER_TEMP}/JetBrainsMono.zip" "${RUNNER_TEMP}/jb"
+          .venv/bin/python -m zipfile -e "${RUNNER_TEMP}/MapleMono-NF-CN.zip" "${RUNNER_TEMP}/mm"
+          find "${RUNNER_TEMP}/jb" -name 'JetBrainsMonoNerdFont-Regular.ttf' -exec cp {} "$stage/" \;
+          find "${RUNNER_TEMP}/mm" -name 'MapleMono-NF-CN-Regular.ttf' -exec cp {} "$stage/MapleMonoCN-Regular.ttf" \;
+          ls -la "$stage"
+          echo "FONTALLOY_DEV_FONT_DIR=${stage}" >> "$GITHUB_ENV"
+
       # Production-compile gate before the suite drives the dev server.
       - run: npm run build
 
