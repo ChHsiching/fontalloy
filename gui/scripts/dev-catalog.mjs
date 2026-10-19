@@ -72,13 +72,27 @@
  * multi-cut family (MapleMono NF + NF-CN collapsed); the nested cuts
  * make the family's full cut structure visible to a consumer of the
  * document alone, matching what /catalog/families serves.
+ *
+ * Round 31 (the absolute memory rule): this middleware STREAMS. Face
+ * bytes and zip bytes are never resident — the catalog build keeps one
+ * streaming pass per face (sha256 + crc32 + size), the pinned zip sha
+ * is hashed over the deterministic zip stream, zip requests stream the
+ * same bytes from disk under a small concurrency bound, and upstream
+ * artifact fetches stream to disk before verification. The round-31
+ * heavy run sampled this middleware at ~13.9 GB working set over the
+ * ~9.8 GB warm cache (the old buffered build retained ~2x the catalog);
+ * gui/tests/dev-catalog-mem.spec.ts pins the flat-memory contract.
  */
 
 import { createHash } from "node:crypto";
-import { readFile, readdir, mkdir, writeFile, rm } from "node:fs/promises";
+import { readFile, readdir, mkdir, writeFile, rm, open, copyFile, rename } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { existsSync, statSync, readFileSync } from "node:fs";
+import { existsSync, statSync, readFileSync, createReadStream } from "node:fs";
+import { once } from "node:events";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import { createWriteStream } from "node:fs";
 import { resolve, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -438,12 +452,16 @@ async function fetchEntryUpstream(entry, force = false) {
     if (warm.length > 0) return warm.sort();
   }
 
-  let artifact = null;
+  // The artifact lives ON DISK only (round-31 memory rule): a cached
+  // artifact is hash-verified by streaming over the file, a fetch
+  // streams to a .part file that is renamed into place only after the
+  // sha matches — tens-of-MB artifacts are never resident in this
+  // process, even with four concurrent fetches.
+  let artifactOnDisk = false;
   if (existsSync(artifactPath)) {
-    const cached = await readFile(artifactPath);
-    if (sha256hex(cached) === entry.sha256) artifact = cached;
+    if ((await shaFile(artifactPath)) === entry.sha256) artifactOnDisk = true;
   }
-  if (artifact === null) {
+  if (!artifactOnDisk) {
     // Offline/hermetic runs opt out of the network pass entirely.
     if (process.env.FONTALLOY_DEV_CATALOG_FETCH === "0") {
       console.info(
@@ -457,6 +475,8 @@ async function fetchEntryUpstream(entry, force = false) {
     // safe: the bytes must match the manifest's pinned sha256 or the
     // artifact is rejected, so a proxy can never poison the catalog.
     const reasons = [];
+    await mkdir(artifactDir, { recursive: true });
+    const tmpPath = `${artifactPath}.part`;
     for (const url of upstreamOrigins(entry.upstream_url)) {
       console.info(`[dev-catalog] fetching upstream ${entry.file} (${entry.family}::${entry.variant}) via ${originLabel(url, entry.upstream_url)}`);
       try {
@@ -468,42 +488,47 @@ async function fetchEntryUpstream(entry, force = false) {
           reasons.push(`${originLabel(url, entry.upstream_url)}: HTTP ${res.status}`);
           continue;
         }
-        artifact = Buffer.from(await res.arrayBuffer());
-        const actual = sha256hex(artifact);
+        if (!res.body) {
+          reasons.push(`${originLabel(url, entry.upstream_url)}: empty body`);
+          continue;
+        }
+        await rm(tmpPath, { force: true }).catch(() => {});
+        await pipeline(Readable.fromWeb(res.body), createWriteStream(tmpPath));
+        const actual = await shaFile(tmpPath);
         if (actual !== entry.sha256) {
           reasons.push(
             `${originLabel(url, entry.upstream_url)}: sha256 mismatch (want ${entry.sha256.slice(0, 12)}…, got ${actual.slice(0, 12)}…)`,
           );
-          artifact = null;
+          await rm(tmpPath, { force: true }).catch(() => {});
           continue;
         }
+        await rename(tmpPath, artifactPath);
+        artifactOnDisk = true;
         break;
       } catch (err) {
         reasons.push(`${originLabel(url, entry.upstream_url)}: ${err instanceof Error ? err.message : String(err)}`);
+        await rm(tmpPath, { force: true }).catch(() => {});
       }
     }
-    if (artifact === null) {
+    if (!artifactOnDisk) {
       throw new Error(reasons.join("; "));
     }
-    await mkdir(artifactDir, { recursive: true });
-    await writeFile(artifactPath, artifact);
   }
 
   // Unpack EVERY face the artifact carries (the dev catalog serves
   // full families — a Regular-only cache starves the weight matrix).
   await mkdir(faceDir, { recursive: true });
   if (isFontFile) {
-    // A bare font-file entry: the artifact IS the face.
-    await writeFile(resolve(faceDir, file), artifact);
+    // A bare font-file entry: the artifact IS the face (copied on
+    // disk; the bytes never pass through this process).
+    await copyFile(artifactPath, resolve(faceDir, file));
   } else {
     // Round 27 (owner ruling: one unpacker, the Python one): zip AND
     // 7z artifacts extract through the core pipeline's own extractor
     // (fontalloy_core.assets.extract_font_faces — magic-byte format
-    // detection, sanitized member paths, the exact `assets fetch` code
-    // path). The bytes are already sha-verified; the raw artifact is
-    // written to disk for the extractor and pruned below with the rest.
-    await mkdir(artifactDir, { recursive: true });
-    await writeFile(artifactPath, artifact);
+    // detection, sanitized member paths, the exact `assets fetch`
+    // code path). The bytes are already sha-verified on disk; the raw
+    // artifact is pruned below once its faces + marker exist.
     await extractArchiveViaPython(artifactPath, faceDir);
     const faces = (await readdir(faceDir)).filter((n) => FONT_EXT_RE.test(n));
     if (faces.length === 0) throw new Error(`${entry.file} carries no font file`);
@@ -570,7 +595,7 @@ async function fillUpstreamCache(manifest, available, bySubdir, manifestFiles) {
   return { fetched, errors };
 }
 
-/* ---------- minimal ZIP writer (stored entries) ---------- */
+/* ---------- stored-zip streaming (bounded memory — the round-31 absolute rule) ---------- */
 
 const CRC_TABLE = (() => {
   const table = new Uint32Array(256);
@@ -582,25 +607,69 @@ const CRC_TABLE = (() => {
   return table;
 })();
 
-function crc32(buf) {
-  let c = 0xffffffff;
+/** Incremental CRC32 (init 0xffffffff, finalize ^ 0xffffffff). */
+function crc32Update(crc, buf) {
+  let c = crc;
   for (const byte of buf) c = CRC_TABLE[(c ^ byte) & 0xff] ^ (c >>> 8);
-  return (c ^ 0xffffffff) >>> 0;
+  return c >>> 0;
 }
 
 /** Fixed 2026-01-01 local-header date, like the CI packaging. */
 const DOS_TIME = 0x0000;
 const DOS_DATE = ((2026 - 1980) << 9) | (1 << 5) | 1;
 
-function makeZip(entries) {
-  const chunks = [];
+const sha256hex = (data) => createHash("sha256").update(data).digest("hex");
+
+/** The IO chunk every streamed read/hash/serve path uses (1 MiB). */
+const CHUNK_BYTES = 1024 * 1024;
+
+/** A file's digest facts in ONE bounded-memory streaming pass. */
+async function scanFace(path) {
+  const fh = await open(path, "r");
+  try {
+    const hash = createHash("sha256");
+    let crc = 0xffffffff;
+    let size = 0;
+    const buf = Buffer.alloc(CHUNK_BYTES);
+    for (;;) {
+      const { bytesRead } = await fh.read(buf, 0, CHUNK_BYTES, null);
+      if (bytesRead === 0) break;
+      const view = bytesRead === CHUNK_BYTES ? buf : buf.subarray(0, bytesRead);
+      hash.update(view);
+      crc = crc32Update(crc, view);
+      size += bytesRead;
+    }
+    return { sha256: hash.digest("hex"), crc32: (crc ^ 0xffffffff) >>> 0, size };
+  } finally {
+    await fh.close();
+  }
+}
+
+/** The sha256 of a file on disk, streamed (never resident whole). */
+async function shaFile(path) {
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(path, { highWaterMark: CHUNK_BYTES })) {
+    hash.update(chunk);
+  }
+  return hash.digest("hex");
+}
+
+/**
+ * The family release zip as a CHUNK of Buffers — the EXACT stored-zip
+ * layout the buffered writer emitted (local headers, raw face bytes
+ * streamed from disk, then central directory + EOCD), so the pinned
+ * zipSha256 and the served bytes stay byte-identical to the old build
+ * while nothing larger than a chunk is ever resident. Face payloads
+ * ride a ReadableStream (each chunk a distinct Buffer — safe for
+ * consumers like res.write that may retain).
+ * @param {Array<{file: string, path: string, crc32: number, size: number}>} faces
+ */
+async function* zipStream(faces) {
+  /** @type {Buffer[]} */
   const central = [];
   let offset = 0;
-  for (const entry of entries) {
-    const nameBuf = Buffer.from(entry.name, "utf8");
-    const payload = entry.data;
-    const crc = crc32(payload);
-
+  for (const face of faces) {
+    const nameBuf = Buffer.from(face.file, "utf8");
     const local = Buffer.alloc(30);
     local.writeUInt32LE(0x04034b50, 0);
     local.writeUInt16LE(20, 4);
@@ -608,12 +677,16 @@ function makeZip(entries) {
     local.writeUInt16LE(0, 8); // stored
     local.writeUInt16LE(DOS_TIME, 10);
     local.writeUInt16LE(DOS_DATE, 12);
-    local.writeUInt32LE(crc, 14);
-    local.writeUInt32LE(payload.length, 18);
-    local.writeUInt32LE(entry.data.length, 22);
+    local.writeUInt32LE(face.crc32, 14);
+    local.writeUInt32LE(face.size, 18);
+    local.writeUInt32LE(face.size, 22);
     local.writeUInt16LE(nameBuf.length, 26);
     local.writeUInt16LE(0, 28);
-    chunks.push(local, nameBuf, payload);
+    yield local;
+    yield nameBuf;
+    for await (const chunk of createReadStream(face.path, { highWaterMark: CHUNK_BYTES })) {
+      yield /** @type {Buffer} */ (chunk);
+    }
 
     const cd = Buffer.alloc(46);
     cd.writeUInt32LE(0x02014b50, 0);
@@ -623,9 +696,9 @@ function makeZip(entries) {
     cd.writeUInt16LE(0, 10);
     cd.writeUInt16LE(DOS_TIME, 12);
     cd.writeUInt16LE(DOS_DATE, 14);
-    cd.writeUInt32LE(crc, 16);
-    cd.writeUInt32LE(payload.length, 20);
-    cd.writeUInt32LE(entry.data.length, 24);
+    cd.writeUInt32LE(face.crc32, 16);
+    cd.writeUInt32LE(face.size, 20);
+    cd.writeUInt32LE(face.size, 24);
     cd.writeUInt16LE(nameBuf.length, 28);
     cd.writeUInt16LE(0, 30);
     cd.writeUInt16LE(0, 32);
@@ -635,22 +708,61 @@ function makeZip(entries) {
     cd.writeUInt32LE(offset, 42);
     central.push(cd, nameBuf);
 
-    offset += local.length + nameBuf.length + payload.length;
+    offset += 30 + nameBuf.length + face.size;
   }
-  const centralBuf = Buffer.concat(central);
+  yield* central;
+  const centralLen = central.reduce((n, b) => n + b.length, 0);
   const eocd = Buffer.alloc(22);
   eocd.writeUInt32LE(0x06054b50, 0);
   eocd.writeUInt16LE(0, 4);
   eocd.writeUInt16LE(0, 6);
-  eocd.writeUInt16LE(entries.length, 8);
-  eocd.writeUInt16LE(entries.length, 10);
-  eocd.writeUInt32LE(centralBuf.length, 12);
+  eocd.writeUInt16LE(faces.length, 8);
+  eocd.writeUInt16LE(faces.length, 10);
+  eocd.writeUInt32LE(centralLen, 12);
   eocd.writeUInt32LE(offset, 16);
   eocd.writeUInt16LE(0, 20);
-  return Buffer.concat([...chunks, centralBuf, eocd]);
+  yield eocd;
 }
 
-const sha256hex = (data) => createHash("sha256").update(data).digest("hex");
+/** The deterministic zip's sha256 — hashed over the stream, never resident. */
+async function zipSha256Of(faces) {
+  const hash = createHash("sha256");
+  for await (const chunk of zipStream(faces)) {
+    hash.update(chunk);
+  }
+  return hash.digest("hex");
+}
+
+/**
+ * Zip REQUESTS are bounded too (the absolute rule): at most this many
+ * generations stream concurrently, so a first-run full-catalog
+ * download cannot fan disk reads unboundedly.
+ */
+const ZIP_SERVE_CONCURRENCY = 3;
+let zipActive = 0;
+/** @type {Array<() => void>} */
+const zipWaiters = [];
+
+/** Stream one family zip to the response, honoring backpressure. */
+async function serveFamilyZip(family, res, cors) {
+  res.writeHead(200, { ...cors, "content-type": "application/zip" });
+  if (zipActive >= ZIP_SERVE_CONCURRENCY) {
+    await new Promise((release) => zipWaiters.push(release));
+  }
+  zipActive++;
+  try {
+    for await (const chunk of zipStream(family.faces)) {
+      if (res.destroyed) return;
+      if (!res.write(chunk)) await once(res, "drain");
+    }
+    res.end();
+  } catch (err) {
+    res.destroy(err instanceof Error ? err : new Error(String(err)));
+  } finally {
+    zipActive--;
+    zipWaiters.shift()?.();
+  }
+}
 
 /* ---------- the catalog, built once on first request ---------- */
 
@@ -680,9 +792,14 @@ function resolveFamilyFile(family, available, manifestFiles = []) {
  *            files: Array<{file: string, sha256: string}>}} CatalogCut
  */
 /**
+ * The served catalog family — METADATA ONLY (round-31 absolute memory
+ * rule): digest facts and the on-disk path per face, the zip's pinned
+ * sha256 (hashed over the deterministic stream at build). No font
+ * byte and no zip byte is ever resident in this process; zips stream
+ * from disk at serve time (see zipStream / serveFamilyZip).
  * @typedef {{family: string, variant: string | undefined, cuts: CatalogCut[] | null, zip: string, zipSha256: string,
- *            zipBytes: Buffer, file: string, fileSha256: string,
- *            faces: Array<{file: string, sha256: string, data: Buffer}>}} CatalogFamily
+ *            file: string, fileSha256: string,
+ *            faces: Array<{file: string, sha256: string, crc32: number, size: number, path: string}>}} CatalogFamily
  */
 
 /** @type {Promise<{families: CatalogFamily[], misses: string[]}> | null} */
@@ -994,14 +1111,18 @@ function buildCatalog() {
 
       // EVERY sibling face rides the release (production schema: one
       // zip per family, all faces) — the GUI's weight matrix pools
-      // them through the family-cut pattern.
-      const faces = await Promise.all(
-        faceNames.map(async (name) => {
-          const data = await readFile(available.get(name));
-          return { file: name, data, sha256: sha256hex(data) };
-        }),
-      );
-      const zipBytes = makeZip(faces.map(({ file: name, data }) => ({ name, data })));
+      // them through the family-cut pattern. Faces are SCANNED, not
+      // loaded: the catalog keeps digest facts + the on-disk path per
+      // face (round-31 memory rule — the bytes stream from disk at
+      // serve time), and the zip sha is hashed over the deterministic
+      // stream.
+      /** @type {Array<{file: string, sha256: string, crc32: number, size: number, path: string}>} */
+      const faces = [];
+      for (const name of faceNames) {
+        const path = available.get(name);
+        const meta = await scanFace(path);
+        faces.push({ file: name, sha256: meta.sha256, crc32: meta.crc32, size: meta.size, path });
+      }
       // The per-cut entries (the variant_cuts port): EVERY cut of the
       // family rides the document when the entry path resolved — each
       // cut's own identity (canonical entry, axes, artifact stem) plus
@@ -1030,8 +1151,7 @@ function buildCatalog() {
         variant: chooseVariant(entry.family, file, manifest),
         ...(cuts === null ? {} : { cuts }),
         zip: `${entry.family.replace(/\s+/g, "")}.zip`,
-        zipSha256: sha256hex(zipBytes),
-        zipBytes,
+        zipSha256: await zipSha256Of(faces),
         file,
         fileSha256: faces.find((f) => f.file === file)?.sha256 ?? "",
         faces,
@@ -1043,19 +1163,17 @@ function buildCatalog() {
         misses.push(`${entry.family} (dev-only extra)`);
         continue;
       }
-      const faces = await Promise.all(
-        familyFaces(entry.file, available).map(async (name) => ({
-          file: name,
-          data: await readFile(available.get(name)),
-          sha256: sha256hex(await readFile(available.get(name))),
-        })),
-      );
-      const zipBytes = makeZip(faces.map(({ file: name, data }) => ({ name, data })));
+      /** @type {Array<{file: string, sha256: string, crc32: number, size: number, path: string}>} */
+      const faces = [];
+      for (const name of familyFaces(entry.file, available)) {
+        const path = available.get(name);
+        const meta = await scanFace(path);
+        faces.push({ file: name, sha256: meta.sha256, crc32: meta.crc32, size: meta.size, path });
+      }
       families.push({
         family: entry.family,
         zip: `${entry.family}.zip`,
-        zipSha256: sha256hex(zipBytes),
-        zipBytes,
+        zipSha256: await zipSha256Of(faces),
         file: entry.file,
         fileSha256: faces.find((f) => f.file === entry.file)?.sha256 ?? "",
         faces,
@@ -1145,8 +1263,7 @@ async function handle(req, res, next) {
     ? families.find((f) => f.zip === decodeURIComponent(match[1]))
     : undefined;
   if (family) {
-    res.writeHead(200, { ...cors, "content-type": "application/zip" });
-    res.end(family.zipBytes);
+    await serveFamilyZip(family, res, cors);
     return;
   }
   res.writeHead(404, cors);

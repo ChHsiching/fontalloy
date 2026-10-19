@@ -46,19 +46,30 @@ function fakeRequest(url: string): {
   req: { url: string; headers: { host: string } };
   handlerRes: {
     writeHead: (status: number, headers: Record<string, string>) => void;
+    write: (chunk: string | Buffer) => boolean;
     end: (body?: string | Buffer) => void;
   };
   captured: { status: number; body: Buffer };
 } {
   const req = { url, headers: { host: "127.0.0.1:5999" } };
-  const captured = { status: 0, body: Buffer.alloc(0) };
+  const captured = { status: 0, chunks: [] as Buffer[], body: Buffer.alloc(0) };
   const handlerRes = {
     writeHead(status: number, headers: Record<string, string>) {
       captured.status = status;
       void headers;
     },
+    // Zips STREAM from disk (the round-31 memory rule): write chunks
+    // land here and end() finalizes; end(body) — the buffered document
+    // shape — still works.
+    write(chunk: string | Buffer) {
+      captured.chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      return true;
+    },
     end(body?: string | Buffer) {
-      captured.body = Buffer.isBuffer(body) ? body : Buffer.from(body ?? "");
+      if (body !== undefined) {
+        captured.chunks.push(Buffer.isBuffer(body) ? body : Buffer.from(body));
+      }
+      captured.body = Buffer.concat(captured.chunks);
     },
   };
   return { req, handlerRes, captured };
