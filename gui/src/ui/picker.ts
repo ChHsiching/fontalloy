@@ -905,6 +905,13 @@ export function mountPicker(
               renderDoc !== undefined && renderDoc.preview !== null
                 ? previewCssFamily(renderDoc.family)
                 : undefined,
+            // The PICK's own render family (ticket #37): the registered
+            // css key — the bare family the pick's URL FontFaces live
+            // under and every glyph it renders in. The card header
+            // paints this instead of the preview subset; absent while
+            // nothing of the family is registered (the header then
+            // keeps the listing font, exactly as before).
+            pickFamily: cssKey ?? undefined,
             meta: familyMeta(primaryFamily),
             disabled: !anyDone,
             note: anyDone

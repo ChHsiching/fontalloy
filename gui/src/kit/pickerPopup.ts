@@ -43,6 +43,17 @@ export interface PickerFont {
   name: string;
   /** CSS family for self-rendering the name; omit for UI font. */
   family?: string;
+  /**
+   * The css family an actual PICK of this row renders in — the bare
+   * registered family (a catalog pick's URL FontFaces), not the
+   * listing font. The CARD HEADER paints this in preference to
+   * {@link family}: catalog rows self-render their names through the
+   * preview subsets (`fa-cat-*`), but a pick renders in the bare
+   * family, and the header is the surface the journeys read as the
+   * pick's expected family — header and glyphs must agree. Rows in
+   * the popup list keep painting {@link family} regardless.
+   */
+  pickFamily?: string;
   meta?: FontMeta;
   /**
    * Extra search terms matched alongside name/id (the builder
@@ -516,6 +527,7 @@ export function mountPickerPopup(
       selected?.id ?? null,
       selected?.name ?? fallback,
       selected?.family ?? null,
+      selected?.pickFamily ?? null,
       selected?.meta ?? null,
       open,
     ]);
@@ -532,8 +544,15 @@ export function mountPickerPopup(
     hdc.className = "kit-hdc";
     const name = document.createElement("b");
     name.textContent = selected ? selected.name : fallback;
-    if (selected?.family) {
-      name.style.fontFamily = `${cssFamily(selected.family)},sans-serif`;
+    // The header paints the PICK's own face when the row names one (a
+    // catalog pick's registered css family — what every glyph the pick
+    // renders in uses); else the row's listing family. A catalog row's
+    // listing font is the preview subset (fa-cat-*), which a pick never
+    // renders in — painting it here made the header disagree with the
+    // workspace's actual glyphs (ticket #37).
+    const paintFamily = selected?.pickFamily ?? selected?.family;
+    if (paintFamily) {
+      name.style.fontFamily = `${cssFamily(paintFamily)},sans-serif`;
     }
     hdc.appendChild(name);
     if (selected?.meta) hdc.appendChild(metaLine(selected.meta));
