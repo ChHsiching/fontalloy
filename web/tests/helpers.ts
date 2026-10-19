@@ -121,8 +121,33 @@ export async function waitForCatalogReady(
   page: Page,
   timeout = 240_000,
 ): Promise<void> {
+  // The boot must START before anything can settle: the sweep mark (or
+  // the first-run screen) is set the moment the page's serve
+  // connection begins polling the catalog. A page with NO serve sets
+  // NEITHER — the poller never runs — which through the old
+  // `?? "running"` fallback read as an eternal in-flight catalog and
+  // burned the whole timeout (round 31's web catalog failures). Prove
+  // the start first and fail fast with the honest reason instead.
+  const started = await page
+    .waitForFunction(
+      () =>
+        document.documentElement.dataset.catalogSweep !== undefined ||
+        document.querySelector(".catalog-screen") !== null,
+      null,
+      { timeout: 20_000, polling: 500 },
+    )
+    .then(() => true)
+    .catch(() => false);
+  expect(
+    started,
+    "the catalog boot never started — no serve connection to poll " +
+      "(load the page with ?serve=<a fontalloy serve that carries the catalog>",
+  ).toBe(true);
   const screen = page.locator(".catalog-screen");
-  await screen.waitFor({ state: "visible", timeout: 20_000 }).catch(() => {});
+  // The screen appears (if at all) on the first status poll after the
+  // connection — a short grace covers that cadence without stalling
+  // warm catalogs (state already ready) the full 20 s.
+  await screen.waitFor({ state: "visible", timeout: 5_000 }).catch(() => {});
   await expect(screen).toBeHidden({ timeout });
   await expect
     .poll(
