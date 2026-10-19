@@ -384,6 +384,16 @@ test("J11 Web 目标 — detection, picks, preset, live merge, report, download,
     });
 
     await step("J11.4 the 文字范围 preset: 日文 toggles on, the kana resolve by rule", async () => {
+      // The landed-document anchor (ticket #37's harness fix; the gui
+      // journeys' J3.1 precedent, ticket #35): the effective table is
+      // the serve's resolve answer, and a COLD serve's first precedence
+      // resolve is fontTools-cold — still in flight past this step's
+      // 30s UI budget below, leaving the kana cell with no data-via at
+      // all (not even "default"). Anchor a landed winner BEFORE the
+      // chip click, so the rule read is the served truth.
+      await expect(
+        page.locator(".charmap-grid .kit-cell[data-cp='U+0041']"),
+      ).toHaveAttribute("data-winner", "base", { timeout: 60_000 });
       const locate = page.locator(".kit-toolrow [data-role='locate']");
       await locate.fill("U+3042");
       await locate.press("Enter");
