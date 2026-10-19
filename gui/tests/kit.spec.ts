@@ -163,6 +163,10 @@ test.describe("kit demo page", () => {
 
   test("AppSelect keyboard: arrows open, move, and commit", async ({ page }) => {
     const select = page.locator('[data-role="select-baseline"] .kit-csel');
+    // Round 26 made plain merge the default, so the baseline list runs
+    // [直接组合（不调整）·默认, 自动对齐, 底边一样高, 缩小一点]; the
+    // keyboard walk pins the CURRENT default-first order.
+    await expect(select).toHaveText("直接组合（不调整） 默认");
     await select.focus();
     await page.keyboard.press("ArrowDown");
     const popup = page.locator('[data-role="select-baseline"] .kit-csel-pk');
@@ -170,9 +174,9 @@ test.describe("kit demo page", () => {
     await page.keyboard.press("ArrowDown");
     // The trigger carries label (+ badge) spans — assert on the whole
     // button text (whitespace-normalized), not a lone span.
-    await expect(select).toHaveText("中文字和英文底边一样高");
+    await expect(select).toHaveText("自动对齐");
     await page.keyboard.press("ArrowUp");
-    await expect(select).toHaveText("自动 推荐");
+    await expect(select).toHaveText("直接组合（不调整） 默认");
   });
 
   test("opening one AppSelect closes the other", async ({ page }) => {
