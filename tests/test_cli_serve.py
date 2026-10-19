@@ -1254,5 +1254,13 @@ def test_stdin_watch_stops_the_service_when_the_supervisor_pipe_closes(
         # The parent's pipe closes (the GUI is gone): EOF, not a signal.
         if process.stdin:
             process.stdin.close()
+            # communicate() must not touch the closed pipe: Python 3.12's
+            # POSIX _communicate flushes a still-set stdin and only catches
+            # BrokenPipeError — a closed TextIOWrapper raises ValueError
+            # ("I/O operation on closed file"), which is how this test
+            # failed on CI's Linux while passing on Windows (the Windows
+            # communicate path never flushes stdin). Clearing the handle
+            # skips all stdin handling on every platform and version.
+            process.stdin = None
     stdout, stderr = process.communicate(timeout=30)
     assert process.returncode == 0, f"serve stderr: {stderr[-2000:]}"

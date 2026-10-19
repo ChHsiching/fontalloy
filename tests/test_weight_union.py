@@ -36,9 +36,12 @@ from fontalloy_core import BuildError, build
 
 #: The pre-union bytes of the subset-case build (see the pin test): the
 #: fixture fonts are deterministic (pinned head timestamps), so the
-#: hashes hold on every machine.
+#: hashes hold on every machine. The REPORT pin additionally requires
+#: the test's path-separator normalization (see below) — with it the
+#: normalized report bytes are identical on Windows and POSIX (both
+#: verified: b0d192c6…).
 SUBSET_FONT_SHA256 = "53cba617ca84559526c0ab9ee9d79fd22b333740590655033351598d578b092d"
-SUBSET_REPORT_SHA256 = "bf5ea342c0c237d0506b065eefd6153c52631c9d1b8bef4c83fe1014372949eb"
+SUBSET_REPORT_SHA256 = "b0d192c67ca32844e9ee72b265b8fdc674dd30f9ff8effbe55f86ac21c09043b"
 
 
 @pytest.fixture
@@ -526,8 +529,16 @@ class TestSubsetByteIdentity:
         )
         text = result.report_path.read_text(encoding="utf-8")
         # The JSON text escapes the path's separators; replace the
-        # escaped form so every run normalizes to the same bytes.
-        normalized = text.replace(json.dumps(str(tmp_path))[1:-1], "<TMP>")
+        # escaped form so every run normalizes to the same bytes. The
+        # path SEPARATOR itself also differs by platform (Windows
+        # reports escape as `\\`, POSIX uses `/`), so fold the escaped
+        # backslash to `/` — without it the pin only holds on the
+        # platform that produced it (the never-green-Linux-CI this
+        # fixed; both platforms then hash to the same bytes).
+        normalized = (
+            text.replace(json.dumps(str(tmp_path))[1:-1], "<TMP>")
+            .replace("\\\\", "/")
+        )
         assert (
             hashlib.sha256(normalized.encode()).hexdigest() == SUBSET_REPORT_SHA256
         )
