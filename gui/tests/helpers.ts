@@ -142,26 +142,44 @@ export async function hitTestCenter(
 /**
  * Click via real mouse events, after an elementFromPoint guard that ALSO
  * verifies the hit resolves to `locator` (or inside it).
+ *
+ * Layout-drift retry: when a rerender reflows the page between the
+ * geometry read and the identity check (a late boot-time render
+ * landing under a slow host — the Linux CI saw a rail SECTION take a
+ * chip's recorded point), the SAME element is re-resolved and the
+ * guarded gesture retried (up to three times, like hitTestCenter's
+ * detached-node retries). A real overlay that never clears still
+ * fails, with the same evidence line.
  */
 export async function pointerClick(page: Page, locator: Locator): Promise<void> {
-  const { x, y } = await hitTestCenter(page, locator);
-  const handle = await locator.elementHandle();
-  expect(handle, "target lost before click").not.toBeNull();
-  const hitInfo = await page.evaluate(
-    ({ px, py, el }) => {
-      const hit = document.elementFromPoint(px, py);
-      if (!hit || !el) return { ok: false, desc: "no hit" };
-      const desc = `${hit.tagName}.${(hit as HTMLElement).className} in ${(hit as HTMLElement).closest("[data-help-popup]")?.getAttribute("data-help-popup") ?? (hit as HTMLElement).closest("[data-picker-popup]")?.getAttribute("data-picker-popup") ?? (hit as HTMLElement).closest(".kit-pop")?.className ?? "-"}`;
-      return { ok: hit === el || el.contains(hit), desc };
-    },
-    { px: x, py: y, el: handle },
-  );
+  let lastDesc = "no hit";
+  let lastPoint = { x: 0, y: 0 };
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const { x, y } = await hitTestCenter(page, locator);
+    const handle = await locator.elementHandle();
+    expect(handle, "target lost before click").not.toBeNull();
+    const hitInfo = await page.evaluate(
+      ({ px, py, el }) => {
+        const hit = document.elementFromPoint(px, py);
+        if (!hit || !el) return { ok: false, desc: "no hit" };
+        const desc = `${hit.tagName}.${(hit as HTMLElement).className} in ${(hit as HTMLElement).closest("[data-help-popup]")?.getAttribute("data-help-popup") ?? (hit as HTMLElement).closest("[data-picker-popup]")?.getAttribute("data-picker-popup") ?? (hit as HTMLElement).closest(".kit-pop")?.className ?? "-"}`;
+        return { ok: hit === el || el.contains(hit), desc };
+      },
+      { px: x, py: y, el: handle },
+    );
+    lastDesc = hitInfo.desc;
+    lastPoint = { x, y };
+    if (hitInfo.ok) {
+      await page.mouse.move(x, y);
+      await page.mouse.click(x, y);
+      return;
+    }
+    await page.waitForTimeout(50);
+  }
   expect(
-    hitInfo.ok,
-    `hit test at (${x}, ${y}) did not resolve to the target (got: ${hitInfo.desc})`,
+    false,
+    `hit test at (${lastPoint.x}, ${lastPoint.y}) did not resolve to the target (got: ${lastDesc})`,
   ).toBe(true);
-  await page.mouse.move(x, y);
-  await page.mouse.click(x, y);
 }
 
 /**
