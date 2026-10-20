@@ -1,7 +1,6 @@
 import { expect, test, type Page, type Request } from "@playwright/test";
-import { existsSync } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   assertNoJsErrors,
@@ -22,24 +21,33 @@ import { PREVIEW_ORIGIN, REPO_ROOT, startServe, type ServeHandle } from "./serve
  * ONE real serve per worker whose release origin is the preview
  * server's own /dev-catalog (the same dev catalog the gui dev server
  * serves — the webServer env restricts it to the committed manifest
- * SUBSET, so the fixture scale stays ~1.6 GB) and drives the built
+ * SUBSET, so the fixture scale stays bounded) and drives the built
  * page at it through ?serve=, exactly the way a consumer runs the
  * WebApp with a local serve. Every row/name/star expectation DERIVES
  * from the release document that origin actually serves plus the app's
  * own curated display data — never a hardcoded catalog census.
  *
- * Catalog-family REFERENCES (the live submission's recipe slots) the
- * serve resolves against a FETCHED layout (the J11 convention): the
- * refreshed scratch `<repo>/.scratch/run-assets` first — materialize
- * it with `uv run python scripts/refresh_run_assets.py --source
- * ../fontalloy-run/assets --output .scratch/run-assets` — else the
- * FONTALLOY_RUN_ASSETS layout. Without a layout the listing specs
- * still pass; the live-submission spec's resolve/build cannot.
+ * SELF-BOOTSTRAPPING on a clean tree (the integration requirement):
+ * the whole fixture chain derives from what the middleware itself
+ * serves — a warmup pass first drives one bare serve's catalog sync to
+ * READY (on a tree with an empty `gui/.dev-catalog-cache` this pays
+ * the middleware's one-time pinned-upstream pass — the same network
+ * `npm run dev` pays — plus the serve's zip sync into the shared
+ * `.scratch/web-catalog`; on a warm tree it is a seconds-fast stat
+ * walk), and the suite serve then mounts that synced catalog dir as
+ * its OWN --font-dir (the J11 configuration, self-derived): the
+ * catalog's extracted faces are right there at the scan's depth, so
+ * picks resolve to recipe paths against the same bytes the catalog
+ * serves — no external fetched layout, no manifest pins, nothing the
+ * tree cannot build for itself.
  */
 
 test.setTimeout(240_000);
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+
+/** The release origin the preview server serves the dev catalog at. */
+const RELEASE_ORIGIN = `${PREVIEW_ORIGIN}/dev-catalog`;
 
 /**
  * The suite's serve catalog directory (the J11 pattern): a stable
@@ -52,36 +60,110 @@ async function catalogDir(): Promise<string> {
   return dir;
 }
 
-let serve: ServeHandle | null = null;
-
-/** The fetched layout's manifest, when one exists (see the header). */
-function fetchLayoutManifest(): string | undefined {
-  const scratch = join(REPO_ROOT, ".scratch", "run-assets", "fonts.manifest.json");
-  if (existsSync(scratch)) return scratch;
-  const env = process.env.FONTALLOY_RUN_ASSETS;
-  if (env !== undefined) return join(env, "fonts.manifest.json");
-  return undefined;
+/**
+ * Drive the catalog scratch to READY with a throwaway serve: poll the
+ * status machine until the sync settles. This is where a clean tree
+ * pays its one-time costs (the middleware's upstream pass + the zip
+ * sync) — bounded well beyond any warm run's needs, and never paid
+ * again after the first.
+ */
+async function syncCatalogScratch(dir: string): Promise<void> {
+  const warm = await startServe({
+    allowOrigin: PREVIEW_ORIGIN,
+    catalogReleaseOrigin: RELEASE_ORIGIN,
+    catalogDir: dir,
+  });
+  try {
+    const deadline = Date.now() + 20 * 60_000;
+    for (;;) {
+      let state: string | undefined;
+      try {
+        const res = await fetch(`${warm.baseUrl}/catalog/status`);
+        state = (await res.json()).state as string;
+      } catch {
+        // Not accepting yet — keep polling within the deadline.
+      }
+      if (state === "ready") return;
+      if (state === "unavailable") {
+        throw new Error(
+          "the catalog sync reported unavailable — the preview origin's " +
+            "dev catalog did not serve the release document",
+        );
+      }
+      if (Date.now() > deadline) {
+        throw new Error(
+          "the catalog sync did not reach ready within 20 minutes " +
+            "(first run on a clean tree pays the middleware's upstream " +
+            "pass; check .scratch/logs and gui/.dev-catalog-cache)",
+        );
+      }
+      await new Promise((r) => setTimeout(r, 2_000));
+    }
+  } finally {
+    await warm.stop();
+  }
 }
 
-test.beforeAll(async () => {
-  serve = await startServe({
-    allowOrigin: PREVIEW_ORIGIN,
-    catalogReleaseOrigin: `${PREVIEW_ORIGIN}/dev-catalog`,
-    catalogDir: await catalogDir(),
-    ...(fetchLayoutManifest() !== undefined
-      ? { manifest: fetchLayoutManifest() }
-      : {}),
-  });
-});
+/** The suite serve, started lazily inside the first test's timeout. */
+let suiteServe: Promise<ServeHandle> | null = null;
+
+function theServe(): Promise<ServeHandle> {
+  suiteServe ??= (async () => {
+    const dir = await catalogDir();
+    await syncCatalogScratch(dir);
+    return startServe({
+      allowOrigin: PREVIEW_ORIGIN,
+      catalogReleaseOrigin: RELEASE_ORIGIN,
+      catalogDir: dir,
+      // The synced faces double as the serve's own font dir: the scan
+      // descends one level, exactly where the sync extracts them.
+      fontDir: dir,
+    });
+  })();
+  return suiteServe;
+}
 
 test.afterAll(async () => {
-  await serve?.stop();
-  serve = null;
+  await suiteServe?.then((handle) => handle.stop()).catch(() => undefined);
+  suiteServe = null;
 });
+
+/** The serve's /fonts index, waited until the wanted faces are listed. */
+async function serveFacePaths(
+  serve: ServeHandle,
+  wanted: readonly string[],
+  timeout = 240_000,
+): Promise<Map<string, string>> {
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    let doc: { ready: boolean; families: Array<{ faces: Array<{ path: string }> }> };
+    try {
+      doc = await (await fetch(`${serve.baseUrl}/fonts`)).json();
+    } catch {
+      doc = { ready: false, families: [] };
+    }
+    const byBase = new Map<string, string>();
+    for (const family of doc.families) {
+      for (const face of family.faces) {
+        byBase.set(basename(face.path), face.path);
+      }
+    }
+    if (doc.ready && wanted.every((file) => byBase.has(file))) return byBase;
+    if (Date.now() > deadline) {
+      throw new Error(
+        `the serve's font scan did not list ${wanted.join(", ")} within ` +
+          `${Math.round(timeout / 1000)}s (ready=${doc.ready})`,
+      );
+    }
+    await new Promise((r) => setTimeout(r, 2_000));
+  }
+}
 
 /** Load the built page against the suite's catalog-carrying serve. */
 async function loadCatalogPage(page: Page): Promise<void> {
-  await page.goto(`/?serve=${encodeURIComponent(serve!.baseUrl)}`);
+  const serve = await theServe();
+  await serveFacePaths(serve, ["JetBrainsMonoNerdFont-Regular.ttf"]);
+  await page.goto(`/?serve=${encodeURIComponent(serve.baseUrl)}`);
   await waitForFontsReady(page);
   await waitForCatalogReady(page);
 }
@@ -108,6 +190,12 @@ async function curated() {
 }
 
 test("the real catalog lists real families with real meta", async ({ page }) => {
+  // This FIRST test hosts the suite's one-time bootstrap (the lazy
+  // serve start inside loadCatalogPage): a clean tree's middleware
+  // upstream pass + zip sync can run many minutes at test priority —
+  // warm trees pay seconds. Every later test runs at the suite's
+  // 240 s.
+  test.setTimeout(25 * 60_000);
   const errors: string[] = [];
   collectJsErrors(page, errors);
   await loadCatalogPage(page);
@@ -311,9 +399,17 @@ test("the real catalog drives the live submission end to end", async ({
   // serve. Its submitted body is the workspace's own recipe (ticket
   // #29: one recipe model, one wire-JSON serializer) — the same JSON
   // the old no-service panel previewed, pinned here at the POST seam
-  // the serve validates: catalog-family references for the two real
-  // picks (round 6: the base carries the family-cut pattern), the
-  // three rail rules, the normalization switches.
+  // the serve validates. The serve mounts the synced catalog dir as
+  // its font dir (the J11 configuration), so both picks resolve to
+  // PATH slots against the serve's own /fonts listing — the base
+  // carrying the family-cut pattern (round 13: the whole weight
+  // matrix) — with the paths DERIVED from that listing, never
+  // hardcoded.
+  const serve = await theServe();
+  const facePaths = await serveFacePaths(serve, [
+    "JetBrainsMonoNerdFont-Regular.ttf",
+    "MapleMono-NF-Regular.ttf",
+  ]);
   const bodyPromise = new Promise<Record<string, unknown>>((resolveBody) => {
     page.on("request", (request: Request) => {
       if (
@@ -336,12 +432,11 @@ test("the real catalog drives the live submission end to end", async ({
     output: unknown;
   };
   expect(body.base).toEqual({
-    family: "JetBrainsMono",
-    variant: "Nerd Font",
+    path: facePaths.get("JetBrainsMonoNerdFont-Regular.ttf"),
     pattern: "JetBrainsMonoNerdFont-*.ttf",
   });
   expect(body.donors).toEqual([
-    { family: "MapleMono", variant: "NF" },
+    facePaths.get("MapleMono-NF-Regular.ttf"),
   ]);
   // The boot-seeded zh_cn preset (the declared 文字范围 scope) first,
   // then the 日文 chip's ja preset, then the 按编码指定 rules (the range
