@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { expect, test } from "@playwright/test";
+import { overrideEnv } from "./env-restore";
 
 /**
  * The dev catalog generator (gui/scripts/dev-catalog.mjs) must honor the
@@ -96,11 +97,13 @@ test.describe("the dev catalog generator", () => {
     for (const face of cutFaces) {
       await writeFile(join(fontDir, face), Buffer.from(`dummy-${face}`));
     }
-    process.env.FONTALLOY_DEV_FONT_DIR = fontDir;
     // An empty cache of its own: the repo's warm upstream cache (a
     // previous live run) would otherwise inflate the asserted unions.
-    process.env.FONTALLOY_DEV_CATALOG_CACHE = cacheDir;
-    process.env.FONTALLOY_DEV_CATALOG_FETCH = "0";
+    const restoreEnv = overrideEnv({
+      FONTALLOY_DEV_FONT_DIR: fontDir,
+      FONTALLOY_DEV_CATALOG_CACHE: cacheDir,
+      FONTALLOY_DEV_CATALOG_FETCH: "0",
+    });
 
     try {
       const { devCatalogPlugin } = await freshPlugin("cutshadow");
@@ -121,9 +124,7 @@ test.describe("the dev catalog generator", () => {
       // the generator scans) matches neither stem and stays out.
       expect(maple!.files.map((f) => f.file).sort()).toEqual([...cutFaces].sort());
     } finally {
-      delete process.env.FONTALLOY_DEV_FONT_DIR;
-      delete process.env.FONTALLOY_DEV_CATALOG_CACHE;
-      delete process.env.FONTALLOY_DEV_CATALOG_FETCH;
+      restoreEnv();
       await rm(fontDir, { recursive: true, force: true });
       await rm(cacheDir, { recursive: true, force: true });
     }
@@ -141,9 +142,11 @@ test.describe("the dev catalog generator", () => {
     for (const face of faces) {
       await writeFile(join(fontDir, face), Buffer.from(`dummy-${face}`));
     }
-    process.env.FONTALLOY_DEV_FONT_DIR = fontDir;
-    process.env.FONTALLOY_DEV_CATALOG_CACHE = cacheDir;
-    process.env.FONTALLOY_DEV_CATALOG_FETCH = "0";
+    const restoreEnv = overrideEnv({
+      FONTALLOY_DEV_FONT_DIR: fontDir,
+      FONTALLOY_DEV_CATALOG_CACHE: cacheDir,
+      FONTALLOY_DEV_CATALOG_FETCH: "0",
+    });
 
     try {
       const { devCatalogPlugin } = await freshPlugin("multiface");
@@ -182,9 +185,7 @@ test.describe("the dev catalog generator", () => {
       expect(eocd).toBeGreaterThanOrEqual(0);
       expect(bytes.readUInt16LE(eocd + 10), "the zip carries every face").toBe(faces.length);
     } finally {
-      delete process.env.FONTALLOY_DEV_FONT_DIR;
-      delete process.env.FONTALLOY_DEV_CATALOG_CACHE;
-      delete process.env.FONTALLOY_DEV_CATALOG_FETCH;
+      restoreEnv();
       await rm(fontDir, { recursive: true, force: true });
       await rm(cacheDir, { recursive: true, force: true });
     }
@@ -214,9 +215,11 @@ test.describe("the dev catalog generator", () => {
     }
     // The Variable entry is a bare font file (the VF itself), flat.
     await writeFile(join(fontDir, "NotoSansSC[wght].ttf"), Buffer.from("dummy-vf"));
-    process.env.FONTALLOY_DEV_FONT_DIR = fontDir;
-    process.env.FONTALLOY_DEV_CATALOG_CACHE = cacheDir;
-    process.env.FONTALLOY_DEV_CATALOG_FETCH = "0";
+    const restoreEnv = overrideEnv({
+      FONTALLOY_DEV_FONT_DIR: fontDir,
+      FONTALLOY_DEV_CATALOG_CACHE: cacheDir,
+      FONTALLOY_DEV_CATALOG_FETCH: "0",
+    });
 
     try {
       const { devCatalogPlugin } = await freshPlugin("entries");
@@ -261,9 +264,7 @@ test.describe("the dev catalog generator", () => {
         "BizinGothicNF-Regular.ttf",
       ]);
     } finally {
-      delete process.env.FONTALLOY_DEV_FONT_DIR;
-      delete process.env.FONTALLOY_DEV_CATALOG_CACHE;
-      delete process.env.FONTALLOY_DEV_CATALOG_FETCH;
+      restoreEnv();
       await rm(fontDir, { recursive: true, force: true });
       await rm(cacheDir, { recursive: true, force: true });
     }
@@ -327,10 +328,12 @@ test.describe("the dev catalog generator", () => {
     const manifestPath = join(root, "manifest.json");
     await writeFile(manifestPath, JSON.stringify(manifest));
 
-    process.env.FONTALLOY_DEV_FONT_DIR = fontDir;
-    process.env.FONTALLOY_DEV_CATALOG_CACHE = cacheDir;
-    process.env.FONTALLOY_DEV_CATALOG_MANIFEST = manifestPath;
-    process.env.FONTALLOY_DEV_CATALOG_FETCH = "0";
+    const restoreEnv = overrideEnv({
+      FONTALLOY_DEV_FONT_DIR: fontDir,
+      FONTALLOY_DEV_CATALOG_CACHE: cacheDir,
+      FONTALLOY_DEV_CATALOG_MANIFEST: manifestPath,
+      FONTALLOY_DEV_CATALOG_FETCH: "0",
+    });
     try {
       const { devCatalogPlugin } = await freshPlugin("cutsdoc");
       let middleware: ((req: unknown, res: unknown, next: () => void) => Promise<void>) | null = null;
@@ -401,10 +404,7 @@ test.describe("the dev catalog generator", () => {
         "WeightPair-Regular.ttf",
       ]);
     } finally {
-      delete process.env.FONTALLOY_DEV_FONT_DIR;
-      delete process.env.FONTALLOY_DEV_CATALOG_CACHE;
-      delete process.env.FONTALLOY_DEV_CATALOG_MANIFEST;
-      delete process.env.FONTALLOY_DEV_CATALOG_FETCH;
+      restoreEnv();
       await rm(root, { recursive: true, force: true });
     }
   });
@@ -461,9 +461,11 @@ test.describe("the dev catalog generator", () => {
       return new Response("gone", { status: 404 });
     }) as typeof fetch;
 
-    process.env.FONTALLOY_DEV_FONT_DIR = fontDir;
-    process.env.FONTALLOY_DEV_CATALOG_CACHE = cacheDir;
-    process.env.FONTALLOY_DEV_CATALOG_MANIFEST = manifestPath;
+    const restoreEnv = overrideEnv({
+      FONTALLOY_DEV_FONT_DIR: fontDir,
+      FONTALLOY_DEV_CATALOG_CACHE: cacheDir,
+      FONTALLOY_DEV_CATALOG_MANIFEST: manifestPath,
+    });
     try {
       const { devCatalogPlugin } = await freshPlugin("fetch1");
       let middleware: ((req: unknown, res: unknown, next: () => void) => Promise<void>) | null = null;
@@ -518,9 +520,7 @@ test.describe("the dev catalog generator", () => {
       expect(release2.families.find((f) => f.family === "NotoSansSC")!.files).toHaveLength(5);
     } finally {
       globalThis.fetch = originalFetch;
-      delete process.env.FONTALLOY_DEV_FONT_DIR;
-      delete process.env.FONTALLOY_DEV_CATALOG_CACHE;
-      delete process.env.FONTALLOY_DEV_CATALOG_MANIFEST;
+      restoreEnv();
       await rm(root, { recursive: true, force: true });
     }
   });
@@ -573,9 +573,11 @@ test.describe("the dev catalog generator", () => {
       return new Response("boom", { status: 500 });
     }) as typeof fetch;
 
-    process.env.FONTALLOY_DEV_FONT_DIR = fontDir;
-    process.env.FONTALLOY_DEV_CATALOG_CACHE = cacheDir;
-    process.env.FONTALLOY_DEV_CATALOG_MANIFEST = manifestPath;
+    const restoreEnv = overrideEnv({
+      FONTALLOY_DEV_FONT_DIR: fontDir,
+      FONTALLOY_DEV_CATALOG_CACHE: cacheDir,
+      FONTALLOY_DEV_CATALOG_MANIFEST: manifestPath,
+    });
     try {
       const { devCatalogPlugin } = await freshPlugin("miss");
       let middleware: ((req: unknown, res: unknown, next: () => void) => Promise<void>) | null = null;
@@ -600,9 +602,7 @@ test.describe("the dev catalog generator", () => {
       expect(release.families.find((f) => f.family === "GhostFamily")).toBeUndefined();
     } finally {
       globalThis.fetch = originalFetch;
-      delete process.env.FONTALLOY_DEV_FONT_DIR;
-      delete process.env.FONTALLOY_DEV_CATALOG_CACHE;
-      delete process.env.FONTALLOY_DEV_CATALOG_MANIFEST;
+      restoreEnv();
       await rm(root, { recursive: true, force: true });
     }
   });
@@ -710,10 +710,12 @@ test("upstream fetch falls through the mirror origins until one answers (round 2
     }
     return new Response("gone", { status: 404 });
   }) as typeof fetch;
-  process.env.FONTALLOY_DEV_CATALOG_CACHE = cacheDir;
-  process.env.FONTALLOY_DEV_CATALOG_MANIFEST = manifestPath;
-  process.env.FONTALLOY_DEV_CATALOG_MIRRORS =
-    "https://mirror-a.test/,https://mirror-b.test/";
+  const restoreEnv = overrideEnv({
+    FONTALLOY_DEV_CATALOG_CACHE: cacheDir,
+    FONTALLOY_DEV_CATALOG_MANIFEST: manifestPath,
+    FONTALLOY_DEV_CATALOG_MIRRORS:
+      "https://mirror-a.test/,https://mirror-b.test/",
+  });
   try {
     const { devCatalogPlugin } = await freshPlugin("mirror1");
     let middleware: ((req: unknown, res: unknown, next: () => void) => Promise<void>) | null = null;
@@ -743,9 +745,7 @@ test("upstream fetch falls through the mirror origins until one answers (round 2
     expect(seen.filter((u) => u.includes("mirror-b")).length).toBe(1);
   } finally {
     globalThis.fetch = originalFetch;
-    delete process.env.FONTALLOY_DEV_CATALOG_CACHE;
-    delete process.env.FONTALLOY_DEV_CATALOG_MANIFEST;
-    delete process.env.FONTALLOY_DEV_CATALOG_MIRRORS;
+    restoreEnv();
   }
 });
 
@@ -794,9 +794,11 @@ test("a 7z artifact unpacks through the repo python and serves the family (round
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL): Promise<Response> =>
     new Response(new Uint8Array(artifactBytes), { status: 200 })) as typeof fetch;
-  process.env.FONTALLOY_DEV_CATALOG_CACHE = cacheDir;
-  process.env.FONTALLOY_DEV_CATALOG_MANIFEST = manifestPath;
-  process.env.FONTALLOY_DEV_PYTHON = py;
+  const restoreEnv = overrideEnv({
+    FONTALLOY_DEV_CATALOG_CACHE: cacheDir,
+    FONTALLOY_DEV_CATALOG_MANIFEST: manifestPath,
+    FONTALLOY_DEV_PYTHON: py,
+  });
   try {
     const { devCatalogPlugin } = await freshPlugin("sevenzip1");
     let middleware: ((req: unknown, res: unknown, next: () => void) => Promise<void>) | null = null;
@@ -817,8 +819,6 @@ test("a 7z artifact unpacks through the repo python and serves the family (round
     ]);
   } finally {
     globalThis.fetch = originalFetch;
-    delete process.env.FONTALLOY_DEV_CATALOG_CACHE;
-    delete process.env.FONTALLOY_DEV_CATALOG_MANIFEST;
-    delete process.env.FONTALLOY_DEV_PYTHON;
+    restoreEnv();
   }
 });

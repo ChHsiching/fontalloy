@@ -381,3 +381,43 @@ test("frontend source carries no banned business patterns (guard v1)", async () 
       "\n",
   ).toEqual([]);
 });
+
+test("test trees mutate process.env only through the scoped helper (guard v2)", async () => {
+  // CI run 39343242067 lost round11shots' staged fonts to a bare
+  // `delete process.env.FONTALLOY_DEV_FONT_DIR` in a sibling spec's
+  // teardown: the worker's inherited value was erased for every later
+  // spec, and the blame landed on env delivery instead. Specs that
+  // need FONTALLOY_DEV_* overrides must go through overrideEnv
+  // (gui/tests/env-restore.ts), whose restore puts back exactly what
+  // the worker inherited. The guard is deliberately dumb: any direct
+  // assignment or delete on process.env outside the helper is red.
+  const ENV_MUTATION = /(?:^|[^\w.$])(?:delete\s+process\.env\.|process\.env\.[A-Za-z_$][\w$]*\s*=[^=])/;
+  const ALLOWED = new Set(["gui/tests/env-restore.ts"]);
+
+  const files: string[] = [];
+  for (const root of ["gui/tests", "web/tests"]) {
+    const abs = join(REPO_ROOT, root);
+    if (!(await stat(abs).then(() => true).catch(() => false))) continue;
+    files.push(...(await collectSourceFiles(abs)));
+  }
+  // The guard must actually see the tree it guards.
+  expect(files.length).toBeGreaterThan(10);
+
+  const offenders: string[] = [];
+  for (const abs of files) {
+    const rel = repoRelative(abs);
+    if (ALLOWED.has(rel)) continue;
+    const raw = await readFile(abs, "utf8");
+    for (const [index, line] of stripComments(raw).split("\n").entries()) {
+      if (ENV_MUTATION.test(line)) {
+        offenders.push(`${rel}:${index + 1}  ${line.trim()}`);
+      }
+    }
+  }
+
+  expect(
+    offenders,
+    "raw process.env mutation in test trees (use gui/tests/env-restore.ts " +
+      "overrideEnv; ticket #37):\n" + offenders.join("\n") + "\n",
+  ).toEqual([]);
+});
