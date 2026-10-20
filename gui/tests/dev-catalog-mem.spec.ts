@@ -5,6 +5,7 @@ import { join, dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createHash, randomBytes } from "node:crypto";
 import { expect, test } from "@playwright/test";
+import { overrideEnv } from "./env-restore";
 
 /**
  * The dev-catalog middleware must STREAM from disk — never retain font
@@ -124,10 +125,12 @@ test.describe("the dev catalog middleware's memory", () => {
       JSON.stringify({ schema: "fontalloy/font-catalog@v1", families: manifestFamilies }),
     );
 
-    process.env.FONTALLOY_DEV_FONT_DIR = fontDir;
-    process.env.FONTALLOY_DEV_CATALOG_CACHE = cacheDir;
-    process.env.FONTALLOY_DEV_CATALOG_MANIFEST = manifestPath;
-    process.env.FONTALLOY_DEV_CATALOG_FETCH = "0";
+    const restoreEnv = overrideEnv({
+      FONTALLOY_DEV_FONT_DIR: fontDir,
+      FONTALLOY_DEV_CATALOG_CACHE: cacheDir,
+      FONTALLOY_DEV_CATALOG_MANIFEST: manifestPath,
+      FONTALLOY_DEV_CATALOG_FETCH: "0",
+    });
     try {
       // Baseline AFTER the fixture work: its garbage must not count
       // against the middleware.
@@ -213,10 +216,7 @@ test.describe("the dev catalog middleware's memory", () => {
         ).toBeLessThan(64);
       }
     } finally {
-      delete process.env.FONTALLOY_DEV_FONT_DIR;
-      delete process.env.FONTALLOY_DEV_CATALOG_CACHE;
-      delete process.env.FONTALLOY_DEV_CATALOG_MANIFEST;
-      delete process.env.FONTALLOY_DEV_CATALOG_FETCH;
+      restoreEnv();
       await rm(root, { recursive: true, force: true });
     }
   });
