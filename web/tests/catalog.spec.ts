@@ -435,9 +435,12 @@ test("the real catalog drives the live submission end to end", async ({
     path: facePaths.get("JetBrainsMonoNerdFont-Regular.ttf"),
     pattern: "JetBrainsMonoNerdFont-*.ttf",
   });
-  expect(body.donors).toEqual([
-    facePaths.get("MapleMono-NF-Regular.ttf"),
-  ]);
+  // The donor carries the SAME family-cut pattern form as the base
+  // (round 13: the whole weight matrix on both sides) — the path from
+  // the serve's listing, the glob derived from the face's own stem.
+  const donorFace = facePaths.get("MapleMono-NF-Regular.ttf");
+  const donorPattern = basename(donorFace!).replace(/-[^-]+\.ttf$/, "-*.ttf");
+  expect(body.donors).toEqual([{ path: donorFace, pattern: donorPattern }]);
   // The boot-seeded zh_cn preset (the declared 文字范围 scope) first,
   // then the 日文 chip's ja preset, then the 按编码指定 rules (the range
   // and the single codepoint). Round 6: side assignments carry the
