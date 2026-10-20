@@ -9,6 +9,18 @@ import { defineConfig } from "@playwright/test";
 // Parallel worktrees: PLAYWRIGHT_PREVIEW_PORT moves this preview
 // server and the serve fixture's PREVIEW_ORIGIN together, so sibling
 // checkouts can run their suites side by side. Default 4173.
+//
+// A local run MUST set the port explicitly (ticket #37): the default
+// band is shared with the acceptance stack, and the round-31
+// integration rerun silently tested a leftover static server that
+// way — 13 specs failed on a page that never booted. CI's isolated
+// runners keep the default.
+if (!process.env.CI && process.env.PLAYWRIGHT_PREVIEW_PORT === undefined) {
+  throw new Error(
+    "PLAYWRIGHT_PREVIEW_PORT is not set — pick an explicit port " +
+      "(4273-4299 locally; the 4173 default is CI-only)",
+  );
+}
 const previewPort = process.env.PLAYWRIGHT_PREVIEW_PORT ?? "4173";
 
 export default defineConfig({
@@ -40,7 +52,14 @@ export default defineConfig({
       FONTALLOY_DEV_CATALOG_MANIFEST: "tests/fixtures/catalog-subset.manifest.json",
     },
     url: `http://localhost:${previewPort}`,
-    reuseExistingServer: !process.env.CI,
+    // NEVER reuse a server that answers on the port (ticket #37): the
+    // integration rerun silently tested an unrelated leftover static
+    // server squatting on the default port — 11 specs failed on a page
+    // that never booted, and nothing said why. strictPort now makes a
+    // squatted port fail LOUD at startup instead of being mistaken for
+    // this suite's own app. Parallel worktrees keep moving with
+    // PLAYWRIGHT_PREVIEW_PORT.
+    reuseExistingServer: false,
     timeout: 120_000,
     stdout: "ignore",
     stderr: "pipe",

@@ -34,6 +34,16 @@ import { defineConfig } from "@playwright/test";
  * --allow-origin, the journey profile's baseURL) so sibling checkouts
  * can run their suites side by side. Default 5173.
  */
+// A local run MUST set the port explicitly (ticket #37): the 5173
+// band is shared with other stacks, and a leftover server there
+// silently answers as this suite's own app. CI's isolated runners
+// keep the default.
+if (!process.env.CI && process.env.PLAYWRIGHT_DEV_PORT === undefined) {
+  throw new Error(
+    "PLAYWRIGHT_DEV_PORT is not set — pick an explicit port " +
+      "(5351-5399 locally; the 5173 default is CI-only)",
+  );
+}
 const devPort = process.env.PLAYWRIGHT_DEV_PORT ?? "5173";
 
 export default defineConfig({

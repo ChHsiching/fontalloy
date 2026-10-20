@@ -7,8 +7,18 @@ import { defineConfig } from "@playwright/test";
 
 // Parallel worktrees: PLAYWRIGHT_DEV_PORT moves this server, the
 // journey config's, and the serve fixture's --allow-origin together,
-// so sibling checkouts can run their suites side by side. Default
-// 5173 (the shared default keeps reuseExistingServer semantics).
+// so sibling checkouts can run their suites side by side.
+//
+// A local run MUST set the port explicitly (ticket #37): the 5173
+// band is shared with other stacks, and a leftover dev server there
+// silently answers as this suite's own app — the web suite lost 13
+// specs to exactly that. CI's isolated runners keep the default.
+if (!process.env.CI && process.env.PLAYWRIGHT_DEV_PORT === undefined) {
+  throw new Error(
+    "PLAYWRIGHT_DEV_PORT is not set — pick an explicit port " +
+      "(5351-5399 locally; the 5173 default is CI-only)",
+  );
+}
 const devPort = process.env.PLAYWRIGHT_DEV_PORT ?? "5173";
 
 export default defineConfig({
@@ -30,14 +40,17 @@ export default defineConfig({
   webServer: {
     command: `npm run dev -- --port ${devPort} --strictPort`,
     url: `http://localhost:${devPort}`,
-    reuseExistingServer: true,
+    // NEVER reuse a server that answers on the port (ticket #37, the
+    // same contract as the web config): a leftover dev server could
+    // carry the WRONG catalog setting — the comment below's old hazard
+    // — or be an unrelated app entirely. strictPort makes a squatted
+    // port fail loud at startup instead of being tested silently.
+    reuseExistingServer: false,
     timeout: 60_000,
     stdout: "ignore",
     stderr: "pipe",
     // Keep test pages catalog-free by default: the dev server's fixture
     // catalog is off unless a spec injects its own origin (catalog.spec).
-    // With reuseExistingServer an already-running server keeps its own
-    // setting — don't leave a stray `npm run dev` while testing.
     env: { ...process.env, VITE_DEV_CATALOG: "0" },
   },
 });
