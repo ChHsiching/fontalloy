@@ -21,6 +21,17 @@ import { defineConfig } from "@playwright/test";
  */
 // Parallel worktrees: PLAYWRIGHT_PREVIEW_PORT (default 4173) keeps
 // sibling checkouts' preview servers off each other's port.
+//
+// A local run MUST set the port explicitly (ticket #37): the default
+// band is shared with the acceptance stack, and a leftover server
+// there silently answers as this suite's own app. CI's isolated
+// runners keep the default.
+if (!process.env.CI && process.env.PLAYWRIGHT_PREVIEW_PORT === undefined) {
+  throw new Error(
+    "PLAYWRIGHT_PREVIEW_PORT is not set — pick an explicit port " +
+      "(4273-4299 locally; the 4173 default is CI-only)",
+  );
+}
 const previewPort = process.env.PLAYWRIGHT_PREVIEW_PORT ?? "4173";
 
 export default defineConfig({
