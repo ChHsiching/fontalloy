@@ -3,6 +3,7 @@ import { mountStatusBar, type StatusBar } from "../kit/statusBar";
 import {
   liveDocument,
   lookupEntry,
+  precedenceError,
   precedenceStore,
   precedenceVersion,
 } from "../precedence/document";
@@ -125,8 +126,27 @@ export function mountStatsbar(root: HTMLElement): StatusBar {
   bar.el.classList.add("statsbar", "enter");
   bar.el.style.animationDelay = "120ms";
 
+  // Round 31: the live resolve's failure reason rides the same bar —
+  // a transient 400 (the first-run catalog sync racing a pick) must
+  // not vanish; the retries the document module schedules replace it
+  // with the landed counters.
+  const errEl = document.createElement("span");
+  errEl.className = "kit-c";
+  errEl.style.color = "var(--dgr)";
+  errEl.style.display = "none";
+  bar.el.appendChild(errEl);
+
   const render = (): void => {
     bar.render(computeStats(store.get(), pickRefs()));
+    const picks = pickRefs();
+    const error =
+      picks.base !== null ? precedenceError() : null;
+    if (error !== null) {
+      errEl.textContent = `优先级解析失败：${error}`;
+      errEl.style.display = "";
+    } else {
+      errEl.style.display = "none";
+    }
   };
   store.subscribe(render);
   precedenceStore.subscribe(render);

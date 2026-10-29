@@ -38,6 +38,15 @@ interface PrecedenceState {
   /** The last landed effective document (null until one resolves). */
   document: PrecedenceDocument | null;
   /**
+   * The live pull's failure reason, VERBATIM (the serve's own 400
+   * message), null while a document is landed or no pull has failed.
+   * Round 31: a transient resolve failure (the first-run catalog sync
+   * racing the pull) used to vanish silently AND never retry — the
+   * table blanked until the picks changed. The message now surfaces
+   * (statsbar) and the catalog-state subscription below retries.
+   */
+  error: string | null;
+  /**
    * The deeper-layer document (rules minus codepoint rules). Null when
    * no codepoint rule exists (the effective document is the deeper
    * answer) or while its request is still in flight.
@@ -49,6 +58,7 @@ export const precedenceStore = createStore<PrecedenceState>({
   version: 0,
   document: null,
   deeper: null,
+  error: null,
 });
 
 /** Apply a state change with the version bump consumers key on. */
@@ -72,6 +82,14 @@ export function liveDocument(): PrecedenceDocument | null {
 /** The render-signature input: bumps once per applied change. */
 export function precedenceVersion(): number {
   return precedenceStore.get().version;
+}
+
+/**
+ * The live pull's failure reason (null when a document is landed):
+ * the serve's own message, verbatim — the honest-error contract.
+ */
+export function precedenceError(): string | null {
+  return precedenceStore.get().error;
 }
 
 /**
@@ -146,7 +164,8 @@ async function refresh(): Promise<void> {
   const slots = await resolveSlots();
   if (slots === null) {
     if (mine !== pullSeq) return;
-    apply({ document: null, deeper: null });
+    apply({ document: null, deeper: null, error: null });
+    scheduleRetry(); // the slot may resolve once the serve settles
     return;
   }
   const document = await fetchDocument(bodyFor(slots.en, slots.cjk, rules));
@@ -159,7 +178,8 @@ async function refresh(): Promise<void> {
       ? await fetchDocument(bodyFor(slots.en, slots.cjk, deeperRules))
       : null;
   if (mine !== pullSeq) return;
-  apply({ document, deeper });
+  apply({ document, deeper, error: document === null ? lastResolveError : null });
+  if (document === null) scheduleRetry();
 }
 
 /**
@@ -275,6 +295,9 @@ const cache = new Map<string, Promise<PrecedenceDocument | null>>();
  * (the next pull retries); successes stay, so undo/redo back-and-forth
  * and the announce-vs-live overlap resolve without a second POST.
  */
+/** The last resolve attempt's failure message (null after a success). */
+let lastResolveError: string | null = null;
+
 function fetchDocument(
   body: Record<string, unknown>,
 ): Promise<PrecedenceDocument | null> {
@@ -285,7 +308,17 @@ function fetchDocument(
   const promise: Promise<PrecedenceDocument | null> =
     client === null
       ? Promise.resolve(null)
-      : client.resolvePrecedence(body).catch(() => null);
+      : client.resolvePrecedence(body).then(
+          (doc) => {
+            if (doc !== null) lastResolveError = null;
+            return doc;
+          },
+          (err: unknown) => {
+            lastResolveError =
+              err instanceof Error ? err.message : String(err);
+            return null;
+          },
+        );
   cache.set(key, promise);
   // A failed resolve must not pin its absence; bound the successes.
   void promise.then((doc) => {
@@ -323,3 +356,60 @@ synthStore.subscribe((state) => {
     void refresh();
   }
 });
+
+/**
+ * Round 31: a resolve that fired while the serve's catalog was still
+ * syncing (the first-run zip fetch racing the pick) fails as a
+ * transient 400 — and used to stick: the pull key had already
+ * advanced, so no later render re-pulled, and the blanked table held
+ * until the picks changed. The catalog's own settle (per-family
+ * progress, the status machine) re-arms the pull under the same
+ * contract: picks exist, no document ever landed.
+ */
+let lastCatalogSig = "";
+store.subscribe((state) => {
+  const catalog = state.catalog;
+  const sig = `${catalog.status}:${catalog.documents.length}:${catalog.progress
+    .map((entry) => entry.state)
+    .join(",")}`;
+  if (sig === lastCatalogSig) return;
+  lastCatalogSig = sig;
+  if (precedenceStore.get().document === null && pickRefs().base !== null) {
+    pullKey = null; // force the next render's pull to re-key
+    void refresh();
+  }
+});
+
+/**
+ * Round 31: the serve's lazy boot can outrun BOTH store signals — a
+ * coloring serve spawned mid-journey answers /catalog EMPTY for its
+ * scan's duration, and the resolve then no-ops (no slot, no request,
+ * no document) with nothing left to re-arm it. A bounded heartbeat
+ * retries while picks exist and no document has landed: one attempt
+ * every 3 s, a 25-attempt budget per picks/rules signature (the
+ * budget resets when the signature changes), stopping at the first
+ * landed document. The fetch memo dedupes in-flight attempts.
+ */
+const RETRY_MS = 3_000;
+const RETRY_BUDGET = 25;
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+let retrySig: string | null = null;
+let retryAttempts = 0;
+
+function scheduleRetry(): void {
+  if (retryTimer !== null) return;
+  const sig = pullSignature();
+  if (sig !== retrySig) {
+    retrySig = sig;
+    retryAttempts = 0;
+  }
+  if (retryAttempts >= RETRY_BUDGET) return;
+  retryAttempts += 1;
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    if (precedenceStore.get().document !== null) return;
+    if (pickRefs().base === null) return;
+    pullKey = null; // force the next render's pull to re-key
+    void refresh();
+  }, RETRY_MS);
+}

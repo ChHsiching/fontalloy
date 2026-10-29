@@ -124,7 +124,15 @@ export async function connectService(): Promise<void> {
   }
   let catalogIndex = null;
   try {
-    catalogIndex = await client.catalog();
+    const doc = await client.catalog();
+    // A serve still scanning its font dir answers with an EMPTY
+    // families list; caching that at connect time would pin the miss
+    // for the page's lifetime (round 31: the coloring serve's lazy
+    // boot raced the connect, and every later catalog-form pick
+    // resolve silently no-opped). Leave it null when empty — the
+    // lazy path re-fetches, the same discipline the fonts index's
+    // quiet-poll carries.
+    if (doc.families.length > 0) catalogIndex = doc;
   } catch {
     // Same tolerance: without the catalog index, catalog picks resolve
     // through the path flow (the basename match against /fonts).
@@ -294,7 +302,13 @@ async function ensureCatalogIndex(): Promise<CatalogDocument | null> {
   if (catalogIndex !== null || client === null) return catalogIndex;
   try {
     const doc = await client.catalog();
-    patchService({ catalogIndex: doc });
+    // A serve still scanning its font dir answers with an EMPTY
+    // families list; caching that would pin the miss for the page's
+    // lifetime (round 31: the coloring serve's lazy boot raced the
+    // first pull, and every later resolve silently no-opped). Only a
+    // populated document memoizes — an empty one re-fetches on the
+    // next call, which the catalog-state re-arm reliably schedules.
+    if (doc.families.length > 0) patchService({ catalogIndex: doc });
     return doc;
   } catch {
     return null;
