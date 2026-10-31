@@ -624,6 +624,7 @@ function venvPython(): string {
  *  A round-12 family artifact is a ttc collection — read its face 0. */
 async function parseBuiltFont(path: string): Promise<{
   family: string | null;
+  slotFamilies: string[];
   cmap: number;
   cjkCodepoints: number;
 }> {
@@ -653,6 +654,10 @@ async function parseBuiltFont(path: string): Promise<{
       "cmap = font.getBestCmap() or {}",
       "print(json.dumps({",
       "    'family': font['name'].getDebugName(1),",
+      "    'slotFamilies': [",
+      "        f['name'].getDebugName(1)",
+      "        for f in (TTCollection(sys.argv[1]).fonts if collection else [font])",
+      "    ],",
       "    'cmap': len(cmap),",
       "    'cjkCodepoints': sum(1 for c in cmap if 0x4E00 <= c <= 0x9FFF),",
       "}))",
@@ -675,6 +680,7 @@ async function parseBuiltFont(path: string): Promise<{
       }
       resolvePromise(JSON.parse(out.trim()) as {
         family: string | null;
+        slotFamilies: string[];
         cmap: number;
         cjkCodepoints: number;
       });
@@ -2832,19 +2838,23 @@ test.describe("user journey", () => {
           // Round 10: the raw JSON form is gone from the UI.
           await expect(panel).not.toContainText("fontalloy/verification-report");
           // Round 12 (owner item 8) + round-13 economy: the pattern
-          // slice above yields the Medium pair (500 upright + italic) —
-          // the multi-slot matrix semantics (every listed face becomes
-          // an output slot, nearest-weight borrows, ttc packaging) stay
-          // asserted; the FULL 16-slot enumeration is pinned by
-          // synthesize.spec's fixture multi-slot test. Round 16: the
-          // pair is ONE row of the grid — both style cells ✓, the
-          // single source stated once.
+          // slice above yields the Medium pair (500 upright + italic),
+          // and acceptance item 10 (owner ruling) gives the donor's
+          // unique weight a REAL output slot — the single-face 400
+          // donor adds one, so the output is 3 slots (400 + the Medium
+          // pair), every slot's CJK from the donor (the 500s borrow
+          // nearest = 400). The multi-slot matrix semantics (every
+          // listed face becomes an output slot, donor-weight additions,
+          // nearest-weight borrows, ttc packaging) stay asserted; the
+          // FULL 16-slot enumeration is pinned by synthesize.spec's
+          // fixture multi-slot test. Round 16: the source is ONE
+          // sentence above the weight grid, stated once.
           const weightSection = panel
             .locator(".report-section")
             .filter({ hasText: "字重档位" });
           await expect(weightSection).toBeVisible();
           await expect(weightSection).toContainText(
-            "2 档全部取自 Maple Mono NF CN",
+            "3 档全部取自 Maple Mono NF CN",
           );
           await expect(
             weightSection
@@ -2854,10 +2864,10 @@ test.describe("user journey", () => {
           const journeyGrid = weightSection.locator(".report-mtable");
           expect(
             await journeyGrid.locator("tbody tr th").allTextContents(),
-          ).toEqual(["500"]);
+          ).toEqual(["400", "500"]);
           expect(
             await journeyGrid.locator("tbody td").allTextContents(),
-          ).toEqual(["✓", "✓"]);
+          ).toEqual(["✓", "无", "✓", "✓"]);
           // The output is the family collection, not a single face —
           // the format word plus its qualifier TAG (round 17, owner
           // item 2: tags, never bracket text).
@@ -2935,13 +2945,17 @@ test.describe("user journey", () => {
           await expect(savedLine).toContainText(/\.ttc$/);
           const savedPath = (await savedLine.getAttribute("title"))!;
           const parsed = await parseBuiltFont(savedPath.trim());
-          // Round 23 (owner item 6): the rewrite reads the base's
-          // TYPographic subfamily (nameID 17) — the intercepted
-          // "…-M*.ttf" pattern narrows the base to the Medium face,
-          // and a non-RIBBI weight splits nameID 1 into family +
-          // subfamily ("ChHsich Medium"), exactly the naming that keeps
-          // a 16-face output's weights distinguishable.
-          expect(parsed.family).toBe("ChHsich Medium");
+          // The identity slot (bare family + Regular subfamily) is the
+          // donor-weight addition's 400 slot (acceptance item 10: the
+          // donor's unique weight gets a real output slot; build.py
+          // sorts slots by weight ascending, so it is also slot 0).
+          // Round 23 (owner item 6) stays pinned through slotFamilies:
+          // the intercepted "…-M*.ttf" base narrows to Medium, and a
+          // non-RIBBI weight splits nameID 1 into family + subfamily
+          // ("ChHsich Medium"), exactly the naming that keeps a
+          // 16-face output's weights distinguishable.
+          expect(parsed.family).toBe("ChHsich");
+          expect(parsed.slotFamilies).toContain("ChHsich Medium");
           expect(parsed.cmap).toBeGreaterThan(0);
           expect(
             parsed.cjkCodepoints,

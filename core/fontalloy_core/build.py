@@ -49,6 +49,8 @@ byte-identical outputs and reports, with no wall clock in the file.
 
 from __future__ import annotations
 
+import os
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -58,6 +60,20 @@ from fontTools.ttLib import TTFont
 
 from fontalloy_core.assets import resolve_recipe_fonts
 from fontalloy_core.errors import BuildCancelled, BuildError
+
+#: Ticket #41: a deterministic per-stage delay (milliseconds) for the
+#: cancel-race tests — the donor-glyph-count fixture's wall time varies
+#: with machine and priority, so "slow enough to cancel mid-build" cannot
+#: ride glyph counts alone. Follows the family_docs test-seam convention
+#: (FONTALLOY_TEST_SCAN_ALLOCATE_MB et al.).
+STAGE_DELAY_ENV = "FONTALLOY_TEST_STAGE_DELAY_MS"
+
+
+def _test_stage_delay() -> None:
+    raw = os.environ.get(STAGE_DELAY_ENV)
+    if raw:
+        time.sleep(int(raw) / 1000)
+
 from fontalloy_core.graft import graft_effective_glyphs
 from fontalloy_core.load import (
     LoadedFace,
@@ -244,6 +260,7 @@ def build_recipe(
     def _stage(name: str, facts: dict[str, Any] | None = None) -> None:
         nonlocal stage_now
         _check_cancelled()
+        _test_stage_delay()
         stage_now = name
         if progress is not None:
             progress(name, facts)

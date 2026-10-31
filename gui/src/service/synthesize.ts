@@ -608,6 +608,15 @@ function newBuildRow(family: string): BuildRow {
   };
 }
 
+/**
+ * Round 41: a click-time placeholder id → the promise of its SERVICE
+ * id (null once the submission failed). The cancel confirm can land
+ * while the submit response is still in flight — cancelling the
+ * placeholder would 404 on the service and silently let the build run
+ * on, so cancelBuild rendezvous with the submission instead.
+ */
+const pendingSubmissions = new Map<string, Promise<string | null>>();
+
 /** Sleep without blocking anything (the poll loop's pacemaker). */
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
@@ -617,13 +626,20 @@ const sleep = (ms: number): Promise<void> =>
  * build panel's confirms. Never throws: an unreachable service or an
  * id that aged out of the retention window (404) leaves the row to
  * settle on its own terms, and a build that finished in the race is a
- * no-op on the service side.
+ * no-op on the service side. A still-pending placeholder id waits for
+ * its submission to land and cancels the real build (round 41).
  */
 export async function cancelBuild(id: string): Promise<void> {
   const { client } = synthStore.get().service;
   if (client === null) return;
+  let serviceId = id;
+  const pending = pendingSubmissions.get(id);
+  if (pending !== undefined) {
+    pendingSubmissions.delete(id);
+    serviceId = (await pending) ?? id;
+  }
   try {
-    await client.cancelBuild(id);
+    await client.cancelBuild(serviceId);
   } catch {
     // The poll loop owns the row's outcome either way.
   }
@@ -768,15 +784,26 @@ async function runBuild(
   try {
     // Ticket #29: submit-time validation on the serve IS the recipe
     // gate — a rejection (the strict parser's own message) lands in
-    // the row as inline text, no local mirror ran first.
-    submitted = await client.submit(recipeJson(draft));
+    // the row as inline text, no local mirror ran first. Round 41: the
+    // placeholder id can be cancelled mid-flight — publish the service
+    // id as soon as the response lands, null on rejection.
+    const submission = client.submit(recipeJson(draft));
+    pendingSubmissions.set(row.id, submission.then((doc) => doc.id, () => null));
+    submitted = await submission;
   } catch (err) {
     fail(err instanceof Error ? err.message : String(err));
+    pendingSubmissions.delete(row.id);
     return;
   }
 
-  // The service id supersedes the local placeholder id.
+  // The service id supersedes the local placeholder id. Round 41: the
+  // rendezvous entry stays RESOLVED under the placeholder for the
+  // session — a confirm card (or any captured row object) can still
+  // hold the placeholder id after the swap, and its cancel must reach
+  // the real build. Entries are two id strings per build ever
+  // submitted; no cleanup needed at any memory scale that matters.
   const deadId = row.id;
+  pendingSubmissions.set(deadId, Promise.resolve(submitted.id));
   const live: BuildRow = { ...row, id: submitted.id };
   synthStore.set({
     builds: synthStore

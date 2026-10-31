@@ -2,6 +2,7 @@ import { test, expect, type Locator, type Page } from "@playwright/test";
 import { writeFile, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
+import { overrideEnv } from "./env-restore";
 import { startServeFixture, type ServeFixture } from "./serve";
 import {
   assertNoJsErrors,
@@ -27,11 +28,26 @@ test.describe("build cancellation", () => {
   test.describe.configure({ mode: "serial" });
   const jsErrors: string[] = [];
 
+  let restoreStageDelay: (() => void) | null = null;
+
   test.beforeEach(() => {
     jsErrors.length = 0;
+    // Ticket #41: every build in this file must still be RUNNING when
+    // its cancel lands. The donor-glyph-count fixture's wall time
+    // varies with machine and priority (locally at BelowNormal a
+    // 45k-glyph build can reach done before the confirm click), so the
+    // serve's stage-delay seam (FONTALLOY_TEST_STAGE_DELAY_MS, honored
+    // by build.py at every stage entry) makes builds observably slow
+    // everywhere — 5s x 7 stages.
+    restoreStageDelay = overrideEnv({
+      FONTALLOY_TEST_STAGE_DELAY_MS: "5000",
+    });
   });
 
-  test.afterEach(() => assertNoJsErrors(jsErrors));
+  test.afterEach(() => {
+    assertNoJsErrors(jsErrors);
+    restoreStageDelay?.();
+  });
 
   /** Load one font file into a picker through its file input. */
   async function loadIntoPicker(
