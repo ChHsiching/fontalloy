@@ -255,3 +255,155 @@ export async function buildOwnerCatalogSite(
     manifestPath,
   };
 }
+
+/* ------------------------------------------------------------------ */
+/* The fetched-layout site (ticket #40)                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A serve layout shaped like `fontalloy assets fetch`'s output — the
+ * shape the resolve/build contract reads (#40's finding: the picker
+ * works against an empty font-dir, but `POST /precedence-resolve`
+ * answers 400 "not fetched" unless EVERY manifest entry's zip sits in
+ * the served font-dir, next to the extracted faces — exactly how the
+ * real run layout looks and the empty-cache sites never did).
+ */
+export interface FetchedFaceSpec extends SiteFace {
+  /** The extracted directory under fonts/ (defaults to the family). */
+  dir?: string;
+}
+
+/** One manifest entry — its `file` is ALSO the zip name on disk. */
+export interface FetchedEntrySpec {
+  variant: string;
+  file: string;
+  /** Face file names (from the family's faces) packed into the zip. */
+  faces: string[];
+  axes?: Record<string, string>;
+}
+
+export interface FetchedFamilySpec {
+  family: string;
+  faces: FetchedFaceSpec[];
+  entries: FetchedEntrySpec[];
+}
+
+export interface FetchedLayoutSite {
+  /** The temp root; the caller removes it. */
+  root: string;
+  /** `--font-dir`: entry-named zips + extracted face directories. */
+  fontsDir: string;
+  /** `file://` origin for `--catalog-release-origin` (the sync chain). */
+  originUri: string;
+  /** Empty cache dir (kept for shape parity with the site builder). */
+  catalogDir: string;
+  /** The generated manifest for `--manifest`. */
+  manifestPath: string;
+}
+
+export async function buildFetchedLayoutSite(
+  specs: FetchedFamilySpec[],
+): Promise<FetchedLayoutSite> {
+  const root = await mkdtemp(resolve(tmpdir(), "fontalloy-fetched-site-"));
+  const fontsDir = resolve(root, "fonts");
+  const originDir = resolve(root, "origin");
+  const catalogDir = resolve(root, "catalog");
+  await mkdir(fontsDir, { recursive: true });
+  await mkdir(originDir, { recursive: true });
+  await mkdir(catalogDir, { recursive: true });
+  await mkdir(resolve(root, "licenses"), { recursive: true });
+  await writeFile(resolve(root, "licenses", "OFL-1.1.txt"), FAKE_OFL, "utf8");
+
+  const manifestEntries: Array<Record<string, unknown>> = [];
+  const releaseFamilies: Array<Record<string, unknown>> = [];
+  for (const spec of specs) {
+    const byFile = new Map<string, { data: Buffer; dir: string; sha: string }>();
+    for (const face of spec.faces) {
+      const data = await readFile(face.fontPath);
+      const dir = face.dir ?? spec.family;
+      await mkdir(resolve(fontsDir, dir), { recursive: true });
+      await writeFile(resolve(fontsDir, dir, face.file), data);
+      byFile.set(face.file, { data, dir, sha: sha256hex(data) });
+    }
+    // Every manifest entry's artifact on disk, under the fonts root.
+    for (const entry of spec.entries) {
+      const zipBytes = makeZip(
+        entry.faces.flatMap((file) => {
+          const face = byFile.get(file);
+          if (face === undefined) {
+            throw new Error(
+              `entry ${spec.family}/${entry.variant} names face ${file}, ` +
+                `which the family's faces do not carry`,
+            );
+          }
+          return [{ name: `${face.dir}/${file}`, data: face.data }];
+        }),
+      );
+      await writeFile(resolve(fontsDir, entry.file), zipBytes);
+      manifestEntries.push({
+        family: spec.family,
+        variant: entry.variant,
+        file: entry.file,
+        version: "v1",
+        upstream_url: `https://example.com/${entry.file}`,
+        sha256: sha256hex(zipBytes),
+        license_spdx: "OFL-1.1",
+        rfn: false,
+        rfn_names: [],
+        copyright: null,
+        license_file: "licenses/OFL-1.1.txt",
+        checksum_source: "self-computed",
+        ...(entry.axes === undefined ? {} : { axes: entry.axes }),
+      });
+    }
+    // The release transport zip (unique per family, all faces inside).
+    const zipBytes = makeZip(
+      spec.faces.map((face) => ({
+        name: `${face.dir ?? spec.family}/${face.file}`,
+        data: byFile.get(face.file)!.data,
+      })),
+    );
+    const zipName = `${spec.family}.zip`;
+    await writeFile(resolve(originDir, zipName), zipBytes);
+    releaseFamilies.push({
+      family: spec.family,
+      zip: zipName,
+      sha256: sha256hex(zipBytes),
+      files: spec.faces.map((face) => ({
+        file: face.file,
+        sha256: byFile.get(face.file)!.sha,
+      })),
+    });
+  }
+  await writeFile(
+    resolve(originDir, "catalog-release.json"),
+    JSON.stringify(
+      {
+        schema: RELEASE_SCHEMA,
+        tag: TAG,
+        origins: [{ id: "primary", base_url: pathToFileURL(originDir).href }],
+        families: releaseFamilies,
+      },
+      null,
+      1,
+    ) + "\n",
+    "utf8",
+  );
+  const manifestPath = resolve(root, "catalog.json");
+  await writeFile(
+    manifestPath,
+    JSON.stringify(
+      { schema: MANIFEST_SCHEMA, families: manifestEntries },
+      null,
+      1,
+    ) + "\n",
+    "utf8",
+  );
+  return {
+    root,
+    fontsDir,
+    originUri: pathToFileURL(originDir).href,
+    catalogDir,
+    manifestPath,
+  };
+}

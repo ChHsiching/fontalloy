@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdtemp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -17,6 +18,10 @@ import {
   UNUSED_SERVE,
 } from "./helpers";
 import { PREVIEW_ORIGIN, startServe } from "./serve";
+import {
+  buildFetchedLayoutSite,
+  type FetchedLayoutSite,
+} from "../../gui/tests/catalog-serve-site";
 
 /**
  * J11 — the WEB target's core user journey, quantified like its GUI
@@ -74,6 +79,71 @@ function journeyCatalogDir(): Promise<string> {
 
 function journeyCatalogOrigin(): string {
   return `${PREVIEW_ORIGIN}/dev-catalog`;
+}
+
+/**
+ * The J11 serve's catalog (#40, mirrors the gui coloring site): the
+ * flagship pair's REAL faces as a small file:// release site. The run
+ * layout (FONTALLOY_RUN_ASSETS) is the SOURCE of the binaries — read
+ * by exact file, never served.
+ */
+async function buildJ11Site(): Promise<FetchedLayoutSite> {
+  const runFonts = path.join(RUN_ASSETS, "fonts");
+  const face = (family: string, file: string): string => {
+    const p = path.join(runFonts, family, file);
+    if (!existsSync(p)) {
+      throw new Error(
+        `the real face ${family}/${file} was not found under ${runFonts} ` +
+          `— point FONTALLOY_RUN_ASSETS at the fetched run layout`,
+      );
+    }
+    return p;
+  };
+  // The FULL Nerd Font cut (all 16 faces): J11 deliberately builds the
+  // UNNARROWED family — the ttc collection + the 8-weight report grid
+  // are this journey's assertions (round 14, d243fa9).
+  const jetbrainsDir = path.join(RUN_ASSETS, "fonts", "JetBrainsMono");
+  const jetbrainsFaces = (await readdir(jetbrainsDir))
+    .filter((f) => f.startsWith("JetBrainsMonoNerdFont-") && f.endsWith(".ttf"))
+    .sort();
+  for (const required of [
+    "JetBrainsMonoNerdFont-Regular.ttf",
+    "JetBrainsMonoNerdFont-Medium.ttf",
+  ]) {
+    if (!jetbrainsFaces.includes(required)) {
+      throw new Error(
+        `the full JetBrainsMono Nerd Font cut is incomplete: ${required} ` +
+          `missing under ${jetbrainsDir}`,
+      );
+    }
+  }
+  return buildFetchedLayoutSite([
+    {
+      family: "JetBrainsMono",
+      faces: jetbrainsFaces.map((file) => ({
+        file,
+        fontPath: path.join(jetbrainsDir, file),
+      })),
+      entries: [
+        {
+          variant: "Nerd Font",
+          file: "JetBrainsMono.zip",
+          faces: jetbrainsFaces,
+        },
+      ],
+    },
+    {
+      family: "MapleMono",
+      faces: [
+        { file: "MapleMono-NF-Regular.ttf", fontPath: face("MapleMono-NF", "MapleMono-NF-Regular.ttf"), dir: "MapleMono-NF" },
+        { file: "MapleMono-NF-CN-Regular.ttf", fontPath: face("MapleMono-NF-CN", "MapleMono-NF-CN-Regular.ttf"), dir: "MapleMono-NF-CN" },
+      ],
+      entries: [
+        { variant: "NF", file: "MapleMono-NF.zip", faces: ["MapleMono-NF-Regular.ttf"], axes: { icons: "nf" } },
+        { variant: "NF-CN", file: "MapleMono-NF-CN.zip", faces: ["MapleMono-NF-CN-Regular.ttf"], axes: { icons: "nf", cjk_width: "mono", region: "SC" } },
+      ],
+    },
+  ]);
 }
 
 /* ------------------------------------------------------------------ */
@@ -164,7 +234,18 @@ async function parseBuiltFont(
       "from fontTools.ttLib import TTFont",
       "with open(sys.argv[1], 'rb') as stream:",
       "    collection = stream.read(4) == b'ttcf'",
-      "font = TTFont(sys.argv[1], fontNumber=0 if collection else None)",
+      "# The identity slot: build.py sorts slots by weight ascending, so",
+      "# slot 0 is the LIGHTEST face and carries its weight in the family",
+      "# name ('ChHsich Thin'). The bare-family Regular slot is the one",
+      "# whose nameID 1 IS the family and whose subfamily is Regular.",
+      "from fontTools.ttLib import TTCollection",
+      "font = TTFont(sys.argv[1], fontNumber=0)",
+      "if collection:",
+      "    for cand in TTCollection(sys.argv[1]).fonts:",
+      "        if (cand['name'].getDebugName(1) == 'ChHsich'",
+      "                and cand['name'].getDebugName(2) == 'Regular'):",
+      "            font = cand",
+      "            break",
       "cmap = font.getBestCmap() or {}",
       "print(json.dumps({",
       "    'family': font['name'].getDebugName(1),",
@@ -343,16 +424,19 @@ test("J11 Web 目标 — detection, picks, preset, live merge, report, download,
     }),
   );
 
+  // #40 (the owner's multi-GB rule): the SAME purpose-built small site
+  // as the gui coloring serve — the flagship pair's REAL faces (the EN
+  // row's Nerd Font cut, the Maple row's default-cut representative,
+  // the NF-CN chip's donor, both identity + build slices) zipped as a
+  // file:// release origin. The run layout is the SOURCE of the
+  // binaries (read by exact file), never the served font-dir.
+  const j11Site = await buildJ11Site();
   const serve = await startServe({
     allowOrigin: PREVIEW_ORIGIN,
-    fontDir: path.join(RUN_ASSETS, "fonts"),
-    manifest: path.join(RUN_ASSETS, "fonts.manifest.json"),
-    // The shared journey catalog (ticket #37, finding 1): ONE stable
-    // scratch dir for the whole run — the first sync lands here, every
-    // later serve (J11's own relaunch included) starts warm.
-    catalogReleaseOrigin:
-      process.env.FONTALLOY_JOURNEY_CATALOG_ORIGIN ?? journeyCatalogOrigin(),
-    catalogDir: await journeyCatalogDir(),
+    fontDir: j11Site.fontsDir,
+    manifest: j11Site.manifestPath,
+    catalogReleaseOrigin: j11Site.originUri,
+    catalogDir: await mkdtemp(path.join(tmpdir(), "fontalloy-web-j11-cat-")),
   });
   try {
     console.log("\n=== J11 Web 目标 ===");
@@ -654,5 +738,6 @@ test("J11 Web 目标 — detection, picks, preset, live merge, report, download,
     }
   } finally {
     await serve.stop();
+    if (j11Site !== null) await rm(j11Site.root, { recursive: true, force: true });
   }
 });

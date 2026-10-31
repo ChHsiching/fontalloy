@@ -1,6 +1,6 @@
 import { test as base, expect, chromium, type Locator, type Page } from "@playwright/test";
-import { mkdtempSync } from "node:fs";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { existsSync, mkdtempSync } from "node:fs";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
@@ -16,6 +16,8 @@ import {
 import { generateNamedFace, spawnServeOverFonts } from "./serve";
 import { exposeSaveSeam, saveSeamPageScript } from "./save-seam";
 import {
+  buildFetchedLayoutSite,
+  type FetchedLayoutSite,
   buildServeCatalogSite,
   type ServeCatalogSite,
   type SiteFamilySpec,
@@ -46,15 +48,15 @@ import { journeyCatalogFlags } from "./journey-catalog";
  * picker surface runs against a TINY fixture catalog serve (generated
  * single-face binaries carrying exactly the identity structure the
  * journey pins — never the real release bytes); J3–J7 share ONE
- * coloring serve and J9 keeps its own, both over the run assets with
- * the shared journey catalog.
+ * coloring serve and J9 keeps its own, both over the SAME purpose-
+ * built small site (#40: the flagship pair's REAL faces — identity
+ * cuts, the NF-CN donor, and J9's narrowed build slice — zipped as a
+ * file:// release origin; the 16.9GB run layout is only the SOURCE
+ * of those binaries, never the served font-dir).
  *
- * J9 合成 runs against the owner's real serve layout
- * (FONTALLOY_RUN_ASSETS — the fontalloy-run checkout's fetched
- * catalog): the repo's own `fontalloy serve` over that directory, so
- * the catalog picks resolve through the manifest's catalog-family
- * references, and the saved artifact is parsed with fontTools (the
- * same library the core pipeline builds with).
+ * J9 合成 runs the real production build path over that site (real
+ * binaries, catalog-family references, the saved artifact parsed with
+ * fontTools — the same library the core pipeline builds with).
  *
  * Conventions (the suite's mandatory ones, from ./helpers): real
  * pointer events with elementFromPoint hit-test guards, DOM
@@ -78,17 +80,16 @@ const NOTES_DIR = resolve(here, "..", "..", "..", "fontalloy-notes");
 const REPORT_PATH = resolve(NOTES_DIR, "journey-report-gui.json");
 
 /**
- * The owner's real serve layout: a checkout whose `assets/fonts` the
- * `fontalloy assets fetch` layout filled (zips + extracted faces) and
- * whose `assets/fonts.manifest.json` pins them. Override with
- * FONTALLOY_RUN_ASSETS when the run checkout lives elsewhere.
+ * The SOURCE of the journey site's real binaries (#40: the 16.9GB
+ * layout is read by exact file, never served): a checkout whose
+ * `assets/fonts` the `fontalloy assets fetch` layout filled. Override
+ * with FONTALLOY_RUN_ASSETS when the run checkout lives elsewhere.
  */
 const RUN_ASSETS = resolve(
   process.env.FONTALLOY_RUN_ASSETS ??
     "C:/Users/Administrator/Git/fontalloy-run/assets",
 );
 const RUN_FONTS = resolve(RUN_ASSETS, "fonts");
-const RUN_MANIFEST = resolve(RUN_ASSETS, "fonts.manifest.json");
 
 /* ------------------------------------------------------------------ */
 /* The journey report — step tracking + the JSON artifact              */
@@ -637,7 +638,18 @@ async function parseBuiltFont(path: string): Promise<{
       "from fontTools.ttLib import TTFont",
       "with open(sys.argv[1], 'rb') as stream:",
       "    collection = stream.read(4) == b'ttcf'",
-      "font = TTFont(sys.argv[1], fontNumber=0 if collection else None)",
+      "# The identity slot: build.py sorts slots by weight ascending, so",
+      "# slot 0 is the LIGHTEST face and carries its weight in the family",
+      "# name ('ChHsich Thin'). The bare-family Regular slot is the one",
+      "# whose nameID 1 IS the family and whose subfamily is Regular.",
+      "from fontTools.ttLib import TTCollection",
+      "font = TTFont(sys.argv[1], fontNumber=0)",
+      "if collection:",
+      "    for cand in TTCollection(sys.argv[1]).fonts:",
+      "        if (cand['name'].getDebugName(1) == 'ChHsich'",
+      "                and cand['name'].getDebugName(2) == 'Regular'):",
+      "            font = cand",
+      "            break",
       "cmap = font.getBestCmap() or {}",
       "print(json.dumps({",
       "    'family': font['name'].getDebugName(1),",
@@ -809,17 +821,107 @@ async function startJourneyPickerServe(): Promise<{
 /* ------------------------------------------------------------------ */
 
 /**
- * One serve over the run assets for the coloring journeys (J3–J7),
- * spawned LAZILY on the first bootWithServe call (ticket #37's
- * conversion): the serve-less journeys (J1/J8/J10) never touch the
- * run assets or the shared catalog — running them alone stays cheap
- * and never depends on the real layout. The journeys' picks are the
- * real catalog faces, whose files the run layout holds — the picks
- * resolve by file name against the serve's /fonts index, exactly the
- * slot resolution a build submission walks. Null when the run assets
- * are absent (the J9-only environments): the coloring journeys then
- * degrade to the plain preview, and their effective-table steps fail
- * loudly rather than silently passing.
+ * The coloring journeys' serve catalog (#40's fix, the owner's multi-GB
+ * rule): a purpose-built small site carrying exactly the REAL faces the
+ * journeys touch — the flagship pair's identity faces (the EN row's
+ * Nerd Font cut, the Maple row's default-cut representative, the NF-CN
+ * chip's donor) plus J9's narrowed build slice (Medium + MediumItalic).
+ * The run layout (FONTALLOY_RUN_ASSETS) is the SOURCE of the binaries,
+ * read by exact file — never the served font-dir; the 16.9GB scan is
+ * gone from the journeys by design. A picker over two families costs
+ * seconds (J2's own site proves the class), so the ~60s setup timeouts
+ * hold even at BelowNormal on a busy machine.
+ */
+async function buildColoringSite(): Promise<FetchedLayoutSite> {
+  const face = (family: string, file: string): string => {
+    const p = resolve(RUN_FONTS, family, file);
+    if (!existsSync(p)) {
+      throw new Error(
+        `the real face ${family}/${file} was not found under ${RUN_FONTS} ` +
+          `— point FONTALLOY_RUN_ASSETS at the fetched run layout`,
+      );
+    }
+    return p;
+  };
+  // The FULL Nerd Font cut (all 16 JetBrainsMonoNerdFont-*.ttf faces):
+  // J11's web twin deliberately builds the UNNARROWED family — the
+  // ttc collection + the 8-weight report grid are its assertions
+  // (the round-13 economy route is J9's alone). J9's narrowed slice
+  // (Medium/MediumItalic) and every identity face live in this set.
+  const jetbrainsDir = resolve(RUN_FONTS, "JetBrainsMono");
+  const jetbrainsFaces = (await readdir(jetbrainsDir))
+    .filter((f) => f.startsWith("JetBrainsMonoNerdFont-") && f.endsWith(".ttf"))
+    .sort();
+  for (const required of [
+    "JetBrainsMonoNerdFont-Regular.ttf",
+    "JetBrainsMonoNerdFont-Medium.ttf",
+    "JetBrainsMonoNerdFont-MediumItalic.ttf",
+  ]) {
+    if (!jetbrainsFaces.includes(required)) {
+      throw new Error(
+        `the full JetBrainsMono Nerd Font cut is incomplete: ${required} ` +
+          `missing under ${jetbrainsDir}`,
+      );
+    }
+  }
+  return buildFetchedLayoutSite([
+    {
+      family: "JetBrainsMono",
+      faces: jetbrainsFaces.map((file) => ({
+        file,
+        fontPath: resolve(jetbrainsDir, file),
+      })),
+      entries: [
+        {
+          variant: "Nerd Font",
+          file: "JetBrainsMono.zip",
+          faces: jetbrainsFaces,
+        },
+      ],
+    },
+    {
+      family: "MapleMono",
+      faces: [
+        {
+          file: "MapleMono-NF-Regular.ttf",
+          fontPath: face("MapleMono-NF", "MapleMono-NF-Regular.ttf"),
+          dir: "MapleMono-NF",
+        },
+        {
+          file: "MapleMono-NF-CN-Regular.ttf",
+          fontPath: face("MapleMono-NF-CN", "MapleMono-NF-CN-Regular.ttf"),
+          dir: "MapleMono-NF-CN",
+        },
+      ],
+      // The real manifest's own variants and axes (mirrors J2's
+      // entry): NF the default cut, NF-CN the mono+SC one.
+      entries: [
+        {
+          variant: "NF",
+          file: "MapleMono-NF.zip",
+          faces: ["MapleMono-NF-Regular.ttf"],
+          axes: { icons: "nf" },
+        },
+        {
+          variant: "NF-CN",
+          file: "MapleMono-NF-CN.zip",
+          faces: ["MapleMono-NF-CN-Regular.ttf"],
+          axes: { icons: "nf", cjk_width: "mono", region: "SC" },
+        },
+      ],
+    },
+  ]);
+}
+
+/**
+ * One serve for the coloring journeys (J3–J7), spawned LAZILY on the
+ * first bootWithServe call (ticket #37's conversion): the serve-less
+ * journeys (J1/J8/J10) never touch the run layout at all. The picks
+ * resolve as REAL catalog faces against the small site above. Null
+ * when the site cannot be built (the real faces absent — the
+ * J9-only environments): the coloring journeys then degrade to the
+ * plain preview, and their effective-table steps fail loudly rather
+ * than silently passing.
  */
 let coloringServeUrl: string | null = null;
 let coloringServeStart: Promise<string | null> | null = null;
@@ -827,41 +929,32 @@ let coloringServeStart: Promise<string | null> | null = null;
 /** Start (once) or return the shared coloring serve's URL promise. */
 function sharedColoringServe(): Promise<string | null> {
   coloringServeStart ??= (async () => {
-    // Ticket #37 / spec #25 (finding 1): the serve catalog is the
-    // whole run's ONE shared, persistent scratch dir — the first
-    // journey pays the sync, every later journey boots warm.
-    const service = await spawnServeOverFonts(RUN_FONTS, [
+    // A failed build (faces absent) or spawn (port trouble) must NOT
+    // take the whole file down: the serve-less journeys need no serve,
+    // and the coloring journeys fail loudly at bootWithServe instead —
+    // null carries the documented degradation, a throw would fail even
+    // the journeys that never color.
+    const site = await buildColoringSite().catch(() => null);
+    if (site === null) return null;
+    const service = await spawnServeOverFonts(site.fontsDir, [
       "--manifest",
-      RUN_MANIFEST,
-      ...(await journeyCatalogFlags(journeyCatalogOrigin())),
+      site.manifestPath,
+      ...(await journeyCatalogFlags(site.originUri, "journey-catalog-coloring")),
     ]);
-    // A failed spawn (assets absent, port trouble) must NOT take the
-    // whole file down: the serve-less journeys need no serve, and the
-    // coloring journeys fail loudly at bootWithServe instead — null
-    // carries the documented degradation, a thrown spawn would fail
-    // even the journeys that never color.
     const url = await service.url.catch(() => null);
     if (url !== null) {
       journeyTeardown.push(async () => {
         await service.dispose();
+        await rm(site.root, { recursive: true, force: true });
       });
     } else {
       await service.dispose();
+      await rm(site.root, { recursive: true, force: true });
     }
     coloringServeUrl = url;
     return url;
   })();
   return coloringServeStart;
-}
-
-/**
- * The release origin the journey serves sync their catalog from: the
- * vite dev server's REAL dev catalog (the journey config boots it with
- * VITE_DEV_CATALOG=1). FONTALLOY_JOURNEY_CATALOG_ORIGIN overrides it
- * (see ./journey-catalog.ts).
- */
-function journeyCatalogOrigin(): string {
-  return `${JOURNEY_ORIGIN}/dev-catalog`;
 }
 
 test.describe("user journey", () => {
@@ -2482,21 +2575,25 @@ test.describe("user journey", () => {
     // for speed; the full-matrix behavior is pinned by synthesize.spec
     // on fixtures. The journey budget is the moderate one.
     test.setTimeout(600_000);
-    // The owner's real serve layout: the repo's own serve binary over
-    // the fetched catalog directory (zips + extracted faces + its own
-    // manifest), so the catalog picks resolve as catalog-family
-    // references — the production build path. (spawnServeOverFonts's
-    // `url` field is the startup-line PROMISE — unlike the fixture
-    // helper, it does not await it internally — so await it here or
-    // encodeURIComponent would stringify the promise object.) The
-    // catalog rides the run's ONE shared persistent dir (ticket #37,
-    // finding 1): J9's spawn settles warm, never re-syncing what the
-    // coloring serve already landed.
-    const service = await spawnServeOverFonts(RUN_FONTS, [
+    // The real serve, over the coloring site's own instance (#40: the
+    // small real-face layout, never the 16.9GB run dir): the catalog
+    // picks resolve as catalog-family references — the production
+    // build path with REAL binaries (identity Regular faces + this
+    // journey's narrowed Medium/MediumItalic base slice + the real
+    // NF-CN donor, whose CJK the artifact must carry).
+    // (spawnServeOverFonts's `url` field is the startup-line PROMISE —
+    // unlike the fixture helper, it does not await it internally — so
+    // await it here or encodeURIComponent would stringify the promise
+    // object.)
+    const j9Site = await buildColoringSite();
+    const service = await spawnServeOverFonts(j9Site.fontsDir, [
       "--manifest",
-      RUN_MANIFEST,
-      ...(await journeyCatalogFlags(journeyCatalogOrigin())),
+      j9Site.manifestPath,
+      ...(await journeyCatalogFlags(j9Site.originUri, "journey-catalog-j9")),
     ]);
+    journeyTeardown.push(async () => {
+      await rm(j9Site.root, { recursive: true, force: true });
+    });
     const serviceUrl = await service.url;
     // Verification economy (owner, round 13): the app really submits the
     // FULL family cut (16 faces ≈ 8 min of grafting); the full-matrix
