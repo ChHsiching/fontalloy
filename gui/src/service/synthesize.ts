@@ -297,9 +297,36 @@ async function pollFontsUntilReady(client: ServeClient): Promise<void> {
 
 /** The /catalog document, fetching it once when the connect-time probe
  *  did not land (round 6: catalog-family reference resolution). */
+/** The empty-catalog refetch budget (#42): bounded, like the resolve
+ * heartbeat. The serve's status sig moving resets it (the sync's
+ * progress IS the state change that means "look again"). */
+const EMPTY_CATALOG_REFETCH_BUDGET = 10;
+let emptyCatalogRefetches = 0;
+let emptyCatalogSig = "";
+
+function resetEmptyCatalogBudget(): void {
+  const catalog = store.get().catalog;
+  const sig = `${catalog.status}:${catalog.documents.length}:${catalog.progress
+    .map((entry) => entry.state)
+    .join(",")}`;
+  if (sig !== emptyCatalogSig) {
+    emptyCatalogSig = sig;
+    emptyCatalogRefetches = 0;
+  }
+}
+
 async function ensureCatalogIndex(): Promise<CatalogDocument | null> {
   const { client, catalogIndex } = synthStore.get().service;
   if (catalogIndex !== null || client === null) return catalogIndex;
+  resetEmptyCatalogBudget();
+  if (emptyCatalogRefetches >= EMPTY_CATALOG_REFETCH_BUDGET) {
+    // The budget is spent and the catalog state has not moved: stop
+    // hammering /catalog (the unbounded refetch was the memory red
+    // line's growth source — every slot resolution refetched). The
+    // budget resets when the sig moves, and the populated-document
+    // path above never counts here.
+    return null;
+  }
   try {
     const doc = await client.catalog();
     // A serve still scanning its font dir answers with an EMPTY
@@ -308,7 +335,11 @@ async function ensureCatalogIndex(): Promise<CatalogDocument | null> {
     // first pull, and every later resolve silently no-opped). Only a
     // populated document memoizes — an empty one re-fetches on the
     // next call, which the catalog-state re-arm reliably schedules.
-    if (doc.families.length > 0) patchService({ catalogIndex: doc });
+    if (doc.families.length > 0) {
+      patchService({ catalogIndex: doc });
+    } else {
+      emptyCatalogRefetches += 1;
+    }
     return doc;
   } catch {
     return null;
