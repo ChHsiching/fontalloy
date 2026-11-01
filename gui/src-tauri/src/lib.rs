@@ -48,8 +48,10 @@ use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 
-/// How long `serve_url` waits for the sidecar's startup line.
-const SERVE_STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
+/// How long `serve_url` waits for the sidecar's startup line. The
+/// PyInstaller onefile cold boot (self-extract + fontTools/core
+/// imports) alone can run past 30s; 10s abandoned every first run.
+const SERVE_STARTUP_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// The webview origins allowed on the sidecar's CORS allowlist: the
 /// packaged Windows origin, the packaged macOS/Linux origin, and the
@@ -69,6 +71,14 @@ const ALLOWED_ORIGINS: [&str; 3] = [
 /// shell spawns the sidecar before any webview code can run.
 #[cfg(debug_assertions)]
 const CATALOG_RELEASE_ORIGIN: &str = "http://localhost:5173/dev-catalog";
+
+/// The repo's own manifest, resolved at compile time from the crate
+/// dir (dev builds only — the checked-out tree IS the dev catalog).
+#[cfg(debug_assertions)]
+const DEV_CATALOG_MANIFEST: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    r"\..\..\assets\fonts.manifest.json"
+);
 #[cfg(not(debug_assertions))]
 const CATALOG_RELEASE_ORIGIN: &str =
     "https://github.com/ChHsiching/fontalloy/releases/download/font-catalog-v1";
@@ -372,21 +382,30 @@ fn spawn_sidecar(handle: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     std::fs::create_dir_all(&fonts_cache)?;
 
     let mut command = handle.shell().sidecar("fontalloy")?;
-    command = command.args([
-        "serve",
-        "--port",
-        "0",
-        "--font-dir",
-        &catalog_dir.to_string_lossy(),
-        "--catalog-dir",
-        &catalog_dir.to_string_lossy(),
-        "--catalog-release-origin",
-        CATALOG_RELEASE_ORIGIN,
-        "--system-cache-dir",
-        &system_cache.to_string_lossy(),
-        "--fonts-cache-dir",
-        &fonts_cache.to_string_lossy(),
-    ]);
+    #[allow(unused_mut)]
+    let mut serve_args: Vec<String> = vec![
+        "serve".into(),
+        "--port".into(),
+        "0".into(),
+        "--font-dir".into(),
+        catalog_dir.to_string_lossy().into_owned(),
+        "--catalog-dir".into(),
+        catalog_dir.to_string_lossy().into_owned(),
+        "--catalog-release-origin".into(),
+        CATALOG_RELEASE_ORIGIN.into(),
+        "--system-cache-dir".into(),
+        system_cache.to_string_lossy().into_owned(),
+        "--fonts-cache-dir".into(),
+        fonts_cache.to_string_lossy().into_owned(),
+    ];
+    // Dev builds resolve catalog picks against the repo's own manifest
+    // — the SAME manifest the vite dev-catalog serves, so the synced
+    // families and the resolve's variant metadata are one set.
+    // (Release builds need the bundled-manifest story; tracked with
+    // the tauri dev pass.)
+    #[cfg(debug_assertions)]
+    serve_args.extend(["--manifest".into(), DEV_CATALOG_MANIFEST.into()]);
+    command = command.args(&serve_args);
     for origin in ALLOWED_ORIGINS {
         command = command.args(["--allow-origin", origin]);
     }

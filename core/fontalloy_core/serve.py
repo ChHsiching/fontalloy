@@ -436,6 +436,14 @@ class ServeState:
             data,
             root=self.recipe_root,
             manifest=self.options.manifest,
+            # The same fonts_dir the build worker passes: catalog
+            # references resolve against the serve's configured font
+            # dirs (the synced catalog), not the manifest's own
+            # directory — the desktop client's split layout (manifest
+            # in the repo, zips in appData) depends on this.
+            fonts_dir=(
+                self.options.font_dirs[0] if self.options.font_dirs else None
+            ),
         )
 
     def queue_position(self, job: BuildJob) -> int | None:
@@ -880,8 +888,21 @@ class _BuildWorker(threading.Thread):
                 job.font_path,
                 report_path=job.report_path,
                 # Catalog-family references in submissions resolve
-                # against the serve process's configured manifest.
+                # against the serve process's configured manifest...
                 manifest=state.options.manifest,
+                # ...and the configured font dirs are where those
+                # references' artifacts live (the catalog sync fills
+                # the same directory the serve serves). Without this
+                # the resolver defaults to "<manifest dir>/fonts",
+                # which only coincides with the fetched layout when
+                # the manifest sits BESIDE its zips — the desktop
+                # client (manifest in the repo, synced zips in
+                # appData) broke exactly there.
+                fonts_dir=(
+                    state.options.font_dirs[0]
+                    if state.options.font_dirs
+                    else None
+                ),
                 progress=state.progress_of(job),
                 # Round 19: the cooperative-cancel seam. The predicate
                 # reads the job's own flag (never the service-wide stop,

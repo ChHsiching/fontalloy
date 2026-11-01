@@ -15,6 +15,12 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    // `tauri dev` runs vite and cargo CONCURRENTLY; the watcher walking
+    // into src-tauri/target hits DLLs mid-write (EBUSY kills vite and
+    // the whole dev pass). Standard tauri-template exclusion.
+    watch: {
+      ignored: ["**/src-tauri/**"],
+    },
   },
   build: {
     target: "es2022",
