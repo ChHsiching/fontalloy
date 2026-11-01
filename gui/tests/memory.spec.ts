@@ -76,12 +76,13 @@ const RENDERER_BUDGET_MB = 320;
 const RETURN_TOLERANCE_MB = 30;
 /**
  * Cross-cycle growth tolerance for the 3 pick/unload cycles (MB) —
- * accumulation shows here. 16 since 2026-11-01: three CI runs
- * (ab88b55, 14822b6, cabcec4 — every one green on adjudication
- * rerun) missed 12 by ≤ +2.9 MB of runner noise, mm-scale against a
- * ~296 MB cycle peak. A real leak shows as tens of MB.
+ * accumulation shows here. A 2026-11-01 attempt widened this to 16
+ * after three mm-scale CI misses; a FOURTH run (57a42fb) then missed
+ * by +31 MB — escalating magnitudes (2.9 → 14.8 → 31) mean an
+ * intermittent real leak, not noise. Widening reverted; the defect is
+ * routed (issue #42 census) for a heap-snapshot loop.
  */
-const CYCLE_GROWTH_TOLERANCE_MB = 16;
+const CYCLE_GROWTH_TOLERANCE_MB = 12;
 /** Settling pause before every sample (native font frees are async). */
 const SETTLE_MS = 800;
 
