@@ -245,6 +245,19 @@ def serve(
             "activates the sync.",
         ),
     ] = None,
+    catalog_manifest_origin: Annotated[
+        Optional[str],
+        typer.Option(
+            "--catalog-manifest-origin",
+            help="Base URL serving the per-ENTRY fetched-layout "
+            "artifacts (manifest.json, entry/<file>, licenses/<name> "
+            "— the same release tag as --catalog-release-origin). With "
+            "--catalog-dir a post-bind thread materializes "
+            "<catalog-dir>/fonts/ and a self-consistent "
+            "fonts.manifest.json so catalog-reference verification "
+            "holds for the desktop client's split layout (ticket #43).",
+        ),
+    ] = None,
 ) -> None:
     """Run the core as a localhost HTTP service (127.0.0.1 only).
 
@@ -276,6 +289,7 @@ def serve(
         fonts_cache_dir=fonts_cache_dir,
         catalog_release_origin=catalog_release_origin,
         catalog_dir=catalog_dir,
+        catalog_manifest_origin=catalog_manifest_origin,
     )
     try:
         fontalloy_core.run_serve(options)

@@ -93,6 +93,7 @@ from typing import Any
 
 from fontalloy_core.build import build_recipe
 from fontalloy_core.catalog import Catalog, load_manifest
+from fontalloy_core.catalog_materialize import materialize
 from fontalloy_core.catalog_sync import CatalogSync
 from fontalloy_core.errors import BuildCancelled, FontAlloyError
 from fontalloy_core.family_docs import FamilyDocuments
@@ -200,6 +201,15 @@ class ServeOptions:
     # local-fonts-only serve with a quiescent catalog.
     catalog_release_origin: str | None = None
     catalog_dir: Path | None = None
+    # Ticket #43: base URL serving the per-ENTRY artifacts the fetched
+    # layout needs (manifest.json + entry/<file> + licenses/<name> —
+    # the same release tag the sync downloads family archives from,
+    # dev-catalog in dev builds, the GitHub release in production).
+    # With --catalog-dir a post-bind thread materializes
+    # <catalog_dir>/fonts/ + fonts.manifest.json so the resolver's
+    # fetched-layout verification holds for the desktop client's
+    # split layout. None (everywhere but the client) changes nothing.
+    catalog_manifest_origin: str | None = None
 
 
 class _BuildAborted(Exception):
@@ -303,6 +313,17 @@ class ServeState:
         self.jobs: dict[str, BuildJob] = {}
         self._queue: queue.Queue[BuildJob] = queue.Queue()
         self.catalog: Catalog | None = self._load_catalog(options.manifest)
+        # Ticket #43: the materialized client manifest lands AFTER boot
+        # (the thread downloads it); catalog_document stats the file
+        # per request and reloads on mtime change.
+        try:
+            self._catalog_mtime = (
+                Path(options.manifest).stat().st_mtime
+                if options.manifest is not None
+                else None
+            )
+        except OSError:
+            self._catalog_mtime = None
 
         created_root = options.work_dir
         if created_root is None:
@@ -598,8 +619,24 @@ class ServeState:
         document.pop("font_sha256")
         return document
 
+    def _refresh_manifest_catalog(self) -> None:
+        """Ticket #43: pick up a (re)materialized manifest without a
+        restart — one stat per /catalog request (the launch-check
+        discipline), reload only when the file's mtime moved."""
+        path = self.options.manifest
+        if path is None:
+            return
+        try:
+            mtime = Path(path).stat().st_mtime
+        except OSError:
+            return
+        if mtime != self._catalog_mtime:
+            self._catalog_mtime = mtime
+            self.catalog = self._load_catalog(path)
+
     def catalog_document(self) -> dict[str, Any]:
         """The manifest's families, grouped one entry per family."""
+        self._refresh_manifest_catalog()
         families: list[dict[str, Any]] = []
         if self.catalog is not None:
             grouped: dict[str, list[dict[str, Any]]] = {}
@@ -1659,6 +1696,22 @@ def run_serve(options: ServeOptions) -> None:
     state.catalog_sync.start()
     state.family_docs.start()
     state.stars.start()
+    # Ticket #43: the fetched-layout materializer — same daemon-thread
+    # discipline as the sync (post-bind, yields between artifacts). On
+    # a warm catalog it is a stat walk; on first run it downloads the
+    # per-entry artifacts while /catalog/status and every other
+    # endpoint stay live.
+    if options.catalog_manifest_origin and options.catalog_dir:
+        threading.Thread(
+            target=materialize,
+            args=(
+                options.catalog_manifest_origin,
+                Path(options.catalog_dir),
+                state.stop,
+            ),
+            name="fontalloy-catalog-materializer",
+            daemon=True,
+        ).start()
     print(f"http://{BIND_ADDRESS}:{state.port}", flush=True)
     try:
         # A timed wait, not a plain block: on Windows an unbounded

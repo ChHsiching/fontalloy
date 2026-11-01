@@ -744,6 +744,34 @@ let zipActive = 0;
 const zipWaiters = [];
 
 /** Stream one family zip to the response, honoring backpressure. */
+/**
+ * Serve one manifest ENTRY's own zip (ticket #43, the client's
+ * catalog parity): the entry's artifact file name, filled with the
+ * faces its cut resolved — the same faces the family zip unions.
+ * The desktop shell materializes these beside a client-side manifest
+ * so catalog-reference verification (per-entry unique files, sha
+ * pins) sees a consistent fetched layout.
+ */
+async function serveEntryZip(faceObjects, res, cors) {
+  res.writeHead(200, { ...cors, "content-type": "application/zip" });
+  if (zipActive >= ZIP_SERVE_CONCURRENCY) {
+    await new Promise((release) => zipWaiters.push(release));
+  }
+  zipActive++;
+  try {
+    for await (const chunk of zipStream(faceObjects)) {
+      if (res.destroyed) return;
+      if (!res.write(chunk)) await once(res, "drain");
+    }
+    res.end();
+  } catch (err) {
+    res.destroy(err instanceof Error ? err : new Error(String(err)));
+  } finally {
+    zipActive--;
+    zipWaiters.shift()?.();
+  }
+}
+
 async function serveFamilyZip(family, res, cors) {
   res.writeHead(200, { ...cors, "content-type": "application/zip" });
   if (zipActive >= ZIP_SERVE_CONCURRENCY) {
@@ -1258,6 +1286,7 @@ async function handle(req, res, next) {
     res.end(body);
     return;
   }
+  const path = url.split("?")[0];
   const match = url.match(/^\/dev-catalog\/origins\/[^/]+\/([^/?]+)$/);
   const family = match
     ? families.find((f) => f.zip === decodeURIComponent(match[1]))
@@ -1265,6 +1294,60 @@ async function handle(req, res, next) {
   if (family) {
     await serveFamilyZip(family, res, cors);
     return;
+  }
+  // Ticket #43 (the client's catalog parity): the manifest itself,
+  // per-ENTRY artifact zips, and the license files it references —
+  // the shell materializes all three into the app's catalog directory
+  // so the serve-side resolver's fetched-layout verification holds.
+  if (path === "/dev-catalog/manifest.json") {
+    res.writeHead(200, { ...cors, "content-type": "application/json" });
+    res.end(await readFile(MANIFEST_PATH, "utf8"));
+    return;
+  }
+  const entryMatch = path.match(/^\/dev-catalog\/entry\/([^/?]+)$/);
+  if (entryMatch) {
+    const wanted = decodeURIComponent(entryMatch[1]);
+    for (const f of families) {
+      if (!f.cuts) continue;
+      const cut = f.cuts.find((c) => c.file === wanted);
+      if (!cut) continue;
+      const names = new Set(cut.files.map((x) => x.file));
+      const faceObjects = f.faces.filter((face) => names.has(face.file));
+      if (faceObjects.length === 0) break;
+      await serveEntryZip(faceObjects, res, cors);
+      return;
+    }
+    res.writeHead(404, cors);
+    res.end("entry not found");
+    return;
+  }
+  const licenseMatch = path.match(/^\/dev-catalog\/licenses\/([^/?]+)$/);
+  if (licenseMatch) {
+    const name = decodeURIComponent(licenseMatch[1]);
+    const manifest = JSON.parse(await readFile(MANIFEST_PATH, "utf8"));
+    const allowed = new Set(
+      manifest.families
+        .map((e) => e.license_file)
+        .filter((x) => x)
+        .map((x) => basename(x)),
+    );
+    if (!allowed.has(name)) {
+      res.writeHead(404, cors);
+      res.end("license not referenced by the manifest");
+      return;
+    }
+    try {
+      const body = await readFile(
+        resolve(REPO_ROOT, "assets", "licenses", name),
+      );
+      res.writeHead(200, { ...cors, "content-type": "text/plain" });
+      res.end(body);
+      return;
+    } catch {
+      res.writeHead(404, cors);
+      res.end("license file missing");
+      return;
+    }
   }
   res.writeHead(404, cors);
   res.end("not found");

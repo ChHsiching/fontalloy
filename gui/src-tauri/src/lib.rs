@@ -72,15 +72,17 @@ const ALLOWED_ORIGINS: [&str; 3] = [
 #[cfg(debug_assertions)]
 const CATALOG_RELEASE_ORIGIN: &str = "http://localhost:5173/dev-catalog";
 
-/// The repo's own manifest, resolved at compile time from the crate
-/// dir (dev builds only — the checked-out tree IS the dev catalog).
+/// The per-entry fetched-layout origin (ticket #43): the same release
+/// tag the sync downloads family archives from, serving manifest.json,
+/// entry/<file>, and licenses/<name> (the vite dev-catalog in dev
+/// builds, the GitHub release in production).
 #[cfg(debug_assertions)]
-const DEV_CATALOG_MANIFEST: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    r"\..\..\assets\fonts.manifest.json"
-);
+const CATALOG_MANIFEST_ORIGIN: &str = "http://localhost:5173/dev-catalog";
 #[cfg(not(debug_assertions))]
 const CATALOG_RELEASE_ORIGIN: &str =
+    "https://github.com/ChHsiching/fontalloy/releases/download/font-catalog-v1";
+#[cfg(not(debug_assertions))]
+const CATALOG_MANIFEST_ORIGIN: &str =
     "https://github.com/ChHsiching/fontalloy/releases/download/font-catalog-v1";
 
 /// Shared state between the spawn thread, the commands, and shutdown.
@@ -398,13 +400,22 @@ fn spawn_sidecar(handle: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         "--fonts-cache-dir".into(),
         fonts_cache.to_string_lossy().into_owned(),
     ];
-    // Dev builds resolve catalog picks against the repo's own manifest
-    // — the SAME manifest the vite dev-catalog serves, so the synced
-    // families and the resolve's variant metadata are one set.
-    // (Release builds need the bundled-manifest story; tracked with
-    // the tauri dev pass.)
-    #[cfg(debug_assertions)]
-    serve_args.extend(["--manifest".into(), DEV_CATALOG_MANIFEST.into()]);
+    // Ticket #43: the catalog manifest lives IN the catalog directory —
+    // the serve's materializer thread (post-bind) downloads the
+    // per-entry artifacts + a self-consistent manifest from the same
+    // release tag the sync uses, so the resolver's fetched-layout
+    // verification holds for the client's split layout. Until it lands
+    // on a first run the /catalog document is empty and fills in live
+    // (the serve hot-reloads the manifest by mtime).
+    serve_args.extend([
+        "--manifest".into(),
+        catalog_dir
+            .join("fonts.manifest.json")
+            .to_string_lossy()
+            .into_owned(),
+        "--catalog-manifest-origin".into(),
+        CATALOG_MANIFEST_ORIGIN.into(),
+    ]);
     command = command.args(&serve_args);
     for origin in ALLOWED_ORIGINS {
         command = command.args(["--allow-origin", origin]);
