@@ -1708,6 +1708,7 @@ def run_serve(options: ServeOptions) -> None:
                 options.catalog_manifest_origin,
                 Path(options.catalog_dir),
                 state.stop,
+                state.catalog_sync.report_materializer,
             ),
             name="fontalloy-catalog-materializer",
             daemon=True,

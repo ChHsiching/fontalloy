@@ -271,6 +271,12 @@ class TestStatusContract:
             assert doc["state"] == "unavailable"
             assert "--catalog-dir" in doc["error"]
             assert doc["families"] == []
+            # The pipeline keys describe the sync pipeline itself: a
+            # serve without one reports none of them (the document
+            # shape of a half-configured serve is unchanged).
+            assert "document" not in doc
+            assert "warm" not in doc
+            assert "materializer" not in doc
 
     def test_catalog_status_rejects_non_get(self, plain_service):
         response = plain_service.request("PUT", "/catalog/status")
@@ -281,6 +287,66 @@ class TestStatusContract:
         response = plain_service.get("/catalog/sync")
         assert response.status == 405
         assert "POST" in response.headers.get("Allow", "")
+
+    def test_pipeline_keys_report_phase_and_warmth(
+        self, fontalloy_exe, site, catalog_dir, work_dir, tmp_path
+    ):
+        """The pipeline keys (``document``, ``warm``) ride the status
+        document only while the sync is configured. A COLD run — empty
+        cache — is classified not-warm; once the document is parsed the
+        families list is authoritative (``loaded``). A WARM relaunch
+        over the same cache — the same stat-only completeness check the
+        walk performs — reports ``warm: true``, offline fallback
+        included: the classification reads the cache, not the network.
+        """
+        args = sync_args(site.release_origin, catalog_dir, work_dir)
+        os.environ[SYNC_DELAY_ENV] = "0.3"  # an observably in-flight run
+        try:
+            with running_service(
+                fontalloy_exe, args, cwd=tmp_path
+            ) as (client, _):
+                saw_bootstrapping = False
+                saw_preset = False
+                deadline = time.monotonic() + 30
+                while time.monotonic() < deadline:
+                    doc = client.get("/catalog/status").json()
+                    if doc["state"] == "bootstrapping":
+                        saw_bootstrapping = True
+                        if doc["families"]:
+                            # The document parsed and preset the whole
+                            # family list (a cold run has no cache to
+                            # preset from, so a non-empty list means
+                            # the fresh document landed).
+                            assert doc["document"] == "loaded"
+                            assert doc["warm"] is False
+                            saw_preset = True
+                            break
+                assert saw_bootstrapping, "the sync settled before any poll saw it run"
+                assert saw_preset, "no in-flight sample carried the family list"
+                doc = wait_for_terminal(client)
+                assert doc["state"] == "ready", doc.get("error")
+                assert doc["document"] == "loaded"
+                assert doc["warm"] is False
+        finally:
+            os.environ.pop(SYNC_DELAY_ENV, None)
+
+        # The warm relaunch: same cache dir, complete families — the
+        # stat walk passes for every one of them, so the run is warm.
+        with running_service(fontalloy_exe, args, cwd=tmp_path) as (client, _):
+            doc = wait_for_terminal(client)
+            assert doc["state"] == "ready", doc.get("error")
+            assert doc["document"] == "loaded"
+            assert doc["warm"] is True
+
+        # Offline (origin gone) the cached document carries the run —
+        # and the warmth classification reads that same cache: a fully
+        # synced catalog is warm with no network at all.
+        shutil.rmtree(site.origin_dir)
+        with running_service(fontalloy_exe, args, cwd=tmp_path) as (client, _):
+            doc = wait_for_terminal(client)
+            assert doc["state"] == "ready", doc.get("error")
+            assert doc["document"] == "loaded"
+            assert doc["warm"] is True
 
 
 class TestStartupSync:

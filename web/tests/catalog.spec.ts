@@ -1,5 +1,5 @@
 import { expect, test, type Page, type Request } from "@playwright/test";
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, rm } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -12,7 +12,14 @@ import {
   waitForCatalogReady,
   waitForFontsReady,
 } from "./helpers";
-import { PREVIEW_ORIGIN, REPO_ROOT, startServe, type ServeHandle } from "./serve";
+import {
+  PREVIEW_ORIGIN,
+  REPO_ROOT,
+  serveFixtureDir,
+  startServe,
+  type ServeHandle,
+} from "./serve";
+import { buildServeCatalogSite } from "../../gui/tests/catalog-serve-site";
 
 /**
  * The REAL local catalog on the static target — SERVE-backed (ticket
@@ -472,4 +479,106 @@ test("the real catalog drives the live submission end to end", async ({
   });
 
   assertNoJsErrors(errors);
+});
+
+test("a warm relaunch never shows the first-run screen and settles fast", async ({ page }) => {
+  // The warm-boot half of the quiet-launch contract (the gui suite's
+  // gated fixtures own the cold half): a cold pass fills THIS test's
+  // own scratch — a small real file:// site over the suite's
+  // synthetic fixture fonts, nothing shared — then a second serve
+  // over the same dir backs the page. The first-run screen must never
+  // appear (every status sample is warm-suppressed), the sweep
+  // converges at its stat-walk pace, and the serve's own status
+  // document says warm.
+  test.setTimeout(120_000);
+  const fixtures = await serveFixtureDir();
+  const site = await buildServeCatalogSite([
+    {
+      family: "WebWarmAlpha",
+      faces: [{ file: "WebWarmAlpha-Regular.ttf", fontPath: join(fixtures, "Alpha.ttf") }],
+    },
+    {
+      family: "WebWarmBeta",
+      faces: [{ file: "WebWarmBeta-Regular.ttf", fontPath: join(fixtures, "Beta.ttf") }],
+    },
+  ]);
+  try {
+    const cold = await startServe({
+      allowOrigin: PREVIEW_ORIGIN,
+      catalogReleaseOrigin: site.originUri,
+      catalogDir: site.catalogDir,
+    });
+    try {
+      const deadline = Date.now() + 60_000;
+      for (;;) {
+        let state: string | undefined;
+        try {
+          state = (
+            (await (await fetch(`${cold.baseUrl}/catalog/status`)).json()) as {
+              state: string;
+            }
+          ).state;
+        } catch {
+          // Not accepting yet — keep polling within the deadline.
+        }
+        if (state === "ready") break;
+        if (state === "unavailable") {
+          throw new Error("the cold pass reported unavailable");
+        }
+        if (Date.now() > deadline) {
+          throw new Error("the cold pass never reached ready");
+        }
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    } finally {
+      await cold.stop();
+    }
+
+    const warm = await startServe({
+      allowOrigin: PREVIEW_ORIGIN,
+      catalogReleaseOrigin: site.originUri,
+      catalogDir: site.catalogDir,
+    });
+    try {
+      // The warm answer must be on the serve BEFORE the page loads —
+      // then every sample the page takes is suppressed.
+      const settleDeadline = Date.now() + 30_000;
+      for (;;) {
+        const doc = (await (await fetch(`${warm.baseUrl}/catalog/status`))
+          .json()) as { state: string; warm?: boolean };
+        if (doc.state === "ready" && doc.warm === true) break;
+        if (doc.state === "unavailable") {
+          throw new Error("the warm pass reported unavailable");
+        }
+        if (Date.now() > settleDeadline) {
+          throw new Error(`the warm pass never settled (${doc.state})`);
+        }
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+
+      const startedAt = Date.now();
+      await page.goto(`/?serve=${encodeURIComponent(warm.baseUrl)}`);
+      // Sample through the settle: the screen stays hidden at every
+      // instant (the suppression is per-sample, not a race) and the
+      // workspace is usable from the first sample.
+      let settled = false;
+      while (!settled) {
+        await expect(page.locator(".catalog-screen")).toBeHidden();
+        await expect(page.locator(".workspace-rail")).toBeVisible();
+        settled = await page.evaluate(
+          () => document.documentElement.dataset.catalogSweep === "done",
+        );
+        if (Date.now() - startedAt > 10_000) break;
+        await page.waitForTimeout(300);
+      }
+      expect(settled, "the warm sweep did not settle within 10s").toBe(true);
+      const doc = (await (await fetch(`${warm.baseUrl}/catalog/status`))
+        .json()) as { warm?: boolean };
+      expect(doc.warm).toBe(true);
+    } finally {
+      await warm.stop();
+    }
+  } finally {
+    await rm(site.root, { recursive: true, force: true });
+  }
 });

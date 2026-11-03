@@ -21,7 +21,7 @@
  */
 
 import { store, type LoadedFont } from "../state";
-import { synthStore } from "../service/state";
+import { synthStore, SIDECAR_TIMEOUT_ERROR } from "../service/state";
 import { buildWorkspaceDraft, connectService } from "../service/synthesize";
 import { recipeFileName, recipeJson } from "../recipe/json";
 import type { FontSlot } from "../recipe/model";
@@ -153,6 +153,13 @@ export function mountCliPanel(): void {
         "当前环境未提供服务地址，无法实时合成。桌面版会随应用自动启动服务；" +
         "网页版检测 fontalloy serve（仅监听 127.0.0.1，并以 --allow-origin 允许本站来源）。" +
         "可使用下方的“复制 CLI 命令”方案，在本地完成同一次合并。";
+      return;
+    }
+    if (service.status === "sidecar-timeout") {
+      // The desktop shell's own service never came up — its own copy,
+      // verbatim from the shared constant (not the probe-failure text:
+      // nothing was probed here).
+      notice.textContent = `${SIDECAR_TIMEOUT_ERROR}。可使用下方的“复制 CLI 命令”方案，在本地完成同一次合并。`;
       return;
     }
     notice.textContent =

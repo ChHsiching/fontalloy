@@ -27,7 +27,23 @@ export type ServiceStatus =
   /** /health answered; the synthesize action can drive real merges. */
   | "connected"
   /** Configured but the probe failed (sidecar crash, early launch). */
-  | "unavailable";
+  | "unavailable"
+  /**
+   * The Tauri sidecar never printed its startup line within the
+   * shell's 120 s budget (`serve_url` resolved to null with no
+   * injected address). Distinct from "none": the app EXPECTED a
+   * service here — the honest copy says the local fonts are unaffected
+   * and a restart may fix it.
+   */
+  | "sidecar-timeout";
+
+/**
+ * The sidecar-timeout copy, verbatim everywhere it surfaces (the
+ * catalog poller's unavailable footer, the no-service panel, the
+ * synthesize action's disabled reason) — one string, one message.
+ */
+export const SIDECAR_TIMEOUT_ERROR =
+  "字体服务未能启动（120 秒内未就绪）——本地字体不受影响，可重开应用重试";
 
 export interface ServiceState {
   status: ServiceStatus;

@@ -34,6 +34,7 @@ import threading
 import urllib.error
 import urllib.request
 import zipfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +45,23 @@ _FETCH_TIMEOUT = 180
 
 #: The GIL-yield cadence between artifacts (the sync's convention).
 _YIELD_SECONDS = 0.02
+
+#: A progress snapshot sink: called with a fresh dict on every phase
+#: move (never retained, never mutated afterwards). None (the default)
+#: keeps :func:`materialize` byte-for-byte behavior.
+ProgressFn = Callable[[dict[str, Any]], None]
+
+
+def _report(
+    progress: ProgressFn | None, snapshot: dict[str, Any]
+) -> None:
+    """One progress snapshot; a raising sink must not kill the run."""
+    if progress is None:
+        return
+    try:
+        progress(snapshot)
+    except Exception:  # observability must never break the materializer
+        log.debug("catalog materializer: progress sink raised", exc_info=True)
 
 
 def _get_bytes(url: str) -> bytes:
@@ -68,6 +86,7 @@ def materialize(
     origin: str,
     catalog_dir: Path,
     stop: threading.Event | None = None,
+    progress: ProgressFn | None = None,
 ) -> bool:
     """Fill ``<catalog_dir>/fonts/`` and write ``fonts.manifest.json``.
 
@@ -75,26 +94,52 @@ def materialize(
     this run or already current). Per-artifact failures are logged and
     skipped — the entry stays absent, its picks fail verification
     honestly, and the next launch retries the download.
+
+    ``progress`` (optional, default None — no behavior change) receives
+    a fresh snapshot dict on every phase move: ``{phase: 'manifest'}``
+    at the start, ``{phase: 'entries', done, total, last}`` after each
+    entry artifact, ``{phase: 'licenses', total}`` once the license
+    batch is through, and the terminal ``{phase: 'done'|'failed',
+    manifest: bool[, error]}``. Early exits report before returning.
     """
     origin = origin.rstrip("/")
     catalog_dir.mkdir(parents=True, exist_ok=True)
     fonts_dir = catalog_dir / "fonts"
     fonts_dir.mkdir(parents=True, exist_ok=True)
     manifest_target = catalog_dir / "fonts.manifest.json"
+    _report(progress, {"phase": "manifest"})
 
     try:
         manifest: dict[str, Any] = json.loads(_get_bytes(f"{origin}/manifest.json"))
     except (urllib.error.URLError, OSError, ValueError) as exc:
         log.warning("catalog materializer: manifest fetch failed: %s", exc)
+        _report(
+            progress,
+            {
+                "phase": "failed",
+                "manifest": manifest_target.is_file(),
+                "error": f"manifest fetch failed: {exc}",
+            },
+        )
         return manifest_target.is_file()
 
     entries = manifest.get("families")
     if not isinstance(entries, list) or not entries:
         log.warning("catalog materializer: origin manifest has no families")
+        _report(
+            progress,
+            {
+                "phase": "failed",
+                "manifest": manifest_target.is_file(),
+                "error": "origin manifest has no families",
+            },
+        )
         return manifest_target.is_file()
 
     pins: dict[str, str] = {}
     licenses: set[str] = set()
+    total = len(entries)
+    done = 0
     for entry in entries:
         name = str(entry.get("file") or "").replace("/", "-").replace("\\", "-")
         if not name:
@@ -115,6 +160,14 @@ def materialize(
                     exc,
                 )
                 if stop is not None and stop.is_set():
+                    _report(
+                        progress,
+                        {
+                            "phase": "failed",
+                            "manifest": manifest_target.is_file(),
+                            "error": "stopped mid-run",
+                        },
+                    )
                     return manifest_target.is_file()
                 continue
         else:
@@ -137,7 +190,19 @@ def materialize(
         license_file = entry.get("license_file")
         if isinstance(license_file, str) and license_file:
             licenses.add(license_file)
+        done += 1
+        _report(
+            progress, {"phase": "entries", "done": done, "total": total, "last": name}
+        )
         if stop is not None and stop.is_set():
+            _report(
+                progress,
+                {
+                    "phase": "failed",
+                    "manifest": manifest_target.is_file(),
+                    "error": "stopped mid-run",
+                },
+            )
             return manifest_target.is_file()
         threading.Event().wait(_YIELD_SECONDS)
 
@@ -156,6 +221,7 @@ def materialize(
             log.warning(
                 "catalog materializer: license %s failed (%s)", name, exc
             )
+    _report(progress, {"phase": "licenses", "total": len(licenses)})
 
     # The self-consistent manifest: same entries, pins = the bytes on
     # disk. Written LAST and atomically — its presence certifies the
@@ -175,4 +241,5 @@ def materialize(
         len(pins),
         fonts_dir,
     )
+    _report(progress, {"phase": "done", "manifest": True})
     return True

@@ -454,7 +454,11 @@ test("J11 Web 目标 — detection, picks, preset, live merge, report, download,
       });
     });
 
-    await step("J11.2 the catalog settles (the first-run download)", async () => {
+    await step("J11.2 the warm catalog settles (no first-run screen this run)", async () => {
+      // The scratch is warm by harness design ("J11 boots warm"): this
+      // step is a pure settle. Warm-boot screen suppression has its
+      // own deterministic test (catalog.spec.ts); the cold download
+      // window belongs to the gui suite's gated fixtures.
       await waitForCatalogReady(page);
     });
 

@@ -500,17 +500,22 @@ async function boot(page: Page, url = "/"): Promise<void> {
   await waitForFontsReady(page);
   // Wait for the catalog run to SETTLE, observed through the progress
   // screen's own DOM (it renders its family rows even while hidden):
-  // rows exist AND none is pending/downloading. The first launch pays
-  // the one-time catalog download behind the visible screen; a stored
-  // launch reaches all-verified rows during the bootstrap sweep and the
-  // screen never shows. Waiting for "settled" — not for "hidden now" —
-  // is the honest contract: the screen node mounts hidden and flips
-  // visible only AFTER the bootstrap fetch + verification sweep, and a
-  // mid-download navigation aborts the run, so every boot re-checks.
+  // rows exist AND none is in a non-terminal state. The journeys all
+  // ride ONE shared warm scratch (journey-catalog.ts), so a run boots
+  // warm — the screen never shows (the serve's warm key suppresses
+  // it) and the rows settle through the stat walk. Waiting for
+  // "settled" — not for "hidden now" — is the honest contract: the
+  // screen node mounts hidden, and a mid-download navigation aborts
+  // the run, so every boot re-checks.
   const rows = page.locator(".catalog-family");
   const inFlight = page.locator(
     ".catalog-family[data-status='pending'], " +
-      ".catalog-family[data-status='downloading']",
+      ".catalog-family[data-status='downloading'], " +
+      ".catalog-family[data-status='extracting'], " +
+      ".catalog-family[data-status='verifying'], " +
+      // the seed pseudo-state (manifest not known yet) is just as
+      // in-flight — the rows are placeholders, not the catalog
+      ".catalog-family[data-status='seed']",
   );
   await expect
     .poll(

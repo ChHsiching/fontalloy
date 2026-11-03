@@ -99,6 +99,15 @@ VERIFYING = "verifying"
 DONE = "done"
 FAILED = "failed"
 
+#: The release-document phase inside the status document (only while
+#: the sync is configured): ``fetching`` until a document — fresh from
+#: the origin or the offline cache fallback — has been parsed, then
+#: ``loaded``. The families list is authoritative only once loaded; an
+#: empty list before that means "the manifest is not known yet", never
+#: "known and empty".
+FETCHING = "fetching"
+LOADED = "loaded"
+
 #: Complete-marker suffix: ``<archive>.complete``, written only after
 #: the archive, every listed face, and every parse have been verified.
 #: The marker's JSON body records the release tag and the verified
@@ -199,6 +208,20 @@ class CatalogSync:
         self._tag: str | None = None
         self._families: dict[str, _FamilyProgress] = {}
         self._verify_hashes = True
+        # The status document's pipeline keys (emitted only while
+        # ``_active`` — an unconfigured serve reports the quiescent
+        # shape of before, byte for byte). ``warm`` starts False in the
+        # constructor on purpose: the sync thread recomputes it from the
+        # CACHED release document before the network fetch, and a
+        # sample taken between thread start and that computation sees
+        # the honest not-warm answer rather than a missing key.
+        self._document_phase = FETCHING
+        self._warm = False
+        # The fetched-layout materializer's last progress snapshot
+        # (reported through :meth:`report_materializer` by the serve's
+        # materializer thread). None until a report lands; the key is
+        # omitted from the status document while None.
+        self._materializer: dict[str, Any] | None = None
 
     # -- configuration -----------------------------------------------------
 
@@ -226,9 +249,16 @@ class CatalogSync:
 
     def status_document(self) -> dict[str, Any]:
         """A lock-held-copy snapshot of the state machine — the document
-        ``GET /catalog/status`` serves. Never blocks on the sync thread."""
+        ``GET /catalog/status`` serves. Never blocks on the sync thread.
+
+        The pipeline keys (``document``, ``warm``) ride along only while
+        the sync is configured, and ``materializer`` only once the
+        materializer thread has reported: an unconfigured or
+        half-configured serve answers with exactly the document shape of
+        before this key existed.
+        """
         with self._lock:
-            return {
+            document = {
                 "state": self._state,
                 "configured": self._active,
                 "error": self._error,
@@ -238,6 +268,23 @@ class CatalogSync:
                     progress.document() for progress in self._families.values()
                 ],
             }
+            if self._active:
+                document["document"] = self._document_phase
+                document["warm"] = self._warm
+            if self._materializer is not None:
+                # The materializer runs on its OWN configuration gate
+                # (manifest origin + catalog dir), not the family sync's
+                # — a manifest-origin serve without a release origin
+                # still surfaces its entry-sweep progress.
+                document["materializer"] = dict(self._materializer)
+            return document
+
+    def report_materializer(self, snapshot: dict[str, Any]) -> None:
+        """The materializer thread's latest progress snapshot, replaced
+        whole under the lock (the status endpoint's snapshot discipline
+        — never a live reference into another thread's dict)."""
+        with self._lock:
+            self._materializer = dict(snapshot)
 
     # -- lifecycle -----------------------------------------------------------
 
@@ -276,25 +323,38 @@ class CatalogSync:
     def _run(self) -> None:
         """One full sync pass: document, then every family, then the
         terminal state. Any error lands ``unavailable`` with its string
-        — a failing family never aborts the others."""
+        — a failing family never aborts the others.
+
+        Before the network fetch the CACHED release document (when one
+        exists) presets the family list — the first-run screen shows the
+        whole catalog as pending within one poll instead of an empty
+        list while the document downloads — and classifies the run as
+        warm or cold: warm means the same stat-only completeness check
+        the family walk below performs will pass for every family, i.e.
+        this run downloads nothing. A cached document that fails to
+        parse is skipped silently; the fresh fetch is the authority.
+        """
         assert self._origin is not None and self._dir is not None
         with self._lock:
             verify_hashes = self._verify_hashes
             self._state = BOOTSTRAPPING
             self._error = None
+            self._document_phase = FETCHING
+        self._preset_from_cache()
         try:
             release = self._load_release()
         except FontAlloyError as exc:
+            # The phase stays ``fetching``: no document was ever parsed
+            # this run, so the (possibly preset) family list is not
+            # authoritative. The unavailable state is what the frontends
+            # key on anyway.
             with self._lock:
                 self._state = UNAVAILABLE
                 self._error = str(exc)
             return
         with self._lock:
-            self._tag = release.tag
-            self._families = {
-                family.family: _FamilyProgress(family=family.family)
-                for family in release.families
-            }
+            self._document_phase = LOADED
+            self._preset(release)
         failures: list[str] = []
         for family in release.families:
             try:
@@ -317,6 +377,62 @@ class CatalogSync:
             else:
                 self._state = READY
                 self._error = None
+
+    # -- the preset + warm classification --------------------------------
+
+    def _preset(self, release: CatalogRelease) -> None:
+        """Fill the family list from a release document, every family
+        pending. Caller holds the lock (or is the sync thread before
+        any family walks)."""
+        self._tag = release.tag
+        self._families = {
+            family.family: _FamilyProgress(family=family.family)
+            for family in release.families
+        }
+
+    def _preset_from_cache(self) -> None:
+        """Preset the family list and the warm flag from the CACHED
+        release document, before the fresh fetch decides everything.
+
+        Warm means every family's stat-only completeness check (the
+        same :meth:`_family_complete` the walk calls with
+        ``verify_hashes=False``) passes against the cached document —
+        the run will download nothing. Cold (the default) means at
+        least one family will repair, the document is missing or
+        unparsable, or it changed since the last run; the walk sorts
+        that out. A parse failure skips the preset too — the fresh
+        fetch is the authority.
+        """
+        assert self._dir is not None
+        cached = self._dir / METADATA_NAME
+        if not cached.is_file():
+            with self._lock:
+                self._warm = False
+            return
+        try:
+            release = load_catalog_release(cached)
+        except (FontAlloyError, OSError):
+            # OSError: the cached document vanished (or lost
+            # readability) between the is_file check and the read —
+            # this method runs BEFORE _run's try, so an escaped OSError
+            # would kill the sync thread and pin the state at
+            # bootstrapping forever. Same silence as a parse failure:
+            # the fresh fetch is the authority.
+            with self._lock:
+                self._warm = False
+            return
+        warm = all(
+            self._family_complete(
+                release,
+                family,
+                self._dir / (family.zip + COMPLETE_SUFFIX),
+                verify_hashes=False,
+            )
+            for family in release.families
+        )
+        with self._lock:
+            self._preset(release)
+            self._warm = warm
 
     # -- the release document ------------------------------------------------
 

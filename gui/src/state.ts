@@ -269,6 +269,30 @@ export type CatalogStatus =
   /** The serve's sync finished (or could not run) with an error. */
   | "unavailable";
 
+/**
+ * The release-document phase inside the serve status document: the
+ * families list is authoritative only once `loaded` — before that an
+ * empty list means "the manifest is not known yet" (the screen keeps
+ * its seed rows), never "known and empty".
+ */
+export type CatalogDocumentPhase = "fetching" | "loaded";
+
+/**
+ * The fetched-layout materializer's progress snapshot from the serve
+ * status document (absent until the materializer thread reports).
+ */
+export interface CatalogMaterializerProgress {
+  phase: "manifest" | "entries" | "licenses" | "done" | "failed";
+  /** How many entry artifacts are through (entries phase). */
+  done?: number;
+  total?: number;
+  /** The artifact the snapshot last saw (entries phase). */
+  last?: string;
+  /** Whether the self-consistent manifest is on disk (terminal). */
+  manifest?: boolean;
+  error?: string;
+}
+
 export interface CatalogState {
   status: CatalogStatus;
   /**
@@ -279,9 +303,24 @@ export interface CatalogState {
   error?: string;
   /**
    * The serve status document's per-family progress (the first-run
-   * screen renders it).
+   * screen renders it). Always the serve's own sample — the seed
+   * merge happens in the screen component, never here.
    */
   progress: CatalogFamilyProgress[];
+  /**
+   * The release-document phase (serve's `document` key). Undefined
+   * until the first status sample (or against a serve predating the
+   * key) — the screen treats that as "manifest not known".
+   */
+  document?: CatalogDocumentPhase;
+  /**
+   * The serve's warm classification: true means this run's stat walk
+   * will pass for every family — the launch downloads nothing and the
+   * first-run screen stays suppressed. Undefined = treat as cold.
+   */
+  warm?: boolean;
+  /** The materializer's last snapshot (absent until it reports). */
+  materializer?: CatalogMaterializerProgress;
   /** The serve's family documents (the picker's row source). */
   documents: CatalogFamilyDoc[];
   /** True while the serve is still scanning family documents. */

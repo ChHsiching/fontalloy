@@ -38,6 +38,7 @@ import {
   patchService,
   removeBuild,
   synthStore,
+  SIDECAR_TIMEOUT_ERROR,
   type BuildRow,
 } from "./state";
 
@@ -102,7 +103,21 @@ async function probeHealth(url: string): Promise<boolean> {
 export async function connectService(): Promise<void> {
   const url = await resolveServiceUrl();
   if (url === null) {
-    patchService({ status: "none" });
+    // Null has exactly two sources, distinguishable HERE: an injected
+    // `serveUrl: null` is the honest no-service page (tests, the CLI
+    // fallback — the terminal "none" of before, byte for byte); with
+    // nothing injected the null can only be the Tauri sidecar timing
+    // out (the web probe path never returns null), which deserves its
+    // own failure copy instead of masquerading as "no service".
+    if (readConfig().serveUrl === null) {
+      patchService({ status: "none" });
+      return;
+    }
+    patchService({
+      status: "sidecar-timeout",
+      client: null,
+      error: SIDECAR_TIMEOUT_ERROR,
+    });
     return;
   }
   patchService({ status: "connecting", url });

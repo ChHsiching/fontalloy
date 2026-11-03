@@ -427,6 +427,72 @@ body {
   color: var(--ink);
 }
 
+/* The connecting variant's subcopy (sidecar cold start). */
+.catalog-sub {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--ink3);
+}
+
+/* The short ready tag at the head's right edge — appears only when
+ * every family is done (and the materializer, when it runs, has
+ * finished); the state machine closes the panel a moment later. */
+.catalog-ready {
+  float: right;
+  font-size: 12px;
+  color: var(--ac);
+  white-space: nowrap;
+}
+
+/* The real progress bar (x/N monotone): a thin track between the head
+ * and the list, filled by transform only (no layout per tick). The
+ * indeterminate state (sidecar window / the document fetch of a true
+ * first start, before any countable row exists) sweeps instead. */
+.catalog-bar {
+  flex: none;
+  height: 4px;
+  margin: 2px 0 0;
+  border-radius: 2px;
+  background: var(--ln);
+  overflow: hidden;
+}
+
+.catalog-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--ac);
+  transform-origin: left center;
+  transform: scaleX(0);
+  transition: transform 0.3s ease-out;
+}
+
+.catalog-bar.indeterminate i {
+  transform: none;
+  width: 34%;
+  border-radius: 2px;
+  animation: catalog-bar-sweep 1.2s ease-in-out infinite;
+}
+
+.catalog-bar.complete i {
+  background: var(--ink);
+}
+
+@keyframes catalog-bar-sweep {
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(310%);
+  }
+}
+
+/* The materializer tail row rides the list's own row chrome. */
+.catalog-family.catalog-materializer {
+  color: var(--ink2);
+  font-size: 12.5px;
+}
+
 .catalog-list {
   min-height: 0;
   max-height: 300px;
@@ -450,7 +516,15 @@ body {
   font-size: 13px;
 }
 
-.catalog-family[data-status="verified"] {
+/* 校验中 — the quiet stat/hash pass (the old selector keyed
+ * "verified", a state the six-state machine never reports). */
+.catalog-family[data-status="verifying"] {
+  color: var(--ink2);
+}
+
+/* The seed rows (manifest not known yet): same quiet weight as the
+ * queued pending rows — honest placeholder, not an error state. */
+.catalog-family[data-status="seed"] {
   color: var(--ink2);
 }
 

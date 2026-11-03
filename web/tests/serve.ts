@@ -107,6 +107,13 @@ export async function startServe(opts: {
    */
   catalogReleaseOrigin?: string;
   catalogDir?: string;
+  /**
+   * Extra environment for the serve subprocess (the gui suite's env
+   * passthrough shape): merged over this process's environment, so
+   * the spawn inherits everything it did before plus the overrides —
+   * the sync-delay seam and any future serve-side test knob.
+   */
+  env?: Record<string, string>;
 }): Promise<ServeHandle> {
   const workDir = mkdtempSync(path.join(tmpdir(), "fontalloy-web-serve-"));
   const args = [
@@ -137,6 +144,7 @@ export async function startServe(opts: {
   const child: ChildProcess = spawn("uv", args, {
     cwd: REPO_ROOT,
     stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, ...(opts.env ?? {}) },
   });
   let stopped = false;
   let stderrTail = "";

@@ -47,12 +47,14 @@ import {
   type CatalogFaceDoc,
   type CatalogFamilyDoc,
   type CatalogFamilyProgress,
+  type CatalogMaterializerProgress,
   type CatalogState,
   type LoadedFont,
 } from "../state";
 import { evictCssFamily, registerCatalogUrlFaces } from "../fonts/registry";
 import type { CpIntervals } from "../state";
-import { synthStore } from "../service/state";
+import { isTauri, readConfig } from "../platform/config";
+import { synthStore, SIDECAR_TIMEOUT_ERROR } from "../service/state";
 
 /** The GET /catalog/status document (issue #26's state machine). */
 export interface CatalogStatusDoc {
@@ -62,6 +64,20 @@ export interface CatalogStatusDoc {
   tag: string | null;
   catalog_dir: string | null;
   families: Array<{ family: string; state: CatalogFamilyProgress["state"]; error: string | null }>;
+  /**
+   * The release-document phase (present whenever the sync is
+   * configured; absent against serves predating the key — the
+   * screen's compatibility fallback).
+   */
+  document?: "fetching" | "loaded";
+  /**
+   * The warm classification (present whenever the sync is
+   * configured): true = this run's stat walk passes for every family,
+   * i.e. the launch downloads nothing.
+   */
+  warm?: boolean;
+  /** The materializer's last snapshot (absent until it reports). */
+  materializer?: CatalogMaterializerProgress;
 }
 
 /** The GET /catalog/families document (issue #38). */
@@ -210,8 +226,40 @@ export function startCatalogServe(): void {
     void runCatalogPoll(base);
     void pollStars(base);
   };
+  // The desktop sidecar's cold start: between app boot and the shell's
+  // serve_url answer the workspace would stare back with no hint while
+  // the bundled service unpacks. Only the real Tauri shell with
+  // NOTHING injected can hit that window — the triple gate keeps the
+  // web probe (a 1.5 s verdict — a screen would only flicker) and the
+  // injected-null honest no-service pages (tests) exactly as silent as
+  // before. The screen renders its connecting variant for this state.
+  if (
+    isTauri() &&
+    readConfig().serveUrl === undefined &&
+    synthStore.get().service.client === null
+  ) {
+    patchCatalog({ status: "connecting", screen: true });
+  }
   const unsubscribe = synthStore.subscribe(() => {
-    const client = synthStore.get().service.client;
+    const service = synthStore.get().service;
+    // The sidecar never came up (serve_url -> null after the shell's
+    // 120 s budget): close the connecting screen and land the honest
+    // failure — the picker footer shows the string verbatim through
+    // the existing unavailable branch, and local fonts never cared.
+    // The subscription STAYS ARMED: the CLI panel's 重新检测 calls
+    // connectService() again (the shell's serve_url gets a fresh 120 s
+    // budget per invoke), and a late sidecar must still light the
+    // catalog poller up — unsubscribing here stranded the catalog at
+    // unavailable while synthesize kept working.
+    if (service.status === "sidecar-timeout") {
+      patchCatalog({
+        status: "unavailable",
+        error: SIDECAR_TIMEOUT_ERROR,
+        screen: false,
+      });
+      return;
+    }
+    const client = service.client;
     if (client !== null) {
       unsubscribe();
       begin(client.baseUrl);
@@ -259,11 +307,31 @@ async function runCatalogPoll(base: string): Promise<void> {
       patchCatalog({ status: "none", error: undefined, screen: false });
       break;
     }
+    // Warm-boot suppression: a warm run (the serve's own stat-only
+    // walk passes for every family — it downloads nothing) must not
+    // flash a "首次运行" download screen for what is a pure launch
+    // check. Suppression requires the family list to be known and no
+    // family in flight; a warm===true run that still reports
+    // downloading/extracting is the DEFENSIVE RELEASE (the disk or the
+    // release document changed between runs — the classification's
+    // only stale window) and the full progress screen comes back.
+    // warm===undefined (a serve predating the key) is treated as cold.
+    const warmSuppress =
+      status.warm === true &&
+      status.families.length > 0 &&
+      !status.families.some(
+        (family) =>
+          family.state === "downloading" || family.state === "extracting",
+      );
     patchCatalog({
       status: status.state,
       error: status.state === "unavailable" ? (status.error ?? "") : undefined,
       progress: status.families,
-      screen: status.state === "bootstrapping" && !screenDismissed,
+      document: status.document,
+      warm: status.warm,
+      materializer: status.materializer,
+      screen:
+        status.state === "bootstrapping" && !screenDismissed && !warmSuppress,
     });
     let scanning = false;
     try {
@@ -274,9 +342,20 @@ async function runCatalogPoll(base: string): Promise<void> {
     } catch {
       // The status is the truth; documents refresh on the next pass.
     }
+    // Review #2: a cold first run is NOT done when the sync is — the
+    // materializer's entry sweep (the fetched layout the resolver
+    // needs) keeps the screen honestly busy until it lands; without
+    // this the window between all-families-done and READY is a single
+    // yield (~2ms in production) and the materializer line was never
+    // reachable. Unavailable still closes: a broken serve has no
+    // materializer worth waiting for.
+    const mat = status.materializer;
+    const matActive =
+      mat !== undefined && mat.phase !== "done" && mat.phase !== "failed";
     if (
-      (status.state === "ready" && !scanning) ||
-      status.state === "unavailable"
+      ((status.state === "ready" && !scanning) ||
+        status.state === "unavailable") &&
+      !matActive
     ) {
       patchCatalog({ screen: false });
       break;

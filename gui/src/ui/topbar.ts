@@ -37,6 +37,12 @@ function disabledReason(): string | null {
   if (service.status === "connecting") {
     return "正在连接本地合成服务，请稍候。";
   }
+  if (service.status === "sidecar-timeout") {
+    // The desktop shell's own service never came up — an explicit
+    // branch (the fall-through would return null with both picks made,
+    // leaving a clickable action over a dead client).
+    return `${service.error ?? "字体服务未能启动"}。合成功能需要服务运行；字体加载与字符映射不受影响。`;
+  }
   if (service.status === "unavailable") {
     return (
       "本地合成服务不可用" +
@@ -84,9 +90,15 @@ export function mountTopbar(root: HTMLElement): TopBar {
         notice.hidden = false;
         // Without a service the flow offers the CLI alternative (the
         // absorbed #22 builder): copy-CLI command + recipe YAML
-        // download as the workspace's own no-service state.
+        // download as the workspace's own no-service state. A timed-out
+        // sidecar is the same dead end for live merging — the CLI path
+        // is the honest alternative there too.
         const { service } = synthStore.get();
-        if (service.status === "none" || service.status === "unavailable") {
+        if (
+          service.status === "none" ||
+          service.status === "unavailable" ||
+          service.status === "sidecar-timeout"
+        ) {
           openCliPanel();
         }
         return;
