@@ -315,9 +315,11 @@ test.describe("sidecar synthesize", () => {
       await expect(disclosure).toHaveText("查看报告");
       // Round 11 (panel sizing): while calm the panel is COMPACT —
       // content-sized, strictly under the ceiling — and it is NOT in
-      // the expanded state.
+      // the expanded state. The ceiling mirrors app.css's
+      // .build-panel max-height min(64vh, 560px) (raised from 60vh/520
+      // by the f27→f28 fold-cue round).
       const ceiling = await page.evaluate(
-        () => Math.min(window.innerHeight * 0.6, 520),
+        () => Math.min(window.innerHeight * 0.64, 560),
       );
       const compactHeight = await panel.evaluate((el) => el.clientHeight);
       expect(compactHeight).toBeLessThan(ceiling);
