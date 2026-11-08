@@ -80,6 +80,19 @@ let pendingRegister: ((files: File[]) => Promise<void>) | null = null;
 const localFlows = new Map<PickerRole, (files: File[]) => Promise<void>>();
 let lastOpenedRole: PickerRole | null = null;
 
+/** The mounted pickers by role: the first-run catalog screen's start
+ *  CTA opens the EN picker directly (mountPicker registers here) — the
+ *  same open path a click on the sidebar card takes, so the freshly
+ *  synced catalog is the first thing the user sees after the overlay
+ *  (issue #17 review: the first run ended on the rail's unpicked
+ *  尚未加载字体 cards with no visible result). */
+const pickerRegistry = new Map<PickerRole, FontPicker>();
+
+/** Open a mounted picker's popup by role (no-op when not mounted). */
+export function openFontPicker(role: PickerRole): void {
+  pickerRegistry.get(role)?.open();
+}
+
 /** The local-load flow of the slot a load should land in. */
 function localFlowFor(
   role: PickerRole | null,
@@ -1194,7 +1207,7 @@ export function mountPicker(
   const unsubscribeSynth = synthStore.subscribe(rerender);
   rerender();
 
-  return {
+  const picker: FontPicker = {
     open: () => {
       lastOpenedRole = options.role;
       popup.open();
@@ -1202,8 +1215,11 @@ export function mountPicker(
     close: () => popup.close(),
     destroy: () => {
       localFlows.delete(options.role);
+      pickerRegistry.delete(options.role);
       unsubscribeStars();
       unsubscribeSynth();
     },
   };
+  pickerRegistry.set(options.role, picker);
+  return picker;
 }

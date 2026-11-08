@@ -1,6 +1,8 @@
 import catalogManifest from "../data/catalog.json";
 import { store, type CatalogFamilyProgress } from "../state";
 import { skipCatalogScreen } from "./serve";
+import { openFontPicker } from "../ui/picker";
+import { appMessages } from "../ui/charmap";
 import { brandMark } from "../kit/topBar";
 import { sep } from "../kit/icons";
 
@@ -79,11 +81,12 @@ export function mountCatalogScreen(): void {
         <h2 class="catalog-title"><span data-role="title-a">首次运行</span><span data-role="title-sep">${sep().outerHTML}</span><span data-role="title-b">正在下载字体目录</span></h2>
         <div class="catalog-sub" data-role="catalog-sub" hidden>首次启动需解压字体服务，约需几十秒</div>
         <div class="catalog-progress">已完成 <b data-stat="catalog-done">0</b> / <span data-stat="catalog-total">0</span> 个字体家族<span data-stat="catalog-checking" hidden>（清单核对中…）</span></div>
-        <span class="catalog-ready" data-stat="catalog-ready" hidden>目录就绪</span>
+        <span class="catalog-ready" data-stat="catalog-ready">目录就绪</span>
       </div>
       <div class="catalog-bar" data-role="catalog-bar"><i></i></div>
       <div class="catalog-list"></div>
       <div class="catalog-actions">
+        <button class="catalog-start" type="button" hidden>开始使用</button>
         <button class="catalog-skip" type="button">跳过，稍后再说</button>
       </div>
     </div>
@@ -103,6 +106,8 @@ export function mountCatalogScreen(): void {
   const readyTag = screen.querySelector<HTMLElement>(
     "[data-stat='catalog-ready']",
   )!;
+  /** The exit-fade timer (see the hide path in render). */
+  let outTimer: ReturnType<typeof setTimeout> | undefined;
   const titleA = screen.querySelector<HTMLElement>("[data-role='title-a']")!;
   const titleB = screen.querySelector<HTMLElement>("[data-role='title-b']")!;
   const titleSep = screen.querySelector<HTMLElement>(
@@ -112,8 +117,26 @@ export function mountCatalogScreen(): void {
   const bar = screen.querySelector<HTMLElement>("[data-role='catalog-bar']")!;
   const barFill = bar.querySelector<HTMLElement>("i")!;
   const skip = screen.querySelector<HTMLButtonElement>(".catalog-skip")!;
+  const start = screen.querySelector<HTMLButtonElement>(".catalog-start")!;
 
-  skip.addEventListener("click", () => skipCatalogScreen());
+  /** Whether a USER click closed the screen (the serve's settle did not). */
+  let userDismissed = false;
+  skip.addEventListener("click", () => {
+    userDismissed = true;
+    skipCatalogScreen();
+  });
+  // The completion CTA rides the exact close path of the dismiss copy,
+  // then hands the fresh catalog over: opening the EN picker makes the
+  // synced families immediately visible against the rail's unpicked
+  // 尚未加载字体 cards (issue #17 review: the first run ended with no
+  // visible result). Only this click branch — the auto-close path
+  // (materializer → settled) announces itself with the handoff toast
+  // in render instead.
+  start.addEventListener("click", () => {
+    userDismissed = true;
+    skipCatalogScreen();
+    openFontPicker("en");
+  });
 
   /** seed (manifest unknown) or serve (status authoritative). */
   let mode: "seed" | "serve" | null = null;
@@ -135,7 +158,23 @@ export function mountCatalogScreen(): void {
 
   const render = (): void => {
     const { catalog } = store.get();
-    screen.hidden = !catalog.screen;
+    // True only on the render that STARTS the exit fade without a user
+    // click behind it — the serve's own settle (see the handoff toast).
+    let autoClosed = false;
+    // The exit fade (the reviews' "hard cut"): hide after the
+    // animation, cancel if the screen comes back within the window.
+    if (catalog.screen) {
+      clearTimeout(outTimer);
+      screen.classList.remove("out");
+      screen.hidden = false;
+    } else if (!screen.hidden && !screen.classList.contains("out")) {
+      screen.classList.add("out");
+      outTimer = setTimeout(() => {
+        screen.classList.remove("out");
+        screen.hidden = true;
+      }, 180);
+      autoClosed = !userDismissed;
+    }
 
     // The connecting variant: the sidecar window owns the panel before
     // any status sample exists. Its label is its own — the download
@@ -146,6 +185,7 @@ export function mountCatalogScreen(): void {
       titleA.textContent = "正在启动字体服务";
       titleSep.hidden = true;
       titleB.hidden = true;
+      sub.textContent = "首次启动需解压字体服务，约需几十秒";
       sub.hidden = false;
     } else {
       screen.setAttribute("aria-label", "首次运行：下载字体目录");
@@ -246,8 +286,18 @@ export function mountCatalogScreen(): void {
       }
       materializerRow.textContent =
         mat!.phase === "entries" && mat!.total
-          ? `条目工件下载中 ${mat!.done ?? 0}/${mat!.total}`
-          : "条目工件下载中…";
+          ? `字体文件准备中 ${mat!.done ?? 0}/${mat!.total}`
+          : "字体文件准备中…";
+      // One story across the two progress layers (issue #17 reviews:
+      // "4/4 done" next to "still downloading" read as a contradiction):
+      // the sub line bridges the head's download title and the tail
+      // row's file count — the families are all in, what is still
+      // arriving is the font files themselves. The connecting window
+      // owns the sub line elsewhere.
+      if (!connecting) {
+        sub.textContent = "字体家族已全部下载，正在准备字体文件…";
+        sub.hidden = false;
+      }
     } else if (materializerRow !== null) {
       materializerRow.remove();
       materializerRow = null;
@@ -262,12 +312,53 @@ export function mountCatalogScreen(): void {
     total.textContent = String(entries.length);
     checking.hidden = loaded;
     const complete = allDone && !matActive;
-    readyTag.hidden = !complete;
+    // The auto-close handoff (issue #17 review trail, the residual
+    // "closed itself, then nothing" path): when the serve's settle —
+    // never a user click — closes a COMPLETED screen, the workspace
+    // underneath is the rail's unpicked 尚未加载字体 cards with no
+    // guide at all. One short toast points at the rail. The CTA click
+    // opens the EN picker itself (no double guidance) and the skip is
+    // a deliberate "later" — neither toasts. The status gate keeps the
+    // failure closes honest: the unavailable fetch-break carries the
+    // previous poll's all-done rows, but never the settled "ready".
+    if (autoClosed && complete && catalog.status === "ready") {
+      appMessages().push({
+        icon: "check",
+        title: "字体目录已就绪——点击侧栏选择字体",
+        autoDismiss: 4000,
+      });
+    }
+    // Visibility, not display: the tag's float space is reserved from
+    // the first frame, so its appearance cannot reflow the head (the
+    // dual-axis reviews caught a 9px jump here).
+    readyTag.classList.toggle("on", complete);
+    // The terminal title: the client's materializer window keeps the
+    // panel up for a while at 4/4 — the head must not keep saying
+    // "downloading" next to the ready tag.
+    titleB.textContent = complete ? "字体目录已就绪" : "正在下载字体目录";
+    // The terminal actions: "skip, later" is the wrong sole control at
+    // 4/4 — completion swaps in the start CTA (same close path) and
+    // hides the dismiss copy; mid-run the dismiss copy is unchanged.
+    start.hidden = !complete;
+    skip.hidden = complete;
     bar.classList.toggle("complete", complete);
     // Indeterminate while nothing is countable yet — the sidecar window
     // or the ultra-early document fetch of a true first start.
     const indeterminate = connecting || entries.length === 0;
     bar.classList.toggle("indeterminate", indeterminate);
+    // Liveness between family completions — the window the sweep never
+    // covered: once rows exist and the count is moving (0 < done <
+    // total) the fill breathes, so a multi-second wait inside one
+    // family's download never reads as a frozen panel. The materializer
+    // window needs the same breath: at done == total the count stops
+    // moving while matActive still keeps the panel honestly busy
+    // (complete is allDone && !matActive), so the FULL fill pulses until
+    // the sweep truly settles — and the pulse falls back the very render
+    // matActive does, before `complete` can style the bar. The discrete
+    // scaleX steps and their transition stay exactly as they were.
+    const busy = !indeterminate && doneCount > 0 && doneCount < entries.length;
+    const matBusy = allDone && matActive;
+    bar.classList.toggle("busy", busy || matBusy);
     barFill.style.transform =
       entries.length === 0 || indeterminate
         ? "scaleX(0)"

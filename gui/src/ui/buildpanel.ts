@@ -1334,11 +1334,31 @@ export function mountBuildPanel(): void {
   // calm and takes its full ceiling ONLY while a report disclosure is
   // open. The class flips on the details' toggle events and after every
   // store render (a dismissed row may have been the open one).
+  // f27→f28 (report fold affordance): the same sync owns .has-more-below
+  // — while the rows region holds content below the fold, the panel's
+  // bottom edge frosts over (app.css) instead of ending flat. The
+  // MECHANISM was already correct in f27; what failed was the cue's
+  // RENDERING — the f27 ramp was surface-on-surface (invisible over
+  // the white panel, pixel-verified) and the recolored scrollbar thumb
+  // never paints in headless capture Chromium, so no screenshot could
+  // show the outlet. app.css now tints the frost with real ink; this
+  // side additionally re-checks on viewport RESIZE, because the ceiling
+  // is vh-based — the overflow state can flip when the window moves,
+  // and a stale cue (frost over nothing, or a flat edge over hidden
+  // rows) is exactly the ambiguity this affordance exists to kill. The
+  // 1px slack keeps fractional scroll heights from pinning the cue at
+  // the scroll end.
   const syncPanelSize = (): void => {
     const reportOpen =
       rowsEl.querySelector("details.report-details[open]") !== null;
     panel.classList.toggle("is-report-open", reportOpen);
+    panel.classList.toggle(
+      "has-more-below",
+      rowsEl.scrollHeight - rowsEl.scrollTop - rowsEl.clientHeight > 1,
+    );
   };
+  rowsEl.addEventListener("scroll", syncPanelSize, { passive: true });
+  window.addEventListener("resize", syncPanelSize);
 
   // Round 11 (owner item 6) + round 19 (the real cancellation): the
   // panel's own close × — the kit close glyph with the toast ×'s

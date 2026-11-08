@@ -427,7 +427,9 @@ body {
   color: var(--ink);
 }
 
-/* The connecting variant's subcopy (sidecar cold start). */
+/* The head's subcopy: the connecting variant (sidecar cold start) and
+ * the materializer bridge line (families all downloaded, font files
+ * still preparing). */
 .catalog-sub {
   margin: 4px 0 0;
   font-size: 12px;
@@ -442,6 +444,13 @@ body {
   font-size: 12px;
   color: var(--ac);
   white-space: nowrap;
+  /* Always in flow (space reserved); the render toggles visibility so
+   * the completion moment cannot reflow the head. */
+  visibility: hidden;
+}
+
+.catalog-ready.on {
+  visibility: visible;
 }
 
 /* The real progress bar (x/N monotone): a thin track between the head
@@ -464,7 +473,46 @@ body {
   background: var(--ac);
   transform-origin: left center;
   transform: scaleX(0);
-  transition: transform 0.3s ease-out;
+  transition:
+    transform 0.3s ease-out,
+    background-color 0.4s ease;
+}
+
+/* The exit fade of the whole panel (the render hides after it). */
+.catalog-screen.out {
+  animation: catalog-screen-out 0.18s ease-in forwards;
+}
+
+@keyframes catalog-screen-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/* Liveness for the in-progress windows the count alone cannot cover:
+ * the between-completions download window (0 < done < total) AND the
+ * materializer window (done == total while the entries sweep still
+ * runs, so the full bar keeps breathing until it truly completes).
+ * The discrete scaleX steps stay untouched — the fill merely breathes
+ * (opacity, an axis nothing else animates) while work is outstanding,
+ * so a multi-second wait inside one family's download, or a stalled
+ * materializer tail, never reads as a frozen panel. Deliberately
+ * BEFORE .indeterminate: on the rare connecting-with-rows overlap both
+ * classes match, and the sweep (the stronger signal) must keep
+ * precedence. */
+.catalog-bar.busy i {
+  animation: catalog-bar-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes catalog-bar-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.55;
+  }
 }
 
 .catalog-bar.indeterminate i {
@@ -560,10 +608,35 @@ body {
   opacity: 0.8;
 }
 
+/* Height reservation: completion swaps the bare dismiss link (~17px)
+ * for the 30px CTA — reserving the taller height here keeps that swap
+ * from jumping the panel; centering spares the link the stretch. */
 .catalog-actions {
   flex: none;
   display: flex;
+  align-items: center;
+  min-height: 30px;
   justify-content: flex-end;
+}
+
+/* The completion CTA: at 4/4 the dismiss copy ("skip, later") is the
+ * wrong sole control — the panel's single action becomes 开始使用, on
+ * the same close path. Kit-primary accent (no display is set here, so
+ * the hidden attribute keeps working); the dismiss copy returns
+ * unchanged while the download still has anything to wait for. */
+.catalog-start {
+  min-height: 30px;
+  padding: 0 16px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  font-weight: 500;
+  background: var(--ac);
+  color: var(--acink);
+  transition: background-color 100ms ease-out;
+}
+
+.catalog-start:hover {
+  background: var(--acs);
 }
 
 /* ---------- build panel (issue #16) ----------
@@ -585,7 +658,10 @@ body {
   bottom: 52px; /* the 42px stats bar plus a gap */
   z-index: 880;
   width: 400px;
-  max-height: min(60vh, 520px); /* the ceiling; content-sized below it */
+  /* The ceiling; content-sized below it. 560px (not 520) so a full
+   * report's last rule row clears the fold at the standard 1440x900
+   * window — the frost/scroll cue below only carries shorter ones. */
+  max-height: min(64vh, 560px);
   display: flex;
   flex-direction: column;
   border-radius: 12px;
@@ -600,9 +676,43 @@ body {
 }
 
 /* The expanded state: only a report disclosure being open buys the
-   full ceiling (round 11). */
+   full ceiling (round 11; raised with the panel ceiling above). */
 .build-panel.is-report-open {
-  height: min(60vh, 520px);
+  height: min(64vh, 560px);
+}
+
+/* f27→f28 (report fold affordance — the outlet that survives every
+   evidence channel): a report taller than the ceiling ends at the
+   panel's bottom edge, and the region scrolls — but round f27's cue
+   proved invisible. Its ramp was surface-color-on-surface (transparent
+   → var(--sf)) over a var(--sf) panel: when the fold lands on the rows
+   region's bottom padding the overlay is indistinguishable from
+   nothing (pixel-verified — the band region sampled pure #ffffff).
+   Its other half, the recolored scrollbar thumb, cannot render at all
+   in the campaign's captures: headless Chromium paints no scrollbars
+   (pixel-verified — the overflowing rows region's gutter is pure
+   surface in every shot). So while content remains below the fold,
+   buildpanel.ts keeps .has-more-below on the panel and this overlay
+   frosts the bottom edge with REAL ink tint — the standard "there is
+   more below" cue that reads in both themes, headed or headless, at
+   any zoom. Out of flow and pointer-transparent, so scrolling stays
+   live; the class drops exactly at the scroll end, where the report's
+   last line rests fully readable inside the rows region's 14px bottom
+   padding, clear of any frost. */
+.build-panel.has-more-below::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 24px;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    color-mix(in srgb, var(--ink) 8%, transparent) 55%,
+    color-mix(in srgb, var(--ink) 14%, transparent)
+  );
 }
 
 /* The panel's ?-popovers (mounted on <body> by the kit) stack ABOVE
@@ -669,6 +779,21 @@ body {
    * a scrollbar for two frames. 14px of reserved space keeps the
    * transient inside the region, so the scrollbar never appears. */
   padding: 6px 0 14px;
+}
+
+/* f27/f28: the rows region's scrollbar must READ as one — in HEADED
+ * Chromium (the real app), where scrollbars do paint. The kit's global
+ * thumb (--ln2 behind a 2px transparent border) all but disappears
+ * against the panel, which is how an overflowing report could look
+ * clipped with no way down. Only the thumb's COLOR rises to the dimmer
+ * ink — the 8px width, the reserved gutter and the padding above stay
+ * exactly as they are, so content width still never changes when a
+ * scrollbar appears (the oscillation guard above). Headless capture
+ * Chromium paints no scrollbars at all (verified this round), so in
+ * screenshots the .has-more-below frost above is the outlet that
+ * carries the signal. */
+.build-rows::-webkit-scrollbar-thumb {
+  background: var(--ink3);
 }
 
 .build-row {
