@@ -34,15 +34,41 @@ export interface PlatformCapabilities {
   sidecar: boolean;
   /**
    * Built fonts land in a configurable output directory (round 12):
-   * the 设置 entry 输出目录 exists and saves need no dialog. The plain
-   * browser keeps its own download flow (the browser manages where
-   * downloads go), so the entry does not render there.
+   * the 设置 entry 输出目录 exists and saves need no dialog. True only
+   * where the shell really speaks the command bridge the row's
+   * commands (`default_output_dir`, `pick_output_dir`) ride on — see
+   * `shellHasInvokeBridge`. The plain browser keeps its own download
+   * flow (the browser manages where downloads go), and so does a
+   * marker-only stub without the bridge (the dev browser's test
+   * fakes): neither ever renders the entry — the inventory's "dev
+   * never renders" behavior. The probe is frozen at load, so the
+   * answer cannot flap between mounts or captured frames.
    */
   outputDirPicker: boolean;
 }
 
+/**
+ * Whether the shell behind the marker exposes the command bridge
+ * (`__TAURI_INTERNALS__.invoke`) every shell command rides on; the
+ * real Tauri v2 injection always defines it, while the dev browser's
+ * marker-only stubs (a bare `{}`) do not. Evaluated ONCE at load,
+ * beside `target`: the fact is fixed for the whole load, so the
+ * outputDirPicker capability below is a stable per-load decision —
+ * never a runtime flag that flips between mounts or frames.
+ */
+const shellHasInvokeBridge: boolean =
+  target === "tauri" &&
+  typeof (globalThis.__TAURI_INTERNALS__ as { invoke?: unknown } | undefined)
+    ?.invoke === "function";
+
 export function capabilities(t: FrontendTarget = target): PlatformCapabilities {
   return t === "tauri"
-    ? { localFilePicker: true, sidecar: true, outputDirPicker: true }
+    ? {
+        localFilePicker: true,
+        sidecar: true,
+        // Frozen at load (shellHasInvokeBridge): the row renders where
+        // the shell can honor it, and nowhere else — deterministically.
+        outputDirPicker: shellHasInvokeBridge,
+      }
     : { localFilePicker: false, sidecar: false, outputDirPicker: false };
 }

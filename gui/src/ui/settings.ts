@@ -21,9 +21,13 @@ import {
  * from the base font's faces). The screen owns only the VALUE wiring.
  *
  * Round 12 (owner item 3) adds one more row on targets that have a
- * real output directory (the Tauri shell): 输出目录 — where 合成字体
+ * real output directory (the Tauri shell's command bridge — see
+ * `capabilities` in the platform adapter): 输出目录 — where 合成字体
  * writes its artifacts, no dialog in the path. The plain browser
- * never renders it (its save is the browser's own download flow).
+ * never renders it (its save is the browser's own download flow), and
+ * the platform guard reads load-frozen facts, so the row's presence
+ * is identical in every frame of a load — the inventory's "dev never
+ * renders" behavior, stable across captures.
  * Round 13 (owner item 3) makes that row a single line — see
  * `middleEllipsize` below.
  */
@@ -256,8 +260,12 @@ export function mountSettings(root: HTMLElement): void {
   }
 
   // Round 12: the output-directory row, only where a real output
-  // directory exists (the Tauri shell; the browser download flow has
-  // none — the row would promise something it cannot honor).
+  // directory exists (the Tauri shell's command bridge; the browser
+  // download flow has none — the row would promise something it
+  // cannot honor). capabilities() answers from load-frozen facts, so
+  // this gate reads the same on every mount and in every captured
+  // frame of a load: no runtime flap, and the dev browser (marker
+  // stubs without the bridge included) never renders the row.
   if (capabilities().outputDirPicker) {
     root.appendChild(mountOutputDirRow());
   }
