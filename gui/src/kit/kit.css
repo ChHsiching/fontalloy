@@ -1150,9 +1150,31 @@
   color: var(--dgr);
 }
 
-/* Status note / error line above the footer — page text, never hover. */
+/*
+ * Status note / error line above the footer — page text, never hover.
+ *
+ * f2 (round 2): both lines are height-BOUNDED. The popup keeps its
+ * frame cap (max-height: 300px on .kit-pk, the anti-overrun bound),
+ * and these rows are flex:none — an unbounded multi-failure error
+ * join (无法加载 <sha256>-<name>：<path>：<reason>；… per file) grew
+ * the fixed part past that cap, so overflow:hidden sliced the footer
+ * row off the card's bottom edge: the 加载本地字体文件 button read
+ * cut at the waist and the 或输入路径 fallback field (the list's
+ * empty-state entry — a deliberate row, kept) fell entirely below
+ * the clip. The caps keep the worst-case fixed stack (search row +
+ * note + error + footer) inside the 300px budget — 45 + 50 + 78 +
+ * 41 ≈ 214px — so the error's height COUNTS into the card while the
+ * row list still keeps ~86px and the footer never clips; longer text
+ * scrolls inside its own box (full text stays in the DOM — the
+ * structured error summary is the fonts-errors batch's job, not a
+ * CSS ellipsis).
+ */
 .kit-pkn {
   flex: none;
+  /* 3 lines ≈ 3 × 14.7px + 6px top padding. */
+  max-height: 50px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 6px 12px 0;
   font-size: 10.5px;
   color: var(--ink3);
@@ -1161,6 +1183,15 @@
 
 .kit-pke {
   flex: none;
+  /* 7 lines ≈ 7 × 14.7px + 10px padding + 2px border. One sanitized
+   * failure card wraps to ~5 lines at this width (basename + verdict
+   * + innermost cause, overflow-wrap breaking long hashes); 72px cut
+   * its last line at exactly that length. 7 lines holds one full
+   * failure unclipped; several failures still scroll inside the box
+   * so the popup below (rows + footer) stays reachable. */
+  max-height: 114px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   margin: 6px 8px 0;
   padding: 5px 8px;
   border: 1px solid var(--dgr);

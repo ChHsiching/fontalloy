@@ -25,6 +25,7 @@ import {
   registerCatalogUrlFaces,
   loadDefaultSlotWithBudget,
   FontLoadBudgetError,
+  describeFontFileFailure,
 } from "./registry";
 import { readConfig } from "../platform/config";
 import type { LocalFontsDocument } from "../service/client";
@@ -78,12 +79,6 @@ interface FacePlan {
   glyphs: number;
   intervals: CpIntervals;
   placeholderIntervals: CpIntervals;
-}
-
-/** Basename of a path, Windows or POSIX separators. */
-function baseName(path: string): string {
-  const parts = path.replace(/\\/g, "/").split("/");
-  return parts[parts.length - 1]!.toLowerCase();
 }
 
 /**
@@ -146,7 +141,9 @@ export async function registerLocalFontFiles(
       };
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
-      failures.push(`无法加载 ${file.name}：${reason}`);
+      // The upload rejection carries the serve's wrapped, path-bearing
+      // verdict; the failure card renders the cleaned one-line form.
+      failures.push(describeFontFileFailure(file.name, reason).summary);
     }
     read++;
     options.onProgress?.(read, files.length, "reading");
@@ -169,7 +166,7 @@ async function registerScannedFamilies(
     new Promise((resolve) => setTimeout(resolve, delayMs));
   const failures: string[] = [];
   for (const skip of scanDocument.skipped) {
-    failures.push(`无法加载 ${baseName(skip.path)}：${reason(skip.error)}`);
+    failures.push(describeFontFileFailure(skip.path, reason(skip.error)).summary);
   }
 
   // The registering phase: one tick per face, document order

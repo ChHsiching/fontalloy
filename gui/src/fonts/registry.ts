@@ -111,6 +111,141 @@ export const FONT_LOAD_BUDGET_MS = 30_000;
 export class FontLoadBudgetError extends Error {}
 
 /**
+ * Browser-native load-failure messages. A URL FontFace's byte fetch
+ * rejects with the BROWSER's own English wording — Firefox's
+ * NetworkError ``A network error occurred.``, its fetch twin
+ * ``NetworkError when attempting to fetch resource.``, Chrome's
+ * ``Failed to fetch``, WebKit's ``Load failed`` — and every consumer
+ * of the default-slot load used to splice ``err.message`` into its
+ * error surface verbatim, so a failed system-font pick showed the
+ * untranslated runtime string (the fonts-errors round-2 finding).
+ * These phrasings — and any DOMException named ``NetworkError`` —
+ * map to one localized copy; everything else passes through.
+ */
+const NETWORK_LOAD_FAILURE_MESSAGES: ReadonlySet<string> = new Set([
+  "A network error occurred.",
+  "NetworkError when attempting to fetch resource.",
+  "Failed to fetch",
+  "Load failed",
+]);
+
+/** The localized line the browser-native network failures render as. */
+const NETWORK_LOAD_FAILURE_COPY = "网络错误：无法从服务获取字体数据。";
+
+/**
+ * Localize a font-load rejection's browser-native message: the
+ * rejection of a URL FontFace's byte fetch is constructed by the
+ * browser (``document.fonts.load``), so its message is runtime
+ * English original no locale can translate after the fact. Known
+ * network phrasings (and NetworkError DOMExceptions) come back as a
+ * new Error carrying the localized copy with the original attached
+ * as ``cause``; every other rejection is returned untouched, message
+ * and identity both — the budget error above all.
+ */
+export function localizedFontLoadError(err: unknown): unknown {
+  if (
+    err instanceof Error &&
+    (err.name === "NetworkError" ||
+      NETWORK_LOAD_FAILURE_MESSAGES.has(err.message))
+  ) {
+    return new Error(NETWORK_LOAD_FAILURE_COPY, { cause: err });
+  }
+  return err;
+}
+
+/**
+ * One font FILE's load failure as a structured card. The serve's scan
+ * verdict for a rejected file is a wrapped, path-bearing string — the
+ * scan pipeline formats ``file is not a valid font: <path> (<cause>)``
+ * and wraps that template once more around the fontTools cause, so
+ * the raw verdict names the file's scratch/temp path twice and nests
+ * its parentheticals three deep; splicing it verbatim onto an error
+ * line rendered a wall of raw red text. This object carries what a
+ * failure surface actually renders: the file's bare display name, a
+ * cleaned one-line reason (paths stripped, the duplicated wrapper
+ * collapsed), and the ready summary line.
+ */
+export interface FontFileFailure {
+  /** The file's display name — its basename, never a directory. */
+  file: string;
+  /** The cleaned reason: no paths, no duplicated wrapper nesting. */
+  reason: string;
+  /** The ready card line: 无法加载 file：reason */
+  summary: string;
+}
+
+/** The scan verdict's leading phrase for a file that is not a font. */
+const NOT_A_VALID_FONT = "file is not a valid font";
+
+/** Basename of a path, Windows or POSIX separators. */
+function failureBasename(path: string): string {
+  const parts = path.replace(/\\/g, "/").split("/");
+  return parts[parts.length - 1] !== "" ? parts[parts.length - 1]! : path;
+}
+
+/**
+ * Strip every path copy out of a scan verdict: the file's own
+ * absolute path first (the verdict embeds it, twice over when the
+ * template is self-wrapped), then any other absolute-path token — a
+ * Windows drive path or a rooted POSIX path standing after a
+ * boundary character. Mid-word slashes never match, so a phrase like
+ * ``TrueType/OpenType`` survives intact.
+ */
+function stripVerdictPaths(text: string, path: string): string {
+  let out = path.length > 0 ? text.split(path).join(" ") : text;
+  out = out
+    .replace(/([(\s:：]|^)[A-Za-z]:[\\/][^\s()]*/g, "$1")
+    .replace(/([(\s:：]|^)\/[^\s()]*/g, "$1");
+  return out.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Collapse the verdict's self-wrapping to one ``file is not a valid
+ * font: <cause>`` line. The wrapper's opening paren is the text's
+ * first and its close the text's last, so the peel stays balanced by
+ * construction: while the text is ``M: … (M: … (…))`` the OUTER
+ * marker-plus-path prefix is the duplicate and drops; the final
+ * wrapper around the true cause keeps its marker and sheds the
+ * decorative parens. A text that does not follow the template is
+ * returned as-is.
+ */
+function unwrapVerdict(text: string): string {
+  let reason = text;
+  for (;;) {
+    if (!reason.startsWith(NOT_A_VALID_FONT)) return reason;
+    const open = reason.indexOf("(");
+    if (open === -1) return reason;
+    const close = reason.lastIndexOf(")");
+    if (close <= open) return reason;
+    const inner = reason.slice(open + 1, close);
+    if (!inner.startsWith(NOT_A_VALID_FONT)) {
+      return `${NOT_A_VALID_FONT}: ${inner}`;
+    }
+    reason = inner;
+  }
+}
+
+/**
+ * The failure card of one font file the scan rejected: the file's
+ * basename plus the verdict cleaned to a single honest line — both
+ * path copies gone, the self-wrapped ``file is not a valid font``
+ * template collapsed to one prefix with its innermost cause intact
+ * (``file is not a valid font: Not a TrueType or OpenType font (bad
+ * sfntVersion)``). A verdict that follows no template is only
+ * path-stripped, never dumped raw. The local-load failure surfaces
+ * (the picker's error row, the outcome card's lines) render the
+ * card instead of splicing the verdict verbatim.
+ */
+export function describeFontFileFailure(
+  path: string,
+  raw: string,
+): FontFileFailure {
+  const reason = unwrapVerdict(stripVerdictPaths(raw, path));
+  const file = failureBasename(path);
+  return { file, reason, summary: `无法加载 ${file}：${reason}` };
+}
+
+/**
  * Load one registered css family's default slot within
  * {@link FONT_LOAD_BUDGET_MS} (the spec the pick paths use:
  * ``16px <family>``). Resolves when the face renders; on budget expiry
@@ -118,8 +253,11 @@ export class FontLoadBudgetError extends Error {}
  * timeout, so the caller's existing error handling (the picker's error
  * line, the outcome card) states it — the flow fails loudly instead of
  * hanging. A genuine load REJECTION (corrupt bytes, a 404) passes
- * through untouched: only the never-settling fetch warrants eviction.
- * The config seam `testFontLoadBudgetMs` overrides the budget for the
+ * through — only the never-settling fetch warrants eviction — with
+ * one repair: a rejection whose message is the BROWSER's own runtime
+ * English network wording rides {@link localizedFontLoadError}, so
+ * the failure surfaces never show the untranslated original. The
+ * config seam `testFontLoadBudgetMs` overrides the budget for the
  * e2e regression specs only.
  */
 export async function loadDefaultSlotWithBudget(cssKey: string): Promise<void> {
@@ -146,8 +284,12 @@ export async function loadDefaultSlotWithBudget(cssKey: string): Promise<void> {
       // on document.fonts keeps the set's ready promise pending
       // forever — the very wedge this budget exists to end.
       evictCssFamily(cssKey);
+      throw err;
     }
-    throw err;
+    // A genuine rejection keeps its identity — but a message the
+    // browser itself worded (a NetworkError's runtime English) must
+    // not reach an error surface untranslated.
+    throw localizedFontLoadError(err);
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }
