@@ -874,6 +874,12 @@ async function runBuild(
     patchBuild(id, {
       status: doc.status,
       stage: doc.stage,
+      // Round 13's live facts: the serve's doc carries the current
+      // stage's quantitative readout in `facts` — WITHOUT forwarding
+      // it here the panel's two fact spans stay hidden forever (the
+      // r5 regression: the field was dropped from this patch and the
+      // stage-fact lines vanished). Null when the serve carries none.
+      stageFacts: doc.facts ?? null,
       queuePosition: doc.queue_position,
       error: doc.error,
     });
@@ -920,7 +926,7 @@ async function runBuild(
         return;
       }
     }
-    await settleSaved(id, suggested, bytes, report);
+    await settleSaved(id, suggested, bytes, report, overwriteApproved);
   } catch (err) {
     patchBuild(id, {
       status: "error",
@@ -929,18 +935,28 @@ async function runBuild(
   }
 }
 
-/** Save through the default path and settle the row with the outcome. */
+/**
+ * Save through the default path and settle the row with the outcome.
+ * `overwroteSameName` (the 直接覆盖 write-through) badges the row's
+ * notice: an overwrite targets the very path an EARLIER row already
+ * displays, and both rows would otherwise render byte-identical saved
+ * paths — indistinguishable by eye (the f12 finding). The badge rides
+ * the SAME notice channel the 另存为 fallback uses; a real saver
+ * notice still wins, because it says where the file actually went.
+ */
 async function settleSaved(
   id: string,
   suggested: string,
   bytes: Uint8Array,
   report: ReportDocument,
+  overwroteSameName = false,
 ): Promise<void> {
   const result = await saveArtifact(suggested, bytes);
   patchBuild(id, {
     status: result.saved ? "saved" : "done",
     savedPath: result.path,
-    savedNotice: result.notice ?? null,
+    savedNotice:
+      result.notice ?? (overwroteSameName ? "已覆盖同名文件" : null),
     report,
   });
 }

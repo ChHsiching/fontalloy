@@ -129,11 +129,21 @@ export function mountStatsbar(root: HTMLElement): StatusBar {
   // Round 31: the live resolve's failure reason rides the same bar —
   // a transient 400 (the first-run catalog sync racing a pick) must
   // not vanish; the retries the document module schedules replace it
-  // with the landed counters.
+  // with the landed counters. The raw reason can run long (it names
+  // files and suggests the fetch command), so the line clamps to one
+  // ellipsized span: the full text stays reachable as the title, and
+  // the bar's own counters and the 覆盖 label never get crushed or
+  // reflowed by it.
   const errEl = document.createElement("span");
   errEl.className = "kit-c";
   errEl.style.color = "var(--dgr)";
   errEl.style.display = "none";
+  errEl.style.overflow = "hidden";
+  errEl.style.textOverflow = "ellipsis";
+  errEl.style.whiteSpace = "nowrap";
+  errEl.style.flex = "0 1 auto";
+  errEl.style.minWidth = "0";
+  errEl.style.maxWidth = "46ch";
   bar.el.appendChild(errEl);
 
   const render = (): void => {
@@ -142,8 +152,14 @@ export function mountStatsbar(root: HTMLElement): StatusBar {
     const error =
       picks.base !== null ? precedenceError() : null;
     if (error !== null) {
-      errEl.textContent = `优先级解析失败：${error}`;
-      errEl.style.display = "";
+      const full = `优先级解析失败：${error}`;
+      errEl.textContent = full;
+      errEl.title = full;
+      // inline-block, not bare inline: maxWidth + text-overflow only
+      // constrain replaced/inline-block boxes — a plain inline span
+      // overflows to the line's end and clips hard at the window edge.
+      errEl.style.display = "inline-block";
+      errEl.style.verticalAlign = "bottom";
     } else {
       errEl.style.display = "none";
     }

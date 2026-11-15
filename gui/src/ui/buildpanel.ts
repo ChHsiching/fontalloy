@@ -300,7 +300,19 @@ const STAGE_FACTS: Readonly<Record<string, Readonly<Record<string, FactRender>>>
     slots: { label: "档位", format: (v) => `${v} 个` },
   },
   resolving: {
-    rules: { label: "规则", format: (v) => `${v} 条` },
+    // f5 (round 2, the three-caliber reconciliation): this fact's
+    // 「规则 N 条」 counts len(recipe.rules) — EVERY rule the build
+    // carries: the 文字范围 preset rules (including the boot zh_cn
+    // seed, state.ts bootRules) plus the custom ones. The sidebar's
+    // 暂无自定义规则。 counts ONLY custom rules (ui/rulelist.ts:
+    // preset rules live in the 文字范围 chips, never in that list),
+    // and the stats bar's 已调整 counts only cells whose effective
+    // winner actually changed (the boot preset is resolution-neutral
+    // — base keeps, donor fills — so 「1 rule / 0 adjusted / no
+    // custom rules」 is three consistent calibers, not one
+    // contradiction). The fact line names its own caliber so the
+    // panel's count explains why it can exceed the sidebar's.
+    rules: { label: "规则", format: (v) => `${v} 条（含文字范围）` },
     codepoints: { label: "生效码位", format: (v) => Number(v).toLocaleString("en-US") },
   },
   grafting: {
@@ -389,6 +401,27 @@ function basename(path: string | undefined): string {
   if (path === undefined) return "未知文件";
   const parts = path.replace(/\\/g, "/").split("/");
   return parts[parts.length - 1] ?? path;
+}
+
+/**
+ * f4 (round 2): the user-facing form of a machine error. The serve's
+ * error strings land verbatim under the honest-error contract, and
+ * some of them advise the OPERATOR's command line — core build.py's
+ * "pass a manifest (the CLI's --manifest)", assets.py's "run
+ * `fontalloy assets fetch …`". User copy never shows the command
+ * line: backticked command spans ellipsize in place (the sentence
+ * keeps its shape), parenthesized CLI-flag advice drops whole, and
+ * the untouched original rides the error box's title attribute —
+ * the hover/copy source of truth, the same pattern as the saved
+ * path and the SHA-256 digest. The box itself wraps long strings
+ * (word-break), so nothing here hard-truncates at an edge.
+ */
+function userFacingError(raw: string): string {
+  return raw
+    .replace(/`[^`]*`/g, "…")
+    .replace(/\s*\((?:the\s+)?CLI[^)]*\)/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 /**
@@ -868,6 +901,12 @@ function renderReport(
 
   const body = document.createElement("div");
   body.className = "report-body";
+  // f20 (round 2): the report's own reserved tail — the last line
+  // never rests flush on the edge that follows it (the open report
+  // ends the row; the rows region's own bottom padding is the second
+  // margin). Owned by the report element itself, so the breathing
+  // room survives whatever the host paddings do.
+  body.style.paddingBottom = "12px";
 
   const heading = document.createElement("div");
   heading.className = "report-heading";
@@ -890,7 +929,15 @@ function renderReport(
     ),
   );
   if (report.output?.sha256) {
-    output.append(fact("SHA-256 校验值", report.output.sha256.slice(0, 12)));
+    // f19 (round 2): the digest never renders in full (64 hex chars
+    // would own the fact row); the visible 12-char head now CARRIES
+    // the truncation mark, and the title attribute holds the COMPLETE
+    // value — the hover/copy source of truth, the same pattern as the
+    // saved path's middle ellipsis.
+    const shaEl = document.createElement("span");
+    shaEl.textContent = `${report.output.sha256.slice(0, 12)}…`;
+    shaEl.title = report.output.sha256;
+    output.append(fact("SHA-256 校验值", shaEl));
   }
   body.appendChild(output);
 
@@ -1156,7 +1203,21 @@ function renderRow(
   const order = STAGES.map(([key]) => key);
   const handoff = row.status === "saving";
   const stageKey = handoff ? "saving" : (row.stage ?? "");
-  const current = row.status === "queued" ? -1 : order.indexOf(stageKey);
+  // f8 (round 2): a row that just left the queue runs BEFORE the
+  // serve reports its first stage — the worker pickup marks
+  // status="running" with stage still null (serve.py's worker loop;
+  // build.py's first _stage("loading") lands only once the pipeline
+  // starts). An index of -1 there blanked the stepper exactly at the
+  // queue handoff: all 7 segments went gray the moment the queued row
+  // started running. Until the real stage lands, stage 1 (读取字体)
+  // IS the current one — the build is in its first stage from the
+  // moment it runs, so the stepper says so immediately.
+  const current =
+    row.status === "queued"
+      ? -1
+      : row.status === "running" && row.stage === null
+        ? 0
+        : order.indexOf(stageKey);
   const settled = row.status === "saved" || row.status === "done";
   const failed = row.status === "failed" || row.status === "error";
   const active = row.status === "running" || handoff;
@@ -1221,9 +1282,18 @@ function renderRow(
     if (line !== undefined && el.textContent !== line) el.textContent = line;
   });
 
+  // f4 (round 2, the error-caliber reconciliation): this box lands
+  // the serve's error VERBATIM (the honest-error contract — same
+  // ruling as the precedence document's, document.ts "verbatim") but
+  // the VISIBLE text is the user-facing form: CLI command/flag spans
+  // never read as UI copy, the full machine original rides the title
+  // attribute. The sibling surfaces of the same contract —
+  // ui/statsbar.ts's 优先级解析失败 line and the kit status bar's
+  // labels — live outside this file and keep their own rendering.
   const errorEl = rowEl.querySelector<HTMLElement>("[data-build-error]")!;
   errorEl.hidden = row.error === null;
-  errorEl.textContent = row.error ?? "";
+  errorEl.textContent = row.error === null ? "" : userFacingError(row.error);
+  errorEl.title = row.error ?? "";
 
   // The saved line (round 12; round 13, owner item 4): TWO rows — the
   // 「已保存」 label on the first (the 另存为 affordance at its right),
