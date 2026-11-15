@@ -74,6 +74,18 @@ test.describe("scene previews and synthesis settings", () => {
     // Round 4: a successful local load CLOSES the picker (prototype
     // parity — the closed card shows the new pick).
     await expect(popup).toBeHidden();
+    // The load outcome also posts a 已加载本地字体 corner card that
+    // lives for its 6s countdown — and hovers PAUSE that countdown,
+    // so a test driving the bottom-left band (the 合成设置 selects
+    // and their option lists) can keep the cards alive indefinitely
+    // and click a card instead of an option (the CI saw exactly that
+    // at the cjkWidth option). Wait the card out here — the mouse is
+    // still away from the corner at this point, so the countdown
+    // actually runs — and the settings interactions that follow never
+    // race it. (Clicking the × instead fights the card's enter/leave
+    // animation lifecycle: Playwright's stability check can chase the
+    // leaving card's transition forever.)
+    await expect(page.locator(".kit-msg")).toHaveCount(0, { timeout: 8_000 });
   }
 
   /** Open the page pointed at the fixture serve, with both fonts picked. */
