@@ -821,6 +821,23 @@ export function mountCharmap(root: HTMLElement): void {
   const toolbar = root.querySelector<HTMLElement>(".charmap-toolbar")!;
   const gridHost = root.querySelector<HTMLElement>(".charmap-grid")!;
 
+  // The aggregate hint bar (repair round 2, f14): an AGGREGATE view (a
+  // group's 全部 or the global 全部) renders a visible strip above the
+  // grid. Before it, the aggregate state lived only in the toolbar's
+  // passive note — the content area stayed pixel-blind to it, and the
+  // audit's aggregate frame pairs diffed as zero. Inline styles only:
+  // kit.css belongs to another batch. NOTE: no `display` is set inline —
+  // the `hidden` attribute must keep working to toggle the bar off.
+  gridHost.style.flexDirection = "column";
+  const aggregateBar = document.createElement("div");
+  aggregateBar.dataset.aggregateHint = "";
+  aggregateBar.hidden = true;
+  aggregateBar.style.cssText =
+    "flex:none;padding:4px 14px;font-size:11px;color:var(--ink3);" +
+    "background:var(--sf2);border-bottom:1px solid var(--ln);" +
+    "white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+  gridHost.appendChild(aggregateBar);
+
   /* View state of this stage: 编码 mode (the per-cell codepoint row)
    * and the explicit 多选 mode (prototype parity: drag-paint and
    * Shift-range arm ONLY inside it; a plain click opens the popup). */
@@ -894,6 +911,14 @@ export function mountCharmap(root: HTMLElement): void {
     if (!(target instanceof Element)) return false;
     return target.closest(".kit-cell")?.classList.contains("miss") ?? false;
   };
+  // Missing cells join a selection gesture ONLY in the missing view
+  // (repair round 2, f14): there they ARE the content — selectable for
+  // review, with the kit's selection ring stating the state visibly
+  // (the view's toolbar branch carries no batch apply, so the selection
+  // never offers an assignment that cannot take effect). Everywhere
+  // else a miss cell stays a non-target, exactly like the prototype.
+  const missSelectable = (target: EventTarget | null): boolean =>
+    !cellMissing(target) || store.get().categoryId === MISSING_CATEGORY_ID;
 
   grid.el.addEventListener("pointerdown", (event) => {
     if (event.button !== 0) return;
@@ -913,7 +938,7 @@ export function mountCharmap(root: HTMLElement): void {
       store.set({ selectedCodepoint: cp });
       return;
     }
-    if (cellMissing(event.target)) return;
+    if (!missSelectable(event.target)) return;
     event.preventDefault();
     if (event.shiftKey) {
       extendFromAnchor(cp);
@@ -932,7 +957,7 @@ export function mountCharmap(root: HTMLElement): void {
     if (!painting || !multiMode) return;
     event.preventDefault();
     const cp = cellCodepoint(event.target);
-    if (cp === null || cellMissing(event.target)) return;
+    if (cp === null || !missSelectable(event.target)) return;
     const { selection } = store.get();
     if (painting && !selection.includes(cp)) extendSelection([cp]);
     if (!painting && selection.includes(cp)) {
@@ -1230,6 +1255,18 @@ export function mountCharmap(root: HTMLElement): void {
       categoryId === MISSING_CATEGORY_ID
         ? missing.length
         : categorySize(categoryId);
+    // The aggregate hint bar (f14): visible exactly on aggregate views
+    // (the global 全部 and the per-group 全部), hidden on a block view
+    // and on the missing view (which carries its own toolbar notice).
+    if (
+      categoryId === ALL_CATEGORY_ID ||
+      findGroupCategory(categoryId) !== undefined
+    ) {
+      aggregateBar.textContent = `聚合视图：${categoryName(categoryId)} · 共 ${plainNum(size)} 字符`;
+      aggregateBar.hidden = false;
+    } else {
+      aggregateBar.hidden = true;
+    }
     const first = (page - 1) * livePageSize;
     const count = Math.min(livePageSize, size - first);
     const picks = pickRefs();
@@ -1275,12 +1312,29 @@ export function mountCharmap(root: HTMLElement): void {
       .join(",");
 
     const cells: GridCellData[] = [];
+    // The page's codepoints, assembled BEFORE any cell is built and
+    // pinned ascending (repair round 3, f16): the audit's f16 pair
+    // read the placeholder run (the donor's E000..E00A segment, its
+    // labels then riding the cell's own face — the f9 defect) as a
+    // hoisted "F000..F00A" block grabbing the row head ahead of the
+    // E300..E3E3 run. The upstream enumerations already walk ascending
+    // (a block's curated intervals, the missing view's gap runs); this
+    // sort ENFORCES that contract at the one place cells are ordered,
+    // so no segment — placeholder, icon, or a future interval
+    // declaration — can ever land out of codepoint order. Sorting
+    // already-ascending data is the identity: no behavior change on
+    // the correct path, a hard floor under every other one.
+    const pageCps = Array.from({ length: count }, (_, i) =>
+      categoryId === MISSING_CATEGORY_ID
+        ? missing[first + i]!
+        : nthCodepoint(categoryId, first + i),
+    ).sort((a, b) => a - b);
     for (let i = 0; i < count; i++) {
       // The missing view pages its own list: every cell is a dashed
       // danger cell (no picked font covers it, by construction), the
       // placeholder glyph and no-fallback rules included.
       if (categoryId === MISSING_CATEGORY_ID) {
-        const cp = missing[first + i]!;
+        const cp = pageCps[i]!;
         const placeholderFamily = placeholderFamilyOf(cp);
         cells.push({
           ch: String.fromCodePoint(cp),
@@ -1295,7 +1349,7 @@ export function mountCharmap(root: HTMLElement): void {
         });
         continue;
       }
-      const cp = nthCodepoint(categoryId, first + i);
+      const cp = pageCps[i]!;
       const ch = String.fromCodePoint(cp);
       // The effective merged result: the landed document's run for the
       // cell, exposed and rendered in the winner's own face (the grid

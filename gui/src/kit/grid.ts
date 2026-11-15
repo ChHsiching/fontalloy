@@ -10,14 +10,19 @@
  *   (round 20: a placeholder mapping keeps the font's own glyph under
  *   the frame, and an unmapped 图标-range cell carries no glyph at all);
  *   - the codepoint row (编码 mode) is tabular-nums 8.5px under the
- *   glyph; with it the cell switches to a column layout;
+ *   glyph; with it the cell switches to a column layout. The row ALWAYS
+ *   renders in the UI font, never the cell's face — a winner or
+ *   placeholder font may lack the label's digits/hex letters and turn
+ *   "6E74" into "6■74" (repair round 2, f9); a missing cell shows the
+ *   row unconditionally (it is the cell's only honest content);
  * - consumers with a separate details CURSOR (a keyboard/click focus
  *   distinct from the multi-selection) render it as `.cur` — an inner
  *   accent ring reading above the `.sel` selection tint.
  *
- * Data attributes: `cp` (codepoint label) and every entry of `attrs`
- * land on the cell's dataset, so provenance (winner/via/kind) walks the
- * DOM exactly like the prototype's grid.
+ * Data attributes: `cp` (codepoint label), `nofallback` (an unmapped
+ * 图标-range cell) and every entry of `attrs` land on the cell's
+ * dataset, so provenance (winner/via/kind) walks the DOM exactly like
+ * the prototype's grid.
  *
  * Selection MODELS (drag-paint, shift-range) are app state and stay
  * with the consumer — the kit renders the props it is given.
@@ -83,6 +88,16 @@ export function formatCodepoint(ch: string): string {
   return ch.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0");
 }
 
+/**
+ * The UI font stack (tokens.css's body face). The codepoint label always
+ * renders in it: the cell's own face — a winner font or a placeholder
+ * mapping — may lack the label's digits and hex letters entirely, and a
+ * label that follows the cell font stops reading as hex (f9: the audit
+ * frames read "6E74" as "6■74", and the placeholder cells' "E000" as
+ * "■000" — the box glyph standing in for the letter the font draws).
+ */
+const CP_LABEL_FONT = 'system-ui, "Segoe UI", "Microsoft YaHei", sans-serif';
+
 export function gridCell(props: GridCellProps): HTMLElement {
   const { data } = props;
   const cell = document.createElement(
@@ -117,8 +132,11 @@ export function gridCell(props: GridCellProps): HTMLElement {
     const cp = document.createElement("span");
     cp.className = "cp";
     // The row shows the bare hex (the prototype's compact form); the
-    // cell's data-cp attribute keeps the full U+XXXX label.
+    // cell's data-cp attribute keeps the full U+XXXX label. The label
+    // pins to the UI font (f9): it must never inherit the cell's
+    // winner/placeholder face, whatever that face covers.
     cp.textContent = (data.cp ?? formatCodepoint(data.ch)).replace(/^U\+/, "");
+    cp.style.fontFamily = CP_LABEL_FONT;
     cell.classList.add("hascp");
     cell.appendChild(cp);
   }
@@ -133,11 +151,35 @@ export function gridCell(props: GridCellProps): HTMLElement {
       cell.style.fontFamily = data.placeholderFamily;
     } else if (data.noFallbackGlyph) {
       glyph.textContent = "";
+      // f14: the emptied glyph area carries a visible "no glyph" mark —
+      // a small dashed strike box over the cell — plus a data hook.
+      // Without it the state is pixel-indistinguishable from any other
+      // dashed missing cell (the audit's f7 pair read as zero diff).
+      cell.dataset.nofallback = "true";
+      const mark = document.createElement("span");
+      mark.style.cssText =
+        "position:absolute;left:50%;top:34%;transform:translate(-50%,-50%);" +
+        "width:12px;height:12px;border:1.5px dashed var(--dgr);" +
+        "border-radius:3px;background:linear-gradient(to top right," +
+        "transparent 44%,var(--dgr) 44%,var(--dgr) 56%,transparent 56%);" +
+        "pointer-events:none;";
+      cell.appendChild(mark);
     } else {
       cell.style.fontFamily = "'Microsoft YaHei',serif";
     }
   } else {
     cell.style.fontFamily = data.fontFamily ?? "";
+  }
+
+  // A SELECTED missing cell keeps an unmistakable ring (f14): the .sel
+  // accent can drown under the dashed danger frame, so the selection is
+  // restated inline — a 2px accent ring (and the accent border), with
+  // the details-cursor insets kept when both states coincide.
+  if (data.state === "none" && data.selected) {
+    cell.style.borderColor = "var(--ac)";
+    cell.style.boxShadow = data.cursor
+      ? "0 0 0 2px var(--ac), inset 0 0 0 2px var(--sf), inset 0 0 0 3px var(--ac)"
+      : "0 0 0 2px var(--ac)";
   }
 
   if (props.interactive && props.onClick) {
