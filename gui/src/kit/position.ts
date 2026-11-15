@@ -29,7 +29,11 @@ export function fitPopup(
   gap = 8,
 ): void {
   const frame = frameRect();
-  popup.style.maxHeight = "";
+  // Measure the NATURAL height. Resetting to "" would let a stylesheet
+  // max-height (e.g. .kit-csel-pk's 264px) cap the measurement itself,
+  // so the flip/clamp decisions below would run against an already
+  // truncated popup — the 14-row theme list read as 9 rows.
+  popup.style.maxHeight = "none";
   let h = popup.offsetHeight;
   const w = popup.offsetWidth;
   const below = frame.bottom - gap - (anchorRect.bottom + gap);

@@ -10,10 +10,17 @@
  * - open/close animate through `display` with allow-discrete +
  *   @starting-style (the popup node is part of the component and only
  *   the option rows ever rebuild — node persistence);
+ * - while open the popup is position:fixed and fitted with `fitPopup`:
+ *   it grows to its natural height when the frame has room (the full
+ *   14-row terminal palette), flips above the trigger when the space
+ *   below runs out (the editor palette sits near the bottom), and caps
+ *   + scrolls internally when neither side fits;
  * - keyboard: Enter/Space/ArrowDown/ArrowUp open, arrows move and
  *   commit, Escape closes; outside click closes;
  * - opening one closes every other open kit select.
  */
+
+import { fitPopup } from "./position";
 
 export interface AppSelectOption {
   value: string;
@@ -129,6 +136,21 @@ export function mountAppSelect(props: AppSelectProps): AppSelect {
     trigger.setAttribute("aria-expanded", "false");
   };
 
+  /**
+   * Fixed-place the popup against the trigger. position:fixed lifts the
+   * list out of clipping ancestors (scene cards, popover bodies) and
+   * lets fitPopup clamp it to the app frame: natural height when it
+   * fits below, flip above when it does not, cap + internal scroll
+   * when neither side fits. The stylesheet's min-width:100% would
+   * resolve against the viewport once fixed, so re-pin it to the
+   * trigger's own width.
+   */
+  const place = (): void => {
+    list.style.position = "fixed";
+    list.style.minWidth = `${trigger.offsetWidth}px`;
+    fitPopup(list, trigger.getBoundingClientRect());
+  };
+
   const openList = (): void => {
     if (open) return;
     for (const other of [...openSelects]) {
@@ -138,6 +160,7 @@ export function mountAppSelect(props: AppSelectProps): AppSelect {
     openSelects.add(root);
     root.classList.add("open");
     trigger.setAttribute("aria-expanded", "true");
+    place();
   };
 
   const commit = (next: number, fire: boolean): void => {
@@ -228,6 +251,9 @@ export function mountAppSelect(props: AppSelectProps): AppSelect {
       );
       drawTrigger();
       drawRows();
+      // A different row count changes the natural height — refit so a
+      // stale cap from the previous list does not truncate this one.
+      if (open) place();
     },
     open: openList,
     close,

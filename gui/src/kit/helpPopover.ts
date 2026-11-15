@@ -8,6 +8,9 @@
  * uses the carried fitPop discipline (below → flip above → cap) against
  * the app frame. The worked-example table inside is its own component
  * (workedTable) with the prototype's .wtab chrome carried verbatim.
+ * Repair f6 (round 2): the fit is re-run whenever the card's own size
+ * changes while open, and a clamped card's visible area always ends on
+ * a whole worked-table row (never a partial one).
  */
 
 import { icon } from "./icons";
@@ -57,8 +60,17 @@ export function mountHelpPopover(props: HelpPopoverProps): HelpPopover {
 
   let open = false;
 
+  // Repair f6 (round 2): the tall weight card can settle TALLER only
+  // after it opened, and fitPopup's one-shot measurement then left the
+  // card unclamped — it painted past the frame's bottom edge, and the
+  // viewport sliced the last worked-table row mid-glyph (G8 f1-02).
+  // position() therefore re-runs when the card's own size changes while
+  // open (ResizeObserver below) and once the pop-in animation ends.
+  // The whole-row pass needs resting coordinates — the pop-in transform
+  // scales getBoundingClientRect — so it skips while one is live.
   const position = (): void => {
     fitPopup(popup, anchor.getBoundingClientRect());
+    if (getComputedStyle(popup).transform === "none") fitWholeRows(popup);
   };
 
   const setOpen = (next: boolean): void => {
@@ -68,6 +80,8 @@ export function mountHelpPopover(props: HelpPopoverProps): HelpPopover {
     if (next) {
       popup.classList.add("open");
       position();
+      // Re-fit on resting coordinates once the 0.2s pop-in ends.
+      popup.addEventListener("animationend", position, { once: true });
     } else {
       popup.classList.remove("open");
     }
@@ -82,6 +96,13 @@ export function mountHelpPopover(props: HelpPopoverProps): HelpPopover {
   window.addEventListener("resize", () => {
     if (open) position();
   });
+  // Late layout growth (the f6 overshoot): re-fit while the card is
+  // open whenever its rendered size changes, so the frame clamp always
+  // matches the card's real height. Idempotent — a re-run writes the
+  // same maxHeight and does not fire the observer again.
+  new ResizeObserver(() => {
+    if (open) position();
+  }).observe(popup);
   document.addEventListener("pointerdown", (e) => {
     if (!open) return;
     const target = e.target as Node;
@@ -107,6 +128,38 @@ export function mountHelpPopover(props: HelpPopoverProps): HelpPopover {
     open: () => setOpen(true),
     close: () => setOpen(false),
   };
+}
+
+/**
+ * Whole-row containment for a clamped (scrolling) help card (repair
+ * f6, round 2). When the scrollport's bottom content edge slices a
+ * worked-table row mid-height — G8 showed only the top 25-30% of the
+ * weight card's last row — shrink the clamp so the edge lands on that
+ * row's top border instead: the visible area ends on whole rows (the
+ * kit grid's "whole rows, never a partial row" discipline, applied to
+ * the help cards) and the hidden rows stay reachable by scroll. No-op
+ * when the card fits without scrolling.
+ */
+function fitWholeRows(popup: HTMLElement): void {
+  if (popup.scrollHeight <= popup.clientHeight + 1) return;
+  const style = getComputedStyle(popup);
+  // Sizing is border-box (tokens.css), so maxHeight covers the bottom
+  // padding + border as well as the content it must stop short of.
+  const innerBottom =
+    (parseFloat(style.borderBottomWidth) || 0) +
+    (parseFloat(style.paddingBottom) || 0);
+  const edge = popup.getBoundingClientRect().bottom - innerBottom;
+  for (const row of popup.querySelectorAll<HTMLElement>(".kit-wtab tr")) {
+    const rect = row.getBoundingClientRect();
+    if (rect.top < edge - 0.5 && rect.bottom > edge + 0.5) {
+      const maxHeight = Math.max(
+        rect.top - popup.getBoundingClientRect().top + innerBottom,
+        220,
+      );
+      popup.style.maxHeight = `${maxHeight}px`;
+      break;
+    }
+  }
 }
 
 /**
