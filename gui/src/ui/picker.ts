@@ -171,9 +171,15 @@ function catalogNote(catalog: CatalogState): string | null {
   }
   if (catalog.status === "bootstrapping") {
     const done = catalog.progress.filter((f) => f.state === "done").length;
-    return catalog.progress.length > 0
-      ? `内置目录同步中：${done}/${catalog.progress.length} 个家族已完成。`
-      : "内置目录同步中…";
+    if (catalog.progress.length === 0) return "内置目录同步中…";
+    // At done === total the note states completion: the completion
+    // window (the CTA / auto-close handoff) keeps the serve's status
+    // "bootstrapping" through the last family's post-done sleep, and a
+    // 同步中 line next to a full count read as still-in-flight while
+    // the screen's own head had already switched to 已就绪.
+    return done === catalog.progress.length
+      ? `内置目录已同步：${done}/${catalog.progress.length} 个家族已完成。`
+      : `内置目录同步中：${done}/${catalog.progress.length} 个家族已完成。`;
   }
   return null;
 }
@@ -874,6 +880,22 @@ export function mountPicker(
         const rowName = activeFont
           ? fontDisplayName(activeFont)
           : documentRowName(activeDoc ?? primaryDoc, activeCut?.family ?? primaryFamily);
+        let meta = familyMeta(primaryFamily);
+        // The handoff duplicates (f3): the row NAME is the file's own
+        // name-table family, so two manifest families sharing one font
+        // file render two rows with the SAME name and no distinguishing
+        // surface — at the CTA handoff the picker read as duplicate
+        // rows with the just-synced families absent (their ids lived
+        // only in the invisible search keywords). When the name does
+        // not carry the family id, the id rides the trait slot: the
+        // rows stay distinguishable and the family the sync completed
+        // stays findable on sight.
+        if (
+          meta?.trait === undefined &&
+          !rowName.toLowerCase().includes(primaryFamily.toLowerCase())
+        ) {
+          meta = { ...meta, trait: display.id };
+        }
         const chips = rowChips(cuts, selectedCutId, docOf);
         /**
          * Round 21/22: the row's search index covers EVERY cut's own
@@ -925,7 +947,7 @@ export function mountPicker(
             // nothing of the family is registered (the header then
             // keeps the listing font, exactly as before).
             pickFamily: cssKey ?? undefined,
-            meta: familyMeta(primaryFamily),
+            meta,
             disabled: !anyDone,
             note: anyDone
               ? undefined

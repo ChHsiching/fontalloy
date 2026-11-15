@@ -578,6 +578,13 @@ export function mountPickerPopup(
     "pointerdown",
     (e) => {
       if (!open) return;
+      // While a footer load runs, its inline progress (the load's ONLY
+      // carrier — the in-button spinner + count) lives inside this
+      // popup: an outside click still lands on the workspace underneath
+      // (it fires, the app answers), but it must not dismiss the popup
+      // until the load settles, or the file flow's progress loses its
+      // carrier mid-run. The header toggle and Escape still close it.
+      if (props.footer?.loading) return;
       const target = e.target as Node;
       if (!target.isConnected) return;
       // The popup lives INSIDE the card now — one contains() covers both.
