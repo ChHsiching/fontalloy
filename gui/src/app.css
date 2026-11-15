@@ -910,31 +910,43 @@ body {
 /* The stage block under the stepper (round 12, owner item 1; round 13,
    owner item 5): the stage name and its dim ≤30-char explanation stack
    on the LEFT; the LIVE column (elapsed mm:ss + up to two stage facts)
-   sits right-aligned opposite them. The block reserves THREE lines
-   (11px × 1.6 × 3 ≈ 53px) from the row's first paint, so stage copy
-   and fact counts of differing lengths never move the rows
-   underneath; both columns center inside the reservation. */
+   sits right-aligned opposite them — BESIDE the left stack, never
+   above it. The block reserves THREE lines (11px × 1.6 × 3 ≈ 53px)
+   from the row's first paint, so stage copy and fact counts of
+   differing lengths never move the rows underneath; both columns
+   center inside the reservation. The note-on-its-own-row shape (the
+   note under the whole width, live column included) broke that
+   reservation the moment a two-fact stage ran: 3 live lines + a note
+   line = 4 lines, and the block bounced 53→70→53px across the
+   loading→planning handoff. */
 .build-stage-line {
   margin-top: 6px;
   min-height: 53px; /* 11px × 1.6 line-height × 3 lines */
   display: flex;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 0;
   font-size: 11px;
   line-height: 1.6;
   color: var(--ink3);
-}
-
-.build-stage-line {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0;
 }
 
 .build-stage-row {
   display: flex;
   align-items: baseline;
   gap: 12px;
+}
+
+/* The left stack (name over note): it shares the row with the live
+   column and must shrink for it, or the note's ellipsis has no edge to
+   clip against (min-width: 0 lets the flex child shrink below its
+   content). */
+.build-stage-copy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .build-stage-live {
