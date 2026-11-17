@@ -256,9 +256,13 @@ export function mountCatalogScreen(): void {
       sub.hidden = true;
     }
     choice.hidden = !choosing;
-    bar.hidden = choosing;
-    counter.hidden = choosing;
-    list.hidden = choosing;
+    // The sheet gives .catalog-list `display:flex` (and the bar/counter
+    // sit under flexed parents) — the [hidden] ATTRIBUTE loses to a
+    // sheet display rule, so the choice screen must hide them with an
+    // EXPLICIT inline style (the round-11 discipline), not the attr.
+    for (const el of [bar, counter, list]) {
+      el.style.display = choosing ? "none" : "";
+    }
     if (choosing) readyTag.hidden = true;
 
     // Is the status families list authoritative? The `document` key
