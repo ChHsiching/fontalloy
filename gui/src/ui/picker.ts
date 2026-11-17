@@ -149,6 +149,8 @@ function readinessTag(doc: CatalogFamilyDoc | undefined): string | undefined {
       return "解压中…";
     case "verifying":
       return "校验中…";
+    case "indexing":
+      return "索引构建中…";
     case "failed":
       return "同步失败，稍后启动自动重试";
     case "unsynced":

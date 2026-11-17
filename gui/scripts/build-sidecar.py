@@ -39,6 +39,33 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ENTRY = Path(__file__).resolve().parent / "sidecar_entry.py"
 
+#: PyInstaller floor (ADR-0008): >= 6.10 spawns a child of the frozen
+#: exe as a first-class worker sub-process — one process, reusing the
+#: parent's onefile extraction — so the serve's Job Object quota wraps
+#: the real worker. Older bootstrapping re-extracts per child (or spawns
+#: a shim process), which the quota cannot see or cap correctly.
+MIN_PYINSTALLER = (6, 10)
+
+
+def _check_pyinstaller_floor() -> None:
+    import PyInstaller
+
+    parts = PyInstaller.__version__.split(".")[:2]
+    try:
+        version = tuple(int(part) for part in parts)
+    except ValueError:
+        raise SystemExit(
+            f"cannot parse PyInstaller version {PyInstaller.__version__!r}; "
+            f"pin >= {MIN_PYINSTALLER[0]}.{MIN_PYINSTALLER[1]} explicitly"
+        ) from None
+    if version < MIN_PYINSTALLER:
+        raise SystemExit(
+            f"PyInstaller {PyInstaller.__version__} is below the "
+            f"{MIN_PYINSTALLER[0]}.{MIN_PYINSTALLER[1]} floor (ADR-0008: "
+            "frozen worker sub-processes must be single-process and reuse "
+            "the parent's onefile extraction for the Job Object quota)"
+        )
+
 
 def host_triple() -> str:
     """The Rust target triple of this machine (rustc knows best)."""
@@ -74,6 +101,7 @@ def main() -> int:
         help="output directory (default: gui/src-tauri/binaries)",
     )
     args = parser.parse_args()
+    _check_pyinstaller_floor()
 
     with tempfile.TemporaryDirectory(prefix="fontalloy-sidecar-") as tmp:
         dist = Path(tmp) / "dist"

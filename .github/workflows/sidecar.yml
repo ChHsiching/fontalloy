@@ -11,6 +11,11 @@ name: Sidecar binaries
 # `tauri build` per platform.
 #
 # The binary is never committed — `gui/src-tauri/binaries/` is gitignored.
+#
+# ADR-0009 (test what you ship): the packaged binary is built AND smoked
+# on every core/cli/entry-touching PR, not only after merge — a
+# frozen-only defect (the r31v2 "-m" spawn) must red the PR, never ride
+# a green source-only suite into main.
 
 on:
   push:
@@ -20,6 +25,15 @@ on:
       - cli/**
       - gui/scripts/build-sidecar.py
       - gui/scripts/sidecar_entry.py
+      - gui/scripts/sidecar-smoke.py
+      - .github/workflows/sidecar.yml
+  pull_request:
+    paths:
+      - core/**
+      - cli/**
+      - gui/scripts/build-sidecar.py
+      - gui/scripts/sidecar_entry.py
+      - gui/scripts/sidecar-smoke.py
       - .github/workflows/sidecar.yml
   workflow_dispatch:
 
@@ -54,7 +68,7 @@ jobs:
       - name: Build the sidecar binary
         run: uv run --with pyinstaller python gui/scripts/build-sidecar.py --triple ${{ matrix.triple }}
 
-      - name: Smoke test (serve round trip through the binary)
+      - name: Smoke test (merge round trip, sentinel worker, catalog doc through the frozen worker)
         run: uv run python gui/scripts/sidecar-smoke.py "gui/src-tauri/binaries/fontalloy-${{ matrix.triple }}${{ matrix.exe }}"
 
       - name: Upload artifact

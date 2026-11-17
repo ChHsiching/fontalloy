@@ -91,6 +91,14 @@ UNSYNCED = "unsynced"
 #: document does not carry the family (a manifest ahead of the release).
 ABSENT = "absent"
 
+#: Per-family readiness when the sync is DONE but the family's picker
+#: document has not landed yet (or landed without faces): the quota'd
+#: worker is still computing it. A "done" sync never surfaces as a
+#: pickable row whose pick would fail — the r31v2 owner hit (Q2
+#: ruling: a row the user can click and fail is a defect, and failure
+#: copy is not the cure; not-offering it is).
+INDEXING = "indexing"
+
 # --- the variant-token semantics (the faceSet.ts port) -----------------------
 
 
@@ -968,6 +976,16 @@ class FamilyDocuments:
                 and family not in errors
             ):
                 scanning = True
+            # The honest readiness: a "done" sync whose document has no
+            # usable faces is still being indexed by the worker — serve
+            # INDEXING so the picker disables the row with its tag
+            # instead of offering a pick that cannot resolve.
+            if (
+                readiness == "done"
+                and not errors.get(family)
+                and not any(cut.get("faces") for cut in document["cuts"])
+            ):
+                readiness = INDEXING
             document["readiness"] = readiness
             document["error"] = errors.get(family) or error
             families.append(document)

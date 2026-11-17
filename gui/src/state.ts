@@ -246,8 +246,13 @@ export interface CatalogCutDoc {
  */
 export interface CatalogFamilyDoc {
   family: string;
-  /** The family's readiness: a sync state, or unsynced/absent. */
-  readiness: CatalogFamilySyncState | "unsynced" | "absent";
+  /**
+   * The family's readiness: a sync state, unsynced/absent — or
+   * `indexing`: the sync is done but the picker document (faces,
+   * previews) is still being computed by the quota'd worker; the row
+   * stays disabled and tagged until actually pickable.
+   */
+  readiness: CatalogFamilySyncState | "indexing" | "unsynced" | "absent";
   error: string | null;
   scanned: boolean;
   display_name: string | null;

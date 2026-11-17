@@ -74,6 +74,14 @@ EXIT_QUOTA = 42
 #: The worker module every invocation runs (``python -m``).
 WORKER_MODULE = "fontalloy_core.font_worker"
 
+#: The frozen sidecar's worker re-entry flag (ADR-0008): the packaged
+#: entry dispatches it straight into the worker module BEFORE typer/
+#: click parse anything. Source runs keep ``python -m``; a frozen
+#: ``sys.executable`` is the bootloader, where ``-m`` can never work
+#: (Click answers ``No such option: -m`` and every family's document
+#: computation dies).
+WORKER_SENTINEL = "--fontalloy-worker"
+
 #: How long the parent waits for a worker before declaring it dead.
 #: An honest scan of a real family lands in tens of seconds; a wedged
 #: child must never wedge the serve with it.
@@ -139,7 +147,17 @@ def run_worker(
     try:
         json.dump(job, handle, ensure_ascii=False)
         handle.close()
-        outcome = _spawn_and_wait([sys.executable, "-m", WORKER_MODULE, handle.name], limit_mb, timeout)
+        if getattr(sys, "frozen", False):
+            # ADR-0008: a frozen sys.executable is the bootloader, not
+            # Python — "-m" dies in its CLI there. The sentinel re-enters
+            # the packaged entry, which runs the worker before Click sees
+            # anything; PyInstaller >= 6.10 makes that child a
+            # single-process worker reusing the parent's onefile
+            # extraction, so the Job Object wraps the real worker.
+            argv = [sys.executable, WORKER_SENTINEL, handle.name]
+        else:
+            argv = [sys.executable, "-m", WORKER_MODULE, handle.name]
+        outcome = _spawn_and_wait(argv, limit_mb, timeout)
     finally:
         try:
             os.unlink(handle.name)
