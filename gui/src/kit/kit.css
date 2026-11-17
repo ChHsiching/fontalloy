@@ -1018,6 +1018,27 @@
   padding: 5px 8px 5px 6px;
 }
 
+/* The catalog-scope switch (owner item 4): a quiet link-button left of
+ * the 加载本地字体文件 action — the one-click way back to 全部下载
+ * while on-demand runs, no settings dig. */
+.kit-fpscope {
+  flex: none;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font: 12px/1.4 inherit;
+  color: var(--ink2);
+  background: transparent;
+  cursor: pointer;
+}
+.kit-fpscope:hover {
+  color: var(--ink);
+}
+.kit-fpscope:focus-visible {
+  outline: 2px solid var(--ac);
+  outline-offset: 1px;
+}
+
 .kit-fpsys {
   display: flex;
   flex-direction: row;

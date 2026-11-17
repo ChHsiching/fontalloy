@@ -154,9 +154,23 @@ class _FamilyProgress:
     family: str
     state: str = PENDING
     error: str | None = None
+    #: Byte progress while DOWNLOADING (the per-family download UI):
+    #: bytes of the archive landed and the origin's Content-Length, or
+    #: None when the origin sends none (the UI shows MiB instead of %).
+    downloaded: int | None = None
+    total: int | None = None
 
     def document(self) -> dict[str, Any]:
-        return {"family": self.family, "state": self.state, "error": self.error}
+        doc: dict[str, Any] = {
+            "family": self.family,
+            "state": self.state,
+            "error": self.error,
+        }
+        if self.state == DOWNLOADING and self.downloaded is not None:
+            doc["downloaded"] = self.downloaded
+            if self.total is not None:
+                doc["total"] = self.total
+        return doc
 
 
 def _yield_between_families() -> None:
@@ -736,7 +750,13 @@ class CatalogSync:
         self._mark_family(family.family, DOWNLOADING)
         if not (archive.is_file() and sha256_of(archive) == family.sha256):
             fetch_from_origins(
-                release.origins, family.zip, family.sha256, self._dir
+                release.origins,
+                family.zip,
+                family.sha256,
+                self._dir,
+                on_chunk=lambda done, total: self._mark_family(
+                    family.family, DOWNLOADING, downloaded=done, total=total
+                ),
             )
 
         self._mark_family(family.family, EXTRACTING)
@@ -828,10 +848,18 @@ class CatalogSync:
         return True
 
     def _mark_family(
-        self, family: str, state: str, *, error: str | None = None
+        self,
+        family: str,
+        state: str,
+        *,
+        error: str | None = None,
+        downloaded: int | None = None,
+        total: int | None = None,
     ) -> None:
         with self._lock:
             progress = self._families.get(family)
             if progress is not None:
                 progress.state = state
                 progress.error = error
+                progress.downloaded = downloaded
+                progress.total = total

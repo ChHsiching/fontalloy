@@ -41,13 +41,15 @@ def fetch_from_origins(
     dest: Path | str,
     *,
     echo: Callable[[str], None] = lambda _msg: None,
+    on_chunk: Callable[[int, int | None], None] | None = None,
 ) -> OriginFetch:
     """Fetch ``file`` into ``dest``, trying ``origins`` in list order.
 
     An artifact already present with a matching checksum is skipped —
     the same retry-on-launch mechanism the catalog fetch uses. When every
     origin fails, the error names each origin and why, so the user can
-    tell a blocked mirror from a corrupt one.
+    tell a blocked mirror from a corrupt one. ``on_chunk`` (optional)
+    rides :func:`download_verified` — the per-family byte progress.
     """
     if "/" in file or "\\" in file:
         raise AssetsError(f"artifact name must be a bare filename, got {file!r}")
@@ -71,7 +73,7 @@ def fetch_from_origins(
     for origin in origins:
         url = f"{origin.base_url.rstrip('/')}/{file}"
         try:
-            download_verified(url, target, sha256, describe=file)
+            download_verified(url, target, sha256, describe=file, on_chunk=on_chunk)
         except AssetsError as exc:
             attempts.append(f"{origin.id}: {exc}")
             echo(f"{file}: origin {origin.id} failed, trying the next one")

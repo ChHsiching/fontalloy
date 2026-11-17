@@ -26,7 +26,9 @@ build against the manifest's pinned source fonts.
 from __future__ import annotations
 
 import hashlib
+import os
 import shutil
+import time
 import urllib.error
 import urllib.request
 import zipfile
@@ -47,6 +49,9 @@ from fontalloy_core.recipe import FontRef, Recipe
 _CHUNK = 1 << 20
 #: Per-request timeout; generous for slow release CDNs.
 _TIMEOUT_SECONDS = 300
+#: Test seam: seconds slept per downloaded chunk (the per-family byte
+#: progress is otherwise unobservably fast against local origins).
+DOWNLOAD_CHUNK_DELAY_ENV = "FONTALLOY_DOWNLOAD_CHUNK_DELAY"
 
 #: Archive kinds :func:`_archive_kind` detects and extracts. ``None``
 #: means "a bare font file, nothing to unpack".
@@ -140,7 +145,12 @@ def _download_verified(entry: CatalogEntry, target: Path) -> None:
 
 
 def download_verified(
-    url: str, target: Path, expected: str, *, describe: str
+    url: str,
+    target: Path,
+    expected: str,
+    *,
+    describe: str,
+    on_chunk: Callable[[int, int | None], None] | None = None,
 ) -> None:
     """Download ``url`` to a temp file, verify sha256, then move into place.
 
@@ -148,20 +158,38 @@ def download_verified(
     (:mod:`fontalloy_core.origins`): one download-and-verify
     implementation, so both paths fail identically. ``describe`` names the
     artifact in errors (``"<family> (<file>)"`` from the fetch path).
+    ``on_chunk`` (optional) receives ``(downloaded, total)`` after every
+    chunk — the per-family byte progress the status feed streams; ``total``
+    is the Content-Length when the origin sends one, else None (the UI
+    then shows downloaded MiB instead of a percent). The test seam
+    :data:`DOWNLOAD_CHUNK_DELAY_ENV` sleeps per chunk so a progress UI is
+    observably exercisable (a local download is otherwise instant).
     """
     temp = target.with_name(target.name + ".part")
     try:
         digest = hashlib.sha256()
+        chunk_delay = os.environ.get(DOWNLOAD_CHUNK_DELAY_ENV)
+        chunk_delay_s = float(chunk_delay) if chunk_delay else 0.0
         with urllib.request.urlopen(url, timeout=_TIMEOUT_SECONDS) as response:  # noqa: S310
             # file:// responses carry no HTTP status; only http(s) is checked
             if response.status not in (None, 200):
                 raise AssetsError(
                     f"{describe}: origin returned HTTP {response.status} for {url}"
                 )
+            total: int | None = None
+            length = response.headers.get("Content-Length")
+            if length is not None and length.isdigit():
+                total = int(length)
+            downloaded = 0
             with temp.open("wb") as out:
                 while chunk := response.read(_CHUNK):
                     digest.update(chunk)
                     out.write(chunk)
+                    downloaded += len(chunk)
+                    if on_chunk is not None:
+                        on_chunk(downloaded, total)
+                    if chunk_delay_s > 0:
+                        time.sleep(chunk_delay_s)
         actual = digest.hexdigest()
         if actual != expected:
             raise AssetsError(

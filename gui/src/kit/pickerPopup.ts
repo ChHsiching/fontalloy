@@ -148,13 +148,20 @@ export interface PickerPopupProps {
    */
   pathInput?: { placeholder: string; onCommit(path: string): void };
   /**
+   * The catalog-scope switch (ADR-0010, owner item 4): a quiet footer
+   * link shown only while the catalog runs on-demand — the one-click
+   * way back to 下载全部字体 without digging through settings. Omitted
+   * in full mode (settings stays the full-mode switch surface).
+   */
+  scopeAction?: { label: string; onClick(): void };
+  /**
    * The picker-level variant help (round 7 redesign): when present, a
    * single ? anchor rides the search header — one place per picker
    * explaining what the rows' variant chips mean, instead of per-row
    * machinery. Mounted once at mount; destroyed with the picker.
    */
   help?: PickerHelpProps;
-  onPick(id: string): void;
+  onPick(id: string): void | "keep-open";
   /** A variant chip was clicked (round 7); falls back to onPick. */
   onChip?(rowId: string, chipId: string): void;
 }
@@ -275,6 +282,18 @@ export function mountPickerPopup(
   // right of the button, visible only while a resolver exists.
   const footerRow = document.createElement("div");
   footerRow.className = "kit-fpfoot";
+  // The catalog-scope switch (owner item 4): a quiet link-button at the
+  // footer row's left, rendered only while on-demand runs.
+  const scopeBtn = document.createElement("button");
+  scopeBtn.type = "button";
+  scopeBtn.className = "kit-fpscope";
+  scopeBtn.hidden = true;
+  let scopeClick: (() => void) | null = null;
+  scopeBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    scopeClick?.();
+  });
+  footerRow.appendChild(scopeBtn);
   const footerBtn = document.createElement("button");
   footerBtn.type = "button";
   footerBtn.className = "kit-fpsys";
@@ -454,8 +473,11 @@ export function mountPickerPopup(
       }
       row.addEventListener("click", () => {
         if (font.disabled) return;
-        props.onPick(font.id);
-        close();
+        // "keep-open": the pick did not complete — the on-demand flow's
+        // click arms a bounded download whose live byte progress plays
+        // IN this row (下载中 n%); closing here would orphan the
+        // progress on a zombie popup (the r31v3 owner item 3).
+        if (props.onPick(font.id) !== "keep-open") close();
       });
       fragment.appendChild(row);
     }
@@ -482,6 +504,15 @@ export function mountPickerPopup(
     } else {
       footerClick = null;
       footerBtn.style.display = "none";
+    }
+    // The scope switch (owner item 4): shown only while on-demand.
+    if (props.scopeAction) {
+      scopeBtn.textContent = props.scopeAction.label;
+      scopeClick = props.scopeAction.onClick;
+      scopeBtn.hidden = false;
+    } else {
+      scopeClick = null;
+      scopeBtn.hidden = true;
     }
     // The inline load progress (round 21; round 24 moved it INSIDE the
     // button): the 260px rail's footer cannot hold button + a separate

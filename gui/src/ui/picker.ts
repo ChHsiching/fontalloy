@@ -17,6 +17,7 @@ import {
   ensureCatalogRegistered,
   fetchCatalogFamily,
   previewCssFamily,
+  setCatalogScope,
   starsFor,
   subscribeStars,
 } from "../catalog/serve";
@@ -672,6 +673,8 @@ export function mountPicker(
         .catalog.documents.find((entry) => entry.family === family);
       if (doc !== undefined && doc.readiness === "done") {
         await selectCatalogEntry(family, variant ?? "");
+        // The pick landed — the dropdown's normal close-on-pick.
+        popup.close();
         return;
       }
       if (doc !== undefined && doc.readiness === "failed") {
@@ -884,6 +887,22 @@ export function mountPicker(
       // of its families (a serve may serve a subset of the manifest).
       .filter((display) => display.families.some((f) => carried.has(f)));
 
+    // Owner item 2/3: a DOWNLOADING row shows its byte progress —
+    // 「下载中 43%」 when the origin sent Content-Length, else MiB —
+    // never a motionless verb over running bytes.
+    const tagWithProgress = (doc: CatalogFamilyDoc): string | undefined => {
+      if (doc.readiness === "downloading") {
+        const p = catalog.progress.find((e) => e.family === doc.family);
+        if (p?.downloaded !== undefined) {
+          if (p.total !== undefined && p.total > 0) {
+            return `下载中 ${Math.min(100, Math.floor((p.downloaded / p.total) * 100))}%`;
+          }
+          return `下载中 ${(p.downloaded / 1024 / 1024).toFixed(1)} MiB`;
+        }
+      }
+      return readinessTag(doc);
+    };
+
     const rowsByFamily = new Map(
       displays.map((display) => {
         const primaryFamily = display.families[0]!;
@@ -1001,7 +1020,7 @@ export function mountPicker(
                 ? "未下载"
                 : rowNoteDoc === undefined
                   ? undefined
-                  : readinessTag(rowNoteDoc),
+                  : tagWithProgress(rowNoteDoc),
             chips: chips.length > 1 ? chips : undefined,
             keywords: [
               display.id,
@@ -1131,6 +1150,21 @@ export function mountPicker(
         // The inline spinner + count while a load runs (round 21).
         ...(loading !== null ? { loading } : {}),
       },
+      // Owner item 4: while the catalog runs on-demand, the footer
+      // carries the one-click way back to 全部下载 — no settings dig.
+      ...(catalog.scope === "on-demand"
+        ? {
+            scopeAction: {
+              label: "下载全部字体",
+              onClick: () => {
+                void setCatalogScope("full").catch(() => {
+                  error = "切换失败，请检查网络连接后重试。";
+                  rerender();
+                });
+              },
+            },
+          }
+        : {}),
       // The typed-path fallback (round 20): only where a resolver
       // exists — the Tauri shell, or an injected test seam. Round 21:
       // the placeholder is SHORT and fully visible at rest (the field
@@ -1161,7 +1195,7 @@ export function mountPicker(
           return body;
         },
       },
-      onPick: (id) => {
+      onPick: (id): void | "keep-open" => {
         // Round 18 (owner item 3): clicking the row this role already
         // picked UNLOADS the pick — selection returns to the never-picked
         // null, the same toggle the row's active chip gets below. The
@@ -1203,7 +1237,9 @@ export function mountPicker(
               cut?.family ?? display.id,
               cut?.variant ?? null,
             );
-            return;
+            // The download's live progress plays in this row — the
+            // popup stays open until the pick lands.
+            return "keep-open";
           }
           // A release-only family (absent from the manifest mirror):
           // plain pick.

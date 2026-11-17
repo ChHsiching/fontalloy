@@ -185,6 +185,10 @@ export interface CatalogFamilyProgress {
   state: CatalogFamilySyncState;
   /** The serve's own failure reason (shown inline, never hover-only). */
   error?: string | null;
+  /** Bytes landed while `downloading` (the per-family download UI). */
+  downloaded?: number;
+  /** The origin's Content-Length when it sends one (else: MiB shown). */
+  total?: number;
 }
 
 /** One interval of the run-length coverage documents carry. */

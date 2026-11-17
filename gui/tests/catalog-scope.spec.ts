@@ -140,23 +140,32 @@ test.describe("first-run catalog scope choice (ADR-0010)", () => {
     expect(states.get("ScopeFontB")).toBe("pending");
   });
 
-  // The two DOM-refresh assertions (the row's 未下载 tag clearing and
-  // the card header carrying the picked family) stay FIXME: every
-  // layer below them is proven green end to end (choice POST, fetch
-  // POST from the page, serve-side delivery, family document with
-  // faces, the page's own /catalog/status and /catalog/families
-  // fetching the updated state, the poller patching the store every
-  // 500 ms), yet the popup's row DOM never re-rendered in the harness.
-  // Evidence trail: the r31v3 session log (e2e-dbg4..dbg9). Reopen
-  // with a standalone interactive driver before re-enabling.
-  test.fixme("the fetched row clears its tag and lands the pick", async ({
+  // Root cause found and fixed (owner item 3): the kit closed the
+  // popup unconditionally on row click, so the on-demand download's
+  // progress rendered into a zombie popup (open:false — the DBG-POPS
+  // probe caught it). onPick now returns "keep-open" for the
+  // fetch-then-select path and closes when the pick lands.
+  test("the fetched row clears its tag and lands the pick", async ({
     page,
   }) => {
+    const screen = page.locator(".catalog-screen");
+    await expect(screen).toBeVisible();
+    await pointerClick(
+      page,
+      page
+        .locator("[data-role='catalog-choice']")
+        .getByRole("button", { name: /按需使用/ }),
+    );
+    await expect(screen).toBeHidden({ timeout: 15_000 });
     const card = page.locator(".kit-fsel[data-role='picker-en']");
     await pointerClick(page, card.locator(".kit-hd"));
     const popup = page.locator("[data-picker-popup='en']");
+    await expect(popup).toBeVisible();
     const rowA = popup.locator(".kit-fp", { hasText: "ScopeFontA" });
+    await expect(rowA).toContainText("未下载");
     await pointerClick(page, rowA);
+    // The popup STAYS OPEN while the family downloads; the row's tag
+    // clears and the pick lands (closing it) when the document is ready.
     await expect(rowA).not.toContainText("未下载", { timeout: 30_000 });
     await expect(card.locator(".kit-hd")).toContainText("ScopeFontA", {
       timeout: 30_000,

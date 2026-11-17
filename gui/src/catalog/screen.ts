@@ -46,6 +46,24 @@ const STATUS_TEXT: Record<CatalogFamilyProgress["state"], string> = {
   failed: "下载失败",
 };
 
+/** One family's row text — the state word, or the byte progress while
+ *  the archive streams: `下载中 43%` (origin sent Content-Length) or
+ *  `下载中 12.3 MiB` (it didn't). Never a motionless verb over running
+ *  bytes. */
+function statusText(entry: {
+  state: CatalogFamilyProgress["state"] | typeof SEED_STATUS;
+  downloaded?: number;
+  total?: number;
+}): string {
+  if (entry.state === SEED_STATUS) return SEED_TEXT;
+  if (entry.state !== "downloading") return STATUS_TEXT[entry.state];
+  if (entry.downloaded === undefined) return STATUS_TEXT.downloading;
+  if (entry.total !== undefined && entry.total > 0) {
+    return `下载中 ${Math.min(100, Math.floor((entry.downloaded / entry.total) * 100))}%`;
+  }
+  return `下载中 ${(entry.downloaded / 1024 / 1024).toFixed(1)} MiB`;
+}
+
 /** The seed rows' display text — a pseudo state, never a serve state. */
 const SEED_STATUS = "seed";
 const SEED_TEXT = "未下载";
@@ -313,7 +331,7 @@ export function mountCatalogScreen(): void {
       }
       parts.row.dataset.status = entry.state;
       parts.status.textContent =
-        entry.state === SEED_STATUS ? SEED_TEXT : STATUS_TEXT[entry.state];
+        entry.state === SEED_STATUS ? SEED_TEXT : statusText(entry);
       // Failures state the serve's own reason inline — nothing lives in
       // hover-only tooltips (ADR-0004).
       if (entry.state === "failed" && entry.error) {
