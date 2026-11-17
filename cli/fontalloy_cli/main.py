@@ -258,6 +258,17 @@ def serve(
             "holds for the desktop client's split layout (ticket #43).",
         ),
     ] = None,
+    catalog_scope: Annotated[
+        str,
+        typer.Option(
+            "--catalog-scope",
+            help="Catalog scope (ADR-0010): 'full' downloads every "
+            "family at sync time (default); 'on-demand' presets the "
+            "listing only and families arrive per explicit "
+            "POST /catalog/families/<family>/fetch; 'choose' downloads "
+            "nothing until POST /catalog/scope records the choice.",
+        ),
+    ] = "full",
 ) -> None:
     """Run the core as a localhost HTTP service (127.0.0.1 only).
 
@@ -290,6 +301,7 @@ def serve(
         catalog_release_origin=catalog_release_origin,
         catalog_dir=catalog_dir,
         catalog_manifest_origin=catalog_manifest_origin,
+        catalog_scope=catalog_scope,
     )
     try:
         fontalloy_core.run_serve(options)

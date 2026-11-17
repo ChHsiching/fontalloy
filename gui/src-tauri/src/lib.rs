@@ -415,6 +415,10 @@ fn spawn_sidecar(handle: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
             .into_owned(),
         "--catalog-manifest-origin".into(),
         CATALOG_MANIFEST_ORIGIN.into(),
+        // ADR-0010: the desktop client shows the first-run scope choice
+        // — nothing downloads until the user picks full or on-demand.
+        "--catalog-scope".into(),
+        "choose".into(),
     ]);
     command = command.args(&serve_args);
     for origin in ALLOWED_ORIGINS {

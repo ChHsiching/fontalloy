@@ -99,6 +99,17 @@ VERIFYING = "verifying"
 DONE = "done"
 FAILED = "failed"
 
+#: Catalog scope modes (ADR-0010): full downloads every family at sync
+#: time; on-demand downloads nothing up front — a family's bytes arrive
+#: only per explicit fetch (POST /catalog/families/<family>/fetch).
+#: "choose" is a serve-side WAITING mode (nothing downloads until POST
+#: /catalog/scope decides) and is never persisted.
+SCOPE_FULL = "full"
+SCOPE_ON_DEMAND = "on-demand"
+SCOPE_CHOOSE = "choose"
+_PERSISTED_SCOPES = (SCOPE_FULL, SCOPE_ON_DEMAND)
+SCOPE_FILE = "scope.json"
+
 #: The release-document phase inside the status document (only while
 #: the sync is configured): ``fetching`` until a document — fresh from
 #: the origin or the offline cache fallback — has been parsed, then
@@ -190,7 +201,12 @@ class CatalogSync:
     in flight.
     """
 
-    def __init__(self, release_origin: str | None, catalog_dir: Path | None):
+    def __init__(
+        self,
+        release_origin: str | None,
+        catalog_dir: Path | None,
+        scope_mode: str = SCOPE_FULL,
+    ):
         self._origin = release_origin
         self._dir = catalog_dir
         self._lock = threading.Lock()
@@ -226,6 +242,18 @@ class CatalogSync:
         # materializer thread). None until a report lands; the key is
         # omitted from the status document while None.
         self._materializer: dict[str, Any] | None = None
+        # ADR-0010 scope: the persisted choice (None = undecided — a
+        # "choose" serve waits on the event until a scope lands; the
+        # status document carries scope=null for the choice screen).
+        self._scope = self._read_scope()
+        self._scope_wait = scope_mode == SCOPE_CHOOSE and self._scope is None
+        self._scope_event = threading.Event()
+        if self._scope is not None:
+            self._scope_event.set()
+        # The release document this run settled on (single-family
+        # on-demand fetches resolve against it).
+        self._release: CatalogRelease | None = None
+        self._fetching: set[str] = set()
 
     # -- configuration -----------------------------------------------------
 
@@ -275,6 +303,7 @@ class CatalogSync:
             if self._active:
                 document["document"] = self._document_phase
                 document["warm"] = self._warm
+                document["scope"] = self._scope
             if self._materializer is not None:
                 # The materializer runs on its OWN configuration gate
                 # (manifest origin + catalog dir), not the family sync's
@@ -289,6 +318,72 @@ class CatalogSync:
         — never a live reference into another thread's dict)."""
         with self._lock:
             self._materializer = dict(snapshot)
+
+    # -- the scope knob (ADR-0010) ----------------------------------------
+
+    def _read_scope(self) -> str | None:
+        """The persisted catalog scope (None = no choice recorded)."""
+        if self._dir is None:
+            return None
+        try:
+            body = json.loads((self._dir / SCOPE_FILE).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        mode = body.get("mode") if isinstance(body, dict) else None
+        return mode if mode in _PERSISTED_SCOPES else None
+
+    def set_scope(self, mode: str) -> str | None:
+        """Record and activate the scope choice. Returns an error
+        string on a bad mode, None on success. Starting the full sync
+        after a "full" choice is the CALLER's visible next step (the
+        serve handler re-requests it)."""
+        if mode not in _PERSISTED_SCOPES:
+            return f"unknown catalog scope {mode!r} (want full or on-demand)"
+        assert self._dir is not None
+        # In "choose" mode the sync blocks before _load_release ever
+        # creates the directory — the choice itself is its first writer.
+        self._dir.mkdir(parents=True, exist_ok=True)
+        target = self._dir / SCOPE_FILE
+        temp = target.with_name(target.name + PART_SUFFIX)
+        temp.write_text(json.dumps({"mode": mode}), encoding="utf-8")
+        temp.replace(target)
+        with self._lock:
+            self._scope = mode
+            self._scope_wait = False
+        self._scope_event.set()
+        return None
+
+    def request_family_fetch(self, family: str) -> int:
+        """On-demand single-family download (ADR-0010): arm a
+        background repair of exactly this family against the run's
+        release document. HTTP semantics — 202 accepted, 404 unknown
+        family, 409 already in flight. The status feed streams its
+        states (downloading → extracting → done | failed)."""
+        with self._lock:
+            release = self._release
+            if release is None or not any(
+                f.family == family for f in release.families
+            ):
+                return 404
+            if family in self._fetching:
+                return 409
+            self._fetching.add(family)
+        target = next(f for f in release.families if f.family == family)
+
+        def _fetch() -> None:
+            try:
+                _yield_between_families()  # the GIL slot, same as the walk
+                self._sync_family(release, target, verify_hashes=False)
+            except Exception as exc:  # the family fails honestly
+                self._mark_family(family, FAILED, error=str(exc))
+            finally:
+                with self._lock:
+                    self._fetching.discard(family)
+
+        threading.Thread(
+            target=_fetch, name=f"fontalloy-catalog-fetch-{family}", daemon=True
+        ).start()
+        return 202
 
     # -- lifecycle -----------------------------------------------------------
 
@@ -357,6 +452,11 @@ class CatalogSync:
             self._state = BOOTSTRAPPING
             self._error = None
             self._document_phase = FETCHING
+        if self._scope_wait:
+            # ADR-0010 "choose": no byte moves until the user picks a
+            # scope — the status document carries scope=null for the
+            # first-run choice screen.
+            self._scope_event.wait()
         self._preset_from_cache()
         with self._lock:
             cached_release = self._cached_release
@@ -392,6 +492,17 @@ class CatalogSync:
             with self._lock:
                 self._document_phase = LOADED
                 self._preset(release)
+        with self._lock:
+            self._release = release
+        if (self._scope or SCOPE_FULL) == SCOPE_ON_DEMAND:
+            # On-demand (ADR-0010): the listing is live — preset from
+            # the release document, streamed stat states for whatever
+            # is already on disk — and NO walk: bytes arrive only per
+            # explicit family fetch.
+            with self._lock:
+                self._state = READY
+                self._error = None
+            return
         failures = self._walk(release, verify_hashes)
         if fetcher is not None:
             fetcher.join()

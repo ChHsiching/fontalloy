@@ -94,7 +94,7 @@ from typing import Any
 from fontalloy_core.build import build_recipe
 from fontalloy_core.catalog import Catalog, load_manifest
 from fontalloy_core.catalog_materialize import materialize_with_refresh
-from fontalloy_core.catalog_sync import CatalogSync
+from fontalloy_core.catalog_sync import SCOPE_FULL, CatalogSync
 from fontalloy_core.errors import BuildCancelled, FontAlloyError
 from fontalloy_core.family_docs import FamilyDocuments
 from fontalloy_core.fonts_scan import (
@@ -210,6 +210,11 @@ class ServeOptions:
     # fetched-layout verification holds for the desktop client's
     # split layout. None (everywhere but the client) changes nothing.
     catalog_manifest_origin: str | None = None
+    # ADR-0010 scope: "full" (default — the sync downloads every
+    # family), "on-demand" (preset the listing only; families arrive
+    # per explicit fetch), or "choose" (the desktop client's first-run
+    # choice screen: nothing downloads until POST /catalog/scope).
+    catalog_scope: str = SCOPE_FULL
 
 
 class _BuildAborted(Exception):
@@ -379,7 +384,9 @@ class ServeState:
         # startup when configured — filling the catalog is the point of
         # a launch — on its own daemon thread, never in a handler.
         self.catalog_sync = CatalogSync(
-            options.catalog_release_origin, options.catalog_dir
+            options.catalog_release_origin,
+            options.catalog_dir,
+            scope_mode=options.catalog_scope,
         )
         # Issue #38: the picker-facing catalog model (family documents,
         # face/preview byte sources) and the launch-cached stars. The
@@ -1080,6 +1087,9 @@ class _ServeHandler(BaseHTTPRequestHandler):
         elif path == "/catalog/status":
             self._require_methods(method, ("GET",))
             self._send_json(state.catalog_sync.status_document())
+        elif path == "/catalog/scope":
+            self._require_methods(method, ("POST",))
+            self._set_catalog_scope()
         elif path == "/catalog/sync":
             self._require_methods(method, ("POST",))
             # The handler only arms the sync thread; the run itself is
@@ -1132,7 +1142,11 @@ class _ServeHandler(BaseHTTPRequestHandler):
             detail = re.fullmatch(r"/builds/([^/]+)", path)
             cancel = re.fullmatch(r"/builds/([^/]+)/cancel", path)
             artifact = re.fullmatch(r"/builds/([^/]+)/(font|report)", path)
-            if preview is not None:
+            fetch = re.fullmatch(r"/catalog/families/([^/]+)/fetch", path)
+            if fetch is not None:
+                self._require_methods(method, ("POST",))
+                self._fetch_catalog_family(_path_segment(fetch.group(1)))
+            elif preview is not None:
                 self._require_methods(method, ("GET",))
                 self._catalog_preview(_path_segment(preview.group(1)))
             elif face is not None:
@@ -1525,6 +1539,46 @@ class _ServeHandler(BaseHTTPRequestHandler):
             ),
             etag=sha256,
         )
+
+    def _set_catalog_scope(self) -> None:
+        """POST /catalog/scope — the first-run/settings choice
+        (ADR-0010). A "full" choice re-arms the sync right here (the
+        download becomes visible in /catalog/status immediately); the
+        reply carries the fresh status snapshot."""
+        length = self._content_length()
+        if length is None:
+            self._reject_malformed_length()
+            return
+        raw = self.rfile.read(length) if length else b""
+        try:
+            data = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            self._send_error(400, f"scope body is not valid JSON: {exc}")
+            return
+        mode = data.get("mode") if isinstance(data, dict) else None
+        if not isinstance(mode, str):
+            self._send_error(
+                400, 'scope body must carry {"mode": "full" | "on-demand"}'
+            )
+            return
+        error = self.state.catalog_sync.set_scope(mode)
+        if error is not None:
+            self._send_error(400, error)
+            return
+        if mode == "full":
+            self.state.catalog_sync.request_sync(verify_hashes=False)
+        self._send_json(self.state.catalog_sync.status_document())
+
+    def _fetch_catalog_family(self, family: str) -> None:
+        """POST /catalog/families/<family>/fetch — one family's bytes on
+        demand (ADR-0010); the status feed streams the states."""
+        status = self.state.catalog_sync.request_family_fetch(family)
+        if status == 202:
+            self._send_json({"family": family, "accepted": True}, status=202)
+        elif status == 404:
+            self._send_error(404, f"no such catalog family: {family}")
+        else:
+            self._send_error(409, f"{family} is already fetching")
 
     def _catalog_preview(self, family: str) -> None:
         """``GET /catalog/families/{family}/preview``: the family's tiny
