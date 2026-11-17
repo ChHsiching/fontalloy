@@ -15,6 +15,7 @@ import {
 } from "../fonts/localFamily";
 import {
   ensureCatalogRegistered,
+  fetchCatalogFamily,
   previewCssFamily,
   starsFor,
   subscribeStars,
@@ -646,6 +647,43 @@ export function mountPicker(
    * with their descriptors, and the family's default slot is loaded
    * so the anchor renders in it immediately.
    */
+  /**
+   * On-demand pick (ADR-0010): the row's family carries no bytes yet —
+   * fetch exactly that family, then land the pick the user asked for.
+   * The wait is BOUNDED (600 × 500 ms = 5 minutes; a wedged download
+   * must never wedge the picker) and every failure is the
+   * consumer-plain line, never engineering vocabulary.
+   */
+  const fetchThenSelect = async (
+    family: string,
+    variant: string | null,
+  ): Promise<void> => {
+    try {
+      await fetchCatalogFamily(family);
+    } catch {
+      error = `下载 ${family} 失败，请检查网络连接后重试。`;
+      rerender();
+      return;
+    }
+    for (let attempt = 0; attempt < 600; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const doc = store
+        .get()
+        .catalog.documents.find((entry) => entry.family === family);
+      if (doc !== undefined && doc.readiness === "done") {
+        await selectCatalogEntry(family, variant ?? "");
+        return;
+      }
+      if (doc !== undefined && doc.readiness === "failed") {
+        error = `下载 ${family} 失败，请稍后重试。`;
+        rerender();
+        return;
+      }
+    }
+    error = `下载 ${family} 时间过长，请稍后重试。`;
+    rerender();
+  };
+
   const selectCatalogEntry = async (
     family: string,
     variant: string,
@@ -928,6 +966,10 @@ export function mountPicker(
           return [cut.variant ?? "", ...words].filter(Boolean);
         };
         const rowId = cssKey ?? `cat:${display.id}`;
+        // ADR-0010 on-demand: an unfetched family's row stays clickable
+        // (the click downloads it); its tag reads 未下载, not 等待同步 —
+        // nothing is syncing, the bytes are simply not here yet.
+        const onDemand = catalog.scope === "on-demand";
         // Self-rendering (ticket #30): the row renders in its OWN
         // preview-subset family (the active cut's, else the primary
         // member's) — a lazy URL FontFace, never a registered binary:
@@ -950,12 +992,16 @@ export function mountPicker(
             // keeps the listing font, exactly as before).
             pickFamily: cssKey ?? undefined,
             meta,
-            disabled: !anyDone,
+            disabled: !anyDone && !onDemand,
             note: anyDone
               ? undefined
-              : rowNoteDoc === undefined
-                ? undefined
-                : readinessTag(rowNoteDoc),
+              : onDemand &&
+                  rowNoteDoc !== undefined &&
+                  rowNoteDoc.readiness === "pending"
+                ? "未下载"
+                : rowNoteDoc === undefined
+                  ? undefined
+                  : readinessTag(rowNoteDoc),
             chips: chips.length > 1 ? chips : undefined,
             keywords: [
               display.id,
@@ -1135,6 +1181,30 @@ export function mountPicker(
         if (id.startsWith("cat:")) {
           const display = displays.find((d) => `cat:${d.id}` === id);
           if (!display) return;
+          // The row's ACTIVE cut (explicit selection, else default).
+          const cuts = docCuts(display);
+          const cut =
+            cuts.find((c) => c.id === variantSelections.get(display.id)) ??
+            cuts[0] ??
+            null;
+          // ADR-0010 on-demand: an unfetched family's click downloads
+          // exactly it, then lands the pick — BEFORE either pick branch
+          // (the manifest path and the release-only path alike).
+          const onDemandDoc = store
+            .get()
+            .catalog.documents.find(
+              (d) => d.family === (cut?.family ?? display.id),
+            );
+          if (
+            store.get().catalog.scope === "on-demand" &&
+            (onDemandDoc === undefined || onDemandDoc.readiness !== "done")
+          ) {
+            void fetchThenSelect(
+              cut?.family ?? display.id,
+              cut?.variant ?? null,
+            );
+            return;
+          }
           // A release-only family (absent from the manifest mirror):
           // plain pick.
           if (
@@ -1145,11 +1215,6 @@ export function mountPicker(
             void selectReleaseFamily(display.id);
             return;
           }
-          // The row's ACTIVE cut (explicit selection, else default).
-          const cuts = docCuts(display);
-          const cut =
-            cuts.find((c) => c.id === variantSelections.get(display.id)) ??
-            cuts[0];
           if (cut) void selectCatalogEntry(cut.family, cut.variant);
           return;
         }
@@ -1174,6 +1239,17 @@ export function mountPicker(
         const cuts = docCuts(display);
         const cut = cuts.find((c) => c.id === chipId);
         if (!cut) return;
+        // ADR-0010 on-demand: an unfetched cut's chip click downloads
+        // exactly its family, then lands the cut pick.
+        if (store.get().catalog.scope === "on-demand") {
+          const chipDoc = store
+            .get()
+            .catalog.documents.find((d) => d.family === cut.family);
+          if (chipDoc === undefined || chipDoc.readiness !== "done") {
+            void fetchThenSelect(cut.family, cut.variant);
+            return;
+          }
+        }
         // Round 18 (owner item 3): clicking the ACTIVE chip of the row
         // this role already picked clears the whole family pick — the
         // chip IS the cut, and clearing means no family. The active cut

@@ -1,6 +1,6 @@
 import catalogManifest from "../data/catalog.json";
 import { store, type CatalogFamilyProgress } from "../state";
-import { skipCatalogScreen } from "./serve";
+import { setCatalogScope, skipCatalogScreen } from "./serve";
 import { openFontPicker } from "../ui/picker";
 import { appMessages } from "../ui/charmap";
 import { brandMark } from "../kit/topBar";
@@ -84,6 +84,21 @@ export function mountCatalogScreen(): void {
         <span class="catalog-ready" data-stat="catalog-ready">目录就绪</span>
       </div>
       <div class="catalog-bar" data-role="catalog-bar"><i></i></div>
+      <div class="catalog-choice" data-role="catalog-choice" hidden>
+        <h3 class="catalog-choice-title">怎么把字体目录装进这台电脑？</h3>
+        <div class="catalog-choice-cards">
+          <button class="catalog-choice-card" type="button" data-choice="full">
+            <span class="catalog-choice-name">下载全部字体</span>
+            <span class="catalog-choice-note">内容较大，需要较长时间；一次到位，之后完全离线可用。</span>
+          </button>
+          <button class="catalog-choice-card" type="button" data-choice="on-demand">
+            <span class="catalog-choice-name">按需使用</span>
+            <span class="catalog-choice-note">先不下载；目录照常浏览，点选某个字体时再下载那一个。只用本地字体文件时选这个。</span>
+          </button>
+        </div>
+        <div class="catalog-choice-error" data-role="catalog-choice-error" hidden></div>
+        <div class="catalog-choice-foot">选择随时可以在设置中更改；本地字体文件的加载不受影响。</div>
+      </div>
       <div class="catalog-list"></div>
       <div class="catalog-actions">
         <button class="catalog-start" type="button" hidden>开始使用</button>
@@ -116,8 +131,40 @@ export function mountCatalogScreen(): void {
   const sub = screen.querySelector<HTMLElement>("[data-role='catalog-sub']")!;
   const bar = screen.querySelector<HTMLElement>("[data-role='catalog-bar']")!;
   const barFill = bar.querySelector<HTMLElement>("i")!;
+  const choice = screen.querySelector<HTMLElement>(
+    "[data-role='catalog-choice']",
+  )!;
+  const choiceError = screen.querySelector<HTMLElement>(
+    "[data-role='catalog-choice-error']",
+  )!;
+  const choiceButtons = [
+    ...screen.querySelectorAll<HTMLButtonElement>(".catalog-choice-card"),
+  ];
+  const counter = screen.querySelector<HTMLElement>(".catalog-progress")!;
   const skip = screen.querySelector<HTMLButtonElement>(".catalog-skip")!;
   const start = screen.querySelector<HTMLButtonElement>(".catalog-start")!;
+
+  // ADR-0010: the two-entry choice. An undecided scope owns the panel
+  // until the user picks — "full" hands it to the progress story on the
+  // next poll; "on-demand" settles ready on its own, so the screen
+  // closes immediately (the listing is already live). The skip stays
+  // available either way (decide later — the next launch asks again).
+  for (const button of choiceButtons) {
+    button.addEventListener("click", () => {
+      const mode = button.dataset.choice as "full" | "on-demand";
+      for (const other of choiceButtons) other.disabled = true;
+      choiceError.hidden = true;
+      void setCatalogScope(mode)
+        .then(() => {
+          if (mode === "on-demand") skipCatalogScreen();
+        })
+        .catch(() => {
+          choiceError.textContent = "未能记录选择，请检查网络连接后重试。";
+          choiceError.hidden = false;
+          for (const other of choiceButtons) other.disabled = false;
+        });
+    });
+  }
 
   /** Whether a USER click closed the screen (the serve's settle did not). */
   let userDismissed = false;
@@ -180,6 +227,14 @@ export function mountCatalogScreen(): void {
     // any status sample exists. Its label is its own — the download
     // copy must appear only around a real sync.
     const connecting = catalog.screen && catalog.status === "connecting";
+    // ADR-0010: an undecided scope owns the panel — the two-entry
+    // choice replaces the progress story (counter, bar, list) until
+    // the user picks. Explicit null only: serves predating the scope
+    // key report undefined and never see the choice.
+    const choosing =
+      catalog.screen &&
+      catalog.status === "bootstrapping" &&
+      catalog.scope === null;
     if (connecting) {
       screen.setAttribute("aria-label", "正在启动字体服务");
       titleA.textContent = "正在启动字体服务";
@@ -187,6 +242,12 @@ export function mountCatalogScreen(): void {
       titleB.hidden = true;
       sub.textContent = "首次启动需解压字体服务，约需几十秒";
       sub.hidden = false;
+    } else if (choosing) {
+      screen.setAttribute("aria-label", "首次使用：选择字体目录的下载方式");
+      titleA.textContent = "首次使用";
+      titleSep.hidden = false;
+      titleB.hidden = false;
+      sub.hidden = true;
     } else {
       screen.setAttribute("aria-label", "首次运行：下载字体目录");
       titleA.textContent = "首次运行";
@@ -194,6 +255,11 @@ export function mountCatalogScreen(): void {
       titleB.hidden = false;
       sub.hidden = true;
     }
+    choice.hidden = !choosing;
+    bar.hidden = choosing;
+    counter.hidden = choosing;
+    list.hidden = choosing;
+    if (choosing) readyTag.hidden = true;
 
     // Is the status families list authoritative? The `document` key
     // decides; against a serve predating it (undefined) the fallback
@@ -334,8 +400,13 @@ export function mountCatalogScreen(): void {
     readyTag.classList.toggle("on", complete);
     // The terminal title: the client's materializer window keeps the
     // panel up for a while at 4/4 — the head must not keep saying
-    // "downloading" next to the ready tag.
-    titleB.textContent = complete ? "字体目录已就绪" : "正在下载字体目录";
+    // "downloading" next to the ready tag. While the choice owns the
+    // panel its own title stands.
+    titleB.textContent = choosing
+      ? "选择字体目录的下载方式"
+      : complete
+        ? "字体目录已就绪"
+        : "正在下载字体目录";
     // The terminal actions: "skip, later" is the wrong sole control at
     // 4/4 — completion swaps in the start CTA (same close path) and
     // hides the dismiss copy; mid-run the dismiss copy is unchanged.

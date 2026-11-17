@@ -1,9 +1,14 @@
 import { store, type SynthesisSettings } from "../state";
 import type { AppSelect } from "../kit/appSelect";
-import { SETTINGS_TOPICS, mountSettingRow } from "../kit/settingsTopics";
+import {
+  SETTINGS_TOPICS,
+  mountSettingRow,
+  type SettingsTopic,
+} from "../kit/settingsTopics";
 import { mountHelpPopover, helpNote, workedTable } from "../kit/helpPopover";
 import { icon } from "../kit/icons";
 import { capabilities } from "../platform";
+import { setCatalogScope } from "../catalog/serve";
 import {
   configuredOutputDir,
   pickOutputDir,
@@ -270,6 +275,49 @@ export function mountSettings(root: HTMLElement): void {
     root.appendChild(mountOutputDirRow());
   }
 
+  // ADR-0010: the catalog-scope row — the first-run choice, changeable
+  // here (the ruling). Mounted outside the synthesis loop: its value
+  // lives in the catalog state and its write goes to the serve, not
+  // the synthesis store. Without a service the write is a silent
+  // no-op; the row re-renders to the serve's truth on the next poll.
+  const scopeTopic: SettingsTopic = {
+    key: "catalogScope",
+    name: "字体目录下载",
+    options: [
+      { value: "full", label: "全部下载" },
+      { value: "on-demand", label: "按需下载" },
+    ],
+    topic: {
+      id: "catalog-scope",
+      title: "字体目录的两种方式",
+      buttonLabel: "两种方式有什么区别",
+      width: 340,
+      build() {
+        const wrap = document.createElement("div");
+        wrap.append(
+          helpNote([
+            "全部下载：把目录里的字体一次装满，之后完全离线可用。",
+            "按需下载：先不下载，目录照常浏览；点选某个字体时再下载那一个。",
+          ]),
+          helpNote("两种方式随时可以在这里切换；本地字体文件的加载不受影响。"),
+        );
+        return wrap;
+      },
+    },
+  };
+  const scopeRow = mountSettingRow(scopeTopic, {
+    value: store.get().catalog.scope ?? "full",
+    onChange: (value) => {
+      void setCatalogScope(value as "full" | "on-demand").catch(() => {
+        /* the next status poll re-renders the serve's truth */
+      });
+    },
+  });
+  scopeRow.el.dataset.setting = "catalogScope";
+  scopeRow.helpAnchor.dataset.role = "help-catalogScope";
+  scopeRow.select.el.dataset.role = "select-catalogScope";
+  root.appendChild(scopeRow.el);
+
   const render = (): void => {
     const { settings } = store.get();
     for (const [key, select] of Object.entries(selects)) {
@@ -278,6 +326,9 @@ export function mountSettings(root: HTMLElement): void {
       select.value =
         key === "cjkWidth" ? String(value) : (value as string);
     }
+    // The scope row reads the CATALOG state — the serve's truth, which
+    // the status poll keeps current (and reverts a failed write).
+    scopeRow.select.value = store.get().catalog.scope ?? "full";
   };
   store.subscribe(render);
   render();

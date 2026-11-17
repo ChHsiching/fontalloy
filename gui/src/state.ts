@@ -326,6 +326,13 @@ export interface CatalogState {
   warm?: boolean;
   /** The materializer's last snapshot (absent until it reports). */
   materializer?: CatalogMaterializerProgress;
+  /**
+   * The serve's catalog scope (ADR-0010): "full" | "on-demand", or
+   * null while undecided — the first-run screen then offers the
+   * choice instead of a progress bar. Undefined against serves
+   * predating the key (treated as full, no choice screen).
+   */
+  scope?: string | null;
   /** The serve's family documents (the picker's row source). */
   documents: CatalogFamilyDoc[];
   /** True while the serve is still scanning family documents. */
@@ -450,6 +457,7 @@ export const store = createStore<AppState>({
     documents: [],
     scanning: false,
     screen: false,
+    scope: null,
   },
 });
 

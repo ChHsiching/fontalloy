@@ -453,6 +453,69 @@ body {
   visibility: visible;
 }
 
+/* ADR-0010: the first-run scope choice — two equal entries, native
+ * buttons (keyboard + accessible names for free), press feedback on
+ * pointer-down per the interaction discipline, --ink2 notes (7:1 on
+ * both themes). */
+.catalog-choice {
+  padding: 14px 2px 4px;
+}
+.catalog-choice-title {
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.catalog-choice-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.catalog-choice-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px;
+  text-align: left;
+  font: inherit;
+  background: var(--sf2);
+  border: 1px solid var(--ln2);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: transform 100ms ease-out, border-color 120ms ease-out;
+}
+.catalog-choice-card:active {
+  transform: scale(0.98);
+}
+.catalog-choice-card:focus-visible {
+  outline: 2px solid var(--ac);
+  outline-offset: 2px;
+}
+.catalog-choice-card:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.catalog-choice-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.catalog-choice-note {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink2);
+}
+.catalog-choice-error {
+  margin-top: 10px;
+  font-size: 12px;
+  opacity: 0.9;
+}
+.catalog-choice-foot {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--ink2);
+}
+
 /* The real progress bar (x/N monotone): a thin track between the head
  * and the list, filled by transform only (no layout per tick). The
  * indeterminate state (sidecar window / the document fetch of a true

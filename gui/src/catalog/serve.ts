@@ -76,6 +76,12 @@ export interface CatalogStatusDoc {
    * i.e. the launch downloads nothing.
    */
   warm?: boolean;
+  /**
+   * The catalog scope (ADR-0010, present whenever the sync is
+   * configured): "full" | "on-demand" | null (undecided — the
+   * first-run choice screen).
+   */
+  scope?: string | null;
   /** The materializer's last snapshot (absent until it reports). */
   materializer?: CatalogMaterializerProgress;
 }
@@ -280,6 +286,29 @@ export function skipCatalogScreen(): void {
 }
 
 /**
+ * POST the scope choice (ADR-0010) — the first-run screen's two entry
+ * buttons and the settings row both land here. No-op without a
+ * service; a transport failure throws to the caller's error line.
+ */
+export async function setCatalogScope(
+  mode: "full" | "on-demand",
+): Promise<void> {
+  const client = synthStore.get().service.client;
+  if (client === null) return;
+  await client.setCatalogScope(mode);
+}
+
+/**
+ * POST one family's on-demand fetch (ADR-0010); the serve streams its
+ * states through /catalog/status. Throws to the caller's error line.
+ */
+export async function fetchCatalogFamily(family: string): Promise<void> {
+  const client = synthStore.get().service.client;
+  if (client === null) throw new Error("no service connection");
+  await client.fetchCatalogFamily(family);
+}
+
+/**
  * One poll pass over the serve's catalog endpoints, looping while the
  * sync runs or the documents scan. The loop is the ONLY writer of the
  * catalog's status fields; every patch is a full snapshot.
@@ -329,6 +358,10 @@ async function runCatalogPoll(base: string): Promise<void> {
       progress: status.families,
       document: status.document,
       warm: status.warm,
+      // Pass-through, not `?? null`: a serve predating the scope key
+      // (undefined) is treated as "full, no choice screen" — only an
+      // explicit null (present key, undecided) offers the choice.
+      scope: status.scope,
       materializer: status.materializer,
       screen:
         status.state === "bootstrapping" && !screenDismissed && !warmSuppress,
@@ -355,7 +388,12 @@ async function runCatalogPoll(base: string): Promise<void> {
     if (
       ((status.state === "ready" && !scanning) ||
         status.state === "unavailable") &&
-      !matActive
+      !matActive &&
+      // ADR-0010 on-demand: the serve idles ready but single-family
+      // fetches land at any time — the poll keeps refreshing the
+      // status feed and family documents forever (the picker's rows
+      // and the pending picks ride it).
+      status.scope !== "on-demand"
     ) {
       patchCatalog({ screen: false });
       break;

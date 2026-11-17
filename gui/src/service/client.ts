@@ -380,6 +380,36 @@ export class ServeClient {
     return this.getJson<CatalogDocument>("/catalog");
   }
 
+  /**
+   * The first-run/settings scope choice (ADR-0010): "full" re-arms the
+   * full sync server-side; "on-demand" presets the listing only. The
+   * reply is the fresh /catalog/status snapshot.
+   */
+  setCatalogScope(
+    mode: "full" | "on-demand",
+  ): Promise<{ scope: string | null }> {
+    return this.requestJson<{ scope: string | null }>("/catalog/scope", {
+      method: "POST",
+      body: JSON.stringify({ mode }),
+    });
+  }
+
+  /**
+   * On-demand single-family fetch (ADR-0010): the serve streams the
+   * family's states through /catalog/status. 202 accepted; a 404/409
+   * raises ServeError with the serve's message. Body-LESS POST (the
+   * cancel-build pattern): a body nobody reads would sit unread on the
+   * keep-alive connection and poison the next request.
+   */
+  fetchCatalogFamily(
+    family: string,
+  ): Promise<{ family: string; accepted: boolean }> {
+    return this.requestJson<{ family: string; accepted: boolean }>(
+      `/catalog/families/${encodeURIComponent(family)}/fetch`,
+      { method: "POST" },
+    );
+  }
+
   /** The installed system fonts (`/system-fonts`, grouped: #34). */
   systemFonts(): Promise<{
     dirs: string[];
