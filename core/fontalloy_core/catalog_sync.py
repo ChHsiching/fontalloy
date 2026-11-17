@@ -217,6 +217,10 @@ class CatalogSync:
         # the honest not-warm answer rather than a missing key.
         self._document_phase = FETCHING
         self._warm = False
+        #: The cached release document the streamed preset ran against
+        #: (None until :meth:`_preset_from_cache` parses one) — the run's
+        #: authoritative catalog until the background fresh fetch lands.
+        self._cached_release: CatalogRelease | None = None
         # The fetched-layout materializer's last progress snapshot
         # (reported through :meth:`report_materializer` by the serve's
         # materializer thread). None until a report lands; the key is
@@ -321,18 +325,31 @@ class CatalogSync:
             self._thread.start()
 
     def _run(self) -> None:
+        """The sync thread's entry: one pass, and a crash must land
+        ``unavailable`` with its message — a dead thread pinning
+        ``bootstrapping`` forever is the silent hang the restart tests
+        caught (a NameError in the refetch path left every family done
+        but the state never settled)."""
+        try:
+            self._run_pass()
+        except Exception as exc:  # noqa: BLE001 - the thread fails loudly
+            with self._lock:
+                self._state = UNAVAILABLE
+                self._error = f"catalog sync crashed: {exc!r}"
+
+    def _run_pass(self) -> None:
         """One full sync pass: document, then every family, then the
         terminal state. Any error lands ``unavailable`` with its string
         — a failing family never aborts the others.
 
-        Before the network fetch the CACHED release document (when one
-        exists) presets the family list — the first-run screen shows the
-        whole catalog as pending within one poll instead of an empty
-        list while the document downloads — and classifies the run as
-        warm or cold: warm means the same stat-only completeness check
-        the family walk below performs will pass for every family, i.e.
-        this run downloads nothing. A cached document that fails to
-        parse is skipped silently; the fresh fetch is the authority.
+        ADR-0011 (trust at launch): when the CACHED release document
+        exists it IS the catalog for this launch — the streamed preset
+        (:meth:`_preset_from_cache`) lists and verifies families
+        immediately, and the fresh document revalidates on a background
+        thread; only a real change re-walks. The fresh-fetch wait sat on
+        every second launch's critical path for nothing (the r31v2 ~80 s
+        motionless-bar window). A true first run (no cache) fetches
+        first, exactly as before.
         """
         assert self._origin is not None and self._dir is not None
         with self._lock:
@@ -341,32 +358,48 @@ class CatalogSync:
             self._error = None
             self._document_phase = FETCHING
         self._preset_from_cache()
-        try:
-            release = self._load_release()
-        except FontAlloyError as exc:
-            # The phase stays ``fetching``: no document was ever parsed
-            # this run, so the (possibly preset) family list is not
-            # authoritative. The unavailable state is what the frontends
-            # key on anyway.
-            with self._lock:
-                self._state = UNAVAILABLE
-                self._error = str(exc)
-            return
         with self._lock:
-            self._document_phase = LOADED
-            self._preset(release)
-        failures: list[str] = []
-        for family in release.families:
+            cached_release = self._cached_release
+        fetcher: threading.Thread | None = None
+        fresh_box: list[CatalogRelease | None] = []
+        if cached_release is not None:
+            with self._lock:
+                self._document_phase = LOADED
+
+            def _refetch() -> None:
+                try:
+                    fresh_box.append(self._load_release())
+                except FontAlloyError:
+                    fresh_box.append(None)  # offline: the cache carries the run
+
+            fetcher = threading.Thread(
+                target=_refetch, name="fontalloy-catalog-doc-fetch", daemon=True
+            )
+            fetcher.start()
+            release = cached_release
+        else:
             try:
-                self._sync_family(release, family, verify_hashes=verify_hashes)
+                release = self._load_release()
             except FontAlloyError as exc:
-                self._mark_family(family.family, FAILED, error=str(exc))
-                failures.append(f"{family.family}: {exc}")
-            except Exception as exc:  # a broken family must not kill the run
-                message = f"unexpected sync failure: {exc!r}"
-                self._mark_family(family.family, FAILED, error=message)
-                failures.append(f"{family.family}: {message}")
-            _yield_between_families()
+                # The phase stays ``fetching``: no document was ever
+                # parsed this run, so the family list is not
+                # authoritative. The unavailable state is what the
+                # frontends key on anyway.
+                with self._lock:
+                    self._state = UNAVAILABLE
+                    self._error = str(exc)
+                return
+            with self._lock:
+                self._document_phase = LOADED
+                self._preset(release)
+        failures = self._walk(release, verify_hashes)
+        if fetcher is not None:
+            fetcher.join()
+            fresh = fresh_box[0] if fresh_box else None
+            if fresh is not None and not self._same_release(cached_release, fresh):
+                with self._lock:
+                    self._preset(fresh)
+                failures += self._walk(fresh, verify_hashes)
         with self._lock:
             if failures:
                 self._state = UNAVAILABLE
@@ -377,6 +410,36 @@ class CatalogSync:
             else:
                 self._state = READY
                 self._error = None
+
+    def _walk(self, release: CatalogRelease, verify_hashes: bool) -> list[str]:
+        """Repair every family the streamed preset did not already
+        settle. Families the preset marked done are SKIPPED (the
+        stat-only completeness check already passed — running it again
+        was the second of the two sweeps every launch paid). An explicit
+        sync (``verify_hashes=True``) re-walks everything, as before."""
+        failures: list[str] = []
+        for family in release.families:
+            with self._lock:
+                prior = self._families.get(family.family)
+            if (
+                not verify_hashes
+                and prior is not None
+                and prior.state == DONE
+            ):
+                # The streamed preset's stat check passed THIS run —
+                # re-running it was the second sweep every launch paid.
+                continue
+            try:
+                self._sync_family(release, family, verify_hashes=verify_hashes)
+            except FontAlloyError as exc:
+                self._mark_family(family.family, FAILED, error=str(exc))
+                failures.append(f"{family.family}: {exc}")
+            except Exception as exc:  # a broken family must not kill the run
+                message = f"unexpected sync failure: {exc!r}"
+                self._mark_family(family.family, FAILED, error=message)
+                failures.append(f"{family.family}: {message}")
+            _yield_between_families()
+        return failures
 
     # -- the preset + warm classification --------------------------------
 
@@ -391,23 +454,25 @@ class CatalogSync:
         }
 
     def _preset_from_cache(self) -> None:
-        """Preset the family list and the warm flag from the CACHED
-        release document, before the fresh fetch decides everything.
+        """Preset the family list from the CACHED release document,
+        then stream the warm sweep per family (ADR-0011).
 
-        Warm means every family's stat-only completeness check (the
-        same :meth:`_family_complete` the walk calls with
-        ``verify_hashes=False``) passes against the cached document —
-        the run will download nothing. Cold (the default) means at
-        least one family will repair, the document is missing or
-        unparsable, or it changed since the last run; the walk sorts
-        that out. A parse failure skips the preset too — the fresh
-        fetch is the authority.
+        The preset lands BEFORE the sweep — the status feed carries the
+        whole family list from the first poll, never an empty list —
+        and each family flips verifying → done as its stat-only check
+        passes, so the feed MOVES while real work runs (the motionless
+        bar + one-shot batch flip was the r31v2 defect). The sweep is
+        the completeness check done ONCE, here; :meth:`_walk` skips
+        every family it settles. ``_warm`` finalizes when the sweep
+        ends. A missing or unparsable cached document skips the preset
+        — the fresh fetch is the authority (the true first-run path).
         """
         assert self._dir is not None
         cached = self._dir / METADATA_NAME
         if not cached.is_file():
             with self._lock:
                 self._warm = False
+                self._cached_release = None
             return
         try:
             release = load_catalog_release(cached)
@@ -420,19 +485,55 @@ class CatalogSync:
             # the fresh fetch is the authority.
             with self._lock:
                 self._warm = False
+                self._cached_release = None
             return
-        warm = all(
-            self._family_complete(
-                release,
-                family,
-                self._dir / (family.zip + COMPLETE_SUFFIX),
-                verify_hashes=False,
-            )
-            for family in release.families
-        )
         with self._lock:
             self._preset(release)
+        warm = True
+        for family in release.families:
+            # _mark_family takes the lock itself — never wrap it in one.
+            self._mark_family(family.family, VERIFYING)
+            try:
+                complete = self._family_complete(
+                    release,
+                    family,
+                    self._dir / (family.zip + COMPLETE_SUFFIX),
+                    verify_hashes=False,
+                )
+            except Exception:  # defensive: a bad marker is a cold family
+                complete = False
+            if complete:
+                self._mark_family(family.family, DONE)
+            else:
+                warm = False
+                self._mark_family(family.family, PENDING)
+            _yield_between_families()
+        with self._lock:
             self._warm = warm
+            self._cached_release = release
+
+    @staticmethod
+    def _same_release(
+        cached: CatalogRelease | None, fresh: CatalogRelease
+    ) -> bool:
+        """Whether two release documents describe the identical catalog:
+        same tag and the same per-family (family, zip, sha256, files) —
+        the identity the background re-fetch re-walks against."""
+        if cached is None or cached.tag != fresh.tag:
+            return False
+
+        def keyed(rel: CatalogRelease):
+            return [
+                (
+                    fam.family,
+                    fam.zip,
+                    fam.sha256,
+                    tuple((f.file, f.sha256) for f in fam.files),
+                )
+                for fam in rel.families
+            ]
+
+        return keyed(cached) == keyed(fresh)
 
     # -- the release document ------------------------------------------------
 

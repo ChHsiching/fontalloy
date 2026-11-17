@@ -93,7 +93,7 @@ from typing import Any
 
 from fontalloy_core.build import build_recipe
 from fontalloy_core.catalog import Catalog, load_manifest
-from fontalloy_core.catalog_materialize import materialize
+from fontalloy_core.catalog_materialize import materialize_with_refresh
 from fontalloy_core.catalog_sync import CatalogSync
 from fontalloy_core.errors import BuildCancelled, FontAlloyError
 from fontalloy_core.family_docs import FamilyDocuments
@@ -826,12 +826,15 @@ class ServeState:
         The scan descends ONE level into subdirectories (round 14): the
         layouts a real consumer points ``--font-dir`` at nest their font
         files there — the fetched catalog extracts each archive's faces
-        into ``<fonts>/<archive stem>/``, and the Tauri shell's catalog
-        storage keeps per-family directories under ``catalog/families``.
-        A flat ``glob("*")`` lists none of those faces, so the GUI's
-        weight-slot selection had no face data for family picks. The
-        descent is bounded at one level exactly like the dev catalog's
-        scan of the same layouts; deeper trees are not wandered.
+        into ``<fonts>/<archive stem>/`` (and the materializer's
+        ``fonts/`` layout likewise). A flat ``glob("*")`` lists none of
+        those faces, so the GUI's weight-slot selection had no face data
+        for family picks. The descent is bounded at one level exactly
+        like the dev catalog's scan of the same layouts; deeper trees
+        are not wandered. (An earlier revision mentioned a
+        ``catalog/families`` shell layout — that was the deleted
+        frontend storage layer, dead since 8849488 and removed from
+        real catalogs in the r31v3 cleanup.)
         """
         self._ensure_fonts_scan_started()
         with self.lock:
@@ -1703,7 +1706,7 @@ def run_serve(options: ServeOptions) -> None:
     # endpoint stay live.
     if options.catalog_manifest_origin and options.catalog_dir:
         threading.Thread(
-            target=materialize,
+            target=materialize_with_refresh,
             args=(
                 options.catalog_manifest_origin,
                 Path(options.catalog_dir),

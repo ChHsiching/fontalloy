@@ -181,7 +181,13 @@ export function mountCharPopup(): CharPopup {
     note.style.display = next.note ? "block" : "none";
     if (next.missing || !next.glyphFamily) {
       glyph.style.fontFamily = "'Microsoft YaHei',serif";
-      glyph.style.color = next.missing ? "var(--ink3)" : "";
+      // The missing treatment stays a DISTINCT tier below a covered
+      // glyph's --ink, but legible: measured on --sf, --ink3 reads
+      // 4.4:1 (dark) — nominally AA-large, practically illegible for a
+      // thin-stroke 44px glyph outline (the owner's r31v2 verdict);
+      // --ink2 reads 7.1:1 dark / 7.9:1 light against --ink's 14.6/17.9,
+      // so missing-vs-covered stays obvious at reading strength.
+      glyph.style.color = next.missing ? "var(--ink2)" : "";
     } else {
       glyph.style.fontFamily = next.glyphFamily;
       glyph.style.color = "";

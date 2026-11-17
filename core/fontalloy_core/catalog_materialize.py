@@ -82,6 +82,99 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _warm_fonts_dir(fonts_dir: Path, manifest_target: Path) -> list[str] | None:
+    """Stat-only trust check over the materializer's own ledger.
+
+    Returns None when the ledger cannot be trusted (no manifest, or a
+    PRESENT artifact/extraction is broken — the full pass repairs);
+    otherwise returns the names of KNOWN-absent artifacts (the previous
+    pass already tried them; absence is a background-retry state, never
+    a launch blocker — ADR-0011)."""
+    try:
+        manifest = json.loads(manifest_target.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    entries = manifest.get("families")
+    if not isinstance(entries, list) or not entries:
+        return None
+    missing: list[str] = []
+    for entry in entries:
+        name = str(entry.get("file") or "").replace("/", "-").replace("\\", "-")
+        if not name:
+            return None
+        target = fonts_dir / name
+        if not target.is_file() or target.stat().st_size == 0:
+            missing.append(name)
+            continue
+        extract_dir = fonts_dir / Path(name).stem
+        if not (extract_dir.is_dir() and any(extract_dir.iterdir())):
+            # Present artifact with an empty extraction is a BROKEN
+            # state, not a known-absent one — the full pass rebuilds it.
+            return None
+    return missing
+
+
+def _repair_missing(
+    origin: str, catalog_dir: Path, stop: threading.Event | None, names: list[str]
+) -> bool:
+    """Background retry of known-absent artifacts only (ADR-0011): no
+    manifest fetch, no hashing of present entries — one bounded pass
+    over the missing names. Failures stay honestly absent and retry on
+    the next launch; the manifest ledger already covers them."""
+    base = origin.rstrip("/")
+    fonts_dir = catalog_dir / "fonts"
+    for name in names:
+        if stop is not None and stop.is_set():
+            break
+        target = fonts_dir / name
+        try:
+            body = _get_bytes(f"{base}/entry/{name}")
+            tmp = target.with_suffix(target.suffix + ".part")
+            tmp.write_bytes(body)
+            tmp.replace(target)
+        except (urllib.error.URLError, OSError) as exc:
+            log.warning("catalog materializer: retry of %s failed (%s)", name, exc)
+            continue
+        extract_dir = fonts_dir / Path(name).stem
+        if not (extract_dir.is_dir() and any(extract_dir.iterdir())):
+            try:
+                extract_dir.mkdir(parents=True, exist_ok=True)
+                with zipfile.ZipFile(target) as archive:
+                    archive.extractall(extract_dir)
+            except (OSError, zipfile.BadZipFile) as exc:
+                log.warning(
+                    "catalog materializer: extracting %s failed (%s)", name, exc
+                )
+        threading.Event().wait(_YIELD_SECONDS)
+    return (catalog_dir / "fonts.manifest.json").is_file()
+
+
+def materialize_with_refresh(
+    origin: str,
+    catalog_dir: Path,
+    stop: threading.Event | None = None,
+    progress: ProgressFn | None = None,
+    interval: float = 300.0,
+) -> None:
+    """materialize() + the ADR-0011 background refresh: after the
+    (possibly fast-pathed) run, periodically re-fetch the tiny origin
+    manifest and re-materialize only when it actually changed. The
+    launch never waits on the network; a drifted fetched layout heals
+    within the interval."""
+    materialize(origin, catalog_dir, stop, progress)
+    while stop is None or not stop.wait(interval):
+        base = origin.rstrip("/")
+        try:
+            fresh = json.loads(_get_bytes(f"{base}/manifest.json"))
+            local = json.loads(
+                (catalog_dir / "fonts.manifest.json").read_text(encoding="utf-8")
+            )
+        except (urllib.error.URLError, OSError, ValueError):
+            continue
+        if fresh != local:
+            materialize(origin, catalog_dir, stop, progress)
+
+
 def materialize(
     origin: str,
     catalog_dir: Path,
@@ -107,6 +200,20 @@ def materialize(
     fonts_dir = catalog_dir / "fonts"
     fonts_dir.mkdir(parents=True, exist_ok=True)
     manifest_target = catalog_dir / "fonts.manifest.json"
+    # ADR-0011 warm fast path: the on-disk manifest is the trust ledger
+    # (written last, atomically, after a full pass). When every PRESENT
+    # artifact and its extraction are intact, launch trusts it — no
+    # origin fetch, no sha256 pass over the artifacts on the critical
+    # path. KNOWN-absent artifacts (a previous pass already tried and
+    # failed them) do not block the launch: this thread — already
+    # background — retries just those below, and the resolver's
+    # use-time check keeps their picks honestly unfetchable meanwhile.
+    missing = _warm_fonts_dir(fonts_dir, manifest_target)
+    if missing is not None:
+        _report(progress, {"phase": "done", "manifest": True})
+        if not missing:
+            return True
+        return _repair_missing(origin, catalog_dir, stop, missing)
     _report(progress, {"phase": "manifest"})
 
     try:
