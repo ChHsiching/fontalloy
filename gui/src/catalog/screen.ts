@@ -308,11 +308,20 @@ export function mountCatalogScreen(): void {
       family: string;
       state: CatalogFamilyProgress["state"] | typeof SEED_STATUS;
       error: string | null;
+      downloaded?: number;
+      total?: number;
     }> = loaded
       ? catalog.progress.map((family) => ({
           family: family.family,
           state: family.state,
           error: family.error ?? null,
+          // The byte fields MUST ride along — the row text's 下载中 n%
+          // reads them (round 5: stripping them here left the dialog's
+          // rows bare while the picker showed live percents).
+          ...(family.downloaded !== undefined
+            ? { downloaded: family.downloaded }
+            : {}),
+          ...(family.total !== undefined ? { total: family.total } : {}),
         }))
       : SEED_FAMILIES.map((family) => ({
           family,
