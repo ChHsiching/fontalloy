@@ -752,44 +752,69 @@ const zipWaiters = [];
  * so catalog-reference verification (per-entry unique files, sha
  * pins) sees a consistent fetched layout.
  */
-async function serveEntryZip(faceObjects, res, cors) {
-  res.writeHead(200, { ...cors, "content-type": "application/zip" });
+/**
+ * Build-once zip cache (r31v3 round 5): a served zip is built to
+ * <cache>/zips/<key>.zip ONCE and streamed from disk afterwards —
+ * with Content-Length, so the app's per-family download UI shows the
+ * PERCENT the owner asked for (a streaming response without a length
+ * forces the honest MiB fallback; production origins declare sizes).
+ * Disk-cached bytes, never held in the vite process.
+ */
+async function ensureZipFile(key, faceObjects) {
+  const dir = resolve(UPSTREAM_CACHE, "zips");
+  await mkdir(dir, { recursive: true });
+  const target = resolve(dir, `${key}.zip`);
+  if (existsSync(target)) return target;
   if (zipActive >= ZIP_SERVE_CONCURRENCY) {
     await new Promise((release) => zipWaiters.push(release));
   }
   zipActive++;
   try {
-    for await (const chunk of zipStream(faceObjects)) {
+    const tmp = `${target}.part`;
+    const handle = await open(tmp, "w");
+    try {
+      for await (const chunk of zipStream(faceObjects)) await handle.write(chunk);
+    } finally {
+      await handle.close();
+    }
+    await rename(tmp, target);
+  } catch (err) {
+    await rm(`${target}.part`, { force: true }).catch(() => {});
+    throw err;
+  } finally {
+    zipActive--;
+    zipWaiters.shift()?.();
+  }
+  return target;
+}
+
+async function serveZipFromCache(key, faceObjects, res, cors) {
+  try {
+    const target = await ensureZipFile(key, faceObjects);
+    const size = statSync(target).size;
+    res.writeHead(200, {
+      ...cors,
+      "content-type": "application/zip",
+      "content-length": size,
+    });
+    for await (const chunk of createReadStream(target, {
+      highWaterMark: CHUNK_BYTES,
+    })) {
       if (res.destroyed) return;
       if (!res.write(chunk)) await once(res, "drain");
     }
     res.end();
   } catch (err) {
     res.destroy(err instanceof Error ? err : new Error(String(err)));
-  } finally {
-    zipActive--;
-    zipWaiters.shift()?.();
   }
 }
 
+async function serveEntryZip(faceObjects, entryName, res, cors) {
+  await serveZipFromCache(`entry-${entryName}`, faceObjects, res, cors);
+}
+
 async function serveFamilyZip(family, res, cors) {
-  res.writeHead(200, { ...cors, "content-type": "application/zip" });
-  if (zipActive >= ZIP_SERVE_CONCURRENCY) {
-    await new Promise((release) => zipWaiters.push(release));
-  }
-  zipActive++;
-  try {
-    for await (const chunk of zipStream(family.faces)) {
-      if (res.destroyed) return;
-      if (!res.write(chunk)) await once(res, "drain");
-    }
-    res.end();
-  } catch (err) {
-    res.destroy(err instanceof Error ? err : new Error(String(err)));
-  } finally {
-    zipActive--;
-    zipWaiters.shift()?.();
-  }
+  await serveZipFromCache(`family-${family.family}`, family.faces, res, cors);
 }
 
 /* ---------- the catalog, built once on first request ---------- */
@@ -1314,7 +1339,7 @@ async function handle(req, res, next) {
       const names = new Set(cut.files.map((x) => x.file));
       const faceObjects = f.faces.filter((face) => names.has(face.file));
       if (faceObjects.length === 0) break;
-      await serveEntryZip(faceObjects, res, cors);
+      await serveEntryZip(faceObjects, wanted, res, cors);
       return;
     }
     res.writeHead(404, cors);

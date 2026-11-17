@@ -280,20 +280,24 @@ export function mountPickerPopup(
   // button is permanent; render() only retunes its label and handler.
   // The typed-path fallback (round 20) rides the same footer row,
   // right of the button, visible only while a resolver exists.
-  const footerRow = document.createElement("div");
-  footerRow.className = "kit-fpfoot";
-  // The catalog-scope switch (owner item 4): a quiet link-button at the
-  // footer row's left, rendered only while on-demand runs.
+  // The catalog-scope switch (owner item 4, round-5 layout): its OWN
+  // row above the footer — never squeezed beside 加载本地字体文件
+  // (the round-4 same-row layout drew the owner's wrath). Rendered
+  // only while on-demand runs.
+  const scopeRow = document.createElement("div");
+  scopeRow.className = "kit-fpscope-row";
+  scopeRow.hidden = true;
   const scopeBtn = document.createElement("button");
   scopeBtn.type = "button";
   scopeBtn.className = "kit-fpscope";
-  scopeBtn.hidden = true;
   let scopeClick: (() => void) | null = null;
   scopeBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     scopeClick?.();
   });
-  footerRow.appendChild(scopeBtn);
+  scopeRow.appendChild(scopeBtn);
+  const footerRow = document.createElement("div");
+  footerRow.className = "kit-fpfoot";
   const footerBtn = document.createElement("button");
   footerBtn.type = "button";
   footerBtn.className = "kit-fpsys";
@@ -331,6 +335,7 @@ export function mountPickerPopup(
   });
   let pathCommit: ((path: string) => void) | null = null;
   footerRow.appendChild(pathInput);
+  popup.appendChild(scopeRow);
   popup.appendChild(footerRow);
 
   let props: PickerPopupProps = initial;
@@ -509,10 +514,10 @@ export function mountPickerPopup(
     if (props.scopeAction) {
       scopeBtn.textContent = props.scopeAction.label;
       scopeClick = props.scopeAction.onClick;
-      scopeBtn.hidden = false;
+      scopeRow.hidden = false;
     } else {
       scopeClick = null;
-      scopeBtn.hidden = true;
+      scopeRow.hidden = true;
     }
     // The inline load progress (round 21; round 24 moved it INSIDE the
     // button): the 260px rail's footer cannot hold button + a separate
