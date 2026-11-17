@@ -107,6 +107,15 @@ _Avoid_: mirror config, fallback list
 The background lifecycle that brings the local catalog cache to the catalog release's state — download, verify, extract, and repair — usable while it runs and self-healing on a later launch after a partial or corrupt download.
 _Avoid_: catalog download, update job
 
+**Full download**:
+One of the two first-run catalog modes: download every family up front, one pass with per-family progress. What the 「下载全部字体」 entry starts. The choice is remembered and changeable in settings.
+_Avoid_: complete sync, bulk mode
+
+**On-demand download**:
+The other first-run catalog mode: download nothing up front. The catalog listing shows every family exactly as in full mode (metadata and preview subsets, never full bytes), and a family's bytes arrive only when the user picks it — one family at a time, with its own progress. The mode for users who work from local font files.
+_Avoid_: skip mode (the entry button reads 跳过, but the catalog is fully browsable — nothing is disabled)
+
+
 **Run assets**:
 The fetched catalog layout (fonts/ + its own manifest + licenses) the user-journey e2e suites run a real serve over (`FONTALLOY_RUN_ASSETS`). It must carry the repo's CURRENT manifest — refresh it with `scripts/refresh_run_assets.py` (warm reuse of unchanged artifacts, downloads only the gaps) instead of editing the source layout in place.
 _Avoid_: test fonts folder, journey fixtures

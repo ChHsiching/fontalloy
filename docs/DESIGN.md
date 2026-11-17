@@ -22,6 +22,15 @@ web/    pure static site (github.io / vercel), shares its frontend components wi
 - The GUI's end state is Tauri (the user asked for the best result); a serve-plus-browser loop may validate the core API first.
 - CLI installs via pipx / brew / scoop.
 
+## Catalog runtime contract (owner rulings, 2026-11 acceptance)
+
+- **First run offers the scope choice**: 「下载全部字体」 (full download, real size stated, per-family progress) or 「按需下载」/skip — nothing downloads up front, the listing is identical via the bundled preview pack, a family's bytes arrive on first pick with inline progress, and local-file users never download. The choice is remembered, changeable in settings, never re-nagged (ADR-0010).
+- **The second launch is immediate**: the completion-marker ledger is trusted, verification happens at use time and in the background, never as a gate between the user and the app (ADR-0011).
+- **Every waiting surface reports real, moving progress** — per phase, per item; titles state the actual phase. A motionless bar over running work, or a one-shot batch flip, is a defect.
+- **Failures are bugs, not UX**: the user never sees engineering vocabulary; prevention lives in the packaged-artifact gates (ADR-0009), not in error copy.
+- **The character popup's missing-glyph treatment** stays visually distinct from a covered glyph but must stay legible in both themes — contrast is designed (apple-design / better-interface), never ad-hoc.
+
+
 ## Domain model (definitions in GLOSSARY.md)
 
 Everything is a precedence rule: a codepoint range mapped to an ordered font list.

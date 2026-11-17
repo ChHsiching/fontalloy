@@ -19,7 +19,7 @@ The core unification (spec #25, enforcing ADR-0002) moved the whole catalog runt
 - Committing binaries: rejected — permanent history bloat against GitHub's documented repository-size guidance.
 - Submodules to upstream font repos: rejected — multi-GB clones, and upstream tags move independently of our pinning.
 - Bundling the full catalog in the installer: rejected — Tauri updates are full-package, so 375 MB would ride every installer and every update. Disk space is not the constraint; download weight is.
-- Bundling a minimal default pair with per-family on-demand downloads (the research recommendation): rejected — preview coverage is the product; a first-run full-catalog download with retry-on-launch is a simpler and better UX, and disk size is a non-issue for users.
+- Bundling a minimal default pair with per-family on-demand downloads (the research recommendation): rejected — preview coverage is the product; a first-run full-catalog download with retry-on-launch is a simpler and better UX, and disk size is a non-issue for users. **Reversal note (2026-11)**: superseded by ADR-0010 — the first run now offers the choice, and the bundled preview pack resolves the preview-coverage objection; full download remains a first-class option.
 - Install-time fetch inside the installer: rejected — only the Windows NSIS installer supports hooks; macOS dmg and Linux AppImage/deb have no install-time execution, so the first-run path must exist on every platform anyway. A Windows NSIS prefetch was evaluated and dropped: beyond the hook itself it needs NSIS-side download, checksum, and progress logic — a second verification implementation — which is not trivial. Revisit only if a simple path appears.
 
 ## Consequences
