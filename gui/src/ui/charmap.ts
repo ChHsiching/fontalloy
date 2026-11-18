@@ -821,23 +821,6 @@ export function mountCharmap(root: HTMLElement): void {
   const toolbar = root.querySelector<HTMLElement>(".charmap-toolbar")!;
   const gridHost = root.querySelector<HTMLElement>(".charmap-grid")!;
 
-  // The aggregate hint bar (repair round 2, f14): an AGGREGATE view (a
-  // group's 全部 or the global 全部) renders a visible strip above the
-  // grid. Before it, the aggregate state lived only in the toolbar's
-  // passive note — the content area stayed pixel-blind to it, and the
-  // audit's aggregate frame pairs diffed as zero. Inline styles only:
-  // kit.css belongs to another batch. NOTE: no `display` is set inline —
-  // the `hidden` attribute must keep working to toggle the bar off.
-  gridHost.style.flexDirection = "column";
-  const aggregateBar = document.createElement("div");
-  aggregateBar.dataset.aggregateHint = "";
-  aggregateBar.hidden = true;
-  aggregateBar.style.cssText =
-    "flex:none;padding:4px 14px;font-size:11px;color:var(--ink3);" +
-    "background:var(--sf2);border-bottom:1px solid var(--ln);" +
-    "white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
-  gridHost.appendChild(aggregateBar);
-
   /* View state of this stage: 编码 mode (the per-cell codepoint row)
    * and the explicit 多选 mode (prototype parity: drag-paint and
    * Shift-range arm ONLY inside it; a plain click opens the popup). */
@@ -1255,18 +1238,6 @@ export function mountCharmap(root: HTMLElement): void {
       categoryId === MISSING_CATEGORY_ID
         ? missing.length
         : categorySize(categoryId);
-    // The aggregate hint bar (f14): visible exactly on aggregate views
-    // (the global 全部 and the per-group 全部), hidden on a block view
-    // and on the missing view (which carries its own toolbar notice).
-    if (
-      categoryId === ALL_CATEGORY_ID ||
-      findGroupCategory(categoryId) !== undefined
-    ) {
-      aggregateBar.textContent = `聚合视图：${categoryName(categoryId)} · 共 ${plainNum(size)} 字符`;
-      aggregateBar.hidden = false;
-    } else {
-      aggregateBar.hidden = true;
-    }
     const first = (page - 1) * livePageSize;
     const count = Math.min(livePageSize, size - first);
     const picks = pickRefs();

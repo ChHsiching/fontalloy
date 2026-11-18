@@ -524,19 +524,14 @@ test.describe("the serve-backed catalog", () => {
         `no in-flight state observed in ${JSON.stringify(samples.map((s) => s.statuses))}`,
       ).toBe(true);
       // Assertion C: the terminal sample reads done === N and the
-      // bar's fill fraction is monotone WITHIN each stage alongside
-      // the counter. r31v4: the indexing tail REBASES the bar (it owns
-      // the full width as its own stage, the installer idiom), so one
-      // designed decrease across the all-synced boundary is legal —
-      // two would be a real regression.
+      // bar's fill fraction is monotone alongside the counter — ONE
+      // bar across download, extract/verify, and the documents'
+      // indexing (r31v4: every stage advances the same fill).
       expect(samples[samples.length - 1]!.done).toBe(N);
-      let drops = 0;
       for (let index = 1; index < samples.length; index += 1) {
-        const prev = samples[index - 1]!.barFill;
-        const current = samples[index]!.barFill;
-        if (current >= prev - 1e-9) continue;
-        drops += 1;
-        expect(drops).toBeLessThanOrEqual(1);
+        expect(samples[index]!.barFill).toBeGreaterThanOrEqual(
+          samples[index - 1]!.barFill - 1e-9,
+        );
       }
     } finally {
       origin.releaseAll();
