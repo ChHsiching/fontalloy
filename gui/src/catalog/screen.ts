@@ -103,19 +103,18 @@ export function mountCatalogScreen(): void {
       </div>
       <div class="catalog-bar" data-role="catalog-bar"><i></i></div>
       <div class="catalog-choice" data-role="catalog-choice" hidden>
-        <h3 class="catalog-choice-title">怎么把字体目录装进这台电脑？</h3>
         <div class="catalog-choice-cards">
           <button class="catalog-choice-card" type="button" data-choice="full">
             <span class="catalog-choice-name">下载全部字体</span>
-            <span class="catalog-choice-note">内容较大，需要较长时间；一次到位，之后完全离线可用。</span>
+            <span class="catalog-choice-note">一次下载全部，之后完全离线</span>
           </button>
           <button class="catalog-choice-card" type="button" data-choice="on-demand">
             <span class="catalog-choice-name">按需使用</span>
-            <span class="catalog-choice-note">先不下载；目录照常浏览，点选某个字体时再下载那一个。只用本地字体文件时选这个。</span>
+            <span class="catalog-choice-note">先不下载，用到哪个下哪个</span>
           </button>
         </div>
         <div class="catalog-choice-error" data-role="catalog-choice-error" hidden></div>
-        <div class="catalog-choice-foot">选择随时可以在设置中更改；本地字体文件的加载不受影响。</div>
+        <div class="catalog-choice-foot">随时可在设置中更改</div>
       </div>
       <div class="catalog-list"></div>
       <div class="catalog-actions">
@@ -329,6 +328,16 @@ export function mountCatalogScreen(): void {
           error: null,
         }));
 
+    // The doc side of the story (ADR-0010's honest readiness): a
+    // done-sync family whose document is still being indexed renders
+    // 索引中 — the row owns the state word the user is actually
+    // waiting on, never a premature 已完成.
+    const docReadiness = new Map(
+      catalog.documents.map((doc) => [doc.family, doc.readiness] as const),
+    );
+    const docIndexing = (family: string): boolean =>
+      docReadiness.get(family) === "indexing";
+
     const present = new Set<string>();
     for (const entry of entries) {
       present.add(entry.family);
@@ -338,9 +347,17 @@ export function mountCatalogScreen(): void {
         rows.set(entry.family, parts);
         list.appendChild(parts.row);
       }
-      parts.row.dataset.status = entry.state;
+      const display =
+        entry.state === "done" && docIndexing(entry.family)
+          ? "indexing"
+          : entry.state;
+      parts.row.dataset.status = display;
       parts.status.textContent =
-        entry.state === SEED_STATUS ? SEED_TEXT : statusText(entry);
+        display === "indexing"
+          ? "索引中"
+          : entry.state === SEED_STATUS
+            ? SEED_TEXT
+            : statusText(entry);
       // Failures state the serve's own reason inline — nothing lives in
       // hover-only tooltips (ADR-0004).
       if (entry.state === "failed" && entry.error) {
@@ -400,6 +417,22 @@ export function mountCatalogScreen(): void {
       materializerRow = null;
     }
 
+    // The indexing tail (the r31v4 owner ruling): a full download is
+    // NOT done when the sync is — the families' documents are still
+    // being indexed by the quota'd worker, and a panel that closes
+    // onto a picker full of 索引构建中 tags strands the user. The
+    // panel owns this stage as its last step: the sub line carries
+    // the count, the rows carry 索引中, and `complete` (the CTA, the
+    // ready tag, the close) waits for it.
+    const docsKnown = catalog.documents.length > 0;
+    const indexingCount = entries.filter(
+      (entry) => entry.state === "done" && docIndexing(entry.family),
+    ).length;
+    if (allDone && !matActive && indexingCount > 0 && !connecting) {
+      sub.textContent = `正在构建字体索引 ${entries.length - indexingCount}/${entries.length}，完成后即可使用`;
+      sub.hidden = false;
+    }
+
     // The counters and the bar read the display rows (seed count until
     // the document lands, then the authoritative N).
     const doneCount = loaded
@@ -408,7 +441,11 @@ export function mountCatalogScreen(): void {
     done.textContent = String(doneCount);
     total.textContent = String(entries.length);
     checking.hidden = loaded;
-    const complete = allDone && !matActive;
+    // Completion is USABLE, not synced: every family done, the
+    // materializer settled, AND the documents' indexing tail drained
+    // (docs known — an unfetched document set never counts as done).
+    const complete =
+      allDone && !matActive && docsKnown && indexingCount === 0;
     // The auto-close handoff (issue #17 review trail, the residual
     // "closed itself, then nothing" path): when the serve's settle —
     // never a user click — closes a COMPLETED screen, the workspace
@@ -429,15 +466,18 @@ export function mountCatalogScreen(): void {
     // the first frame, so its appearance cannot reflow the head (the
     // dual-axis reviews caught a 9px jump here).
     readyTag.classList.toggle("on", complete);
-    // The terminal title: the client's materializer window keeps the
-    // panel up for a while at 4/4 — the head must not keep saying
-    // "downloading" next to the ready tag. While the choice owns the
-    // panel its own title stands.
+    // The terminal title: the head names the STAGE the panel is in —
+    // never a "downloading" claim over an indexing or materializer
+    // tail. While the choice owns the panel its own title stands.
     titleB.textContent = choosing
       ? "选择字体目录的下载方式"
       : complete
         ? "字体目录已就绪"
-        : "正在下载字体目录";
+        : matActive && allDone
+          ? "正在准备字体文件"
+          : allDone && indexingCount > 0
+            ? "正在构建字体索引"
+            : "正在下载字体目录";
     // The terminal actions: "skip, later" is the wrong sole control at
     // 4/4 — completion swaps in the start CTA (same close path) and
     // hides the dismiss copy; mid-run the dismiss copy is unchanged.
@@ -448,23 +488,53 @@ export function mountCatalogScreen(): void {
     // or the ultra-early document fetch of a true first start.
     const indeterminate = connecting || entries.length === 0;
     bar.classList.toggle("indeterminate", indeterminate);
-    // Liveness between family completions — the window the sweep never
-    // covered: once rows exist and the count is moving (0 < done <
-    // total) the fill breathes, so a multi-second wait inside one
-    // family's download never reads as a frozen panel. The materializer
-    // window needs the same breath: at done == total the count stops
-    // moving while matActive still keeps the panel honestly busy
-    // (complete is allDone && !matActive), so the FULL fill pulses until
-    // the sweep truly settles — and the pulse falls back the very render
-    // matActive does, before `complete` can style the bar. The discrete
-    // scaleX steps and their transition stay exactly as they were.
-    const busy = !indeterminate && doneCount > 0 && doneCount < entries.length;
-    const matBusy = allDone && matActive;
-    bar.classList.toggle("busy", busy || matBusy);
-    barFill.style.transform =
-      entries.length === 0 || indeterminate
-        ? "scaleX(0)"
-        : `scaleX(${doneCount / entries.length})`;
+    // The staged fill (r31v4 owner item 2): each family advances the
+    // bar through its OWN lifecycle — downloading rides the byte
+    // counter (the dominant time, moving smoothly), extracting and
+    // verifying step their slices, a done sync earns 0.9 and the
+    // document's landing completes it to 1.0, so the bar keeps moving
+    // through 解压/校验/索引 instead of parking at a done-count
+    // fraction that jumps one step per family.
+    const STAGE_DOWNLOAD = 0.6;
+    const STAGE_EXTRACT = 0.75;
+    const STAGE_VERIFY = 0.85;
+    const STAGE_SYNCED = 0.9;
+    const fractionOf = (entry: (typeof entries)[number]): number => {
+      switch (entry.state) {
+        case SEED_STATUS:
+        case "pending":
+          return 0;
+        case "downloading": {
+          const { downloaded, total: bytes } = entry;
+          const ratio =
+            downloaded !== undefined &&
+            bytes !== undefined &&
+            bytes > 0
+              ? downloaded / bytes
+              : 0;
+          return STAGE_DOWNLOAD * ratio;
+        }
+        case "extracting":
+          return STAGE_EXTRACT;
+        case "verifying":
+          return STAGE_VERIFY;
+        case "failed":
+          return STAGE_SYNCED;
+        case "done":
+          return docIndexing(entry.family) || !docsKnown
+            ? STAGE_SYNCED
+            : 1;
+        default:
+          return 0;
+      }
+    };
+    const fill = indeterminate
+      ? 0
+      : loaded
+        ? entries.reduce((sum, entry) => sum + fractionOf(entry), 0) /
+          entries.length
+        : doneCount / entries.length;
+    barFill.style.transform = `scaleX(${fill})`;
   };
   store.subscribe(render);
   render();

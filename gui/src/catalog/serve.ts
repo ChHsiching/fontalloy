@@ -367,9 +367,16 @@ async function runCatalogPoll(base: string): Promise<void> {
         status.state === "bootstrapping" && !screenDismissed && !warmSuppress,
     });
     let scanning = false;
+    // docsKnown: THIS pass actually read /catalog/families. A failed
+    // documents fetch leaves `scanning` at its false default — letting
+    // that pass settle the screen closes the panel onto a picker full
+    // of 索引构建中 rows (the r31v4 owner hit). An unknown documents
+    // state must hold the screen, not release it.
+    let docsKnown = false;
     try {
       const doc = await getJson<CatalogFamiliesDoc>(`${base}/catalog/families`);
       scanning = doc.scanning;
+      docsKnown = true;
       patchCatalog({ documents: doc.families, scanning });
       registerPreviewFonts(doc.families, base);
     } catch {
@@ -386,7 +393,7 @@ async function runCatalogPoll(base: string): Promise<void> {
     const matActive =
       mat !== undefined && mat.phase !== "done" && mat.phase !== "failed";
     if (
-      ((status.state === "ready" && !scanning) ||
+      ((status.state === "ready" && docsKnown && !scanning) ||
         status.state === "unavailable") &&
       !matActive &&
       // ADR-0010 on-demand: the serve idles ready but single-family

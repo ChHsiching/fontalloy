@@ -152,7 +152,7 @@ function readinessTag(doc: CatalogFamilyDoc | undefined): string | undefined {
     case "verifying":
       return "校验中…";
     case "indexing":
-      return "索引构建中…";
+      return "索引中…";
     case "failed":
       return "同步失败，稍后启动自动重试";
     case "unsynced":
@@ -1012,6 +1012,15 @@ export function mountPicker(
             pickFamily: cssKey ?? undefined,
             meta,
             disabled: !anyDone && !onDemand,
+            // Red is for FAILURES only (failed/absent) — an off row
+            // waiting on sync or indexing is progress, not an error,
+            // and must not read as one (the r31v4 "red 索引构建中"
+            // owner hit).
+            error:
+              !anyDone &&
+              rowNoteDoc !== undefined &&
+              (rowNoteDoc.readiness === "failed" ||
+                rowNoteDoc.readiness === "absent"),
             note: anyDone
               ? undefined
               : onDemand &&

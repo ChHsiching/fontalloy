@@ -66,6 +66,12 @@ export interface PickerFont {
    * row renders `note` as its status tag and never fires onPick.
    */
   disabled?: boolean;
+  /**
+   * The row's disabled reason is a FAILURE (sync failed / absent) —
+   * only then does the note render in the danger color. Progress
+   * states (下载中/索引中…) stay neutral.
+   */
+  error?: boolean;
   /** Inline status tag for a disabled row (e.g. 下载中…). */
   note?: string;
   /**
@@ -412,7 +418,10 @@ export function mountPickerPopup(
     for (const font of matches) {
       const row = document.createElement("button");
       row.type = "button";
-      row.className = "kit-fp" + (font.disabled ? " off" : "");
+      row.className =
+        "kit-fp" +
+        (font.disabled ? " off" : "") +
+        (font.error ? " err" : "");
       row.dataset.fontId = font.id;
       row.setAttribute("role", "option");
       row.setAttribute("aria-pressed", String(font.id === selectedId));

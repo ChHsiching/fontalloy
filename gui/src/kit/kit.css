@@ -1175,7 +1175,14 @@
   line-height: 1.4;
 }
 
+/* r31v4: an off row's note keeps the neutral note color — the danger
+ * hue is reserved for `.err` (sync failed / absent), so a progress tag
+ * (下载中…/索引中…) never reads as an error. */
 .kit-fp.off .kit-fp-note {
+  color: var(--ink3);
+}
+
+.kit-fp.off.err .kit-fp-note {
   color: var(--dgr);
 }
 

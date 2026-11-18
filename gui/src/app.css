@@ -460,12 +460,6 @@ body {
 .catalog-choice {
   padding: 14px 2px 4px;
 }
-.catalog-choice-title {
-  margin: 0 0 12px;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--ink);
-}
 .catalog-choice-cards {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -531,14 +525,46 @@ body {
 
 .catalog-bar i {
   display: block;
+  position: relative;
   height: 100%;
   border-radius: 2px;
   background: var(--ac);
   transform-origin: left center;
   transform: scaleX(0);
   transition:
-    transform 0.3s ease-out,
+    transform 0.45s cubic-bezier(0.22, 0.61, 0.36, 1),
     background-color 0.4s ease;
+}
+
+/* r31v4 (owner item 2): the fill carries a light sweep — a highlight
+ * stripe travelling across the FILLED region, the liveness idiom of
+ * every native progress bar. It reads as continuous motion however
+ * coarse the underlying byte samples are, and stops only on
+ * .complete. */
+.catalog-bar i::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    100deg,
+    transparent 25%,
+    rgba(255, 255, 255, 0.5) 50%,
+    transparent 75%
+  );
+  transform: translateX(-100%);
+  animation: catalog-bar-shimmer 1.2s ease-in-out infinite;
+}
+
+.catalog-bar.complete i::after {
+  animation: none;
+  opacity: 0;
+}
+
+@keyframes catalog-bar-shimmer {
+  to {
+    transform: translateX(100%);
+  }
 }
 
 /* The exit fade of the whole panel (the render hides after it). */
@@ -552,37 +578,18 @@ body {
   }
 }
 
-/* Liveness for the in-progress windows the count alone cannot cover:
- * the between-completions download window (0 < done < total) AND the
- * materializer window (done == total while the entries sweep still
- * runs, so the full bar keeps breathing until it truly completes).
- * The discrete scaleX steps stay untouched — the fill merely breathes
- * (opacity, an axis nothing else animates) while work is outstanding,
- * so a multi-second wait inside one family's download, or a stalled
- * materializer tail, never reads as a frozen panel. Deliberately
- * BEFORE .indeterminate: on the rare connecting-with-rows overlap both
- * classes match, and the sweep (the stronger signal) must keep
- * precedence. */
-.catalog-bar.busy i {
-  animation: catalog-bar-pulse 1.4s ease-in-out infinite;
-}
-
-@keyframes catalog-bar-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-
-  50% {
-    opacity: 0.55;
-  }
-}
-
+/* The indeterminate state keeps its own chunk sweep (the stronger
+ * signal) — the shimmer rides inside the determinate fill only. */
 .catalog-bar.indeterminate i {
   transform: none;
   width: 34%;
   border-radius: 2px;
   animation: catalog-bar-sweep 1.2s ease-in-out infinite;
+}
+
+.catalog-bar.indeterminate i::after {
+  animation: none;
+  opacity: 0;
 }
 
 .catalog-bar.complete i {
@@ -645,6 +652,50 @@ body {
 
 .catalog-family[data-status="failed"] {
   color: var(--dgr);
+}
+
+/* r31v4 (owner item 3): a finished family GRAYS OUT — the eye skips
+ * settled rows and lands on what still runs; and every active row
+ * (下载/解压/校验/索引) carries a small spinner beside its status
+ * word, so the working row is findable at a glance instead of being
+ * three changed characters mid-list. */
+.catalog-family[data-status="done"] {
+  color: var(--ink2);
+}
+
+.catalog-family[data-status="downloading"] .catalog-family-status::before,
+.catalog-family[data-status="extracting"] .catalog-family-status::before,
+.catalog-family[data-status="verifying"] .catalog-family-status::before,
+.catalog-family[data-status="indexing"] .catalog-family-status::before {
+  content: "";
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 1.5px solid var(--ink3);
+  border-top-color: transparent;
+  margin-right: 6px;
+  vertical-align: -1px;
+  animation: catalog-row-spin 0.8s linear infinite;
+}
+
+@keyframes catalog-row-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Reduced motion: the decorative loops (bar shimmer, row spinners)
+ * stop; the states stay legible through their words and colors. */
+@media (prefers-reduced-motion: reduce) {
+  .catalog-bar i::after,
+  .catalog-family[data-status="downloading"] .catalog-family-status::before,
+  .catalog-family[data-status="extracting"] .catalog-family-status::before,
+  .catalog-family[data-status="verifying"] .catalog-family-status::before,
+  .catalog-family[data-status="indexing"] .catalog-family-status::before {
+    animation: none;
+  }
 }
 
 .catalog-family-name {
