@@ -98,7 +98,7 @@ export function mountCatalogScreen(): void {
       <div class="catalog-head">
         <h2 class="catalog-title"><span data-role="title-a">首次运行</span><span data-role="title-sep">${sep().outerHTML}</span><span data-role="title-b">正在下载字体目录</span></h2>
         <div class="catalog-sub" data-role="catalog-sub" hidden>首次启动需解压字体服务，约需几十秒</div>
-        <div class="catalog-progress">已完成 <b data-stat="catalog-done">0</b> / <span data-stat="catalog-total">0</span> 个字体家族<span data-stat="catalog-checking" hidden>（清单核对中…）</span></div>
+        <div class="catalog-progress"><span data-role="catalog-progress-download">已完成 <b data-stat="catalog-done">0</b> / <span data-stat="catalog-total">0</span> 个字体家族<span data-stat="catalog-checking" hidden>（清单核对中…）</span></span><span data-role="catalog-progress-stage" hidden></span></div>
         <span class="catalog-ready" data-stat="catalog-ready">目录就绪</span>
       </div>
       <div class="catalog-bar" data-role="catalog-bar"><i></i></div>
@@ -158,6 +158,15 @@ export function mountCatalogScreen(): void {
     ...screen.querySelectorAll<HTMLButtonElement>(".catalog-choice-card"),
   ];
   const counter = screen.querySelector<HTMLElement>(".catalog-progress")!;
+  // The counter line's two exclusive sentences: the download count or
+  // the tail stage. One line tells one story (the r31v4 crowding fix —
+  // a sub line beside the counter read as two headlines colliding).
+  const progressDownload = screen.querySelector<HTMLElement>(
+    "[data-role='catalog-progress-download']",
+  )!;
+  const progressStage = screen.querySelector<HTMLElement>(
+    "[data-role='catalog-progress-stage']",
+  )!;
   const skip = screen.querySelector<HTMLButtonElement>(".catalog-skip")!;
   const start = screen.querySelector<HTMLButtonElement>(".catalog-start")!;
 
@@ -402,35 +411,37 @@ export function mountCatalogScreen(): void {
         mat!.phase === "entries" && mat!.total
           ? `字体文件准备中 ${mat!.done ?? 0}/${mat!.total}`
           : "字体文件准备中…";
-      // One story across the two progress layers (issue #17 reviews:
-      // "4/4 done" next to "still downloading" read as a contradiction):
-      // the sub line bridges the head's download title and the tail
-      // row's file count — the families are all in, what is still
-      // arriving is the font files themselves. The connecting window
-      // owns the sub line elsewhere.
-      if (!connecting) {
-        sub.textContent = "字体家族已全部下载，正在准备字体文件…";
-        sub.hidden = false;
-      }
     } else if (materializerRow !== null) {
       materializerRow.remove();
       materializerRow = null;
     }
 
-    // The indexing tail (the r31v4 owner ruling): a full download is
-    // NOT done when the sync is — the families' documents are still
-    // being indexed by the quota'd worker, and a panel that closes
-    // onto a picker full of 索引构建中 tags strands the user. The
-    // panel owns this stage as its last step: the sub line carries
-    // the count, the rows carry 索引中, and `complete` (the CTA, the
-    // ready tag, the close) waits for it.
+    // The tail stages own the counter line (r31v4): once the download
+    // count's story is over, ONE line names what still runs — the
+    // files' sweep or the documents' indexing — never a sub line
+    // stacked beside the finished count (two headlines colliding).
+    // `complete` (the CTA, the ready tag, the close) still waits for
+    // the whole tail below.
     const docsKnown = catalog.documents.length > 0;
     const indexingCount = entries.filter(
       (entry) => entry.state === "done" && docIndexing(entry.family),
     ).length;
-    if (allDone && !matActive && indexingCount > 0 && !connecting) {
-      sub.textContent = `正在构建字体索引 ${entries.length - indexingCount}/${entries.length}，完成后即可使用`;
-      sub.hidden = false;
+    const stageSentence = connecting
+      ? null
+      : matActive && allDone
+        ? mat!.phase === "entries" && mat!.total
+          ? `正在准备字体文件 ${mat!.done ?? 0} / ${mat!.total}`
+          : "正在准备字体文件…"
+        : allDone && !matActive && indexingCount > 0
+          ? `正在构建字体索引 ${entries.length - indexingCount} / ${entries.length}，完成后即可使用`
+          : null;
+    if (stageSentence !== null) {
+      progressDownload.hidden = true;
+      progressStage.hidden = false;
+      progressStage.textContent = stageSentence;
+    } else {
+      progressDownload.hidden = false;
+      progressStage.hidden = true;
     }
 
     // The counters and the bar read the display rows (seed count until
@@ -478,27 +489,36 @@ export function mountCatalogScreen(): void {
           : allDone && indexingCount > 0
             ? "正在构建字体索引"
             : "正在下载字体目录";
-    // The terminal actions: "skip, later" is the wrong sole control at
-    // 4/4 — completion swaps in the start CTA (same close path) and
-    // hides the dismiss copy; mid-run the dismiss copy is unchanged.
+    // The terminal actions: completion swaps in the start CTA (same
+    // close path) and hides the dismiss copy. The dismiss copy itself
+    // names what it does ON EACH STAGE (r31v4: "跳过，稍后再说" read
+    // as ambiguity, not choice) — on the choice it defers the
+    // decision (the next launch asks again); on the download it hides
+    // the panel while the sync keeps running in the serve.
     start.hidden = !complete;
     skip.hidden = complete;
+    skip.textContent = choosing ? "稍后再选" : "后台继续下载";
     bar.classList.toggle("complete", complete);
     // Indeterminate while nothing is countable yet — the sidecar window
     // or the ultra-early document fetch of a true first start.
     const indeterminate = connecting || entries.length === 0;
     bar.classList.toggle("indeterminate", indeterminate);
-    // The staged fill (r31v4 owner item 2): each family advances the
-    // bar through its OWN lifecycle — downloading rides the byte
-    // counter (the dominant time, moving smoothly), extracting and
-    // verifying step their slices, a done sync earns 0.9 and the
-    // document's landing completes it to 1.0, so the bar keeps moving
-    // through 解压/校验/索引 instead of parking at a done-count
-    // fraction that jumps one step per family.
-    const STAGE_DOWNLOAD = 0.6;
-    const STAGE_EXTRACT = 0.75;
-    const STAGE_VERIFY = 0.85;
-    const STAGE_SYNCED = 0.9;
+    // The staged fill (r31v4): during the download each family
+    // advances the bar through its own lifecycle — downloading rides
+    // the byte counter (the dominant time, moving smoothly), extract
+    // and verify step their slices, a synced family parks at 0.95 and
+    // its document's landing completes it. Once EVERY family is synced
+    // and the files' sweep has settled, the indexing tail OWNS the
+    // whole width (stage-rebased, the installer idiom): m/n documents
+    // done is the bar — no more "all progress crammed into the last
+    // notch". The fill is WIDTH-driven: the highlight sweep lives
+    // inside the fill's own box and cannot out-travel it, and its
+    // travel shrinks with the fill (a small fill sweeps short and
+    // calm, a wide one sweeps wide).
+    const STAGE_DOWNLOAD = 0.85;
+    const STAGE_EXTRACT = 0.88;
+    const STAGE_VERIFY = 0.92;
+    const STAGE_SYNCED = 0.95;
     const fractionOf = (entry: (typeof entries)[number]): number => {
       switch (entry.state) {
         case SEED_STATUS:
@@ -528,16 +548,17 @@ export function mountCatalogScreen(): void {
           return 0;
       }
     };
+    const docsFill =
+      indexingCount === 0 ? 1 : (entries.length - indexingCount) / entries.length;
     const fill = indeterminate
       ? 0
-      : loaded
-        ? entries.reduce((sum, entry) => sum + fractionOf(entry), 0) /
-          entries.length
-        : doneCount / entries.length;
-    barFill.style.transform = `scaleX(${fill})`;
-    // The shimmer overlay rides the same number: its clip-path is the
-    // fill fraction, so the highlight cannot out-travel the fill.
-    bar.style.setProperty("--fill", String(fill));
+      : !loaded
+        ? doneCount / entries.length
+        : allDone && !matActive
+          ? docsFill
+          : entries.reduce((sum, entry) => sum + fractionOf(entry), 0) /
+            entries.length;
+    barFill.style.width = `${fill * 100}%`;
   };
   store.subscribe(render);
   render();

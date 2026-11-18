@@ -395,13 +395,19 @@ const sampleCatalog = (page: Page): Promise<CatalogSample> =>
           .querySelector<HTMLElement>(`[data-stat='${stat}']`)
           ?.textContent?.replace(/\D/g, "") ?? "0",
       );
-    const transform =
-      document.querySelector<HTMLElement>(".catalog-bar i")?.style.transform ??
-      "";
+    // r31v4: the fill is width-driven — sample the rendered width
+    // ratio (getBoundingClientRect, layout truth) instead of a
+    // transform string.
+    const track = document.querySelector<HTMLElement>(".catalog-bar");
+    const fillEl = document.querySelector<HTMLElement>(".catalog-bar i");
+    const trackWidth = track?.getBoundingClientRect().width ?? 0;
     return {
       done: read("catalog-done"),
       total: read("catalog-total"),
-      barFill: Number(/scaleX\(([\d.]+)\)/.exec(transform)?.[1] ?? "0"),
+      barFill:
+        trackWidth > 0 && fillEl
+          ? fillEl.getBoundingClientRect().width / trackWidth
+          : 0,
       statuses,
     };
   });
@@ -518,12 +524,19 @@ test.describe("the serve-backed catalog", () => {
         `no in-flight state observed in ${JSON.stringify(samples.map((s) => s.statuses))}`,
       ).toBe(true);
       // Assertion C: the terminal sample reads done === N and the
-      // bar's fill fraction is monotone alongside the counter.
+      // bar's fill fraction is monotone WITHIN each stage alongside
+      // the counter. r31v4: the indexing tail REBASES the bar (it owns
+      // the full width as its own stage, the installer idiom), so one
+      // designed decrease across the all-synced boundary is legal —
+      // two would be a real regression.
       expect(samples[samples.length - 1]!.done).toBe(N);
+      let drops = 0;
       for (let index = 1; index < samples.length; index += 1) {
-        expect(samples[index]!.barFill).toBeGreaterThanOrEqual(
-          samples[index - 1]!.barFill - 1e-9,
-        );
+        const prev = samples[index - 1]!.barFill;
+        const current = samples[index]!.barFill;
+        if (current >= prev - 1e-9) continue;
+        drops += 1;
+        expect(drops).toBeLessThanOrEqual(1);
       }
     } finally {
       origin.releaseAll();

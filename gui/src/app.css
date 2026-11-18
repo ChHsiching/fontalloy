@@ -515,39 +515,35 @@ body {
  * indeterminate state (sidecar window / the document fetch of a true
  * first start, before any countable row exists) sweeps instead. */
 .catalog-bar {
-  position: relative;
   flex: none;
   height: 4px;
   margin: 2px 0 0;
   border-radius: 2px;
   background: var(--ln);
   overflow: hidden;
-  --fill: 0;
 }
 
+/* r31v4: the fill is WIDTH-driven (never a scale transform) — its box
+ * IS the green, so the sweep living inside it cannot render outside
+ * the green, and its travel length equals the fill width (a small
+ * fill sweeps short and calm). */
 .catalog-bar i {
   display: block;
+  position: relative;
   height: 100%;
+  width: 0;
   border-radius: 2px;
   background: var(--ac);
-  transform-origin: left center;
-  transform: scaleX(0);
+  overflow: hidden;
   transition:
-    transform 0.45s cubic-bezier(0.22, 0.61, 0.36, 1),
+    width 0.45s cubic-bezier(0.22, 0.61, 0.36, 1),
     background-color 0.4s ease;
 }
 
-/* r31v4 (owner item 2): the light sweep is a TRACK-level overlay
- * CLIPPED to the fill fraction (--fill, set by the same render tick
- * that scales the fill) — the highlight physically cannot travel past
- * the green, whatever the transform math of a nested element does.
- * It stops on .complete; .indeterminate keeps its own chunk sweep. */
-.catalog-bar::after {
+.catalog-bar i::after {
   content: "";
   position: absolute;
   inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
   background: linear-gradient(
     100deg,
     transparent 25%,
@@ -556,11 +552,9 @@ body {
   );
   transform: translateX(-100%);
   animation: catalog-bar-shimmer 1.2s ease-in-out infinite;
-  clip-path: inset(0 calc((1 - var(--fill)) * 100%) 0 0);
 }
 
-.catalog-bar.complete::after,
-.catalog-bar.indeterminate::after {
+.catalog-bar.complete i::after {
   animation: none;
   opacity: 0;
 }
@@ -583,12 +577,16 @@ body {
 }
 
 /* The indeterminate state keeps its own chunk sweep (the stronger
- * signal) — the shimmer overlay above already opts out of it. */
+ * signal); the in-fill shimmer opts out of it below. */
 .catalog-bar.indeterminate i {
-  transform: none;
   width: 34%;
   border-radius: 2px;
   animation: catalog-bar-sweep 1.2s ease-in-out infinite;
+}
+
+.catalog-bar.indeterminate i::after {
+  animation: none;
+  opacity: 0;
 }
 
 .catalog-bar.complete i {
@@ -688,7 +686,7 @@ body {
 /* Reduced motion: the decorative loops (bar shimmer, row spinners)
  * stop; the states stay legible through their words and colors. */
 @media (prefers-reduced-motion: reduce) {
-  .catalog-bar::after,
+  .catalog-bar i::after,
   .catalog-family[data-status="downloading"] .catalog-family-status::before,
   .catalog-family[data-status="extracting"] .catalog-family-status::before,
   .catalog-family[data-status="verifying"] .catalog-family-status::before,
