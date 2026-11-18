@@ -104,7 +104,7 @@ export async function registerLocalFontPaths(
 ): Promise<LocalLoadOutcome> {
   const client = synthStore.get().service.client;
   if (client === null) {
-    throw new Error("本地字体加载需要本地服务（未连接）。");
+    throw new Error("本地字体加载需要本地服务，当前未连接。");
   }
   if (paths.length > 0) options.onProgress?.(0, paths.length, "reading");
   const document = await client.localFonts(paths);
@@ -126,7 +126,7 @@ export async function registerLocalFontFiles(
 ): Promise<LocalLoadOutcome> {
   const client = synthStore.get().service.client;
   if (client === null) {
-    throw new Error("本地字体加载需要本地服务（未连接）。");
+    throw new Error("本地字体加载需要本地服务，当前未连接。");
   }
   const failures: string[] = [];
   if (files.length > 0) options.onProgress?.(0, files.length, "reading");

@@ -205,7 +205,7 @@ function mountOutputDirRow(): HTMLElement {
   // The displayed dir: the override when set, else the shell default.
   void resolveOutputDir()
     .then((dir) => render(dir, configuredOutputDir() !== null))
-    .catch(() => render("（无法定位）", false));
+    .catch(() => render("无法定位", false));
 
   change.addEventListener("click", () => {
     void pickOutputDir()
@@ -215,7 +215,7 @@ function mountOutputDirRow(): HTMLElement {
         render(picked, true);
       })
       .catch(() => {
-        render("（无法打开目录选择）", configuredOutputDir() !== null);
+        render("无法打开目录选择", configuredOutputDir() !== null);
       });
   });
   reset.addEventListener("click", () => {

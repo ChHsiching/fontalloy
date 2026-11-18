@@ -30,7 +30,7 @@ function disabledReason(): string | null {
   const { selected } = store.get();
   if (service.status === "none") {
     return (
-      "未连接本地合成服务（fontalloy serve）。桌面版会随应用自动启动服务；" +
+      "未连接本地合成服务 fontalloy serve。桌面版会随应用自动启动服务；" +
       "当前环境未提供服务地址，无法进行合成。可继续加载字体并浏览字符映射。"
     );
   }
@@ -46,7 +46,7 @@ function disabledReason(): string | null {
   if (service.status === "unavailable") {
     return (
       "本地合成服务不可用" +
-      (service.error ? `（${service.error}）` : "") +
+      (service.error ? `——${service.error}` : "") +
       "。合成功能需要服务运行；字体加载与字符映射不受影响。"
     );
   }

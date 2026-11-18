@@ -95,9 +95,9 @@ export function mountCliPanel(): void {
     <div class="cli-actions">
       <button class="kit-btn gh sm" type="button" data-testid="reprobe">重新检测本地服务</button>
     </div>
-    <div class="cli-label">配方预览（JSON）</div>
+    <div class="cli-label">JSON 配方预览</div>
     <pre class="cli-yaml" data-testid="recipe-json"></pre>
-    <div class="cli-label">CLI 命令（同一合并）</div>
+    <div class="cli-label">CLI 命令，完成同一合并</div>
     <div class="cli-command-box"><code data-testid="cli-command"></code></div>
     <div class="cli-actions">
       <button class="kit-btn pri" type="button" data-testid="copy-command">复制 CLI 命令</button>
@@ -140,18 +140,18 @@ export function mountCliPanel(): void {
     const { service } = synthStore.get();
     if (service.status === "connected") {
       notice.textContent =
-        `已连接本地服务（${service.url ?? ""}）——可直接使用顶栏的 合成字体 实时合成。`;
+        `已连接本地服务 ${service.url ?? ""}——可直接使用顶栏的 合成字体 实时合成。`;
       return;
     }
     const address = service.url ?? "";
     if (service.status === "connecting") {
-      notice.textContent = `正在检测本地服务${address ? `（${address}）` : ""}…`;
+      notice.textContent = `正在检测本地服务 ${address}…`;
       return;
     }
     if (service.status === "none") {
       notice.textContent =
         "当前环境未提供服务地址，无法实时合成。桌面版会随应用自动启动服务；" +
-        "网页版检测 fontalloy serve（仅监听 127.0.0.1，并以 --allow-origin 允许本站来源）。" +
+        "网页版检测 fontalloy serve——仅监听 127.0.0.1，并以 --allow-origin 允许本站来源。" +
         "可使用下方的“复制 CLI 命令”方案，在本地完成同一次合并。";
       return;
     }
@@ -163,9 +163,9 @@ export function mountCliPanel(): void {
       return;
     }
     notice.textContent =
-      "实时合成需要本地服务（fontalloy serve，仅监听 127.0.0.1，" +
-      "并以 --allow-origin 允许本站来源）；未检测到本地服务" +
-      `${address ? `（${address} 无响应：连接被拒绝或被 CORS 拦截）` : ""}。` +
+      "实时合成需要本地服务 fontalloy serve——仅监听 127.0.0.1，" +
+      "并以 --allow-origin 允许本站来源。未检测到本地服务" +
+      `${address ? `：${address} 无响应，连接被拒绝或被 CORS 拦截` : ""}。` +
       "可使用下方的“复制 CLI 命令”方案，在本地完成同一次合并。";
   };
   synthStore.subscribe(renderNotice);

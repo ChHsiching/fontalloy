@@ -171,7 +171,7 @@ function catalogNote(catalog: CatalogState): string | null {
     // story 3): the owner reads what the sync actually said.
     return catalog.error && catalog.error.length > 0
       ? catalog.error
-      : "目录不可用（离线）—— 本地字体不受影响。";
+      : "目录不可用，离线——本地字体不受影响。";
   }
   if (catalog.status === "bootstrapping") {
     const done = catalog.progress.filter((f) => f.state === "done").length;

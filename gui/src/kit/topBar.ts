@@ -173,7 +173,10 @@ export function themeToggle(props: ThemeToggleProps = {}): HTMLButtonElement {
     const effective = effectiveTheme(pref);
     btn.dataset.themeMode = pref;
     btn.setAttribute("aria-label", "切换明暗");
-    btn.title = `主题：${themePreferenceLabel(pref)}${pref === "auto" ? "（跟随系统）" : ""}，点击切换`;
+    btn.title =
+      pref === "auto"
+        ? "主题：自动，跟随系统，点击切换"
+        : `主题：${themePreferenceLabel(pref)}，点击切换`;
     btn.innerHTML =
       icon(effective === "dark" ? "moon" : "theme") +
       (pref === "auto" ? '<span class="kit-theme-auto">自动</span>' : "");

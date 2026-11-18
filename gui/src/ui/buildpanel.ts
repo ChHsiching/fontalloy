@@ -185,7 +185,7 @@ const STAGES: ReadonlyArray<readonly [string, string, string]> = [
   ["resolving", "解析规则", "把规则展开成一张对照表：每个码位最终由哪款字体提供。"],
   ["grafting", "移植字形", "中文字形缩放到英文字体尺寸后并入成品，重建码位对照表。"],
   ["rewriting", "改写名称表", "给成品写入自己的字体名和样式名，并校正字体的尺寸标记。"],
-  ["saving", "保存输出", "按选定格式（ttf / ttc / woff2）把成品字体写入磁盘。"],
+  ["saving", "保存输出", "按选定格式 ttf、ttc 或 woff2 把成品字体写入磁盘。"],
   ["reporting", "生成报告", "重新打开写好的文件核对一遍，生成这份验证报告。"],
 ] as const;
 
@@ -240,7 +240,7 @@ function stageLineParts(row: BuildRow): { name: string; note: string } {
       return {
         name:
           row.queuePosition !== null && row.queuePosition > 1
-            ? `排队中（第 ${row.queuePosition} 位）`
+            ? `排队中，第 ${row.queuePosition} 位`
             : "排队中",
         note: "",
       };
@@ -312,7 +312,7 @@ const STAGE_FACTS: Readonly<Record<string, Readonly<Record<string, FactRender>>>
     // custom rules」 is three consistent calibers, not one
     // contradiction). The fact line names its own caliber so the
     // panel's count explains why it can exceed the sidebar's.
-    rules: { label: "规则", format: (v) => `${v} 条（含文字范围）` },
+    rules: { label: "规则", format: (v) => `${v} 条，含文字范围` },
     codepoints: { label: "生效码位", format: (v) => Number(v).toLocaleString("en-US") },
   },
   grafting: {
@@ -521,7 +521,7 @@ const SECTION_HELP: Record<string, SectionHelp> = {
     // codepoint it does not cover; those read as missing.
     note:
       "对照规则要求，逐项看哪些码位没做进去。" +
-      "部分字体会在缺失的码位画出占位符（方框、叉号等）；这些码位按缺失计。",
+      "部分字体会在缺失的码位画出方框、叉号等占位符；这些码位按缺失计。",
     headers: ["项目", "是什么"],
     rows: [
       ["要求覆盖", "规则要求合并进来的码位数量"],

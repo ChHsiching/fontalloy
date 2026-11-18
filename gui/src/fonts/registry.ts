@@ -271,7 +271,7 @@ export async function loadDefaultSlotWithBudget(cssKey: string): Promise<void> {
           () =>
             reject(
               new FontLoadBudgetError(
-                `字体载入超时（${Math.round(budgetMs / 1000)} 秒内服务未返回字体数据）。`,
+                `字体载入超时，${Math.round(budgetMs / 1000)} 秒内服务未返回字体数据。`,
               ),
             ),
           budgetMs,

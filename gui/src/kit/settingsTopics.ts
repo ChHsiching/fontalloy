@@ -92,7 +92,7 @@ export const SETTINGS_TOPICS: readonly SettingsTopic[] = [
       // glyphs land verbatim (their own size AND their own width), so
       // the preview shows exactly what the output carries. The three
       // harmonization schools stay as opt-ins.
-      { value: "plain", label: "直接组合（不调整）", badge: "默认" },
+      { value: "plain", label: "直接组合，不调整", badge: "默认" },
       { value: "auto", label: "自动对齐" },
       { value: "grid", label: "中文字和英文底边一样高" },
       { value: "optical", label: "中文字缩小一点更匀称" },

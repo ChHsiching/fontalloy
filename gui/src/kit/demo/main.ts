@@ -530,9 +530,9 @@ const rangePopup = mountRangePopup(actionBar.el, {
     const s = parseCodepoint(start);
     const e = end.trim() === "" ? s : parseCodepoint(end);
     if (s === null || e === null || e < s) return false;
-    live.textContent = `已添加区间规则（${
+    live.textContent = `已添加区间规则，${
       side === "base" ? "英文" : "中文"
-    }字体）`;
+    }字体`;
     return true;
   },
 });

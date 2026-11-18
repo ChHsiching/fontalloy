@@ -125,7 +125,7 @@ export async function connectService(): Promise<void> {
     patchService({
       status: "unavailable",
       client: null,
-      error: `未检测到本地服务（${url} 无响应：连接被拒绝、超时或被 CORS 拦截）`,
+      error: `未检测到本地服务——${url} 无响应：连接被拒绝、超时或被 CORS 拦截`,
     });
     return;
   }
@@ -754,12 +754,12 @@ export async function synthesize(): Promise<void> {
   };
   const enSlot = await resolvePickSlot(en, "base");
   if (enSlot === null) {
-    settlePending(`无法定位字体文件路径：${en.fileName}（服务目录中不存在）。`);
+    settlePending(`无法定位字体文件路径：${en.fileName}，服务目录中不存在。`);
     return;
   }
   const cjkSlot = await resolvePickSlot(cjk, "donor");
   if (cjkSlot === null) {
-    settlePending(`无法定位字体文件路径：${cjk.fileName}（服务目录中不存在）。`);
+    settlePending(`无法定位字体文件路径：${cjk.fileName}，服务目录中不存在。`);
     return;
   }
 

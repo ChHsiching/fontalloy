@@ -114,7 +114,7 @@ async function getJson<T>(url: string): Promise<T> {
   } catch (err) {
     throw new Error(
       err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError")
-        ? `目录状态获取超时（${Math.round(FETCH_TIMEOUT_MS / 1000)} 秒）。`
+        ? `目录状态获取超时，${Math.round(FETCH_TIMEOUT_MS / 1000)} 秒。`
         : "目录服务不可达。",
     );
   }

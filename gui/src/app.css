@@ -1058,10 +1058,12 @@ body {
   margin-left: auto;
 }
 
+/* r31v4: the stage's explanation is a full sentence — it WRAPS, never
+ * ellipsized (the owner's rule: explanatory text uses the space it
+ * has). */
 .build-stage-note {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  min-width: 0;
+  white-space: normal;
 }
 
 .build-stage-name {

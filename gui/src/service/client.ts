@@ -308,7 +308,7 @@ function isTimeout(err: unknown): boolean {
 }
 
 function timeoutMessage(ms: number): string {
-  return `本地合成服务无响应（${Math.round(ms / 1000)} 秒超时）。`;
+  return `本地合成服务无响应，${Math.round(ms / 1000)} 秒超时。`;
 }
 
 async function parseError(res: Response): Promise<string> {

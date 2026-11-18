@@ -43,7 +43,7 @@ export type ServiceStatus =
  * synthesize action's disabled reason) — one string, one message.
  */
 export const SIDECAR_TIMEOUT_ERROR =
-  "字体服务未能启动（120 秒内未就绪）——本地字体不受影响，可重开应用重试";
+  "字体服务未能启动，120 秒内未就绪——本地字体不受影响，可重开应用重试";
 
 export interface ServiceState {
   status: ServiceStatus;
