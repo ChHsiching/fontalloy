@@ -602,12 +602,6 @@ body {
   }
 }
 
-/* The materializer tail row rides the list's own row chrome. */
-.catalog-family.catalog-materializer {
-  color: var(--ink2);
-  font-size: 12.5px;
-}
-
 .catalog-list {
   min-height: 0;
   max-height: 300px;

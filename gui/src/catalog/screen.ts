@@ -205,7 +205,6 @@ export function mountCatalogScreen(): void {
   /** seed (manifest unknown) or serve (status authoritative). */
   let mode: "seed" | "serve" | null = null;
   const rows = new Map<string, RowParts>();
-  let materializerRow: HTMLElement | null = null;
 
   const makeRow = (family: string): RowParts => {
     const row = document.createElement("div");
@@ -298,8 +297,6 @@ export function mountCatalogScreen(): void {
     if (nextMode !== mode) {
       mode = nextMode;
       rows.clear();
-      materializerRow?.remove();
-      materializerRow = null;
       list.replaceChildren();
     }
 
@@ -379,11 +376,9 @@ export function mountCatalogScreen(): void {
       }
     }
 
-    // The materializer tail: only while the screen is still up (a cold
-    // download run) and every family is done — the entries sweep the
-    // fetched layout needs keeps the panel honestly busy. Warm boots
-    // suppress this screen entirely; their materializer progress is
-    // implied by the picker working.
+    // The materializer is INVISIBLE plumbing (r31v4 owner ruling): its
+    // sweep gates `complete` below but renders nothing — no row, no sub
+    // line. The panel's story is the families' own six steps.
     const allDone =
       loaded &&
       catalog.progress.length > 0 &&
@@ -391,35 +386,11 @@ export function mountCatalogScreen(): void {
     const mat = catalog.materializer;
     const matActive =
       mat !== undefined && mat.phase !== "done" && mat.phase !== "failed";
-    if (allDone && matActive) {
-      if (materializerRow === null) {
-        materializerRow = document.createElement("div");
-        materializerRow.className = "catalog-family catalog-materializer";
-        materializerRow.dataset.family = "materializer";
-        list.appendChild(materializerRow);
-      }
-      materializerRow.textContent =
-        mat!.phase === "entries" && mat!.total
-          ? `字体文件准备中 ${mat!.done ?? 0}/${mat!.total}`
-          : "字体文件准备中…";
-      // One story across the two progress layers (issue #17 reviews):
-      // the sub line bridges the head's download title and the tail
-      // row's file count — the families are all in, what is still
-      // arriving is the font files themselves.
-      if (!connecting) {
-        sub.textContent = "字体家族已全部下载，正在准备字体文件…";
-        sub.hidden = false;
-      }
-    } else if (materializerRow !== null) {
-      materializerRow.remove();
-      materializerRow = null;
-    }
 
     // The indexing tail (r31v4): the bar keeps advancing through it
-    // (a synced family parks at 0.85, its document's landing completes
-    // it to 1.0 — one monotone bar, no dedicated stage text), the rows
-    // carry 索引中 with their spinners, and the head names the stage.
-    // `complete` (the CTA, the ready tag, the close) waits for it.
+    // (each family's 索引 step is its fifth advance), the rows carry
+    // 索引中 with their spinners. `complete` (the CTA, the ready tag,
+    // the close) waits for it.
     const docsKnown = catalog.documents.length > 0;
     const indexingCount = entries.filter(
       (entry) => entry.state === "done" && docIndexing(entry.family),
@@ -465,11 +436,9 @@ export function mountCatalogScreen(): void {
       ? "选择字体目录的下载方式"
       : complete
         ? "字体目录已就绪"
-        : matActive && allDone
-          ? "正在准备字体文件"
-          : allDone && indexingCount > 0
-            ? "正在构建字体索引"
-            : "正在下载字体目录";
+        : allDone && indexingCount > 0
+          ? "正在构建字体索引"
+          : "正在下载字体目录";
     // The terminal actions: completion swaps in the start CTA (same
     // close path) and hides the dismiss copy. The dismiss copy itself
     // names what it does ON EACH STAGE (r31v4: "跳过，稍后再说" read
@@ -484,18 +453,17 @@ export function mountCatalogScreen(): void {
     // or the ultra-early document fetch of a true first start.
     const indeterminate = connecting || entries.length === 0;
     bar.classList.toggle("indeterminate", indeterminate);
-    // The staged fill (r31v4): ONE monotone bar across the whole run —
-    // downloading rides the byte counter (0→0.7, the dominant time,
-    // moving smoothly), extract 0.75, verify 0.8, a synced family
-    // parks at 0.85 and its document's landing completes it to 1.0, so
-    // 解压/校验/索引 each visibly advance the SAME bar. The fill is
-    // WIDTH-driven: the highlight sweep lives inside the fill's own
-    // box and cannot out-travel it, and its travel shrinks with the
-    // fill (a small fill sweeps short and calm).
-    const STAGE_DOWNLOAD = 0.7;
-    const STAGE_EXTRACT = 0.75;
-    const STAGE_VERIFY = 0.8;
-    const STAGE_SYNCED = 0.85;
+    // The staged fill (r31v4): ONE monotone bar; each family advances
+    // it FIVE times through its six steps — 等待(0) → 下载(0→0.2, by
+    // bytes, smooth) → 解压(0.4) → 校验(0.6) → 索引(0.8) → 完成(1.0).
+    // No extra stage text anywhere: the rows carry the step words, the
+    // head names the stage, the bar carries the motion. The fill is
+    // WIDTH-driven, so the highlight sweep lives inside the fill's own
+    // box and cannot out-travel it.
+    const STAGE_DOWNLOAD = 0.2;
+    const STAGE_EXTRACT = 0.4;
+    const STAGE_VERIFY = 0.6;
+    const STAGE_INDEXING = 0.8;
     const fractionOf = (entry: (typeof entries)[number]): number => {
       switch (entry.state) {
         case SEED_STATUS:
@@ -516,10 +484,10 @@ export function mountCatalogScreen(): void {
         case "verifying":
           return STAGE_VERIFY;
         case "failed":
-          return STAGE_SYNCED;
+          return 1;
         case "done":
           return docIndexing(entry.family) || !docsKnown
-            ? STAGE_SYNCED
+            ? STAGE_INDEXING
             : 1;
         default:
           return 0;
