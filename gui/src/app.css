@@ -1037,32 +1037,18 @@ body {
   color: var(--ink3);
 }
 
-.build-stage-row {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-}
-
-/* The left stack (name over note): it shares the row with the live
-   column and must shrink for it, or the note's ellipsis has no edge to
-   clip against (min-width: 0 lets the flex child shrink below its
-   content). */
+/* r31v4: the copy and the live facts are TWO SEPARATE lines — the
+ * name+note wrap in the full row width, and the quantitative facts
+ * sit on their own line underneath, never crowding the note into
+ * reading as one long sentence. */
 .build-stage-copy {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.build-stage-live {
-  margin-left: auto;
+  display: block;
 }
 
 /* r31v4: the stage's explanation is a full sentence — it WRAPS, never
  * ellipsized (the owner's rule: explanatory text uses the space it
  * has). */
 .build-stage-note {
-  min-width: 0;
   white-space: normal;
 }
 
@@ -1070,17 +1056,17 @@ body {
   color: var(--ink2);
 }
 
-/* The live quantitative column (round 13): elapsed first, then the
-   stage facts; tabular-nums keeps the ticking mm:ss and the counts
-   width-stable so nothing reflows as numbers move. */
+/* The live quantitative line (round 13, restacked r31v4): elapsed
+   first, then the stage facts, right-aligned on their own row;
+   tabular-nums keeps the ticking mm:ss and the counts width-stable so
+   nothing reflows as numbers move. */
 .build-stage-live {
-  flex: none;
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  text-align: right;
+  flex: none;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 2px 12px;
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
 }
 
 .build-stage-live[hidden] {
