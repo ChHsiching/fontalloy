@@ -1571,7 +1571,19 @@ class _ServeHandler(BaseHTTPRequestHandler):
 
     def _fetch_catalog_family(self, family: str) -> None:
         """POST /catalog/families/<family>/fetch — one family's bytes on
-        demand (ADR-0010); the status feed streams the states."""
+        demand (ADR-0010); the status feed streams the states. The
+        request carries no body; anything a client insists on sending
+        is drained anyway — an unread body poisons the connection's
+        next request (the keep-alive contract)."""
+        length = self._content_length()
+        if length is None:
+            self._reject_malformed_length()
+            return
+        if length > MAX_BODY_BYTES:
+            self._send_error(413, "fetch body exceeds the size limit")
+            return
+        if length:
+            self.rfile.read(length)
         status = self.state.catalog_sync.request_family_fetch(family)
         if status == 202:
             self._send_json({"family": family, "accepted": True}, status=202)
