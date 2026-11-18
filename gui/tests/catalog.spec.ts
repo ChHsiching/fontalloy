@@ -554,6 +554,14 @@ test.describe("the serve-backed catalog", () => {
     try {
       await openOnServe(page, serve.url);
 
+      // ADR-0010: a fresh serve ships no scope.json, so the choice
+      // owns the first paint — walk the designed gate (pick 下载全部)
+      // before the download screen's own story can be asserted. "full"
+      // hands the panel to the progress story on the next poll.
+      const choice = screen(page).locator("[data-role='catalog-choice']");
+      await expect(choice).toBeVisible({ timeout: 15_000 });
+      await choice.locator("[data-choice='full']").click();
+
       // Phase one: the document is held — the manifest is unknown.
       await expect(screen(page)).toBeVisible({ timeout: 15_000 });
       await expect(screen(page)).toHaveAttribute("role", "dialog");
