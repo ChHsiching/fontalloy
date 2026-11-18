@@ -69,7 +69,9 @@ def main() -> int:
         print(f"[gate] binary stale or missing: {binary}")
         print("[gate] rebuilding (uv run --with pyinstaller)…")
         subprocess.run(
-            [sys.executable, str(BUILD_SCRIPT)], check=True, cwd=REPO_ROOT
+            ["uv", "run", "--with", "pyinstaller", "python", str(BUILD_SCRIPT)],
+            check=True,
+            cwd=REPO_ROOT,
         )
     else:
         print(f"[gate] binary current: {binary}")
