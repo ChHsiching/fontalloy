@@ -106,11 +106,11 @@ export function mountCatalogScreen(): void {
         <div class="catalog-choice-cards">
           <button class="catalog-choice-card" type="button" data-choice="full">
             <span class="catalog-choice-name">下载全部字体</span>
-            <span class="catalog-choice-note">一次下载全部，之后完全离线</span>
+            <span class="catalog-choice-note">下载后完全离线可用</span>
           </button>
           <button class="catalog-choice-card" type="button" data-choice="on-demand">
             <span class="catalog-choice-name">按需使用</span>
-            <span class="catalog-choice-note">先不下载，用到哪个下哪个</span>
+            <span class="catalog-choice-note">暂不下载，使用时再下载所选字体</span>
           </button>
         </div>
         <div class="catalog-choice-error" data-role="catalog-choice-error" hidden></div>
