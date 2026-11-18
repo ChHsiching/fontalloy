@@ -425,11 +425,24 @@ class ServeState:
         """The catalog, or None when no manifest is configured/found.
 
         A missing manifest file is an empty catalog (serve must start
-        for local-fonts-only setups); an invalid one is a startup error.
+        for local-fonts-only setups). A BROKEN one degrades to
+        manifest-less too (r31v4): a restart over a half-materialized
+        directory — manifest present, a license still missing — raised
+        out of startup and killed the serve, leaving the app staring
+        at a dead service forever; the materializer's refresh heals
+        the layout and the next mtime change reloads the catalog.
         """
         if manifest is None or not Path(manifest).is_file():
             return None
-        return load_manifest(manifest)
+        try:
+            return load_manifest(manifest)
+        except FontAlloyError as exc:
+            print(
+                f"manifest catalog unusable, serving without it: {exc}",
+                file=sys.stderr,
+                flush=True,
+            )
+            return None
 
     # -- submission --------------------------------------------------------
 
@@ -1769,16 +1782,25 @@ def run_serve(options: ServeOptions) -> None:
     # discipline as the sync (post-bind, yields between artifacts). On
     # a warm catalog it is a stat walk; on first run it downloads the
     # per-entry artifacts while /catalog/status and every other
-    # endpoint stay live.
+    # endpoint stay live. ADR-0010 (r31v4): NOTHING bulk-downloads
+    # before the user picks — the layout rides the FULL choice, and an
+    # on-demand catalog fetches per family instead (the owner hit 19 GB
+    # of entry artifacts arriving before any choice was made).
     if options.catalog_manifest_origin and options.catalog_dir:
-        threading.Thread(
-            target=materialize_with_refresh,
-            args=(
+
+        def _materializer_on_scope() -> None:
+            scope = state.catalog_sync.wait_for_scope(state.stop)
+            if scope != SCOPE_FULL:
+                return
+            materialize_with_refresh(
                 options.catalog_manifest_origin,
                 Path(options.catalog_dir),
                 state.stop,
                 state.catalog_sync.report_materializer,
-            ),
+            )
+
+        threading.Thread(
+            target=_materializer_on_scope,
             name="fontalloy-catalog-materializer",
             daemon=True,
         ).start()

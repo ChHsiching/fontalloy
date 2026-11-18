@@ -97,8 +97,8 @@ export function mountCatalogScreen(): void {
     <div class="catalog-panel">
       <div class="catalog-head">
         <h2 class="catalog-title"><span data-role="title-a">首次运行</span><span data-role="title-sep">${sep().outerHTML}</span><span data-role="title-b">正在下载字体目录</span></h2>
-        <div class="catalog-sub" data-role="catalog-sub" hidden>首次启动需解压字体服务，约需几十秒</div>
-        <div class="catalog-progress">已完成 <b data-stat="catalog-done">0</b> / <span data-stat="catalog-total">0</span> 个字体家族<span data-stat="catalog-checking" hidden>（清单核对中…）</span></div>
+        <div class="catalog-sub" data-role="catalog-sub" hidden></div>
+        <div class="catalog-progress">已完成 <b data-stat="catalog-done">0</b> / <span data-stat="catalog-total">0</span> 个字体家族</div>
         <span class="catalog-ready" data-stat="catalog-ready">目录就绪</span>
       </div>
       <div class="catalog-bar" data-role="catalog-bar"><i></i></div>
@@ -132,9 +132,6 @@ export function mountCatalogScreen(): void {
   const list = screen.querySelector<HTMLElement>(".catalog-list")!;
   const done = screen.querySelector<HTMLElement>("[data-stat='catalog-done']")!;
   const total = screen.querySelector<HTMLElement>("[data-stat='catalog-total']")!;
-  const checking = screen.querySelector<HTMLElement>(
-    "[data-stat='catalog-checking']",
-  )!;
   const readyTag = screen.querySelector<HTMLElement>(
     "[data-stat='catalog-ready']",
   )!;
@@ -145,7 +142,6 @@ export function mountCatalogScreen(): void {
   const titleSep = screen.querySelector<HTMLElement>(
     "[data-role='title-sep']",
   )!;
-  const sub = screen.querySelector<HTMLElement>("[data-role='catalog-sub']")!;
   const bar = screen.querySelector<HTMLElement>("[data-role='catalog-bar']")!;
   const barFill = bar.querySelector<HTMLElement>("i")!;
   const choice = screen.querySelector<HTMLElement>(
@@ -256,20 +252,16 @@ export function mountCatalogScreen(): void {
       titleA.textContent = "正在启动字体服务";
       titleSep.hidden = true;
       titleB.hidden = true;
-      sub.textContent = "首次启动需解压字体服务，约需几十秒";
-      sub.hidden = false;
     } else if (choosing) {
       screen.setAttribute("aria-label", "首次使用：选择字体目录的下载方式");
       titleA.textContent = "首次使用";
       titleSep.hidden = false;
       titleB.hidden = false;
-      sub.hidden = true;
     } else {
       screen.setAttribute("aria-label", "首次运行：下载字体目录");
       titleA.textContent = "首次运行";
       titleSep.hidden = false;
       titleB.hidden = false;
-      sub.hidden = true;
     }
     choice.hidden = !choosing;
     // The sheet gives .catalog-list `display:flex` (and the bar/counter
@@ -403,7 +395,6 @@ export function mountCatalogScreen(): void {
       : 0;
     done.textContent = String(doneCount);
     total.textContent = String(entries.length);
-    checking.hidden = loaded;
     // Completion is USABLE, not synced: every family done, the
     // materializer settled, AND the documents' indexing tail drained
     // (docs known — an unfetched document set never counts as done).

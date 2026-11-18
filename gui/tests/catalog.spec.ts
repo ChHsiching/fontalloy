@@ -1087,10 +1087,10 @@ test.describe("the serve-backed catalog", () => {
     await page.goto("/");
 
     // The connecting variant: visible, its own label, the
-    // indeterminate bar (nothing is countable yet).
+    // indeterminate bar (nothing is countable yet). r31v4: the sub
+    // line is gone by ruling — the label alone carries this window.
     await expect(screen(page)).toBeVisible({ timeout: 10_000 });
     await expect(screen(page)).toHaveAttribute("aria-label", "正在启动字体服务");
-    await expect(screen(page).locator(".catalog-sub")).toBeVisible();
     await expect(screen(page).locator(".catalog-bar")).toBeVisible();
 
     // The null lands: never stuck on 正在启动字体服务 — the screen

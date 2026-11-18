@@ -346,6 +346,18 @@ class CatalogSync:
         mode = body.get("mode") if isinstance(body, dict) else None
         return mode if mode in _PERSISTED_SCOPES else None
 
+    def wait_for_scope(self, stop: threading.Event | None = None) -> str | None:
+        """Block until a scope choice lands (ADR-0010), then return its
+        mode. Polls ``stop`` so a shutdown stays responsive; None means
+        the stop fired first. Bulk work parked on this (the fetched
+        layout's materializer) must not download a byte before the
+        user picks."""
+        while not self._scope_event.wait(timeout=0.5):
+            if stop is not None and stop.is_set():
+                return None
+        with self._lock:
+            return self._scope
+
     def set_scope(self, mode: str) -> str | None:
         """Record and activate the scope choice. Returns an error
         string on a bad mode, None on success. Starting the full sync
