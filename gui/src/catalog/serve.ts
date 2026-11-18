@@ -352,6 +352,29 @@ async function runCatalogPoll(base: string): Promise<void> {
         (family) =>
           family.state === "downloading" || family.state === "extracting",
       );
+    let scanning = false;
+    // docsKnown: THIS pass actually read /catalog/families. A failed
+    // documents fetch leaves `scanning` at its false default — letting
+    // that pass settle the screen closes the panel onto a picker full
+    // of 索引构建中 rows (the r31v4 owner hit). An unknown documents
+    // state must hold the screen, not release it.
+    let docsKnown = false;
+    let families: CatalogFamiliesDoc["families"] | null = null;
+    try {
+      const doc = await getJson<CatalogFamiliesDoc>(`${base}/catalog/families`);
+      scanning = doc.scanning;
+      families = doc.families;
+      docsKnown = true;
+    } catch {
+      // The status is the truth; documents refresh on the next pass.
+    }
+    // r31v4 (owner item 4): a FULL first run is not over when the sync
+    // reports ready — the documents' indexing tail (scanning) is part
+    // of the same loading story, and the panel stays up for it. Only a
+    // FULL scope holds: the on-demand choice dismissed its own screen,
+    // and a warm boot never raised one.
+    const firstRunDocsHold =
+      status.scope === "full" && docsKnown && scanning && !screenDismissed;
     patchCatalog({
       status: status.state,
       error: status.state === "unavailable" ? (status.error ?? "") : undefined,
@@ -364,23 +387,14 @@ async function runCatalogPoll(base: string): Promise<void> {
       scope: status.scope,
       materializer: status.materializer,
       screen:
-        status.state === "bootstrapping" && !screenDismissed && !warmSuppress,
+        (!screenDismissed &&
+          status.state === "bootstrapping" &&
+          !warmSuppress) ||
+        firstRunDocsHold,
+      ...(families !== null ? { documents: families, scanning } : {}),
     });
-    let scanning = false;
-    // docsKnown: THIS pass actually read /catalog/families. A failed
-    // documents fetch leaves `scanning` at its false default — letting
-    // that pass settle the screen closes the panel onto a picker full
-    // of 索引构建中 rows (the r31v4 owner hit). An unknown documents
-    // state must hold the screen, not release it.
-    let docsKnown = false;
-    try {
-      const doc = await getJson<CatalogFamiliesDoc>(`${base}/catalog/families`);
-      scanning = doc.scanning;
-      docsKnown = true;
-      patchCatalog({ documents: doc.families, scanning });
-      registerPreviewFonts(doc.families, base);
-    } catch {
-      // The status is the truth; documents refresh on the next pass.
+    if (families !== null) {
+      registerPreviewFonts(families, base);
     }
     // Review #2: a cold first run is NOT done when the sync is — the
     // materializer's entry sweep (the fetched layout the resolver

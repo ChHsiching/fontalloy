@@ -535,6 +535,9 @@ export function mountCatalogScreen(): void {
           entries.length
         : doneCount / entries.length;
     barFill.style.transform = `scaleX(${fill})`;
+    // The shimmer overlay rides the same number: its clip-path is the
+    // fill fraction, so the highlight cannot out-travel the fill.
+    bar.style.setProperty("--fill", String(fill));
   };
   store.subscribe(render);
   render();

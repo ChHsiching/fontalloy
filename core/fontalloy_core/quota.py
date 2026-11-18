@@ -171,40 +171,82 @@ def _spawn_and_wait(
 ) -> WorkerOutcome:
     """Spawn the child under the quota and wait for it (platform split)."""
     deadline_timeout = DEFAULT_TIMEOUT_SECONDS if timeout is None else timeout
+    if os.name == "nt":
+        return _spawn_and_wait_windows(argv, limit_mb, deadline_timeout)
     popen_kwargs: dict[str, Any] = {}
-    if os.name != "nt":
-        import resource
+    import resource
 
-        def _limit() -> None:  # runs in the child, before exec
-            byte_limit = limit_mb * 1024 * 1024
-            resource.setrlimit(resource.RLIMIT_AS, (byte_limit, byte_limit))
+    def _limit() -> None:  # runs in the child, before exec
+        byte_limit = limit_mb * 1024 * 1024
+        resource.setrlimit(resource.RLIMIT_AS, (byte_limit, byte_limit))
 
-        popen_kwargs["preexec_fn"] = _limit  # noqa: PLW1509
+    popen_kwargs["preexec_fn"] = _limit  # noqa: PLW1509
     process = subprocess.Popen(
         argv,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         **popen_kwargs,
     )
-    job_handle: Any = None
     try:
-        if os.name == "nt":
-            job_handle = _windows_job_for(process.pid, limit_mb * 1024 * 1024)
-        try:
-            _stdout, stderr = process.communicate(timeout=deadline_timeout)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.communicate()
-            raise WorkerError(
-                f"worker exceeded its {deadline_timeout:.0f}s time budget and "
-                "was killed (the quota holds memory, not time)"
-            ) from None
-    finally:
-        if job_handle is not None:
-            import ctypes
-
-            ctypes.windll.kernel32.CloseHandle(job_handle)  # type: ignore[attr-defined]
+        _stdout, stderr = process.communicate(timeout=deadline_timeout)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.communicate()
+        raise WorkerError(
+            f"worker exceeded its {deadline_timeout:.0f}s time budget and "
+            "was killed (the quota holds memory, not time)"
+        ) from None
     tail = (stderr or b"").decode("utf-8", errors="replace")[-2000:]
+    return WorkerOutcome(returncode=process.returncode, stderr_tail=tail)
+
+
+def _spawn_and_wait_windows(
+    argv: list[str], limit_mb: int, deadline_timeout: float
+) -> WorkerOutcome:
+    """The Windows split — no piped stdio anywhere.
+
+    The r31v4 root cause: the frozen worker's embedded interpreter
+    probes its standard streams while it initializes, and against a
+    PIPE pair drained by ``communicate()`` that probe wedged for real —
+    a whole-catalog batch sat ninety minutes at zero CPU inside
+    fflush/SetFilePointerEx over the stderr pipe while communicate's
+    reader-thread joins outlived its own timeout, so neither side ever
+    noticed. Here the worker's chatter goes to a TEMP FILE (the
+    classification only ever reads its tail), stdin is null, and the
+    wait is ``wait(timeout)`` — a plain handle wait whose deadline
+    always fires. Results already travel as files, never pipes.
+    """
+    with tempfile.TemporaryFile() as chatter:
+        process = subprocess.Popen(
+            argv,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=chatter,
+        )
+        job_handle: Any = None
+        timed_out = False
+        try:
+            job_handle = _windows_job_for(
+                process.pid, limit_mb * 1024 * 1024
+            )
+            try:
+                process.wait(timeout=deadline_timeout)
+            except subprocess.TimeoutExpired:
+                timed_out = True
+                process.kill()
+                process.wait()
+        finally:
+            if job_handle is not None:
+                import ctypes
+
+                ctypes.windll.kernel32.CloseHandle(job_handle)  # type: ignore[attr-defined]
+        chatter.seek(0)
+        tail = chatter.read().decode("utf-8", errors="replace")[-2000:]
+    if timed_out:
+        raise WorkerError(
+            f"worker exceeded its {deadline_timeout:.0f}s time budget and "
+            "was killed (the quota holds memory, not time)"
+        ) from None
     return WorkerOutcome(returncode=process.returncode, stderr_tail=tail)
 
 
